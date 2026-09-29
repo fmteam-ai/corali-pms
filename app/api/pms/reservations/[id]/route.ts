@@ -1,4 +1,7 @@
-import { requireApiUser } from "@/lib/auth";
+import { audited } from "@/lib/audit";
+import { reservationSnapshot } from "@/lib/audit-snapshots";
+import { forbidden, requireApiUser } from "@/lib/auth";
+import { can } from "@/lib/security/permissions";
 import { withTransaction } from "@/lib/db";
 import { getReservation } from "@/lib/reservations";
 import { validReservationTransition } from "@/lib/reservation-transition";
@@ -20,11 +23,12 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
   return reservation ? Response.json({ok:true,...reservation}) : Response.json({ok:false,error:"NOT_FOUND"},{status:404});
 }
 
-export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+async function handlePATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await requireApiUser("reservations.edit"); if (user instanceof Response) return user;
   try {
     assertTrustedOrigin(request);
     const id = Number((await context.params).id); const input = updateSchema.parse(await request.json()); const now=Date.now();
+    if ((input.action==="cancel"||input.action==="no_show") && !can(user.role,"reservations.delete",user.permissions)) return forbidden(user,"reservations.delete");
     const updated = await withTransaction(async (client) => {
       const locked=await client.query("SELECT * FROM bookings WHERE owner_id=$1 AND id=$2 FOR UPDATE",[user.ownerId,id]); const before=locked.rows[0];
       if(!before) throw new Error("NOT_FOUND"); if(Number(before.version)!==input.version) throw new Error("VERSION_CONFLICT");
@@ -58,3 +62,5 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     return Response.json({ok:false,error:"UPDATE_FAILED"},{status:500});
   }
 }
+
+export const PATCH = audited("reservation", handlePATCH, { snapshot: reservationSnapshot });

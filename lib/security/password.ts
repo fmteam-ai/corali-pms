@@ -5,7 +5,7 @@ export function hashPassword(password: string): Promise<string> {
     algorithm: 2,
     memoryCost: 65_536,
     timeCost: 3,
-    parallelism: 1,
+    parallelism: 4,
     outputLen: 32,
   });
 }

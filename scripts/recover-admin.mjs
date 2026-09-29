@@ -12,7 +12,7 @@ const input = validateRecoveryInput(JSON.parse(await fs.readFile(inputFile, "utf
 
 const ownerId = process.env.PMS_OWNER_ID ?? "hotel-corali";
 const now = Date.now();
-const passwordHash = await hash(input.password, { algorithm: 2, memoryCost: 65536, timeCost: 3, parallelism: 1, outputLen: 32 });
+const passwordHash = await hash(input.password, { algorithm: 2, memoryCost: 65536, timeCost: 3, parallelism: 4, outputLen: 32 });
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: databaseSsl() });
 const client = await pool.connect();
 

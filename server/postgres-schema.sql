@@ -868,3 +868,21 @@ CREATE TABLE IF NOT EXISTS pms_notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_pms_notifications_owner_created ON pms_notifications(owner_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_bookings_owner_phone ON bookings(owner_id,guest_phone);
+
+-- Unified administrative and security audit trail (who, from where, what, before/after).
+CREATE TABLE IF NOT EXISTS audit_logs (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ user_id BIGINT,
+ action TEXT NOT NULL,
+ entity_name TEXT NOT NULL,
+ entity_id TEXT,
+ payload_before JSONB,
+ payload_after JSONB,
+ ip_address TEXT NOT NULL DEFAULT '',
+ user_agent TEXT NOT NULL DEFAULT '',
+ created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_owner_created ON audit_logs(owner_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_owner_user ON audit_logs(owner_id,user_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_owner_entity ON audit_logs(owner_id,entity_name,created_at DESC);

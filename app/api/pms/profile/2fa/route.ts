@@ -1,3 +1,4 @@
+import { audited } from "@/lib/audit";
 import { randomBytes } from "node:crypto";
 import * as OTPAuth from "otpauth";
 import QRCode from "qrcode";
@@ -27,7 +28,7 @@ export async function GET() {
   return Response.json({ ok: true, enabled: Boolean(result.rows[0]?.totp_confirmed_at) });
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const user = await requireApiUser("dashboard.read");
   if (user instanceof Response) return user;
   try {
@@ -71,3 +72,5 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: error instanceof z.ZodError ? "INVALID_INPUT" : "TWO_FACTOR_FAILED" }, { status: 400 });
   }
 }
+
+export const POST = audited("two_factor", handlePOST);

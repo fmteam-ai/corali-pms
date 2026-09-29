@@ -1,3 +1,4 @@
+import { audited } from "@/lib/audit";
 import { z } from "zod";
 import { requireApiUser } from "@/lib/auth";
 import { withTransaction } from "@/lib/db";
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
   return Response.json({ ok: true, reservations: await listReservations(user.ownerId, q) });
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const user = await requireApiUser("reservations.create"); if (user instanceof Response) return user;
   try {
     assertTrustedOrigin(request); const input = createSchema.parse(await request.json()); const now = Date.now();
@@ -49,3 +50,5 @@ export async function POST(request: Request) {
     return Response.json({ok:false,error:"CREATE_FAILED"},{status:500});
   }
 }
+
+export const POST = audited("reservation", handlePOST);

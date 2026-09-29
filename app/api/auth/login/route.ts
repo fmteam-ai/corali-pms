@@ -8,6 +8,7 @@ import { verifyPassword } from "@/lib/security/password";
 import { verifyTotp } from "@/lib/security/totp";
 import { hashNetworkValue, hashToken, newOpaqueToken } from "@/lib/security/tokens";
 import { decryptField } from "@/lib/security/encryption";
+import { recordAudit } from "@/lib/audit";
 
 const inputSchema = z.object({
   username: z.string().trim().min(1).max(100).transform((value) => value.toLowerCase()),
@@ -28,6 +29,7 @@ export async function POST(request: Request): Promise<Response> {
     const now = Date.now();
     const attempt = await db().query("SELECT attempts, window_started_at, blocked_until FROM pms_login_attempts WHERE key_hash = $1", [attemptKey]);
     if (Number(attempt.rows[0]?.blocked_until ?? 0) > now) {
+      await recordAudit({ ownerId, userId: null, action: "security.login_blocked", entity: "session", after: { username: input.username } });
       return Response.json({ ok: false, error: "TOO_MANY_ATTEMPTS" }, { status: 429, headers: { "Retry-After": "900" } });
     }
 
@@ -71,6 +73,7 @@ export async function POST(request: Request): Promise<Response> {
           [attemptKey, attempts, withinWindow ? existing.rows[0]?.window_started_at : now, blockedUntil, now],
         );
       });
+      await recordAudit({ ownerId, userId: user?.id ? Number(user.id) : null, action: "security.login_failed", entity: "session", after: { username: input.username, reason: passwordOk ? "second_factor" : "credentials" } });
       return Response.json({ ok: false, error: "INVALID_CREDENTIALS" }, { status: 401 });
     }
 
@@ -91,6 +94,7 @@ export async function POST(request: Request): Promise<Response> {
       path: "/",
       expires: new Date(expiresAt),
     });
+    await recordAudit({ ownerId, userId: Number(user.id), action: "security.login", entity: "session" });
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof z.ZodError) return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });

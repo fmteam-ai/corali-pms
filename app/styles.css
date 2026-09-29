@@ -152,3 +152,21 @@ p { line-height: 1.65; }
 .status.checked_out{background:#eceff1;color:#455a64}
 .status.no_show{background:#fbe9e7;color:#8d3b2f}
 @media(max-width:900px){.quickSearch{display:none}}
+.rowActions{display:flex;flex-wrap:wrap;gap:6px}
+.permissionMatrix{border:1px solid #dce3e7;border-radius:12px;padding:12px;min-width:0;max-width:100%}
+.permissionMatrix table{min-width:760px}
+.permissionMatrix th,.permissionMatrix td{padding:5px;font-size:13px}
+.permissionMatrix select{font-size:12px;padding:5px;border-radius:7px;border:1px solid #cad5df;max-width:140px}
+.permissionMatrix td.allow select{background:#e3f4e4}
+.permissionMatrix td.deny select{background:#ffe4e1}
+.permissionMatrix td.empty{background:#f6f8f9}
+.userEditor{max-width:1100px}
+.userEditor label small{color:#60757a;font-weight:400}
+.auditFilters{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.auditFilters select,.auditFilters input[type=date]{padding:9px;border:1px solid #cad5df;border-radius:9px}
+.auditTable td{vertical-align:top;font-size:13px}
+.auditTable code{font-size:12px;background:#eef2f3;padding:2px 5px;border-radius:5px}
+.auditTable .securityRow{background:#fff3f1}
+.auditTable details summary{cursor:pointer;color:#19769b}
+.auditTable .diff{margin-top:6px;font-size:12px}
+.auditTable .diff td,.auditTable .diff th{padding:3px 6px;max-width:280px;word-break:break-word;text-align:left}

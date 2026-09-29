@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { can, parsePermissions, type Permission, type Role } from "@/lib/security/permissions";
 import { hashToken } from "@/lib/security/tokens";
+import { recordAudit } from "@/lib/audit";
 
 export const sessionCookieName = "corali_pms_session";
 
@@ -50,16 +51,30 @@ export async function currentUser(): Promise<CurrentUser | null> {
   };
 }
 
+/** Record a denied access attempt as a security audit event. */
+export async function logForbidden(user: CurrentUser, permission: string, resource: string): Promise<void> {
+  await recordAudit({ ownerId: user.ownerId, userId: user.id, action: "security.forbidden", entity: "permission", entityId: permission, after: { resource, role: user.role } });
+}
+
+/** 403 response for a permission check done inside a route; the denial is audited. */
+export async function forbidden(user: CurrentUser, permission: Permission, resource = "api"): Promise<Response> {
+  await logForbidden(user, permission, resource);
+  return Response.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+}
+
 export async function requireUser(permission?: Permission): Promise<CurrentUser> {
   const user = await currentUser();
   if (!user) redirect("/login");
-  if (permission && !can(user.role, permission, user.permissions)) redirect("/pms/forbidden");
+  if (permission && !can(user.role, permission, user.permissions)) {
+    await logForbidden(user, permission, "page");
+    redirect("/pms/forbidden");
+  }
   return user;
 }
 
 export async function requireApiUser(permission: Permission): Promise<CurrentUser | Response> {
   const user = await currentUser();
   if (!user) return Response.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });
-  if (!can(user.role, permission, user.permissions)) return Response.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+  if (!can(user.role, permission, user.permissions)) return forbidden(user, permission);
   return user;
 }

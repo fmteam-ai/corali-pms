@@ -1,3 +1,4 @@
+import { audited } from "@/lib/audit";
 import Stripe from "stripe";
 import nodemailer from "nodemailer";
 import { z } from "zod";
@@ -23,7 +24,7 @@ export async function GET() {
   return Response.json({ok:true,providers:await listProviders(user.ownerId)});
 }
 
-export async function PUT(request:Request) {
+async function handlePUT(request:Request) {
   const user = await requireApiUser("integrations.write");
   if (user instanceof Response) return user;
   try {
@@ -60,7 +61,7 @@ export async function PUT(request:Request) {
   }
 }
 
-export async function POST(request:Request) {
+async function handlePOST(request:Request) {
   const user = await requireApiUser("integrations.write");
   if (user instanceof Response) return user;
   try {
@@ -93,3 +94,7 @@ export async function POST(request:Request) {
     return Response.json({ok:false,error:error instanceof z.ZodError?"INVALID_INPUT":"TEST_FAILED"},{status:400});
   }
 }
+
+export const PUT = audited("provider_connection", handlePUT);
+
+export const POST = audited("provider_connection", handlePOST);
