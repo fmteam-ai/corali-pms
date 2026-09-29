@@ -1020,3 +1020,14 @@ CREATE TABLE IF NOT EXISTS channel_import_log (
  created_at BIGINT NOT NULL,
  UNIQUE (owner_id, revision_id)
 );
+
+-- Decisions on rule-based dynamic pricing suggestions (approved ones become special prices).
+CREATE TABLE IF NOT EXISTS pricing_suggestion_decisions (
+ owner_id TEXT NOT NULL,
+ suggestion_key TEXT NOT NULL,
+ decision TEXT NOT NULL,
+ special_price_id BIGINT,
+ decided_by TEXT NOT NULL,
+ decided_at BIGINT NOT NULL,
+ PRIMARY KEY (owner_id, suggestion_key)
+);

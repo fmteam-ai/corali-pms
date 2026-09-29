@@ -266,3 +266,5 @@ p { line-height: 1.65; }
 .fiscalStatus.st-failed{background:#ffe4e1;color:#9c2d22}
 .fiscalStatus.st-cancelled{background:#eceff1;color:#455a64;text-decoration:line-through}
 .channelSync input{padding:8px;border:1px solid #cad5df;border-radius:8px;width:100%}
+.extra.recommended{border-color:#e0a13a;background:#fff8ea10}
+.recommendTag{display:block;font-style:normal;font-size:12px;font-weight:700;color:#ffd58a}
