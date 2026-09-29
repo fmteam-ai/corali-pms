@@ -1232,3 +1232,20 @@ CREATE TABLE IF NOT EXISTS competitor_rates (
 -- v48: DM-to-booking drafts with live availability (reviewed and sent by reception)
 ALTER TABLE social_messages ADD COLUMN IF NOT EXISTS suggested_reply TEXT;
 ALTER TABLE social_messages ADD COLUMN IF NOT EXISTS stay_request_json TEXT;
+
+-- v49: payment terms per rate plan (cancellation policy) and booking policy texts per language
+ALTER TABLE rate_plans ADD COLUMN IF NOT EXISTS deposit_percent BIGINT CHECK (deposit_percent IS NULL OR deposit_percent BETWEEN 0 AND 100);
+ALTER TABLE rate_plans ADD COLUMN IF NOT EXISTS balance_mode TEXT NOT NULL DEFAULT 'general';
+ALTER TABLE rate_plans ADD COLUMN IF NOT EXISTS balance_days_before BIGINT;
+ALTER TABLE rate_plans ADD COLUMN IF NOT EXISTS full_prepayment BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE booking_sessions ADD COLUMN IF NOT EXISTS balance_charge_days BIGINT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS balance_charge_days BIGINT;
+CREATE TABLE IF NOT EXISTS booking_policy_texts (
+ owner_id TEXT PRIMARY KEY,
+ texts_json TEXT NOT NULL DEFAULT '{}',
+ updated_by BIGINT,
+ updated_at BIGINT NOT NULL
+);
+-- The Greek climate crisis resilience fee is charged per room per night, never per booking.
+UPDATE mandatory_charges SET calculation_mode='per_room_night'
+ WHERE calculation_mode='per_booking' AND (category IN ('climate_resilience','climate_tax') OR name ILIKE '%climate%' OR name ILIKE '%κλιματ%' OR COALESCE(name_el,'') ILIKE '%κλιματ%' OR COALESCE(name_en,'') ILIKE '%climate%');

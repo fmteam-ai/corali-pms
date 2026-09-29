@@ -10,7 +10,7 @@ export type BookingSessionRow = {
   id: number; room_allocations: string; total_cents: number; check_in: string; check_out: string;
   guest_first_name: string; guest_last_name: string; guest_email: string; guest_phone: string; country: string; language: string;
   rate_policy: string; guests: number; children: number; special_requests: string; whatsapp_opt_in: number | null; email_marketing_opt_in: number | null;
-  coupon_code: string | null; room_subtotal_cents: number; extras_cents: number; charge_breakdown: string;
+  coupon_code: string | null; balance_charge_days?: number | null; room_subtotal_cents: number; extras_cents: number; charge_breakdown: string;
 };
 
 export type ConfirmedPayment = {
@@ -36,9 +36,9 @@ export async function fulfillBookingSession(client: Queryable, ownerId: string, 
     if (conflict.rowCount) throw new Error("ROOM_UNAVAILABLE");
     const reference = `CR-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
     const b = await client.query(
-      `INSERT INTO bookings(owner_id,reference,guest_name,guest_email,guest_phone,guest_country,guest_language,room_id,check_in,check_out,channel,status,total_cents,balance_cents,rate_policy,cancellation_days,adults,children,special_requests,created_at,whatsapp_opt_in,email_marketing_opt_in,payment_provider,payment_customer_ref,payment_method_ref)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'direct','confirmed',$11,$12,$13,7,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING id`,
-      [ownerId, reference, `${source.guest_first_name} ${source.guest_last_name}`, source.guest_email, source.guest_phone, source.country, source.language, roomId, source.check_in, source.check_out, charges[index], Math.max(0, charges[index] - payments[index]), source.rate_policy, source.guests, source.children, source.special_requests, Date.now(), source.whatsapp_opt_in ?? 0, source.email_marketing_opt_in ?? 0, payment.provider, payment.customerRef ?? null, payment.paymentMethodRef ?? null],
+      `INSERT INTO bookings(owner_id,reference,guest_name,guest_email,guest_phone,guest_country,guest_language,room_id,check_in,check_out,channel,status,total_cents,balance_cents,rate_policy,cancellation_days,adults,children,special_requests,created_at,whatsapp_opt_in,email_marketing_opt_in,payment_provider,payment_customer_ref,payment_method_ref,balance_charge_days)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'direct','confirmed',$11,$12,$13,7,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING id`,
+      [ownerId, reference, `${source.guest_first_name} ${source.guest_last_name}`, source.guest_email, source.guest_phone, source.country, source.language, roomId, source.check_in, source.check_out, charges[index], Math.max(0, charges[index] - payments[index]), source.rate_policy, source.guests, source.children, source.special_requests, Date.now(), source.whatsapp_opt_in ?? 0, source.email_marketing_opt_in ?? 0, payment.provider, payment.customerRef ?? null, payment.paymentMethodRef ?? null, source.balance_charge_days ?? null],
     );
     const bookingId = Number(b.rows[0].id);
     firstBooking ??= bookingId;

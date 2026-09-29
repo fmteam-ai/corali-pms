@@ -429,3 +429,26 @@ table.numeric tr.selected td{background:#fff8e6}
 .upsellList button{border:0;border-radius:10px;padding:10px 12px;background:#173e47;color:#fff;font-weight:700;white-space:nowrap}
 .upsellList button:disabled{background:#2e7d32}
 .dmReply textarea{width:100%;min-height:150px;box-sizing:border-box;font-size:15px}
+/* v49 booking engine: checkboxes before text, phone with country code, nightly breakdown, policy pop-up */
+.guestForm label.check,.access label.check{display:flex!important;flex-direction:row;align-items:flex-start;gap:10px;font-weight:600;text-align:left}
+.guestForm label.check input,.access label.check input{flex:0 0 auto;width:20px!important;height:20px;min-height:0;margin:2px 0 0;padding:0}
+.guestForm label.check span{flex:1}
+.linkButton{display:inline;border:0;background:none;padding:0;color:#b64a2e;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}
+.phoneField{display:grid;grid-template-columns:minmax(0,1.1fr) auto minmax(0,1.6fr);gap:8px;align-items:center}
+.phoneField select{min-width:0}
+.dialPrefix{font-weight:700;white-space:nowrap}
+@media(max-width:560px){.phoneField{grid-template-columns:1fr auto}.phoneField select{grid-column:1/-1}}
+.rate b .nightly{display:block;font-size:12px;font-weight:600;opacity:.8}
+.policyBackdrop{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(10,30,36,.55)}
+.policyModal{width:min(680px,100%);max-height:88vh;overflow:auto;background:#fff;color:#173e47;border-radius:18px;padding:22px;display:grid;gap:14px;box-shadow:0 24px 70px rgba(0,0,0,.3)}
+.policyModal header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.policyModal header h2{margin:0;font-size:22px}
+.policyModal header button{min-width:44px;min-height:44px;border:0;background:transparent;font-size:28px;cursor:pointer;color:inherit}
+.policyText{white-space:pre-wrap;line-height:1.6}
+.paymentPolicyPage{display:grid;gap:18px}.paymentPolicyPage .card{max-width:none;width:100%;box-sizing:border-box;padding:24px}
+.planTerms td small{display:block;color:#5b6d72}.planTerms input[type=number]{width:80px}.planTerms tr.inactive{opacity:.55}
+.policyEditor{width:100%;box-sizing:border-box;font:15px/1.55 inherit;padding:12px;border-radius:12px;border:1px solid #cdd6d9}
+.phoneField{grid-template-columns:minmax(0,1fr) minmax(0,1.8fr)}
+@media(max-width:560px){.phoneField{grid-template-columns:1fr}}
+.rate b{min-width:150px;white-space:nowrap}
+.policyText p{margin:0 0 12px}

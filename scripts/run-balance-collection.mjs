@@ -38,10 +38,12 @@ try {
   const policy = { active: Number(p?.full_payment_window_active ?? 1) === 1, days: Number(p?.full_payment_days_before_arrival ?? 7) };
   const key = await stripeKey();
   const candidates = (await pool.query(
-    `SELECT id,reference,status,check_in,balance_cents,payment_provider,payment_customer_ref,payment_method_ref FROM bookings
-      WHERE owner_id=$1 AND status='confirmed' AND balance_cents>0 AND check_in>=$2 AND check_in<=($2::date+$3::int)::text`,
+    // Each booking carries its rate plan's charge day (-1 = balance paid at the hotel); older bookings use the general policy.
+    `SELECT id,reference,status,check_in,balance_cents,payment_provider,payment_customer_ref,payment_method_ref,balance_charge_days FROM bookings
+      WHERE owner_id=$1 AND status='confirmed' AND balance_cents>0 AND check_in>=$2 AND COALESCE(balance_charge_days,0)>=0
+        AND check_in<=($2::date+COALESCE(balance_charge_days,$3)::int)::text`,
     [owner, today, policy.days],
-  )).rows.filter((b) => collectionDue(b, policy, today));
+  )).rows.filter((b) => collectionDue(b, b.balance_charge_days === null || b.balance_charge_days === undefined ? policy : { active: true, days: Number(b.balance_charge_days) }, today));
   let charged = 0, failed = 0, noCard = 0;
   for (const booking of candidates) {
     const attempts = (await pool.query(`SELECT status,created_at FROM balance_collection_attempts WHERE owner_id=$1 AND booking_id=$2 ORDER BY created_at DESC`, [owner, booking.id])).rows;
