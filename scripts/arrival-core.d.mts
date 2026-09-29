@@ -1,0 +1,12 @@
+export declare const arrivalLanguages: readonly ["el", "en", "fr", "de", "it", "es"];
+export declare const arrivalModes: readonly ["port", "airport", "car", "taxi"];
+type Lang = (typeof arrivalLanguages)[number];
+type Mode = (typeof arrivalModes)[number];
+type Localized = Partial<Record<Lang, string>>;
+type Hub = { key: string; name: Localized; text: Localized };
+type Vehicle = { key: string; name: Localized; priceCents: number; maxPassengers: number; active: boolean };
+type Settings = { modes: Record<Mode, { enabled: boolean; hubs: Hub[] }>; transfer: { enabled: boolean; autoFolio: boolean; modes: Mode[]; vehicles: Vehicle[] } };
+export declare function defaultArrivalSettings(): Settings;
+export declare function normalizeArrivalSettings(raw: unknown): Settings;
+export declare function pick(value: Localized, lang: string): string;
+export declare function arrivalInstructions(settings: Settings, mode: string, hub: string, lang: string): { hubName: string; text: string } | null;

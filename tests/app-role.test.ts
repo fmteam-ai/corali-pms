@@ -17,6 +17,8 @@ test("PMS role never serves booking pages or public booking APIs", () => {
   assert.deepEqual(routeForRole("pms", "/"), { action: "redirect", destination: "/login" });
   assert.deepEqual(routeForRole("pms", "/book"), { action: "redirect", destination: "/book" });
   assert.deepEqual(routeForRole("pms", "/check-in"), { action: "redirect", destination: "/check-in" });
+  assert.deepEqual(routeForRole("pms", "/review"), { action: "redirect", destination: "/review" });
+  assert.deepEqual(routeForRole("booking", "/review"), { action: "allow" });
   assert.deepEqual(routeForRole("pms", "/pay-balance"), { action: "redirect", destination: "/pay-balance" });
   assert.deepEqual(routeForRole("pms", "/api/public/checkout"), { action: "not-found" });
   assert.deepEqual(routeForRole("pms", "/api/webhooks/stripe"), { action: "not-found" });

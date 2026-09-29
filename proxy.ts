@@ -14,7 +14,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
   }
 
-  if (role === "pms" && ["/book", "/check-in", "/manage-booking", "/pay-balance"].some((path) => decision.destination === path || decision.destination.startsWith(`${path}/`))) {
+  if (role === "pms" && ["/book", "/check-in", "/manage-booking", "/pay-balance", "/review"].some((path) => decision.destination === path || decision.destination.startsWith(`${path}/`))) {
     return NextResponse.redirect(new URL(decision.destination + request.nextUrl.search, process.env.BOOKING_ORIGIN));
   }
   return NextResponse.redirect(new URL(decision.destination, request.url));
@@ -29,6 +29,7 @@ export const config = {
     "/check-in/:path*",
     "/manage-booking/:path*",
     "/pay-balance/:path*",
+    "/review/:path*",
     "/api/auth/:path*",
     "/api/pms/:path*",
     "/api/public/:path*",

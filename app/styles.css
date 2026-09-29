@@ -372,3 +372,26 @@ p { line-height: 1.65; }
 .transferRow{display:grid;gap:4px;padding:10px 0;border-top:1px dashed #ded8ce}
 .transferRow.cancelled{opacity:.6;text-decoration:line-through}
 .transferRow .noticeStatus{justify-self:start}
+/* v48 review shield */
+.reviewCard{max-width:560px;margin:0 auto;display:grid;gap:12px}
+.starPicker{display:flex;gap:6px;justify-content:center;margin:12px 0}
+.starPicker button,.starPicker span{font-size:44px;line-height:1;min-width:56px;min-height:56px;border:0;background:transparent;color:#c9c3b8;cursor:pointer}
+.starPicker.small span{font-size:26px;min-width:30px;min-height:30px}
+.starPicker .on,.starPicker button:hover,.starPicker button:focus-visible{color:#e0a100}
+.reviewPrivate{display:grid;gap:12px}
+.reviewPrivate label{display:grid;gap:6px;font-weight:700}
+.reviewPrivate label.check{display:flex;font-weight:400}
+.reviewPrivate textarea{width:100%;box-sizing:border-box;font-size:16px}
+.reviewLinks{display:flex;flex-wrap:wrap;gap:10px}
+.reviewLinks .button{display:inline-flex;align-items:center;min-height:48px;padding:0 18px;border-radius:12px;background:#173e47;color:#fff;font-weight:700;text-decoration:none}
+.kpiRow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.kpiRow>div{background:#fff;border:1px solid #ded8ce;border-radius:14px;padding:12px;display:grid;gap:2px}
+.kpiRow b{font-size:24px}
+.feedbackList{display:grid;align-items:start;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.feedbackCard{background:#fff;border:1px solid #ded8ce;border-left:6px solid #2e7d32;border-radius:14px;padding:14px;display:grid;gap:6px}
+.feedbackCard.private{border-left-color:#c62828}
+.feedbackCard.resolved{border-left-color:#9aa9ad}
+.feedbackCard header{display:flex;justify-content:space-between;align-items:center}
+.feedbackCard .stars{color:#e0a100;font-size:20px;letter-spacing:2px}
+.feedbackCard .stars i{color:#d9d4cb;font-style:normal}
+.reviewPrivate button{min-height:48px;border:0;border-radius:12px;background:#173e47;color:#fff;font-weight:700;font-size:16px;cursor:pointer}.reviewPrivate button:disabled{opacity:.5}

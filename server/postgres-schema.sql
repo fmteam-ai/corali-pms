@@ -1153,3 +1153,30 @@ CREATE TABLE IF NOT EXISTS transfer_requests (
  updated_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_transfer_requests_booking ON transfer_requests(owner_id,booking_id);
+
+-- v48: guest messaging pipeline (72h pre-arrival, welcome, pre-departure) and post-stay review shield
+ALTER TABLE message_automation_settings ADD COLUMN IF NOT EXISTS tripadvisor_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE message_automation_settings ADD COLUMN IF NOT EXISTS pre_arrival_hour BIGINT NOT NULL DEFAULT 15;
+ALTER TABLE message_automation_settings ADD COLUMN IF NOT EXISTS welcome_hour BIGINT NOT NULL DEFAULT 16;
+ALTER TABLE message_automation_settings ADD COLUMN IF NOT EXISTS pre_departure_hour BIGINT NOT NULL DEFAULT 18;
+CREATE TABLE IF NOT EXISTS review_requests (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ booking_id BIGINT NOT NULL,
+ token_hash TEXT NOT NULL UNIQUE,
+ token_encrypted TEXT NOT NULL,
+ expires_at BIGINT NOT NULL,
+ rating BIGINT CHECK (rating IS NULL OR rating BETWEEN 1 AND 5),
+ route TEXT CHECK (route IS NULL OR route IN ('public','private')),
+ comment TEXT,
+ contact_ok BIGINT NOT NULL DEFAULT 0,
+ public_clicked TEXT,
+ status TEXT NOT NULL DEFAULT 'sent' CHECK (status IN ('sent','rated','feedback','resolved')),
+ created_at BIGINT NOT NULL,
+ rated_at BIGINT,
+ resolved_by BIGINT,
+ resolved_at BIGINT,
+ resolution_notes TEXT,
+ UNIQUE(owner_id,booking_id)
+);
+CREATE INDEX IF NOT EXISTS idx_review_requests_status ON review_requests(owner_id,status,rated_at DESC);
