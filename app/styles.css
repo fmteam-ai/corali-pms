@@ -355,3 +355,20 @@ p { line-height: 1.65; }
 .resolveForm>label,.resolveForm .three label,.defectForm>label{display:grid;gap:6px;font-weight:700}
 .resolveForm>label textarea,.resolveForm .three input,.defectForm>label textarea{width:100%;box-sizing:border-box;font-weight:400}
 .resolveForm h4{margin:4px 0 0;font-size:17px}
+/* v48 arrival instructions & transfers */
+.arrivalText{white-space:pre-wrap;line-height:1.55}
+.arrivalPick{display:grid;gap:10px;border:1px solid #dce3e7;border-radius:12px;padding:12px;min-width:0}
+.arrivalPick small{display:block;margin-top:4px;color:#5b6d72}
+.arrivalEditor{display:grid;gap:16px}
+.arrivalEditor fieldset{min-width:0;border:1px solid #ded8ce;border-radius:16px;padding:16px;display:grid;gap:12px;background:#fff}
+.arrivalEditor .inline{display:flex;gap:8px;align-items:center}
+.arrivalEditor .inlineChecks{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.arrivalEditor .langTabs button{font-size:13px}
+.hubCard{display:grid;gap:10px;border:1px solid #e7e1d7;border-radius:12px;padding:12px;background:#fbfaf7}
+.hubCard label,.arrivalEditor .two label{display:grid;gap:4px;font-weight:700}
+.hubCard textarea,.hubCard input{width:100%;box-sizing:border-box;font-weight:400}
+.hubCard .secondaryButton{justify-self:start}
+.transferRules table input{width:100%;min-width:70px;box-sizing:border-box}
+.transferRow{display:grid;gap:4px;padding:10px 0;border-top:1px dashed #ded8ce}
+.transferRow.cancelled{opacity:.6;text-decoration:line-through}
+.transferRow .noticeStatus{justify-self:start}

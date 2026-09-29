@@ -1124,3 +1124,32 @@ DROP TRIGGER IF EXISTS trg_maintenance_notices_no_delete ON maintenance_notices;
 CREATE TRIGGER trg_maintenance_notices_no_delete BEFORE DELETE ON maintenance_notices FOR EACH ROW EXECUTE PROCEDURE corali_keep_maintenance_history();
 DROP TRIGGER IF EXISTS trg_maintenance_photos_no_delete ON maintenance_notice_photos;
 CREATE TRIGGER trg_maintenance_photos_no_delete BEFORE DELETE ON maintenance_notice_photos FOR EACH ROW EXECUTE PROCEDURE corali_keep_maintenance_history();
+
+-- v48: arrival instructions (per mode/hub templates) and transfer ordering
+CREATE TABLE IF NOT EXISTS arrival_settings (
+ owner_id TEXT PRIMARY KEY,
+ settings_json TEXT NOT NULL DEFAULT '{}',
+ updated_by BIGINT,
+ updated_at BIGINT NOT NULL
+);
+ALTER TABLE guest_checkins ADD COLUMN IF NOT EXISTS arrival_mode TEXT;
+ALTER TABLE guest_checkins ADD COLUMN IF NOT EXISTS arrival_hub TEXT;
+CREATE TABLE IF NOT EXISTS transfer_requests (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ booking_id BIGINT NOT NULL,
+ guest_checkin_id BIGINT,
+ arrival_mode TEXT NOT NULL,
+ arrival_hub TEXT NOT NULL,
+ vehicle_key TEXT NOT NULL,
+ vehicle_name TEXT NOT NULL,
+ passengers BIGINT NOT NULL,
+ price_cents BIGINT NOT NULL,
+ arrival_time TEXT,
+ travel_details TEXT,
+ folio_entry_id BIGINT,
+ status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested','confirmed','cancelled')),
+ created_at BIGINT NOT NULL,
+ updated_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_transfer_requests_booking ON transfer_requests(owner_id,booking_id);
