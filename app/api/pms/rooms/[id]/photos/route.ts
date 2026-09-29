@@ -3,11 +3,11 @@ import { audited } from "@/lib/audit";
 import { requireApiUser } from "@/lib/auth";
 import { withTransaction } from "@/lib/db";
 import { parsePhoto } from "@/lib/maintenance";
-import { MAX_ROOM_PHOTOS, syncRoomImages } from "@/lib/room-photos";
+import { MAX_ROOM_PHOTOS, syncRoomImages, uploadedPhotoId } from "@/lib/room-photos";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 
 const add = z.object({ photos: z.array(z.string().max(3_500_000)).min(1).max(MAX_ROOM_PHOTOS), applyToType: z.boolean().default(false) });
-const order = z.object({ order: z.array(z.number().int().positive()).max(100) });
+const order = z.object({ images: z.array(z.string().max(2000)).max(100) });
 
 async function roomId(params: Promise<{ id: string }>) {
   const id = Number((await params).id);
@@ -51,7 +51,7 @@ async function handlePOST(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
-/** Reorder: the first photo is the cover shown in the booking engine. */
+/** Reorder (uploaded photos and existing image links): the first image is the cover shown in the booking engine. */
 async function handlePATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const u = await requireApiUser("rooms.edit");
   if (u instanceof Response) return u;
@@ -61,8 +61,9 @@ async function handlePATCH(request: Request, { params }: { params: Promise<{ id:
     const x = order.parse(await request.json());
     const images = await withTransaction(async (c) => {
       if (!(await c.query(`SELECT 1 FROM rooms WHERE owner_id=$1 AND id=$2 FOR UPDATE`, [u.ownerId, id])).rowCount) throw Error("NOT_FOUND");
-      for (const [i, photoId] of x.order.entries()) await c.query(`UPDATE room_photos SET sort_order=$4 WHERE owner_id=$1 AND room_id=$2 AND id=$3`, [u.ownerId, id, photoId, i + 1]);
-      return syncRoomImages(c, u.ownerId, id!);
+      const photoIds = x.images.map(uploadedPhotoId).filter((p): p is number => p !== null);
+      for (const [i, photoId] of photoIds.entries()) await c.query(`UPDATE room_photos SET sort_order=$4 WHERE owner_id=$1 AND room_id=$2 AND id=$3`, [u.ownerId, id, photoId, i + 1]);
+      return syncRoomImages(c, u.ownerId, id!, { order: x.images });
     });
     return Response.json({ ok: true, images });
   } catch (e) {
@@ -76,8 +77,18 @@ async function handleDELETE(request: Request, { params }: { params: Promise<{ id
   try {
     assertTrustedOrigin(request);
     const id = await roomId(params);
-    const photoId = Number(new URL(request.url).searchParams.get("photoId"));
+    const query = new URL(request.url).searchParams;
+    const photoId = Number(query.get("photoId"));
+    // An image link (not an uploaded photo), e.g. one carried over from the old website.
+    const link = query.get("url") ?? "";
     const images = await withTransaction(async (c) => {
+      if (link) {
+        const room = (await c.query(`SELECT images FROM rooms WHERE owner_id=$1 AND id=$2 FOR UPDATE`, [u.ownerId, id])).rows[0];
+        let current: unknown = [];
+        try { current = JSON.parse(room?.images || "[]"); } catch { current = []; }
+        if (!room || !Array.isArray(current) || !current.includes(link)) throw Error("NOT_FOUND");
+        return syncRoomImages(c, u.ownerId, id!, { remove: link });
+      }
       const r = await c.query(`DELETE FROM room_photos WHERE owner_id=$1 AND room_id=$2 AND id=$3`, [u.ownerId, id, photoId]);
       if (!r.rowCount) throw Error("NOT_FOUND");
       return syncRoomImages(c, u.ownerId, id!);

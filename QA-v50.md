@@ -1,6 +1,11 @@
-# Hotel Corali PMS v49 — release verification
+# Hotel Corali PMS v50 — release verification
 
 ## Scope in this package
+
+### New in v50
+- **Room photos:** photos upload one at a time with progress (each resized to 1600 px), so large batches no longer fail on the web-server body limit; clear error reasons (too large, no permission, not found).
+- **Rooms screen shows every image the booking engine uses:** uploaded photos and existing image links (e.g. from the old website) appear together, can be reordered (first = cover) and removed; a broken image shows ⚠️ instead of a blank tile.
+- **Characteristics:** a new characteristic can be created with a name in any language (Greek or English filled from it); failures show the exact reason.
 
 ### New in v49
 - **PMS look & navigation:** VikBooking-style grouped top menu (Global, Rooms, Pricing, Bookings, Management, PMS) and a customizable widget dashboard (sticky notes, booking lookup, forecast, arriving/departing, check availability, bookings calendar, latest bookings, rooms today, finance, housekeeping, notifications) saved per user.

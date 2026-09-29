@@ -934,6 +934,11 @@ const el = {
   "w.hk.review": "Για έγκριση",
   "w.hk.defects": "Ανοιχτές βλάβες",
   "w.none": "Τίποτα για εμφάνιση.",
+  "rm.uploadingN": "Ανέβασμα {n} από {total}…",
+  "rm.err.TOO_LARGE": "Η φωτογραφία είναι πολύ μεγάλη για τον server. Δοκιμάστε μικρότερη.",
+  "rm.err.FORBIDDEN": "Δεν έχετε δικαίωμα για αυτή την ενέργεια ή η σύνδεση έληξε.",
+  "rm.err.INVALID_AMENITY": "Άγνωστο χαρακτηριστικό· ανανεώστε τη σελίδα.",
+  "rm.err.NOT_FOUND": "Το δωμάτιο δεν βρέθηκε· ανανεώστε τη σελίδα.",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -1864,6 +1869,11 @@ const en: Record<PmsKey, string> = {
   "w.hk.review": "To inspect",
   "w.hk.defects": "Open defects",
   "w.none": "Nothing to show.",
+  "rm.uploadingN": "Uploading {n} of {total}…",
+  "rm.err.TOO_LARGE": "The photo is too large for the server. Try a smaller one.",
+  "rm.err.FORBIDDEN": "You don't have permission for this, or your session expired.",
+  "rm.err.INVALID_AMENITY": "Unknown characteristic; refresh the page.",
+  "rm.err.NOT_FOUND": "Room not found; refresh the page.",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

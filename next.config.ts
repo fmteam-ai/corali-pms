@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   compress: true,
   experimental: {
+    // Room photos are uploaded one at a time (≈0.5 MB each); keep headroom for large phone photos.
+    proxyClientMaxBodySize: "15mb",
     serverActions: {
       bodySizeLimit: "1mb",
       allowedOrigins: ["pms.hotelcorali.gr", "booking.hotelcorali.gr"],
