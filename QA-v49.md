@@ -1,6 +1,13 @@
-# Hotel Corali PMS v48 — release verification
+# Hotel Corali PMS v49 — release verification
 
 ## Scope in this package
+
+### New in v49
+- **PMS look & navigation:** VikBooking-style grouped top menu (Global, Rooms, Pricing, Bookings, Management, PMS) and a customizable widget dashboard (sticky notes, booking lookup, forecast, arriving/departing, check availability, bookings calendar, latest bookings, rooms today, finance, housekeeping, notifications) saved per user.
+- **Rooms:** add/edit/deactivate/delete rooms, characteristics with icons in six languages, photo upload/reorder/cover; the booking engine shows photos (gallery) and characteristics.
+- **Payments & receipts/invoices** register with net takings per method, myDATA status and CSV export.
+- **Deposits & policies:** payment terms per rate plan (deposit %, full prepayment, balance at end of free cancellation / N days before / at the hotel), applied at checkout and by the balance worker; reservation & cancellation policy text per language shown in a booking-engine pop-up.
+- **Booking engine:** nightly price × nights, phone with country calling code and flag, checkboxes before their text, no duplicate access banner; climate resilience fee per room per night.
 
 - **Room plan:** status colours from the specification, unpaid-balance border, housekeeping state per room, stays spanning all nights, date navigation, occupancy, quick menu with date change, double-click new reservation; moves into out-of-order rooms are rejected.
 - **Overview:** Greek/English staff interface (instant toggle), live notifications over server-sent events with polling fallback, global quick search (name, reference, room, phone), 7/30-day forecast, month calendar, one-click check-in/out for today and tomorrow.
