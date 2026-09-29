@@ -1031,3 +1031,38 @@ CREATE TABLE IF NOT EXISTS pricing_suggestion_decisions (
  decided_at BIGINT NOT NULL,
  PRIMARY KEY (owner_id, suggestion_key)
 );
+
+-- Social media: posts with a human approval gate, and inbound Facebook/Instagram messages (DM-to-booking).
+CREATE TABLE IF NOT EXISTS social_posts (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ channels TEXT NOT NULL DEFAULT '[]',
+ caption TEXT NOT NULL,
+ image_url TEXT NOT NULL DEFAULT '',
+ link_url TEXT NOT NULL DEFAULT '',
+ scheduled_at BIGINT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'draft',
+ created_by BIGINT NOT NULL,
+ approved_by BIGINT,
+ approved_at BIGINT,
+ results_json TEXT NOT NULL DEFAULT '{}',
+ attempts BIGINT NOT NULL DEFAULT 0,
+ published_at BIGINT,
+ created_at BIGINT NOT NULL,
+ updated_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_social_posts_due ON social_posts(owner_id,status,scheduled_at);
+CREATE TABLE IF NOT EXISTS social_messages (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ platform TEXT NOT NULL,
+ sender_id TEXT NOT NULL,
+ direction TEXT NOT NULL,
+ body TEXT NOT NULL,
+ external_id TEXT,
+ status TEXT NOT NULL DEFAULT 'new',
+ sent_by BIGINT,
+ created_at BIGINT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_social_messages_external ON social_messages(owner_id,external_id) WHERE external_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_social_messages_thread ON social_messages(owner_id,platform,sender_id,created_at);

@@ -164,6 +164,14 @@ cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/
 cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-mydata-queue.mjs >> /home/corali/logs/corali-mydata.log 2>&1
 ```
 
+### Social media (Facebook / Instagram)
+
+Στο PMS → Συνδέσεις → Facebook / Instagram: pageId, instagramAccountId, graphVersion (π.χ. v21.0), appSecret, pageAccessToken και verifyToken. Webhook του Meta app (Messenger & Instagram messaging): `https://booking.hotelcorali.gr/api/webhooks/meta` με το ίδιο verifyToken. Οι αναρτήσεις δημοσιεύονται μόνο μετά από έγκριση· cron ανά 5 λεπτά, **σε ένα μόνο PMS instance**:
+
+```bash
+cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-social-publisher.mjs >> /home/corali/logs/corali-social.log 2>&1
+```
+
 ### Channel Manager (Booking.com, Expedia, Airbnb)
 
 Ο συγχρονισμός γίνεται μέσω Channex (λογαριασμός και σύνδεση των OTA εκεί). Στο PMS → Συνδέσεις → Channel Manager συμπληρώστε property id, environment (production ή staging) και API key, και αντιστοιχίστε κάθε τύπο δωματίου με το room type id του Channex. Cron ανά 5 λεπτά, **σε ένα μόνο PMS instance**:

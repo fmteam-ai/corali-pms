@@ -5,7 +5,7 @@ export const providerFields = {
   whatsapp: { label: "WhatsApp Business", settings: ["apiVersion", "phoneNumberId", "businessAccountId"], secrets: ["accessToken", "verifyToken", "appSecret"] },
   smtp: { label: "Email / SMTP", settings: ["host", "port", "username", "from"], secrets: ["password"] },
   mydata: { label: "ΑΑΔΕ / myDATA", settings: ["environment", "issuerVat", "branch", "receiptSeries", "invoiceSeries", "accommodationVatCategory", "extrasVatCategory", "climateTaxCategory"], secrets: ["username", "subscriptionKey", "providerToken"] },
-  meta: { label: "Facebook / Instagram", settings: ["appId", "pageId"], secrets: ["appSecret", "pageAccessToken"] },
+  meta: { label: "Facebook / Instagram", settings: ["appId", "pageId", "instagramAccountId", "graphVersion"], secrets: ["appSecret", "pageAccessToken", "verifyToken"] },
   tiktok: { label: "TikTok", settings: ["clientKey"], secrets: ["clientSecret", "accessToken"] },
   channelManager: { label: "Channel Manager (Channex)", settings: ["propertyCode", "providerName", "environment"], secrets: ["apiKey"] },
   openai: { label: "OpenAI", settings: [], secrets: ["apiKey"] },

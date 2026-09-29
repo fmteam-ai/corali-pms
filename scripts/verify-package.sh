@@ -15,7 +15,7 @@ required=(
   app.js server.js package.json DEPLOY_VERSION.txt DEPLOY-CPANEL.md QA-v46.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md
   INSTALL-CPANEL.sh ROLLBACK-CPANEL.sh server/postgres-schema.sql
   scripts/init-postgres.mjs scripts/create-admin.mjs scripts/create-admin.sh
-  scripts/reset-admin-2fa.mjs scripts/run-birthday-automation.mjs scripts/run-message-automations.mjs scripts/automation-core.mjs scripts/retention-core.mjs scripts/birthday-core.mjs scripts/run-data-retention.mjs scripts/run-balance-collection.mjs scripts/balance-collection-core.mjs scripts/mydata-core.mjs scripts/run-mydata-queue.mjs scripts/channel-core.mjs scripts/run-channel-sync.mjs
+  scripts/reset-admin-2fa.mjs scripts/run-birthday-automation.mjs scripts/run-message-automations.mjs scripts/automation-core.mjs scripts/retention-core.mjs scripts/birthday-core.mjs scripts/run-data-retention.mjs scripts/run-balance-collection.mjs scripts/balance-collection-core.mjs scripts/mydata-core.mjs scripts/run-mydata-queue.mjs scripts/channel-core.mjs scripts/run-channel-sync.mjs scripts/run-social-publisher.mjs
   scripts/database-config.mjs scripts/backup-postgres.mjs scripts/prepare-runtime-env.mjs \
   scripts/load-runtime-env.mjs scripts/admin-recovery-core.mjs scripts/recover-admin.mjs
   scripts/fix-cpanel-permissions.sh scripts/smoke-runtime.sh scripts/verify-package.sh
