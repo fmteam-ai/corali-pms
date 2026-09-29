@@ -2,8 +2,10 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { pmsT, type PmsLang } from "@/lib/pms-i18n";
 
-export function LoginForm() {
+export function LoginForm({ lang }: { lang: PmsLang }) {
+  const t = pmsT(lang);
   const router = useRouter();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -20,7 +22,7 @@ export function LoginForm() {
     });
     setBusy(false);
     if (!response.ok) {
-      setError(response.status === 429 ? "Πολλές αποτυχημένες προσπάθειες. Δοκιμάστε ξανά σε 15 λεπτά." : "Λανθασμένο όνομα χρήστη, κωδικός ή κωδικός 2FA.");
+      setError(response.status === 429 ? t("login.locked") : t("login.invalid"));
       return;
     }
     router.replace("/pms");
@@ -29,11 +31,11 @@ export function LoginForm() {
 
   return (
     <form className="loginForm" onSubmit={submit}>
-      <label>Όνομα χρήστη<input name="username" autoComplete="username" required maxLength={100} /></label>
-      <label>Κωδικός<input name="password" type="password" autoComplete="current-password" required minLength={8} /></label>
-      <label>Κωδικός επαλήθευσης 2FA<input name="totp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} /></label>
+      <label>{t("login.username")}<input name="username" autoComplete="username" required maxLength={100} /></label>
+      <label>{t("login.password")}<input name="password" type="password" autoComplete="current-password" required minLength={8} /></label>
+      <label>{t("login.totp")}<input name="totp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} /></label>
       {error && <p className="error" role="alert">{error}</p>}
-      <button disabled={busy}>{busy ? "Έλεγχος…" : "Σύνδεση"}</button>
+      <button disabled={busy}>{busy ? t("login.checking") : t("login.submit")}</button>
     </form>
   );
 }

@@ -268,3 +268,4 @@ p { line-height: 1.65; }
 .channelSync input{padding:8px;border:1px solid #cad5df;border-radius:8px;width:100%}
 .extra.recommended{border-color:#e0a13a;background:#fff8ea10}
 .recommendTag{display:block;font-style:normal;font-size:12px;font-weight:700;color:#ffd58a}
+.loginLang{display:flex;justify-content:flex-end;margin-bottom:8px}
