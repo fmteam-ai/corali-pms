@@ -395,3 +395,30 @@ p { line-height: 1.65; }
 .feedbackCard .stars{color:#e0a100;font-size:20px;letter-spacing:2px}
 .feedbackCard .stars i{color:#d9d4cb;font-style:normal}
 .reviewPrivate button{min-height:48px;border:0;border-radius:12px;background:#173e47;color:#fff;font-weight:700;font-size:16px;cursor:pointer}.reviewPrivate button:disabled{opacity:.5}
+/* v48 revenue strategy */
+.revenuePage{display:grid;gap:18px}
+.revenuePage .card{display:grid;gap:10px}
+table.numeric td,table.numeric th{text-align:right;white-space:nowrap}
+table.numeric td:first-child,table.numeric th:first-child{text-align:left}
+table.numeric .pos{color:#1e6b34}table.numeric .neg{color:#b3261e}
+table.numeric tr.selected td{background:#fff8e6}
+.paceChart{width:100%;max-width:760px;height:auto;background:#fff;border:1px solid #ded8ce;border-radius:12px}
+.paceChart text{font-size:11px;fill:#5b6d72}.paceChart .axis{stroke:#c9c3b8}
+.paceChart path{fill:none;stroke-width:3}.paceChart path.ty{stroke:#173e47}.paceChart path.ly{stroke:#e0a100;stroke-dasharray:6 4}
+.paceChart circle.ty{fill:#173e47}.paceChart rect.ty{fill:#173e47}.paceChart rect.ly{fill:#e0a100}
+.shareBar{display:inline-block;min-width:90px;background:linear-gradient(90deg,#cfe8d6 var(--share),transparent var(--share));border-radius:6px;padding:2px 6px}
+.inlineDates{display:flex;flex-wrap:wrap;gap:10px;align-items:end}.inlineDates label{display:grid;gap:4px}
+.commissionEditor summary,.competitorManager details summary{cursor:pointer;font-weight:700;min-height:40px;display:flex;align-items:center}
+.commissionEditor input{width:90px}
+.compset .compPos{padding:2px 8px;border-radius:999px;font-weight:700;font-size:12px}
+.compPos.above{background:#fde8e8;color:#b3261e}.compPos.below{background:#e6f0fb;color:#1f4f8a}.compPos.in_line{background:#e6f4ea;color:#1e6b34}
+.soldOut{color:#b3261e;font-weight:700}
+.competitorManager{display:grid;gap:10px}
+.competitorRow{border:1px solid #ded8ce;border-radius:12px;padding:10px;display:grid;gap:6px}
+.competitorRow>div:first-child{display:grid;gap:2px}
+.competitorRow textarea{width:100%;box-sizing:border-box;font-family:monospace}
+.competitorForm{border:1px solid #ded8ce;border-radius:12px;padding:12px;display:grid;gap:8px;min-width:0}
+.competitorForm label{display:grid;gap:4px;font-weight:700}.competitorForm label.inline{display:flex}
+.competitorForm input,.competitorForm select{box-sizing:border-box;width:100%;font-weight:400}
+.revenuePage .card{max-width:none;width:100%;box-sizing:border-box;min-width:0}
+.revenuePage .card{padding:24px}

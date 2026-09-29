@@ -182,6 +182,14 @@ cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/
 
 Μετά την πρώτη ρύθμιση πατήστε «Πλήρης συγχρονισμός διαθεσιμότητας». Αν χρησιμοποιείτε άλλον Channel Manager, αλλάζει μόνο ο adapter (scripts/run-channel-sync.mjs).
 
+### Τιμές ανταγωνιστών (rate shopper)
+
+Στο PMS → Στρατηγική εσόδων προσθέστε έως 5 ανταγωνιστές. Οι τιμές καταχωρούνται χειροκίνητα ή έρχονται από υπηρεσία rate-shopping με JSON API (endpoint https με {from} {to}, απάντηση `{"rates":[{"date":"2026-10-01","rate":145}]}`, token στη μεταβλητή `RATE_SHOPPER_TOKEN` του runtime.env). Οι σελίδες των OTA δεν γίνονται scrape. Ημερήσιο cron (π.χ. 06:10), **σε ένα μόνο PMS instance**:
+
+```bash
+cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-rate-shopper.mjs >> /home/corali/logs/corali-rates.log 2>&1
+```
+
 ### Διαγραφή στοιχείων ταυτότητας (GDPR, cron)
 
 Ημερομηνία γέννησης και αριθμός διαβατηρίου/ταυτότητας από το online pre-check-in διαγράφονται οριστικά 3 χρόνια μετά την τελευταία αναχώρηση του επισκέπτη. Προσθέστε **σε ένα μόνο PMS instance** ημερήσιο cron (π.χ. 03:15):

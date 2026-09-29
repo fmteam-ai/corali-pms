@@ -44,3 +44,20 @@ export function buildSuggestions(days: DayLoad[], today: string): Suggestion[] {
 export function suggestionKey(s: Pick<Suggestion, "roomType" | "startsOn" | "endsOn" | "percent">) {
   return `${s.roomType}|${s.startsOn}|${s.endsOn}|${s.percent}`;
 }
+
+export type CompsetNote = { compsetIndex: number | null; compsetMedianCents: number | null; compsetAdjusted: boolean };
+
+/**
+ * Temper a demand-based suggestion with the competitor rate index (our rate as % of the compset median):
+ * don't push further above a market we already out-price, halve discounts when we are already cheaper,
+ * and add 5 points to a raise when we sell well below the market.
+ */
+export function applyCompset<T extends Suggestion>(s: T, index: number | null, medianCents: number | null = null): T & CompsetNote {
+  let percent = s.percent;
+  if (index !== null) {
+    if (percent > 0 && index >= 110) percent = Math.min(percent, 5);
+    else if (percent > 0 && index <= 90) percent = Math.min(20, percent + 5);
+    else if (percent < 0 && index <= 90) percent = -Math.round(Math.abs(percent) / 2);
+  }
+  return { ...s, percent, compsetIndex: index, compsetMedianCents: medianCents, compsetAdjusted: percent !== s.percent };
+}

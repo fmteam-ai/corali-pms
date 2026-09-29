@@ -1180,3 +1180,51 @@ CREATE TABLE IF NOT EXISTS review_requests (
  UNIQUE(owner_id,booking_id)
 );
 CREATE INDEX IF NOT EXISTS idx_review_requests_status ON review_requests(owner_id,status,rated_at DESC);
+
+-- v48: revenue strategy analytics (pace & pickup, channel net yield, competitor rates)
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancelled_at BIGINT;
+CREATE OR REPLACE FUNCTION corali_booking_cancelled_at() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.status = 'cancelled' AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'cancelled') AND NEW.cancelled_at IS NULL THEN
+    NEW.cancelled_at := (extract(epoch FROM clock_timestamp()) * 1000)::bigint;
+  ELSIF NEW.status <> 'cancelled' THEN
+    NEW.cancelled_at := NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_bookings_cancelled_at ON bookings;
+CREATE TRIGGER trg_bookings_cancelled_at BEFORE INSERT OR UPDATE OF status ON bookings FOR EACH ROW EXECUTE PROCEDURE corali_booking_cancelled_at();
+CREATE INDEX IF NOT EXISTS idx_bookings_pace ON bookings(owner_id,check_in,check_out);
+CREATE TABLE IF NOT EXISTS channel_commissions (
+ owner_id TEXT NOT NULL,
+ channel TEXT NOT NULL,
+ commission_percent NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (commission_percent BETWEEN 0 AND 60),
+ payment_fee_percent NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (payment_fee_percent BETWEEN 0 AND 20),
+ updated_by BIGINT,
+ updated_at BIGINT NOT NULL,
+ PRIMARY KEY(owner_id,channel)
+);
+CREATE TABLE IF NOT EXISTS competitors (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ name TEXT NOT NULL,
+ website TEXT NOT NULL DEFAULT '',
+ source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','api')),
+ api_url TEXT NOT NULL DEFAULT '',
+ active BIGINT NOT NULL DEFAULT 1,
+ last_fetch_at BIGINT,
+ last_fetch_error TEXT,
+ created_at BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS competitor_rates (
+ owner_id TEXT NOT NULL,
+ competitor_id BIGINT NOT NULL REFERENCES competitors(id) ON DELETE CASCADE,
+ stay_date TEXT NOT NULL,
+ rate_cents BIGINT,
+ previous_rate_cents BIGINT,
+ sold_out BIGINT NOT NULL DEFAULT 0,
+ source TEXT NOT NULL DEFAULT 'manual',
+ captured_at BIGINT NOT NULL,
+ PRIMARY KEY(owner_id,competitor_id,stay_date)
+);

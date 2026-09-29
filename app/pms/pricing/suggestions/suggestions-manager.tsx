@@ -1,8 +1,8 @@
 "use client";
 import { useState } from "react";
-import type { Suggestion } from "@/lib/pricing-suggestions";
+import type { CompsetNote, Suggestion } from "@/lib/pricing-suggestions";
 
-type Row = Suggestion & { key: string; rooms: number };
+type Row = Suggestion & Partial<CompsetNote> & { key: string; rooms: number };
 const reasons: Record<Suggestion["reason"], string> = {
   high_demand: "Πολύ υψηλή ζήτηση (≥85%) εντός 45 ημερών",
   strong_demand: "Υψηλή ζήτηση (≥70%) εντός 30 ημερών",
@@ -30,7 +30,7 @@ export function SuggestionsManager({ initial, canDecide }: { initial: Row[]; can
             <td>{r.startsOn} → {r.endsOn}</td>
             <td>{Math.round(r.averageOccupancy * 100)}%</td>
             <td><b className={r.percent > 0 ? "credit" : "debit"}>{r.percent > 0 ? "+" : ""}{r.percent}%</b></td>
-            <td>{reasons[r.reason]}</td>
+            <td>{reasons[r.reason]}{r.compsetIndex != null && <small>Ανταγωνισμός: διάμεσος €{((r.compsetMedianCents ?? 0) / 100).toFixed(0)} · δείκτης {r.compsetIndex}{r.compsetAdjusted ? " · προσαρμοσμένη πρόταση" : ""}</small>}</td>
             <td className="rowActions">{canDecide && <><button type="button" onClick={() => decide(r, "approve")}>Έγκριση</button><button type="button" className="secondaryButton" onClick={() => decide(r, "dismiss")}>Απόρριψη</button></>}</td>
           </tr>
         ))}</tbody></table></div>

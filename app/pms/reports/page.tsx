@@ -66,7 +66,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const financial = can(user.role, "reports.financial", user.permissions);
   const shown = (cents: unknown) => (financial ? money(cents) : "••••");
   return <section>{!financial && <p className="notice">Τα οικονομικά ποσά είναι κρυφά: απαιτείται το δικαίωμα «Αναφορές · οικονομικά».</p>}
-    <div className="pageTitle"><div><h1>Αναφορές ξενοδοχείου</h1><p>Πληρότητα, ADR, RevPAR και έσοδα ανά διανυκτέρευση</p></div></div>
+    <div className="pageTitle"><div><h1>Αναφορές ξενοδοχείου</h1><p>Πληρότητα, ADR, RevPAR και έσοδα ανά διανυκτέρευση</p></div>{financial && <Link className="secondaryLink" href="/pms/reports/revenue">Στρατηγική εσόδων · pace, κανάλια, ανταγωνισμός</Link>}</div>
     <form method="get" className="search"><label>Από <input type="date" name="from" defaultValue={from} required /></label><label>Έως <input type="date" name="to" defaultValue={to} required /></label><button>Εμφάνιση</button>{financial && <Link className="secondaryLink" href={`/api/pms/reports/export?from=${from}&to=${to}`}>Εξαγωγή CSV</Link>}</form>
     {dateError ? <p className="error">Επιλέξτε περίοδο από 1 έως 366 ημέρες.</p> : <>
       <div className="metricGrid"><article><small>Πληρότητα περιόδου</small><b>{available ? (sold / available * 100).toFixed(1) : "0.0"}%</b></article><article><small>ADR</small><b>{shown(sold ? revenue / sold : 0)}</b></article><article><small>RevPAR</small><b>{shown(available ? revenue / available : 0)}</b></article><article><small>Έσοδα περιόδου</small><b>{shown(revenue)}</b></article></div>
