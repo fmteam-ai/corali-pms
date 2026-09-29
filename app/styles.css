@@ -610,3 +610,7 @@ table.numeric tr.selected td{background:#fff8e6}
 .roomTile small{font-size:12px;color:#5b6d72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .roomTile.occupied{border-color:#2d7bbf;background:#eef5fc}.roomTile.dirty{border-color:#c98b12;background:#fff8e8}.roomTile.ooo{border-color:#b3261e;background:#fdeeee}
 .pms .pmsNav,.pms nav.pmsNav{overflow:visible;display:block;padding:0}.pms .pmsNav a{white-space:normal;font-size:15px}.pms .pmsNav a:hover{outline:0}
+.couponBox .couponApply{min-height:42px;padding:0 18px;border:2px solid #fff;border-radius:10px;background:#fff;color:#173e47;font-weight:800;cursor:pointer}
+.couponBox .couponApply:hover{background:#ffe6b8}
+.couponBox .couponApply:disabled{opacity:.6;cursor:wait}
+.stay .couponBox button.couponApply,.booking .couponBox button.couponApply{min-height:42px;padding:0 18px;border:0;border-radius:10px;background:#b64a2e;color:#fff;font-weight:800;cursor:pointer}.stay .couponBox button.couponApply:hover{background:#9c3c23}
