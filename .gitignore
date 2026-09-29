@@ -1,0 +1,16 @@
+node_modules/
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+runtime.env
+.env
+.env.local
+.env.production
+*.log
+*.tar.gz
+*.tar.gz.sha256
+*.zip
+corali-web-installer-*.php
+corali-web-installer-*-access.txt
+.DS_Store

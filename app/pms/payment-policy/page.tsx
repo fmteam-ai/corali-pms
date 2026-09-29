@@ -1,0 +1,1 @@
+import{requireUser}from"@/lib/auth";import{getPaymentPolicy}from"@/lib/payment-policy-db";import{PolicyForm}from"./form";export default async function Page(){const u=await requireUser("pricing.read");return <section><h1>Πολιτική πληρωμών</h1><p>Ορίστε πότε απαιτείται πλήρης πληρωμή αντί προκαταβολής.</p><PolicyForm initial={await getPaymentPolicy(u.ownerId)}/></section>}

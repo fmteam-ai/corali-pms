@@ -1,0 +1,834 @@
+<?php
+declare(strict_types=1);
+
+const CORALI_INSTALL_TOKEN_HASH = '__INSTALL_TOKEN_HASH__';
+const CORALI_FONT_REGULAR = '__FONT_REGULAR_BASE64__';
+const CORALI_FONT_BOLD = '__FONT_BOLD_BASE64__';
+const CORALI_HOME = '/home/corali';
+const CORALI_ARCHIVE = 'corali-pms-cpanel-v46-root.tar.gz';
+const CORALI_CHECKSUM = 'corali-pms-cpanel-v46-root.tar.gz.sha256';
+const CORALI_PMS_ROOT = '/home/corali/apps/corali-pms';
+const CORALI_BOOKING_ROOT = '/home/corali/apps/corali-booking';
+const CORALI_APP_USER = 'corali';
+const CORALI_PMS_URL = 'https://pms.hotelcorali.gr';
+const CORALI_BOOKING_URL = 'https://booking.hotelcorali.gr';
+const CORALI_INSTALLER_RELEASE = 'v46';
+
+$isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+    || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+session_name('CORALI_WEB_INSTALL');
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => dirname($_SERVER['SCRIPT_NAME'] ?? '/') ?: '/',
+    'secure' => true,
+    'httponly' => true,
+    'samesite' => 'Strict',
+]);
+session_start();
+
+$requestedLanguage = $_GET['lang'] ?? $_POST['language'] ?? null;
+if (is_string($requestedLanguage) && in_array($requestedLanguage, ['el', 'en'], true)) {
+    $_SESSION['language'] = $requestedLanguage;
+}
+$language = in_array($_SESSION['language'] ?? '', ['el', 'en'], true) ? (string) $_SESSION['language'] : 'el';
+
+function i18n(string $key): string
+{
+    global $language;
+    $messages = [
+        'el' => [
+            'installer' => 'Hotel Corali Installer', 'choose_language' => 'Επιλέξτε γλώσσα',
+            'access_intro' => 'Επικολλήστε τον προσωπικό κωδικό από το αρχείο πρόσβασης.',
+            'access_code' => 'Προσωπικός κωδικός μίας χρήσης', 'open_installer' => 'Άνοιγμα ασφαλούς installer',
+            'invalid_access' => 'Ο προσωπικός κωδικός δεν είναι έγκυρος. Αντιγράψτε μόνο τον κωδικό από το νέο αρχείο πρόσβασης.',
+            'secure_guide' => 'Ασφαλής οδηγός εγκατάστασης', 'system_check' => 'Έλεγχος συστήματος',
+            'no_change_before_checks' => 'Δεν γίνεται καμία αλλαγή μέχρι να περάσουν όλοι οι έλεγχοι.',
+            'backup_install' => 'Backup και εγκατάσταση',
+            'backup_install_help' => 'Θα ενημερωθούν μαζί PMS και Booking, με backup βάσης και αυτόματο rollback αν αποτύχει κάποιο βήμα.',
+            'start' => 'Έναρξη εγκατάστασης', 'retry' => 'Νέα ασφαλής προσπάθεια',
+            'previous_failed' => 'Η προηγούμενη προσπάθεια απέτυχε με κωδικό %s. Ελέγξτε το log πριν από νέα προσπάθεια.',
+            'admin_access' => 'Πρόσβαση διαχειριστή PMS',
+            'admin_help' => 'Ορίστε ή επαναφέρετε με ασφάλεια τον κύριο λογαριασμό. Η ενέργεια ακυρώνει παλιές συνεδρίες και μηδενίζει το 2FA.',
+            'username' => 'Όνομα χρήστη', 'display_name' => 'Ονοματεπώνυμο', 'email' => 'Email',
+            'password' => 'Νέος κωδικός (τουλάχιστον 14 χαρακτήρες)', 'confirm_password' => 'Επιβεβαίωση κωδικού',
+            'reset_2fa' => 'Επαναφορά 2FA και κωδικών ανάκτησης', 'recover_admin' => 'Αποθήκευση πρόσβασης διαχειριστή',
+            'admin_recovered' => 'Η πρόσβαση διαχειριστή αποθηκεύτηκε. Συνδεθείτε στο PMS χωρίς κωδικό 2FA και ρυθμίστε νέο 2FA από το Προφίλ.',
+            'password_mismatch' => 'Οι δύο κωδικοί δεν συμφωνούν.',
+            'final_check' => 'Τελικός έλεγχος', 'final_help' => 'Ελέγξτε σύνδεση PMS και φόρμα Booking πριν διαγράψετε τον installer.',
+            'check_pms' => 'Άνοιγμα σύνδεσης PMS', 'check_booking' => 'Άνοιγμα φόρμας Booking',
+            'delete_installer' => 'Κλείδωμα και διαγραφή installer',
+            'secrets_hidden' => 'Τα runtime.env, οι κωδικοί και τα API secrets δεν εμφανίζονται ούτε αντιγράφονται στο browser.',
+            'ready' => 'Έτοιμο για εγκατάσταση', 'running' => 'Η εγκατάσταση εκτελείται…',
+            'complete' => 'Η εγκατάσταση ολοκληρώθηκε επιτυχώς', 'failed' => 'Η εγκατάσταση απέτυχε — έγινε ασφαλές rollback όπου απαιτήθηκε',
+        ],
+        'en' => [
+            'installer' => 'Hotel Corali Installer', 'choose_language' => 'Choose language',
+            'access_intro' => 'Paste the private code from the access file.',
+            'access_code' => 'Private one-time code', 'open_installer' => 'Open secure installer',
+            'invalid_access' => 'The private code is invalid. Copy only the code from the new access file.',
+            'secure_guide' => 'Secure installation guide', 'system_check' => 'System check',
+            'no_change_before_checks' => 'No changes are made until every check passes.',
+            'backup_install' => 'Backup and installation',
+            'backup_install_help' => 'PMS and Booking will be updated together, with a database backup and automatic rollback if a step fails.',
+            'start' => 'Start installation', 'retry' => 'Retry safely',
+            'previous_failed' => 'The previous attempt failed with code %s. Review the log before trying again.',
+            'admin_access' => 'PMS administrator access',
+            'admin_help' => 'Securely create or recover the owner account. This revokes old sessions and resets 2FA.',
+            'username' => 'Username', 'display_name' => 'Full name', 'email' => 'Email',
+            'password' => 'New password (at least 14 characters)', 'confirm_password' => 'Confirm password',
+            'reset_2fa' => 'Reset 2FA and recovery codes', 'recover_admin' => 'Save administrator access',
+            'admin_recovered' => 'Administrator access was saved. Sign in without a 2FA code, then configure new 2FA from Profile.',
+            'password_mismatch' => 'The passwords do not match.',
+            'final_check' => 'Final check', 'final_help' => 'Test PMS sign-in and the Booking form before deleting the installer.',
+            'check_pms' => 'Open PMS sign-in', 'check_booking' => 'Open Booking form',
+            'delete_installer' => 'Lock and delete installer',
+            'secrets_hidden' => 'runtime.env, passwords and API secrets are never displayed or copied to the browser.',
+            'ready' => 'Ready to install', 'running' => 'Installation is running…',
+            'complete' => 'Installation completed successfully', 'failed' => 'Installation failed — automatic rollback was applied where required',
+        ],
+    ];
+    return $messages[$language][$key] ?? $messages['en'][$key] ?? $key;
+}
+
+function languagePicker(): string
+{
+    global $language;
+    $el = $language === 'el' ? ' active' : '';
+    $en = $language === 'en' ? ' active' : '';
+    return '<nav class="languages" aria-label="' . htmlspecialchars(i18n('choose_language'), ENT_QUOTES, 'UTF-8') . '">'
+        . '<a class="language' . $el . '" href="?lang=el" lang="el">Ελληνικά</a>'
+        . '<a class="language' . $en . '" href="?lang=en" lang="en">English</a></nav>';
+}
+
+function bilingual(string $greek, string $english): string
+{
+    global $language;
+    return $language === 'en' ? $english : $greek;
+}
+
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('Referrer-Policy: no-referrer');
+header("Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+
+function fontCss(): string
+{
+    return '@font-face{font-family:CoraliUI;src:url(data:font/ttf;base64,' . CORALI_FONT_REGULAR . ');font-weight:400}'
+        . '@font-face{font-family:CoraliUI;src:url(data:font/ttf;base64,' . CORALI_FONT_BOLD . ');font-weight:700}';
+}
+
+function failPage(int $status, string $title, string $message): never
+{
+    global $language;
+    http_response_code($status);
+    $safeTitle = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $safeMessage = htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    echo "<!doctype html><html lang=\"" . htmlspecialchars($language, ENT_QUOTES, 'UTF-8') . "\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{$safeTitle}</title><style>" . fontCss() . "body{margin:0;background:#f5f2ec;color:#173f47;font:16px CoraliUI,Arial,sans-serif}.box{max-width:680px;margin:10vh auto;background:#fff;padding:34px;border-radius:22px;box-shadow:0 18px 55px #173f4720}h1{margin-top:0}.bad{color:#a33924}</style><main class=\"box\"><h1>{$safeTitle}</h1><p class=\"bad\">{$safeMessage}</p></main></html>";
+    exit;
+}
+
+function accessPage(string $csrf, string $message = ''): never
+{
+    global $language;
+    http_response_code($message === '' ? 200 : 403);
+    $safeCsrf = htmlspecialchars($csrf, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $safeMessage = htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $notice = $safeMessage === '' ? '' : '<p class="bad">' . $safeMessage . '</p>';
+    echo '<!doctype html><html lang="' . htmlspecialchars($language, ENT_QUOTES, 'UTF-8') . '"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        . '<title>' . htmlspecialchars(i18n('installer'), ENT_QUOTES, 'UTF-8') . '</title><style>' . fontCss() . 'body{margin:0;background:#f5f2ec;color:#173f47;font:16px CoraliUI,Arial,sans-serif}'
+        . '.box{max-width:680px;margin:10vh auto;background:#fff;padding:34px;border-radius:22px;box-shadow:0 18px 55px #173f4720}'
+        . 'h1{margin-top:0}.bad{color:#a33924}label{display:block;font-weight:700;margin:22px 0 8px}input{box-sizing:border-box;width:100%;padding:13px;border:1px solid #a9bac0;border-radius:10px;font:inherit}'
+        . 'button{margin-top:18px;border:0;border-radius:10px;background:#173f47;color:#fff;padding:13px 20px;font-weight:700;cursor:pointer}.languages{display:flex;gap:8px;margin:0 0 24px}.language{padding:8px 12px;border:1px solid #a9bac0;border-radius:999px;color:#173f47;text-decoration:none}.language.active{background:#173f47;color:#fff}</style>'
+        . '<main class="box">' . languagePicker() . '<h1>' . htmlspecialchars(i18n('installer'), ENT_QUOTES, 'UTF-8') . '</h1><p>' . htmlspecialchars(i18n('access_intro'), ENT_QUOTES, 'UTF-8') . '</p>'
+        . $notice . '<form method="post"><input type="hidden" name="access_csrf" value="' . $safeCsrf . '">'
+        . '<input type="hidden" name="language" value="' . htmlspecialchars($language, ENT_QUOTES, 'UTF-8') . '"><input type="hidden" name="access_action" value="authorize"><label for="access_key">' . htmlspecialchars(i18n('access_code'), ENT_QUOTES, 'UTF-8') . '</label>'
+        . '<input id="access_key" name="access_key" type="password" autocomplete="off" required autofocus>'
+        . '<button type="submit">' . htmlspecialchars(i18n('open_installer'), ENT_QUOTES, 'UTF-8') . '</button></form></main></html>';
+    exit;
+}
+
+function availableFunction(string $name): bool
+{
+    $disabled = array_filter(array_map('trim', explode(',', (string) ini_get('disable_functions'))));
+    return function_exists($name) && !in_array($name, $disabled, true);
+}
+
+function commandPath(string $command): string
+{
+    if (!availableFunction('exec')) {
+        return '';
+    }
+    $output = [];
+    $status = 1;
+    exec('command -v ' . escapeshellarg($command) . ' 2>/dev/null', $output, $status);
+    return $status === 0 ? trim((string) ($output[0] ?? '')) : '';
+}
+
+function resolvedCommandPath(string $command): string
+{
+    $fromPath = commandPath($command);
+    if ($fromPath !== '') {
+        return $fromPath;
+    }
+
+    if ($command !== 'node') {
+        return '';
+    }
+
+    // PHP-FPM on cPanel intentionally receives a minimal PATH. Probe only
+    // trusted, administrator-managed Node.js locations instead of accepting
+    // a path from the browser.
+    $candidates = [
+        '/opt/cpanel/ea-nodejs26/bin/node',
+        '/opt/cpanel/ea-nodejs24/bin/node',
+        '/opt/cpanel/ea-nodejs22/bin/node',
+        '/opt/alt/alt-nodejs26/root/usr/bin/node',
+        '/opt/alt/alt-nodejs24/root/usr/bin/node',
+        '/opt/alt/alt-nodejs22/root/usr/bin/node',
+    ];
+    foreach ($candidates as $candidate) {
+        if (is_file($candidate) && is_executable($candidate)) {
+            return $candidate;
+        }
+    }
+    return '';
+}
+
+function directoryCanBeUsed(string $directory): bool
+{
+    if (is_dir($directory)) {
+        return is_writable($directory);
+    }
+    $parent = dirname($directory);
+    return is_dir($parent) && is_writable($parent);
+}
+
+function deploymentDirectories(): array
+{
+    $apps = CORALI_HOME . '/apps';
+    $preferredReleaseRoot = CORALI_HOME . '/releases';
+    $preferredBackupRoot = CORALI_HOME . '/backups';
+    $fallbackReleaseRoot = $apps . '/.corali-releases';
+    $fallbackBackupRoot = $apps . '/.corali-backups';
+
+    return [
+        'release_root' => directoryCanBeUsed($preferredReleaseRoot) ? $preferredReleaseRoot : $fallbackReleaseRoot,
+        'backup_root' => directoryCanBeUsed($preferredBackupRoot) ? $preferredBackupRoot : $fallbackBackupRoot,
+        'release_fallback' => !directoryCanBeUsed($preferredReleaseRoot),
+        'backup_fallback' => !directoryCanBeUsed($preferredBackupRoot),
+    ];
+}
+
+function envValue(string $file, string $key): string
+{
+    $lines = @file($file, FILE_IGNORE_NEW_LINES);
+    if (!is_array($lines)) {
+        return '';
+    }
+    foreach ($lines as $line) {
+        $line = rtrim($line, "\r\n");
+        if (preg_match('/^\s*' . preg_quote($key, '/') . '=(.*)$/', $line, $match) === 1) {
+            return trim($match[1]);
+        }
+    }
+    return '';
+}
+
+function preflight(bool $isHttps): array
+{
+    $archive = CORALI_HOME . '/' . CORALI_ARCHIVE;
+    $checksum = CORALI_HOME . '/' . CORALI_CHECKSUM;
+    $apps = CORALI_HOME . '/apps';
+    $deploymentDirectories = deploymentDirectories();
+    $releases = $deploymentDirectories['release_root'];
+    $backups = $deploymentDirectories['backup_root'];
+    $checks = [];
+    $add = static function (string $label, bool $ok, string $detail) use (&$checks): void {
+        $checks[] = ['label' => $label, 'ok' => $ok, 'detail' => $detail];
+    };
+
+    $add(bilingual('Ασφαλής σύνδεση HTTPS', 'Secure HTTPS connection'), $isHttps, $isHttps ? bilingual('Ενεργή', 'Active') : bilingual('Ανοίξτε τον installer μόνο με https://', 'Open the installer only with https://'));
+    $add(bilingual('PHP 8.1 ή νεότερο', 'PHP 8.1 or newer'), version_compare(PHP_VERSION, '8.1.0', '>='), 'PHP ' . PHP_VERSION);
+    $execOk = availableFunction('exec');
+    $add(bilingual('Εκτέλεση διεργασιών PHP', 'PHP process execution'), $execOk, $execOk ? bilingual('Η exec είναι διαθέσιμη', 'exec is available') : bilingual('Η exec είναι απενεργοποιημένη στο PHP configuration', 'exec is disabled in the PHP configuration'));
+
+    $effectiveUser = '';
+    if ($execOk) {
+        $userOutput = [];
+        $userStatus = 1;
+        exec('id -un 2>/dev/null', $userOutput, $userStatus);
+        if ($userStatus === 0) {
+            $effectiveUser = trim((string) ($userOutput[0] ?? ''));
+        }
+    }
+    $add(
+        bilingual('Χρήστης εκτέλεσης cPanel', 'cPanel execution user'),
+        $effectiveUser === CORALI_APP_USER,
+        $effectiveUser === CORALI_APP_USER
+            ? bilingual('Η PHP εκτελείται ως ', 'PHP runs as ') . CORALI_APP_USER
+            : bilingual('Αναμενόταν ', 'Expected ') . CORALI_APP_USER . bilingual(', βρέθηκε ', ', found ') . ($effectiveUser !== '' ? $effectiveUser : bilingual('άγνωστος χρήστης', 'unknown user')),
+    );
+
+    foreach (['bash', 'tar', 'node', 'pg_dump', 'sha256sum', 'nohup'] as $command) {
+        $path = $execOk ? resolvedCommandPath($command) : '';
+        $missingDetail = $command === 'node'
+            ? bilingual('Δεν βρέθηκε ούτε στο PATH ούτε στις ασφαλείς τοποθεσίες Node.js του cPanel', 'Not found in PATH or trusted cPanel Node.js locations')
+            : bilingual('Δεν βρέθηκε στο PATH του PHP', 'Not found in the PHP PATH');
+        $add(bilingual('Εντολή ', 'Command ') . $command, $path !== '', $path !== '' ? $path : $missingDetail);
+    }
+
+    $nodeVersion = '';
+    $nodeOk = false;
+    $nodePath = $execOk ? resolvedCommandPath('node') : '';
+    if ($nodePath !== '') {
+        $nodeOutput = [];
+        $nodeStatus = 1;
+        exec(escapeshellarg($nodePath) . ' --version 2>/dev/null', $nodeOutput, $nodeStatus);
+        $nodeVersion = trim((string) ($nodeOutput[0] ?? ''));
+        if ($nodeStatus === 0 && preg_match('/^v(\d+)/', $nodeVersion, $nodeMatch) === 1) {
+            $nodeOk = (int) $nodeMatch[1] >= 22;
+        }
+    }
+    $add(bilingual('Node.js 22 ή νεότερο', 'Node.js 22 or newer'), $nodeOk, $nodeVersion !== '' ? $nodeVersion : bilingual('Δεν ήταν δυνατό να διαβαστεί η έκδοση', 'Could not read the version'));
+
+    $archiveOk = is_file($archive) && is_readable($archive);
+    $checksumOk = is_file($checksum) && is_readable($checksum);
+    $add(bilingual('Πακέτο εγκατάστασης', 'Installation package'), $archiveOk, $archiveOk ? $archive : bilingual('Λείπει: ', 'Missing: ') . $archive);
+    $add(bilingual('Αρχείο SHA-256', 'SHA-256 file'), $checksumOk, $checksumOk ? $checksum : bilingual('Λείπει: ', 'Missing: ') . $checksum);
+
+    $hashOk = false;
+    $hashDetail = bilingual('Δεν ήταν δυνατό να γίνει επαλήθευση', 'Verification could not be completed');
+    if ($archiveOk && $checksumOk) {
+        $checksumText = trim((string) file_get_contents($checksum));
+        if (preg_match('/^([a-f0-9]{64})\s+/i', $checksumText, $match) === 1) {
+            $actual = hash_file('sha256', $archive);
+            $hashOk = is_string($actual) && hash_equals(strtolower($match[1]), strtolower($actual));
+            $hashDetail = $hashOk ? bilingual('Το checksum είναι σωστό', 'Checksum is correct') : bilingual('Το checksum δεν ταιριάζει — μην συνεχίσετε', 'Checksum mismatch — do not continue');
+        }
+    }
+    $add(bilingual('Ακεραιότητα πακέτου', 'Package integrity'), $hashOk, $hashDetail);
+
+    $layoutOk = false;
+    if ($hashOk && $execOk && resolvedCommandPath('tar') !== '') {
+        $layoutOutput = [];
+        $layoutStatus = 1;
+        exec('tar -tzf ' . escapeshellarg($archive) . ' ./INSTALL-CPANEL.sh ./DEPLOY_VERSION.txt >/dev/null 2>&1', $layoutOutput, $layoutStatus);
+        $layoutOk = $layoutStatus === 0;
+    }
+    $add(bilingual('Δομή πακέτου εγκατάστασης', 'Installation package layout'), $layoutOk, $layoutOk ? bilingual('Βρέθηκαν installer και deployment version', 'Installer and deployment version found') : bilingual('Το archive δεν έχει την αναμενόμενη δομή', 'The archive does not have the expected layout'));
+
+    $appsWritable = directoryCanBeUsed($apps);
+    $add(bilingual('Εγγράψιμος φάκελος ', 'Writable directory ') . $apps, $appsWritable, $appsWritable ? 'OK' : bilingual('Δεν είναι εγγράψιμος από την PHP', 'Not writable by PHP'));
+    $releaseWritable = directoryCanBeUsed($releases);
+    $releaseDetail = $releaseWritable
+        ? ($deploymentDirectories['release_fallback'] ? bilingual('Ασφαλής ιδιωτική εναλλακτική μέσα στο apps', 'Secure private fallback inside apps') : 'OK')
+        : bilingual('Δεν είναι εγγράψιμος από την PHP', 'Not writable by PHP');
+    $add(bilingual('Φάκελος προσωρινών εκδόσεων ', 'Release staging directory ') . $releases, $releaseWritable, $releaseDetail);
+    $backupWritable = directoryCanBeUsed($backups);
+    $backupDetail = $backupWritable
+        ? ($deploymentDirectories['backup_fallback'] ? bilingual('Ασφαλής ιδιωτική εναλλακτική μέσα στο apps', 'Secure private fallback inside apps') : 'OK')
+        : bilingual('Δεν είναι εγγράψιμος από την PHP', 'Not writable by PHP');
+    $add(bilingual('Φάκελος αντιγράφων ασφαλείας ', 'Backup directory ') . $backups, $backupWritable, $backupDetail);
+
+    foreach ([CORALI_PMS_ROOT => 'PMS', CORALI_BOOKING_ROOT => 'Booking'] as $root => $name) {
+        $appOk = is_dir($root) && is_file($root . '/app.js');
+        $envOk = is_file($root . '/runtime.env') && is_readable($root . '/runtime.env');
+        $add($name . bilingual(' ενεργή εφαρμογή', ' active application'), $appOk, $appOk ? $root : bilingual('Δεν βρέθηκε app.js στον ', 'app.js was not found in ') . $root);
+        $add($name . bilingual(' προστατευμένες ρυθμίσεις', ' protected settings'), $envOk, $envOk ? bilingual('Το runtime.env είναι αναγνώσιμο', 'runtime.env is readable') : bilingual('Το runtime.env λείπει ή δεν είναι αναγνώσιμο', 'runtime.env is missing or unreadable'));
+    }
+
+    $pmsKey = envValue(CORALI_PMS_ROOT . '/runtime.env', 'PMS_DOCUMENT_KEY');
+    $bookingKey = envValue(CORALI_BOOKING_ROOT . '/runtime.env', 'PMS_DOCUMENT_KEY');
+    $keysOk = $pmsKey !== '' && $bookingKey !== '' && hash_equals($pmsKey, $bookingKey);
+    $add(bilingual('Συμφωνία PMS_DOCUMENT_KEY', 'PMS_DOCUMENT_KEY agreement'), $keysOk, $keysOk ? bilingual('Τα δύο apps έχουν το ίδιο προστατευμένο κλειδί', 'Both applications use the same protected key') : bilingual('Τα κλειδιά λείπουν ή δεν συμφωνούν', 'Keys are missing or do not match'));
+    unset($pmsKey, $bookingKey);
+
+    return $checks;
+}
+
+function allChecksPass(array $checks): bool
+{
+    foreach ($checks as $check) {
+        if (($check['ok'] ?? false) !== true) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function stateDirectory(): string
+{
+    return CORALI_HOME . '/.corali-web-installer-__INSTALL_STATE_ID__';
+}
+
+function stateFile(): string
+{
+    return stateDirectory() . '/state.json';
+}
+
+function loadState(): array
+{
+    $file = stateFile();
+    if (!is_file($file)) {
+        return [];
+    }
+    $decoded = json_decode((string) file_get_contents($file), true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+function saveState(array $state): void
+{
+    $directory = stateDirectory();
+    if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
+        throw new RuntimeException(bilingual('Δεν ήταν δυνατό να δημιουργηθεί ο ιδιωτικός φάκελος κατάστασης.', 'Could not create the private state directory.'));
+    }
+    chmod($directory, 0700);
+    $temporary = $directory . '/state.json.tmp';
+    file_put_contents($temporary, json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX);
+    chmod($temporary, 0600);
+    rename($temporary, stateFile());
+}
+
+function processAlive(int $pid): bool
+{
+    if ($pid < 1 || !availableFunction('exec')) {
+        return false;
+    }
+    $output = [];
+    $status = 1;
+    exec('kill -0 ' . $pid . ' 2>/dev/null', $output, $status);
+    return $status === 0;
+}
+
+function sanitizedLog(string $path): string
+{
+    if (!is_file($path) || !is_readable($path)) {
+        return '';
+    }
+    $lines = file($path, FILE_IGNORE_NEW_LINES);
+    if (!is_array($lines)) {
+        return '';
+    }
+    $text = implode("\n", array_slice($lines, -220));
+    $text = preg_replace('#(postgres(?:ql)?://)[^\s/@:]+:[^\s/@]+@#i', '$1***:***@', $text) ?? $text;
+    $text = preg_replace('/\b(PMS_DOCUMENT_KEY|SESSION_SECRET|OPENAI_API_KEY|WHATSAPP_ACCESS_TOKEN|SMTP_PASSWORD|STRIPE_SECRET_KEY|VIVA_CLIENT_SECRET)=\S+/i', '$1=***', $text) ?? $text;
+    return $text;
+}
+
+function installationStatus(array $state): array
+{
+    if ($state === []) {
+        return ['phase' => 'ready', 'code' => null, 'log' => ''];
+    }
+    $statusFile = (string) ($state['status_file'] ?? '');
+    $logFile = (string) ($state['log_file'] ?? '');
+    if ($statusFile !== '' && is_file($statusFile)) {
+        $code = (int) trim((string) file_get_contents($statusFile));
+        return ['phase' => $code === 0 ? 'complete' : 'failed', 'code' => $code, 'log' => sanitizedLog($logFile)];
+    }
+    $pid = (int) ($state['pid'] ?? 0);
+    return [
+        'phase' => processAlive($pid) ? 'running' : 'failed',
+        'code' => processAlive($pid) ? null : 255,
+        'log' => sanitizedLog($logFile),
+    ];
+}
+
+function requireCsrf(): void
+{
+    $provided = $_POST['csrf'] ?? '';
+    $expected = $_SESSION['csrf'] ?? '';
+    if (!is_string($provided) || !is_string($expected) || $expected === '' || !hash_equals($expected, $provided)) {
+        failPage(403, bilingual('Μη έγκυρο αίτημα', 'Invalid request'), bilingual('Η συνεδρία έληξε ή ο κωδικός CSRF δεν είναι έγκυρος. Ανοίξτε ξανά τον installer.', 'The session expired or the CSRF token is invalid. Open the installer again.'));
+    }
+}
+
+function startInstallation(array $checks): void
+{
+    if (!allChecksPass($checks)) {
+        throw new RuntimeException(bilingual('Ο προέλεγχος δεν ολοκληρώθηκε επιτυχώς.', 'The preflight check did not pass.'));
+    }
+    $current = installationStatus(loadState());
+    if ($current['phase'] === 'running') {
+        throw new RuntimeException(bilingual('Υπάρχει ήδη εγκατάσταση σε εξέλιξη.', 'An installation is already running.'));
+    }
+
+    $stateDir = stateDirectory();
+    if (!is_dir($stateDir)) {
+        mkdir($stateDir, 0700, true);
+    }
+    chmod($stateDir, 0700);
+    foreach (['install.log', 'exit.status', 'runner.sh'] as $old) {
+        @unlink($stateDir . '/' . $old);
+    }
+
+    $deploymentDirectories = deploymentDirectories();
+    $releaseRoot = $deploymentDirectories['release_root'];
+    $backupRoot = $deploymentDirectories['backup_root'];
+    if (!directoryCanBeUsed($releaseRoot) || !directoryCanBeUsed($backupRoot)) {
+        throw new RuntimeException(bilingual('Οι ασφαλείς φάκελοι έκδοσης ή backup δεν είναι διαθέσιμοι. Εκτελέστε ξανά τον προέλεγχο.', 'The secure release or backup directories are unavailable. Run the preflight check again.'));
+    }
+    $nodePath = resolvedCommandPath('node');
+    if ($nodePath === '') {
+        throw new RuntimeException(bilingual('Δεν βρέθηκε συμβατό Node.js στο cPanel.', 'A compatible cPanel Node.js installation was not found.'));
+    }
+
+    $suffix = gmdate('Ymd\THis\Z') . '-' . bin2hex(random_bytes(3));
+    $release = $releaseRoot . '/corali-v46-web-' . $suffix;
+    $archive = CORALI_HOME . '/' . CORALI_ARCHIVE;
+    $log = $stateDir . '/install.log';
+    $status = $stateDir . '/exit.status';
+    $runner = $stateDir . '/runner.sh';
+
+    $command = 'bash INSTALL-CPANEL.sh --yes'
+        . ' --pms-root ' . escapeshellarg(CORALI_PMS_ROOT)
+        . ' --booking-root ' . escapeshellarg(CORALI_BOOKING_ROOT)
+        . ' --user ' . escapeshellarg(CORALI_APP_USER)
+        . ' --pms-url ' . escapeshellarg(CORALI_PMS_URL)
+        . ' --booking-url ' . escapeshellarg(CORALI_BOOKING_URL)
+        . ' --backup-dir ' . escapeshellarg($backupRoot);
+
+    $runtimePath = implode(':', array_unique([
+        dirname($nodePath),
+        '/usr/local/bin',
+        '/usr/bin',
+        '/bin',
+        '/opt/cpanel/ea-nodejs26/bin',
+        '/opt/cpanel/ea-nodejs24/bin',
+        '/opt/cpanel/ea-nodejs22/bin',
+    ]));
+
+    $script = implode("\n", [
+        '#!/usr/bin/env bash',
+        'set -uo pipefail',
+        'export PATH=' . escapeshellarg($runtimePath),
+        'umask 077',
+        'rc=0',
+        'echo "Hotel Corali web installer — ' . CORALI_INSTALLER_RELEASE . '"',
+        'echo "[web] Verifying archive checksum..."',
+        'cd ' . escapeshellarg(CORALI_HOME) . ' || rc=$?',
+        'if [[ "$rc" -eq 0 ]]; then sha256sum -c ' . escapeshellarg(CORALI_CHECKSUM) . ' || rc=$?; fi',
+        'if [[ "$rc" -eq 0 ]]; then mkdir -p ' . escapeshellarg($release) . ' || rc=$?; fi',
+        'if [[ "$rc" -eq 0 ]]; then echo "[web] Extracting verified release..."; tar -xzf ' . escapeshellarg($archive) . ' -C ' . escapeshellarg($release) . ' || rc=$?; fi',
+        'if [[ "$rc" -eq 0 ]]; then cd ' . escapeshellarg($release) . ' || rc=$?; fi',
+        'if [[ "$rc" -eq 0 ]]; then ' . $command . ' || rc=$?; fi',
+        'status_tmp=' . escapeshellarg($status . '.tmp') . '.$$',
+        'printf "%s\n" "$rc" > "$status_tmp"',
+        'mv "$status_tmp" ' . escapeshellarg($status),
+        'exit "$rc"',
+        '',
+    ]);
+    if (file_put_contents($runner, $script, LOCK_EX) === false) {
+        throw new RuntimeException(bilingual('Δεν ήταν δυνατό να δημιουργηθεί ο ασφαλής runner.', 'Could not create the secure installer runner.'));
+    }
+    chmod($runner, 0700);
+    touch($log);
+    chmod($log, 0600);
+
+    $launch = 'nohup bash ' . escapeshellarg($runner) . ' >' . escapeshellarg($log) . ' 2>&1 < /dev/null & echo $!';
+    $output = [];
+    $launchStatus = 1;
+    exec($launch, $output, $launchStatus);
+    $pid = (int) trim((string) ($output[0] ?? '0'));
+    if ($launchStatus !== 0 || $pid < 1) {
+        throw new RuntimeException(bilingual('Δεν ήταν δυνατό να ξεκινήσει η διεργασία εγκατάστασης.', 'Could not start the installation process.'));
+    }
+    saveState([
+        'pid' => $pid,
+        'started_at' => gmdate(DATE_ATOM),
+        'release_dir' => $release,
+        'log_file' => $log,
+        'status_file' => $status,
+    ]);
+}
+
+function recoverAdministrator(array $input): void
+{
+    $status = installationStatus(loadState());
+    if ($status['phase'] !== 'complete') {
+        throw new RuntimeException($GLOBALS['language'] === 'en' ? 'The installation must complete before administrator recovery.' : 'Η εγκατάσταση πρέπει να ολοκληρωθεί πριν από την ανάκτηση διαχειριστή.');
+    }
+
+    $username = strtolower(trim((string) ($input['admin_username'] ?? '')));
+    $displayName = trim((string) ($input['admin_display_name'] ?? ''));
+    $email = strtolower(trim((string) ($input['admin_email'] ?? '')));
+    $password = (string) ($input['admin_password'] ?? '');
+    $confirmation = (string) ($input['admin_password_confirmation'] ?? '');
+    if (!preg_match('/^[a-z0-9._-]{3,100}$/', $username)) {
+        throw new RuntimeException($GLOBALS['language'] === 'en' ? 'Use 3–100 lowercase letters, numbers, dots, underscores or hyphens for the username.' : 'Το όνομα χρήστη πρέπει να έχει 3–100 πεζούς λατινικούς χαρακτήρες, αριθμούς, τελείες, κάτω παύλες ή παύλες.');
+    }
+    if (strlen($displayName) < 2 || strlen($displayName) > 300) {
+        throw new RuntimeException($GLOBALS['language'] === 'en' ? 'Enter a valid full name.' : 'Συμπληρώστε έγκυρο ονοματεπώνυμο.');
+    }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new RuntimeException($GLOBALS['language'] === 'en' ? 'Enter a valid email address.' : 'Συμπληρώστε έγκυρη διεύθυνση email.');
+    }
+    if (strlen($password) < 14 || strlen($password) > 256) {
+        throw new RuntimeException($GLOBALS['language'] === 'en' ? 'The password must contain 14 to 256 characters.' : 'Ο κωδικός πρέπει να περιέχει 14 έως 256 χαρακτήρες.');
+    }
+    if (!hash_equals($password, $confirmation)) {
+        throw new RuntimeException(i18n('password_mismatch'));
+    }
+
+    $nodePath = resolvedCommandPath('node');
+    $script = CORALI_PMS_ROOT . '/scripts/recover-admin.mjs';
+    $runtime = CORALI_PMS_ROOT . '/runtime.env';
+    if ($nodePath === '' || !is_file($script) || !is_file($runtime)) {
+        throw new RuntimeException($GLOBALS['language'] === 'en' ? 'The administrator recovery tool is not available.' : 'Το εργαλείο ανάκτησης διαχειριστή δεν είναι διαθέσιμο.');
+    }
+
+    $inputFile = stateDirectory() . '/admin-recovery-' . bin2hex(random_bytes(8)) . '.json';
+    $payload = json_encode([
+        'username' => $username,
+        'displayName' => $displayName,
+        'email' => $email,
+        'password' => $password,
+        'resetTwoFactor' => true,
+    ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    if (file_put_contents($inputFile, $payload, LOCK_EX) === false) {
+        throw new RuntimeException($GLOBALS['language'] === 'en' ? 'Could not create the protected recovery request.' : 'Δεν ήταν δυνατό να δημιουργηθεί το προστατευμένο αίτημα ανάκτησης.');
+    }
+    chmod($inputFile, 0600);
+    try {
+        $output = [];
+        $exitCode = 1;
+        $command = escapeshellarg($nodePath)
+            . ' --env-file=' . escapeshellarg($runtime)
+            . ' ' . escapeshellarg($script)
+            . ' ' . escapeshellarg($inputFile) . ' 2>&1';
+        exec($command, $output, $exitCode);
+        if ($exitCode !== 0) {
+            error_log('Corali administrator recovery failed: ' . implode("\n", $output));
+            throw new RuntimeException($GLOBALS['language'] === 'en' ? 'Administrator recovery failed. No password was displayed or retained.' : 'Η ανάκτηση διαχειριστή απέτυχε. Κανένας κωδικός δεν εμφανίστηκε ή διατηρήθηκε.');
+        }
+    } finally {
+        @unlink($inputFile);
+        unset($password, $confirmation, $payload);
+    }
+}
+
+if (is_file(stateDirectory() . '/locked')) {
+    failPage(410, bilingual('Ο installer είναι κλειδωμένος', 'Installer locked'), bilingual('Η εγκατάσταση έχει ήδη οριστικοποιηθεί. Διαγράψτε το προσωρινό PHP αρχείο αν εξακολουθεί να υπάρχει.', 'Installation has already been finalized. Delete the temporary PHP file if it still exists.'));
+}
+
+if (!$isHttps) {
+    failPage(400, bilingual('Απαιτείται HTTPS', 'HTTPS required'), bilingual('Ανοίξτε την ίδια διεύθυνση με https:// για ασφαλή εγκατάσταση.', 'Open the same address with https:// for a secure installation.'));
+}
+
+function authorizeAccessKey(string $accessKey): bool
+{
+    if ($accessKey === '' || !hash_equals(CORALI_INSTALL_TOKEN_HASH, hash('sha256', $accessKey))) {
+        return false;
+    }
+    session_regenerate_id(true);
+    $_SESSION['corali_authorized'] = true;
+    $_SESSION['csrf'] = bin2hex(random_bytes(32));
+    unset($_SESSION['access_csrf']);
+    return true;
+}
+
+$accessKey = $_GET['key'] ?? '';
+if (empty($_SESSION['corali_authorized']) && is_string($accessKey) && $accessKey !== '') {
+    if (authorizeAccessKey($accessKey)) {
+        $cleanUrl = strtok($_SERVER['REQUEST_URI'] ?? '', '?') ?: ($_SERVER['PHP_SELF'] ?? '/');
+        header('Location: ' . $cleanUrl, true, 303);
+        exit;
+    }
+}
+
+if (empty($_SESSION['corali_authorized'])) {
+    $accessCsrf = (string) ($_SESSION['access_csrf'] ?? '');
+    if ($accessCsrf === '') {
+        $accessCsrf = bin2hex(random_bytes(32));
+        $_SESSION['access_csrf'] = $accessCsrf;
+    }
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['access_action'] ?? '') === 'authorize') {
+        $providedCsrf = $_POST['access_csrf'] ?? '';
+        $providedKey = $_POST['access_key'] ?? '';
+        $csrfOk = is_string($providedCsrf) && hash_equals($accessCsrf, $providedCsrf);
+        if ($csrfOk && is_string($providedKey) && authorizeAccessKey(trim($providedKey))) {
+            $cleanUrl = strtok($_SERVER['REQUEST_URI'] ?? '', '?') ?: ($_SERVER['PHP_SELF'] ?? '/');
+            header('Location: ' . $cleanUrl, true, 303);
+            exit;
+        }
+        accessPage($accessCsrf, i18n('invalid_access'));
+    }
+    accessPage($accessCsrf);
+}
+
+$csrf = (string) ($_SESSION['csrf'] ?? '');
+if ($csrf === '') {
+    $csrf = bin2hex(random_bytes(32));
+    $_SESSION['csrf'] = $csrf;
+}
+
+$action = $_GET['action'] ?? '';
+if ($action === 'status') {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(installationStatus(loadState()), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$message = '';
+$error = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
+    $postAction = $_POST['action'] ?? '';
+    try {
+        if ($postAction === 'start') {
+            startInstallation(preflight($isHttps));
+            header('Location: ' . ($_SERVER['PHP_SELF'] ?? '/'), true, 303);
+            exit;
+        }
+        if ($postAction === 'recover_admin') {
+            recoverAdministrator($_POST);
+            $savedState = loadState();
+            $savedState['admin_recovered_at'] = gmdate(DATE_ATOM);
+            saveState($savedState);
+            $message = i18n('admin_recovered');
+        }
+        if ($postAction === 'finish') {
+            $status = installationStatus(loadState());
+            if ($status['phase'] !== 'complete') {
+                throw new RuntimeException(bilingual('Η εγκατάσταση δεν έχει ολοκληρωθεί επιτυχώς.', 'The installation has not completed successfully.'));
+            }
+            if (empty(loadState()['admin_recovered_at'])) {
+                throw new RuntimeException($language === 'en' ? 'Save and test the PMS administrator account before deleting the installer.' : 'Αποθηκεύστε και δοκιμάστε τον λογαριασμό διαχειριστή PMS πριν διαγράψετε τον installer.');
+            }
+            file_put_contents(stateDirectory() . '/locked', gmdate(DATE_ATOM), LOCK_EX);
+            chmod(stateDirectory() . '/locked', 0600);
+            $deleted = @unlink(__FILE__);
+            $_SESSION = [];
+            session_destroy();
+            $message = $deleted
+                ? bilingual('Η εγκατάσταση ολοκληρώθηκε και ο web installer διαγράφηκε.', 'Installation completed and the web installer was deleted.')
+                : bilingual('Η εγκατάσταση ολοκληρώθηκε. Διαγράψτε τώρα χειροκίνητα αυτό το PHP αρχείο από το public_html.', 'Installation completed. Delete this PHP file manually from public_html now.');
+        }
+    } catch (Throwable $exception) {
+        $error = $exception->getMessage();
+    }
+}
+
+$checks = preflight($isHttps);
+$ready = allChecksPass($checks);
+$state = loadState();
+$installStatus = installationStatus($state);
+$adminRecovered = !empty($state['admin_recovered_at']);
+$safeCsrf = htmlspecialchars($csrf, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+?>
+<!doctype html>
+<html lang="<?= htmlspecialchars($language, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>Hotel Corali — <?= htmlspecialchars(i18n('installer'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></title>
+  <style>
+    <?= fontCss() ?>
+    :root{--ink:#173f47;--muted:#667a86;--line:#dbe3e5;--paper:#fff;--bg:#f5f2ec;--brand:#b44b32;--ok:#087b5a;--bad:#ad3527;--blue:#1687b7}
+    *{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,#f8f6f1,#eef4f3);color:var(--ink);font:15px/1.48 CoraliUI,Arial,sans-serif}
+    .shell{width:min(920px,calc(100% - 28px));margin:34px auto 64px}.brand{display:flex;gap:14px;align-items:center;margin-bottom:18px}.mark{display:grid;place-items:center;width:54px;height:54px;border-radius:17px;background:var(--ink);color:white;font-weight:800;letter-spacing:.04em}.brand h1{font-size:24px;margin:0}.brand p{margin:2px 0 0;color:var(--muted)}
+    .card{background:var(--paper);border:1px solid #e3e1db;border-radius:22px;box-shadow:0 18px 48px #173f4714;padding:26px;margin-top:16px}.step{display:flex;gap:15px;align-items:flex-start}.num{flex:0 0 34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#e8f2f3;font-weight:800}.step h2{font-size:19px;margin:3px 0 5px}.step p{margin:0;color:var(--muted)}
+    .checks{display:grid;gap:8px;margin-top:20px}.check{display:grid;grid-template-columns:26px minmax(190px,.85fr) 1.4fr;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:12px}.icon{font-weight:900}.pass .icon{color:var(--ok)}.fail{border-color:#f0c6bd;background:#fff9f7}.fail .icon{color:var(--bad)}.detail{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+    .notice{padding:13px 15px;border-radius:12px;margin:14px 0}.notice.ok{background:#e8f7f1;color:#06664b}.notice.bad{background:#fff0ec;color:#8e2c1e}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}.btn{appearance:none;border:0;border-radius:12px;padding:12px 18px;background:var(--brand);color:white;font:700 15px inherit;cursor:pointer;box-shadow:0 8px 20px #b44b3228}.btn.secondary{background:var(--ink)}.btn:disabled{cursor:not-allowed;opacity:.45}
+    .progress{height:12px;background:#e7edef;border-radius:999px;overflow:hidden;margin:18px 0 8px}.bar{height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--ok));transition:width .35s}.phase{font-weight:700}.log{min-height:210px;max-height:390px;overflow:auto;background:#102f36;color:#d9f0ee;border-radius:14px;padding:16px;white-space:pre-wrap;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}.links{display:grid;gap:8px;margin-top:15px}.links a{color:#08708d;font-weight:700}.foot{color:var(--muted);font-size:12px;text-align:center;margin-top:20px}.languages{display:flex;gap:8px;margin-left:auto}.language{padding:8px 12px;border:1px solid #a9bac0;border-radius:999px;color:var(--ink);text-decoration:none;background:#fff}.language.active{background:var(--ink);color:#fff}.fields{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}.field{display:grid;gap:6px}.field.full{grid-column:1/-1}.field label{font-weight:700}.field input{width:100%;padding:12px;border:1px solid #a9bac0;border-radius:10px;font:inherit}.choice{display:flex;align-items:center;gap:9px;margin-top:15px}.choice input{width:18px;height:18px}
+    @media(max-width:680px){.shell{margin-top:18px}.card{padding:19px}.check{grid-template-columns:24px 1fr}.detail{grid-column:2}.brand h1{font-size:20px}.brand{flex-wrap:wrap}.languages{width:100%;margin-left:0}.fields{grid-template-columns:1fr}.field.full{grid-column:auto}}
+  </style>
+</head>
+<body>
+<main class="shell">
+  <header class="brand"><div class="mark">HC</div><div><h1>Hotel Corali PMS</h1><p><?= htmlspecialchars(i18n('secure_guide'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?> <?= htmlspecialchars(CORALI_INSTALLER_RELEASE) ?></p></div><?= languagePicker() ?></header>
+
+  <?php if ($message !== ''): ?><div class="notice ok"><?= htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div><?php endif; ?>
+  <?php if ($error !== ''): ?><div class="notice bad"><?= htmlspecialchars($error, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div><?php endif; ?>
+
+  <section class="card">
+    <div class="step"><div class="num">1</div><div><h2><?= htmlspecialchars(i18n('system_check'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h2><p><?= htmlspecialchars(i18n('no_change_before_checks'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p></div></div>
+    <div class="checks">
+      <?php foreach ($checks as $check): ?>
+        <div class="check <?= $check['ok'] ? 'pass' : 'fail' ?>"><span class="icon"><?= $check['ok'] ? '✓' : '✕' ?></span><strong><?= htmlspecialchars($check['label'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></strong><span class="detail"><?= htmlspecialchars($check['detail'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></span></div>
+      <?php endforeach; ?>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="step"><div class="num">2</div><div><h2><?= htmlspecialchars(i18n('backup_install'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h2><p><?= htmlspecialchars(i18n('backup_install_help'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p></div></div>
+    <?php if ($installStatus['phase'] === 'ready' || $installStatus['phase'] === 'failed'): ?>
+      <?php if ($installStatus['phase'] === 'failed'): ?><div class="notice bad"><?= htmlspecialchars(sprintf(i18n('previous_failed'), (string) ((int) $installStatus['code'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div><?php endif; ?>
+      <form method="post" class="actions"><input type="hidden" name="csrf" value="<?= $safeCsrf ?>"><input type="hidden" name="language" value="<?= htmlspecialchars($language, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"><input type="hidden" name="action" value="start"><button class="btn" type="submit" <?= $ready ? '' : 'disabled' ?>><?= htmlspecialchars($installStatus['phase'] === 'failed' ? i18n('retry') : i18n('start'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></button></form>
+    <?php endif; ?>
+    <div id="progressPanel" <?= in_array($installStatus['phase'], ['running','complete','failed'], true) ? '' : 'hidden' ?>>
+      <div class="progress"><div id="bar" class="bar"></div></div><div id="phase" class="phase"></div>
+      <pre id="log" class="log"><?= htmlspecialchars((string) $installStatus['log'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></pre>
+    </div>
+  </section>
+
+  <section id="adminCard" class="card" <?= $installStatus['phase'] === 'complete' ? '' : 'hidden' ?>>
+    <div class="step"><div class="num">3</div><div><h2><?= htmlspecialchars(i18n('admin_access'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h2><p><?= htmlspecialchars(i18n('admin_help'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p></div></div>
+    <?php if ($adminRecovered): ?><div class="notice ok"><?= htmlspecialchars(i18n('admin_recovered'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div><?php endif; ?>
+    <form method="post" autocomplete="off"><input type="hidden" name="csrf" value="<?= $safeCsrf ?>"><input type="hidden" name="language" value="<?= htmlspecialchars($language, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"><input type="hidden" name="action" value="recover_admin">
+      <div class="fields">
+        <div class="field"><label for="admin_username"><?= htmlspecialchars(i18n('username'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></label><input id="admin_username" name="admin_username" pattern="[a-z0-9._-]{3,100}" autocomplete="username" required></div>
+        <div class="field"><label for="admin_display_name"><?= htmlspecialchars(i18n('display_name'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></label><input id="admin_display_name" name="admin_display_name" maxlength="150" autocomplete="name" required></div>
+        <div class="field full"><label for="admin_email"><?= htmlspecialchars(i18n('email'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></label><input id="admin_email" name="admin_email" type="email" maxlength="254" autocomplete="email" required></div>
+        <div class="field"><label for="admin_password"><?= htmlspecialchars(i18n('password'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></label><input id="admin_password" name="admin_password" type="password" minlength="14" maxlength="256" autocomplete="new-password" required></div>
+        <div class="field"><label for="admin_password_confirmation"><?= htmlspecialchars(i18n('confirm_password'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></label><input id="admin_password_confirmation" name="admin_password_confirmation" type="password" minlength="14" maxlength="256" autocomplete="new-password" required></div>
+      </div>
+      <label class="choice"><input type="checkbox" checked disabled><span><?= htmlspecialchars(i18n('reset_2fa'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></span></label>
+      <div class="actions"><button class="btn" type="submit"><?= htmlspecialchars(i18n('recover_admin'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></button></div>
+    </form>
+  </section>
+
+  <section id="finishCard" class="card" <?= $installStatus['phase'] === 'complete' ? '' : 'hidden' ?>>
+    <div class="step"><div class="num">4</div><div><h2><?= htmlspecialchars(i18n('final_check'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h2><p><?= htmlspecialchars(i18n('final_help'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p></div></div>
+    <div class="links"><a href="<?= CORALI_PMS_URL ?>/login" target="_blank" rel="noopener"><?= htmlspecialchars(i18n('check_pms'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></a><a href="<?= CORALI_BOOKING_URL ?>/book" target="_blank" rel="noopener"><?= htmlspecialchars(i18n('check_booking'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></a></div>
+    <form method="post" class="actions"><input type="hidden" name="csrf" value="<?= $safeCsrf ?>"><input type="hidden" name="language" value="<?= htmlspecialchars($language, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"><input type="hidden" name="action" value="finish"><button class="btn secondary" type="submit" <?= $adminRecovered ? '' : 'disabled' ?>><?= htmlspecialchars(i18n('delete_installer'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></button></form>
+  </section>
+  <p class="foot"><?= htmlspecialchars(i18n('secrets_hidden'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p>
+</main>
+<script>
+(() => {
+  const initial = <?= json_encode($installStatus['phase']) ?>;
+  const panel = document.getElementById('progressPanel');
+  const bar = document.getElementById('bar');
+  const phase = document.getElementById('phase');
+  const log = document.getElementById('log');
+  const finish = document.getElementById('finishCard');
+  const admin = document.getElementById('adminCard');
+  const labels = {ready:<?= json_encode(i18n('ready'), JSON_UNESCAPED_UNICODE) ?>,running:<?= json_encode(i18n('running'), JSON_UNESCAPED_UNICODE) ?>,complete:<?= json_encode(i18n('complete'), JSON_UNESCAPED_UNICODE) ?>,failed:<?= json_encode(i18n('failed'), JSON_UNESCAPED_UNICODE) ?>};
+  function render(data) {
+    panel.hidden = false;
+    phase.textContent = labels[data.phase] || data.phase;
+    log.textContent = data.log || '';
+    log.scrollTop = log.scrollHeight;
+    let percent = data.phase === 'complete' ? 100 : (data.phase === 'failed' ? 100 : 8);
+    const matches = [...(data.log || '').matchAll(/\[(\d)\/9\]/g)];
+    if (matches.length && data.phase === 'running') percent = Math.max(percent, Number(matches[matches.length - 1][1]) / 9 * 100);
+    bar.style.width = percent + '%';
+    if (data.phase === 'failed') bar.style.background = '#ad3527';
+    finish.hidden = data.phase !== 'complete';
+    admin.hidden = data.phase !== 'complete';
+  }
+  async function poll() {
+    try {
+      const response = await fetch('?action=status', {cache:'no-store', credentials:'same-origin'});
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const data = await response.json();
+      render(data);
+      if (data.phase === 'running') setTimeout(poll, 1400);
+      else if (initial === 'running') setTimeout(() => location.reload(), 1200);
+    } catch (error) {
+      phase.textContent = <?= json_encode(bilingual('Προσωρινό σφάλμα ενημέρωσης: ', 'Temporary status update error: '), JSON_UNESCAPED_UNICODE) ?> + error.message;
+      setTimeout(poll, 3000);
+    }
+  }
+  if (initial === 'running') poll(); else if (initial !== 'ready') render(<?= json_encode($installStatus, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>);
+})();
+</script>
+</body>
+</html>

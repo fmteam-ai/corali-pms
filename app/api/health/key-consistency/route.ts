@@ -1,0 +1,6 @@
+import { createHash } from "node:crypto";
+import { db } from "@/lib/db";
+import { env } from "@/lib/env";
+
+export const dynamic="force-dynamic";
+export async function GET(){const c=env();if(!c.PMS_DOCUMENT_KEY)return Response.json({ok:false,error:"KEY_NOT_CONFIGURED"},{status:503});const fingerprint=createHash("sha256").update(c.PMS_DOCUMENT_KEY).digest("hex");const now=Date.now();await db().query(`INSERT INTO app_key_fingerprints(owner_id,app_role,key_fingerprint,updated_at) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id,app_role) DO UPDATE SET key_fingerprint=$3,updated_at=$4`,[c.PMS_OWNER_ID,c.APP_ROLE,fingerprint,now]);const result=await db().query(`SELECT app_role,key_fingerprint,updated_at FROM app_key_fingerprints WHERE owner_id=$1 AND app_role IN ('pms','booking')`,[c.PMS_OWNER_ID]);const roles=new Map(result.rows.map(r=>[r.app_role,r]));const pms=roles.get("pms"),booking=roles.get("booking");const recent=(x:typeof pms)=>x&&now-Number(x.updated_at)<15*60_000;const agreement=Boolean(recent(pms)&&recent(booking)&&pms.key_fingerprint===booking.key_fingerprint);return Response.json({ok:agreement,agreement,apps:{pms:recent(pms)?"online":"missing_or_stale",booking:recent(booking)?"online":"missing_or_stale"}},{status:agreement?200:503})}

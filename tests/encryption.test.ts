@@ -1,0 +1,2 @@
+import test from "node:test";import assert from "node:assert/strict";import {decryptField,encryptField} from "../lib/security/encryption.ts";
+test("sensitive check-in fields use authenticated encryption",()=>{const secret="a".repeat(32),encrypted=encryptField("AB123456",secret);assert.notEqual(encrypted,"AB123456");assert.equal(decryptField(encrypted,secret),"AB123456");assert.throws(()=>decryptField(encrypted,"b".repeat(32)))});

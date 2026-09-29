@@ -1,0 +1,2 @@
+import{z}from"zod";import{env}from"@/lib/env";import{calculatePayment}from"@/lib/payment-policy";import{getPaymentPolicy}from"@/lib/payment-policy-db";
+const schema=z.object({checkIn:z.iso.date(),totalCents:z.number().int().min(0)});export async function POST(q:Request){try{const i=schema.parse(await q.json());return Response.json({ok:true,...calculatePayment(i.totalCents,i.checkIn,await getPaymentPolicy(env().PMS_OWNER_ID))})}catch(e){return Response.json({ok:false,error:e instanceof z.ZodError?"INVALID_INPUT":"CALCULATION_FAILED"},{status:400})}}
