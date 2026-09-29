@@ -204,3 +204,38 @@ p { line-height: 1.65; }
 .allergyBadge{display:inline-block;margin-top:4px;padding:2px 7px;border-radius:6px;background:#fff1d6;color:#8a5300;font-size:11px;font-weight:700}
 .crmEditor textarea{min-height:110px}
 .checkinCard h2{color:#2e7d32}
+/* housekeeping, mobile first */
+.hkRooms{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.hkRooms span{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border:1px solid #dce3e7;border-radius:999px;background:#fff;font-weight:700;font-size:13px}
+.hkRooms i{width:10px;height:10px;border-radius:50%}
+.hkFilters{flex-wrap:wrap;margin-bottom:6px}
+.hkCard header{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.hkCard header small{color:#60757a}
+.hkStatus{padding:5px 10px;border-radius:999px;font-size:12px;font-weight:700;background:#eef2f3;white-space:nowrap}
+.hkStatus.st-todo{background:#ffe4e1;color:#9c2d22}
+.hkStatus.st-in_progress{background:#fff3cd;color:#7a5a00}
+.hkStatus.st-cleaned,.hkStatus.st-repaired{background:#dceeff;color:#075a9c}
+.hkStatus.st-ready{background:#d9f7e7;color:#08734b}
+.hkStatus.st-out_of_order{background:#212121;color:#fff}
+.hkCard.st-out_of_order{border-color:#212121}
+.hkAssigned{color:#60757a;margin:6px 0}
+.hkChecklist{border:0;padding:6px 0;display:grid;gap:4px;max-height:none}
+.hkChecklist progress{width:100%;height:10px;margin-bottom:6px}
+.hkChecklist label{display:flex;gap:12px;align-items:center;min-height:44px;padding:4px 8px;border-radius:10px;border:1px solid #eef2f3;font-size:16px}
+.hkChecklist label.done{background:#eefaf1;border-color:#c9ebd2}
+.hkChecklist input{width:24px;height:24px}
+.hkForm{display:grid;gap:10px;margin-top:10px}
+.hkForm textarea{min-height:90px;font:inherit;padding:10px;border:1px solid #cad5df;border-radius:10px}
+.hkSevere{display:flex;gap:8px;align-items:center;font-weight:700;color:#b3261e}
+.hkActions button,.hkForm button{min-height:44px}
+@media(max-width:600px){.hkBoard{grid-template-columns:1fr}.hkBoard article{padding:14px;border-radius:14px}}
+.hkBoard .hkChecklist{max-height:none;overflow:visible}
+@media(max-width:600px){
+ .pageTitle{flex-wrap:wrap;gap:10px}
+ .pageTitle .secondaryLink{white-space:normal}
+ .pmsTopbar{gap:8px;padding:0 10px}
+ .pmsTopbar>div:first-child strong{font-size:13px}
+ .pmsTopActions{min-width:0;flex-wrap:nowrap}
+ .pmsTopbar .userMenu>a{display:none}
+ .langToggle button{padding:6px}
+}

@@ -53,7 +53,13 @@ async function handlePATCH(request: Request, context: { params: Promise<{ id: st
       let saved=result.rows[0];
       if(input.action==="move"&&(next.checkIn!==before.check_in||next.checkOut!==before.check_out)&&await moveNights(client,user.ownerId,id,next.checkIn,next.checkOut,String(user.id))){await recalcBooking(client,user.ownerId,id);saved=(await client.query("SELECT * FROM bookings WHERE owner_id=$1 AND id=$2",[user.ownerId,id])).rows[0];}
       await client.query(`INSERT INTO reservation_audit(owner_id,booking_id,actor_id,action,before_json,after_json,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)`,[user.ownerId,id,String(user.id),input.action,JSON.stringify(before),JSON.stringify(saved),now]);
-      if(input.action==="check_out" && next.roomId) await client.query(`INSERT INTO housekeeping_tasks(owner_id,room_id,task_type,status,assigned_to,due_at,checklist_json,inspection_status) VALUES($1,$2,'departure_clean','todo',(SELECT staff_user_id::text FROM housekeeping_staff_room_defaults WHERE owner_id=$1 AND room_id=$2 ORDER BY staff_user_id LIMIT 1),$3,'{}','pending')`,[user.ownerId,next.roomId,now]);
+      if(input.action==="check_out" && next.roomId){
+        // Departure: the room becomes dirty and is auto-assigned to its default housekeeper (manager-defined room blocks).
+        await client.query(`UPDATE rooms SET operational_status='dirty' WHERE owner_id=$1 AND id=$2 AND operational_status<>'out_of_order'`,[user.ownerId,next.roomId]);
+        await client.query(`INSERT INTO housekeeping_tasks(owner_id,room_id,task_type,status,assigned_to,due_at,checklist_json,inspection_status)
+          SELECT $1,$2,'departure_clean','todo',(SELECT staff_user_id::text FROM housekeeping_staff_room_defaults WHERE owner_id=$1 AND room_id=$2 ORDER BY staff_user_id LIMIT 1),$3,'{}','pending'
+           WHERE NOT EXISTS (SELECT 1 FROM housekeeping_tasks WHERE owner_id=$1 AND room_id=$2 AND status IN ('todo','in_progress','cleaned'))`,[user.ownerId,next.roomId,now]);
+      }
       return saved;
     });
     return Response.json({ok:true,booking:updated});

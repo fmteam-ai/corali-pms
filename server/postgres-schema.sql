@@ -922,3 +922,6 @@ CREATE INDEX IF NOT EXISTS idx_guest_checkins_owner_email ON guest_checkins(owne
 ALTER TABLE guest_preferences ADD COLUMN IF NOT EXISTS dietary TEXT NOT NULL DEFAULT '';
 ALTER TABLE guest_preferences ADD COLUMN IF NOT EXISTS allergies TEXT NOT NULL DEFAULT '';
 ALTER TABLE guest_preferences ADD COLUMN IF NOT EXISTS tags TEXT NOT NULL DEFAULT '';
+
+-- The specification forbids storing photos: clear any legacy housekeeping photo data.
+UPDATE housekeeping_tasks SET photo_data=NULL WHERE photo_data IS NOT NULL;
