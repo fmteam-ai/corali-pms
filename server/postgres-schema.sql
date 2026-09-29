@@ -930,3 +930,19 @@ UPDATE housekeeping_tasks SET photo_data=NULL WHERE photo_data IS NOT NULL;
 ALTER TABLE revenue_settings ADD COLUMN IF NOT EXISTS direct_discount_percent BIGINT NOT NULL DEFAULT 5;
 ALTER TABLE revenue_settings ADD COLUMN IF NOT EXISTS direct_discount_active BIGINT NOT NULL DEFAULT 1;
 CREATE INDEX IF NOT EXISTS idx_booking_sessions_coupon ON booking_sessions(owner_id,coupon_code) WHERE coupon_code IS NOT NULL;
+
+-- Saved payment method for automatic balance collection (Stripe off-session), and collection attempts.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_provider TEXT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_customer_ref TEXT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_method_ref TEXT;
+CREATE TABLE IF NOT EXISTS balance_collection_attempts (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ booking_id BIGINT NOT NULL,
+ amount_cents BIGINT NOT NULL,
+ status TEXT NOT NULL,
+ provider_reference TEXT,
+ error TEXT,
+ created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_balance_attempts_booking ON balance_collection_attempts(owner_id,booking_id,created_at DESC);

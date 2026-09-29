@@ -259,3 +259,4 @@ p { line-height: 1.65; }
 .stay .couponError{color:#ffb4a9}
 .stay .couponInfo{color:#ffe2a8}
 .stay .couponBox p button{background:#ffffff26;color:#fff}
+.balanceNote{padding:10px 12px;border-radius:10px;background:#eef6f8;color:#173e47;font-size:14px}
