@@ -146,6 +146,16 @@ cd /home/corali/apps/corali-pms && node --env-file=runtime.env scripts/run-birth
 
 Τα βασικά server secrets (`PMS_DOCUMENT_KEY`, session secret, database credentials) παραμένουν στα προστατευμένα `runtime.env` με mode 600. Τα κλειδιά παρόχων που εισάγονται από την οθόνη PMS αποθηκεύονται κρυπτογραφημένα στην PostgreSQL με το κοινό `PMS_DOCUMENT_KEY` των δύο εφαρμογών. Η παλιά παραμετροποίηση παρόχων μέσω `runtime.env` λειτουργεί ως εφεδρεία όταν δεν υπάρχει εγγραφή PMS. Τα κλειδιά δεν περιλαμβάνονται στο archive ή στο deployment manifest. Με `DATABASE_SSL=true` η επικύρωση πιστοποιητικού παραμένει ενεργή· για ιδιωτική CA ορίστε `DATABASE_SSL_CA=/absolute/path/ca.pem`.
 
+### Διαγραφή στοιχείων ταυτότητας (GDPR, cron)
+
+Ημερομηνία γέννησης και αριθμός διαβατηρίου/ταυτότητας από το online pre-check-in διαγράφονται οριστικά 3 χρόνια μετά την τελευταία αναχώρηση του επισκέπτη. Προσθέστε **σε ένα μόνο PMS instance** ημερήσιο cron (π.χ. 03:15):
+
+```bash
+cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-data-retention.mjs >> /home/corali/logs/corali-retention.log 2>&1
+```
+
+Κάθε εκτέλεση καταγράφεται στο «Ιστορικό ενεργειών» (retention.purge). Η ίδια διαγραφή εκτελείται επίσης από το ημερήσιο birthday cron.
+
 ### Αυτοματοποιημένα μηνύματα (cron)
 
 Μετά τη ρύθμιση των παρόχων και την ενεργοποίηση από PMS → Αυτόματα μηνύματα, προσθέστε **σε ένα μόνο PMS instance** cPanel cron ανά λεπτό:

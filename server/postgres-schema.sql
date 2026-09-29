@@ -913,3 +913,12 @@ CREATE TABLE IF NOT EXISTS booking_payers (
  updated_at BIGINT NOT NULL,
  PRIMARY KEY (owner_id, booking_id, payer_type)
 );
+
+-- Identity-data retention and personal birthday offers.
+ALTER TABLE guest_checkins ADD COLUMN IF NOT EXISTS identity_purged_at BIGINT;
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS restricted_email TEXT;
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS minimum_age BIGINT;
+CREATE INDEX IF NOT EXISTS idx_guest_checkins_owner_email ON guest_checkins(owner_id,lower(email));
+ALTER TABLE guest_preferences ADD COLUMN IF NOT EXISTS dietary TEXT NOT NULL DEFAULT '';
+ALTER TABLE guest_preferences ADD COLUMN IF NOT EXISTS allergies TEXT NOT NULL DEFAULT '';
+ALTER TABLE guest_preferences ADD COLUMN IF NOT EXISTS tags TEXT NOT NULL DEFAULT '';

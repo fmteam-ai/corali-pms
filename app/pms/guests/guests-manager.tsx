@@ -1,3 +1,40 @@
-"use client";import{useMemo,useState}from"react";
-type Guest={email:string;guest_name:string;guest_phone:string;guest_country:string;stays:number;lifetime_cents:number;last_stay:string;preferences:string};
-export function GuestsManager({initial}:{initial:Guest[]}){const[rows,setRows]=useState(initial),[q,setQ]=useState(""),[edit,setEdit]=useState<string|null>(null),[msg,setMsg]=useState("");const shown=useMemo(()=>rows.filter(x=>`${x.guest_name} ${x.email}`.toLowerCase().includes(q.toLowerCase())),[rows,q]);async function save(g:Guest,value:string){const r=await fetch("/api/pms/guests",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:g.email,preferences:value})});if(r.ok){setRows(a=>a.map(x=>x.email===g.email?{...x,preferences:value}:x));setEdit(null);setMsg("Οι προτιμήσεις αποθηκεύτηκαν.")}else setMsg("Η αποθήκευση απέτυχε.")}return <><div className="search"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Αναζήτηση ονόματος ή email…"/></div><p className="notice">{msg}</p><div className="tableWrap"><table><thead><tr><th>Πελάτης</th><th>Επικοινωνία</th><th>Διαμονές</th><th>Τελευταία</th><th>Αξία</th><th>Προτιμήσεις</th></tr></thead><tbody>{shown.map(g=><tr key={g.email}><td><strong>{g.guest_name}</strong><small>{g.guest_country||"—"}</small></td><td>{g.email}<small>{g.guest_phone||"—"}</small></td><td>{g.stays}</td><td>{g.last_stay}</td><td>€{(Number(g.lifetime_cents)/100).toFixed(2)}</td><td>{edit===g.email?<form action={f=>save(g,String(f.get("preferences")??""))} className="inlineEdit"><textarea name="preferences" defaultValue={g.preferences}/><button>Αποθήκευση</button></form>:<button onClick={()=>setEdit(g.email)}>{g.preferences||"Προσθήκη σημείωσης"}</button>}</td></tr>)}</tbody></table></div></>}
+"use client";
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { pmsLocale, pmsT, type PmsLang } from "@/lib/pms-i18n";
+import type { GuestSummary } from "@/lib/guest-crm";
+
+export function GuestsManager({ lang, initial, showValue }: { lang: PmsLang; initial: GuestSummary[]; showValue: boolean }) {
+  const t = pmsT(lang);
+  const [q, setQ] = useState("");
+  const money = (cents: number) => new Intl.NumberFormat(pmsLocale(lang), { style: "currency", currency: "EUR" }).format(Number(cents) / 100);
+  const shown = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    const digits = term.replace(/\D/g, "");
+    return initial.filter((x) => !term || `${x.guest_name} ${x.email} ${x.tags}`.toLowerCase().includes(term) || (digits.length >= 3 && x.guest_phone.replace(/\D/g, "").includes(digits)));
+  }, [initial, q]);
+  return (
+    <>
+      <div className="search"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("crm.search")} aria-label={t("crm.search")} /></div>
+      <div className="tableWrap">
+        <table>
+          <thead><tr><th>{t("crm.guest")}</th><th>{t("crm.contact")}</th><th>{t("crm.stays")}</th><th>{t("crm.nights")}</th><th>{t("crm.last")}</th><th>{t("crm.next")}</th>{showValue && <th>{t("crm.ltv")}</th>}<th>{t("crm.tags")}</th></tr></thead>
+          <tbody>
+            {shown.map((g) => (
+              <tr key={g.email}>
+                <td><Link href={`/pms/guests/profile?email=${encodeURIComponent(g.email)}`}><strong>{g.guest_name}</strong></Link><small>{g.guest_country || "—"}</small>{g.allergies && <span className="allergyBadge" title={g.allergies}>⚠ {t("crm.allergyBadge")}</span>}</td>
+                <td>{g.email}<small>{g.guest_phone || "—"}</small></td>
+                <td>{g.stays}</td>
+                <td>{g.nights}</td>
+                <td>{g.last_stay ?? "—"}</td>
+                <td>{g.next_stay ?? "—"}</td>
+                {showValue && <td>{money(g.lifetime_cents)}</td>}
+                <td>{g.tags ? g.tags.split(",").map((tag) => <span key={tag} className="tag">{tag.trim()}</span>) : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}

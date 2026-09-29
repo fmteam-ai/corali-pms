@@ -39,10 +39,8 @@ try {
     name_en=CASE WHEN category IN ('climate_resilience','climate_tax') OR name ILIKE '%κλιματ%' THEN 'Climate Crisis Resilience Fee' ELSE COALESCE(NULLIF(name_en,''),name) END,
     name_el=CASE WHEN category IN ('climate_resilience','climate_tax') OR name ILIKE '%climate%' THEN 'Τέλος ανθεκτικότητας στην κλιματική κρίση' ELSE COALESCE(NULLIF(name_el,''),name) END
     WHERE owner_id=$1`, [ownerId]);
-  const year=new Date().getUTCFullYear();
-  await pool.query(`INSERT INTO coupons(owner_id,code,discount_type,discount_value,applies_to,valid_from,valid_to,max_uses,usage_count,active,created_at,combinable,purpose)
-    VALUES($1,'BIRTHDAY10','percentage',10,'room_only',$2,$3,NULL,0,1,$4,0,'birthday')
-    ON CONFLICT(owner_id,code) DO UPDATE SET discount_value=10,applies_to='room_only',active=1,combinable=0,purpose='birthday'`,[ownerId,`${year}-01-01`,`${year+3}-12-31`,now]);
+  // Birthday offers are personal single-use codes issued by scripts/run-birthday-automation.mjs; the former shared code is retired.
+  await pool.query(`UPDATE coupons SET active=0 WHERE owner_id=$1 AND code='BIRTHDAY10' AND purpose='birthday'`,[ownerId]);
   await pool.query(
     `INSERT INTO rate_widget_settings (owner_id, active, position, updated_at)
      VALUES ($1, 1, 'right', $2)

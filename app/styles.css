@@ -200,3 +200,7 @@ p { line-height: 1.65; }
  body{background:#fff}
  article{break-inside:avoid;border:0!important}
 }
+.tag{display:inline-block;margin:2px 4px 2px 0;padding:3px 8px;border-radius:999px;background:#e7f1f4;color:#19769b;font-size:12px;font-weight:700}
+.allergyBadge{display:inline-block;margin-top:4px;padding:2px 7px;border-radius:6px;background:#fff1d6;color:#8a5300;font-size:11px;font-weight:700}
+.crmEditor textarea{min-height:110px}
+.checkinCard h2{color:#2e7d32}

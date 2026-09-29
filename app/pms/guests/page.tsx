@@ -1,4 +1,17 @@
-import {requireUser} from "@/lib/auth";
-import {db} from "@/lib/db";
-import {GuestsManager} from "./guests-manager";
-export default async function GuestsPage(){const u=await requireUser("reservations.read");const r=await db().query(`SELECT lower(b.guest_email) email,max(b.guest_name) guest_name,max(b.guest_phone) guest_phone,max(b.guest_country) guest_country,count(*)::int stays,COALESCE(sum(b.total_cents),0)::bigint lifetime_cents,max(b.check_out) last_stay,COALESCE(p.preferences,'') preferences FROM bookings b LEFT JOIN guest_preferences p ON p.owner_id=b.owner_id AND p.email=lower(b.guest_email) WHERE b.owner_id=$1 AND b.guest_email IS NOT NULL AND b.guest_email<>'' GROUP BY lower(b.guest_email),p.preferences ORDER BY max(b.check_out) DESC`,[u.ownerId]);return <section><div className="pageTitle"><div><h1>Προφίλ πελατών</h1><p>Ιστορικό διαμονών, αξία και προτιμήσεις επισκέπτη</p></div><strong>{r.rowCount} προφίλ</strong></div><GuestsManager initial={r.rows}/></section>}
+import { requireUser } from "@/lib/auth";
+import { listGuestProfiles } from "@/lib/guest-crm";
+import { getPmsT } from "@/lib/pms-lang";
+import { can } from "@/lib/security/permissions";
+import { GuestsManager } from "./guests-manager";
+
+export default async function GuestsPage() {
+  const u = await requireUser("reservations.read");
+  const { lang, t } = await getPmsT();
+  const rows = await listGuestProfiles(u.ownerId);
+  return (
+    <section>
+      <div className="pageTitle"><div><h1>{t("crm.title")}</h1><p>{t("crm.subtitle")}</p></div><strong>{t("crm.count", { n: rows.length })}</strong></div>
+      <GuestsManager lang={lang} initial={rows} showValue={can(u.role, "folios.read", u.permissions)} />
+    </section>
+  );
+}
