@@ -1228,3 +1228,7 @@ CREATE TABLE IF NOT EXISTS competitor_rates (
  captured_at BIGINT NOT NULL,
  PRIMARY KEY(owner_id,competitor_id,stay_date)
 );
+
+-- v48: DM-to-booking drafts with live availability (reviewed and sent by reception)
+ALTER TABLE social_messages ADD COLUMN IF NOT EXISTS suggested_reply TEXT;
+ALTER TABLE social_messages ADD COLUMN IF NOT EXISTS stay_request_json TEXT;

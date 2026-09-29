@@ -422,3 +422,10 @@ table.numeric tr.selected td{background:#fff8e6}
 .competitorForm input,.competitorForm select{box-sizing:border-box;width:100%;font-weight:400}
 .revenuePage .card{max-width:none;width:100%;box-sizing:border-box;min-width:0}
 .revenuePage .card{padding:24px}
+.dmStay{display:block;color:#1e6b34;font-weight:700;margin:4px 0}
+.upsellList{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:8px}
+.upsellList li{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #ded8ce;border-radius:12px;padding:10px}
+.upsellList li div{display:grid;gap:2px}
+.upsellList button{border:0;border-radius:10px;padding:10px 12px;background:#173e47;color:#fff;font-weight:700;white-space:nowrap}
+.upsellList button:disabled{background:#2e7d32}
+.dmReply textarea{width:100%;min-height:150px;box-sizing:border-box;font-size:15px}

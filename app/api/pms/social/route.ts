@@ -7,13 +7,15 @@ import { can } from "@/lib/security/permissions";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 import { canApprove, postTransition, socialChannels } from "@/lib/social";
 import { socialState } from "@/lib/social-state";
+import { draftDmReply } from "@/lib/dm-reply-db";
 
 const post = z.object({ caption: z.string().trim().min(1).max(2200), imageUrl: z.union([z.literal(""), z.url()]), linkUrl: z.union([z.literal(""), z.url()]), channels: z.array(z.enum(socialChannels)).min(1), scheduledAt: z.number().int().positive() });
 const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create"), ...post.shape }),
   z.object({ action: z.literal("edit"), id: z.number().int().positive(), ...post.shape }),
   z.object({ action: z.enum(["submit", "approve", "reject", "withdraw"]), id: z.number().int().positive() }),
-  z.object({ action: z.literal("reply"), platform: z.enum(["facebook", "instagram"]), senderId: z.string().min(1).max(100), text: z.string().trim().min(1).max(1000) }),
+  z.object({ action: z.literal("suggest"), messageId: z.number().int().positive() }),
+  z.object({ action: z.literal("reply"), platform: z.enum(["facebook", "instagram", "tiktok"]), senderId: z.string().min(1).max(100), text: z.string().trim().min(1).max(1000) }),
 ]);
 
 export async function GET() {
@@ -29,7 +31,19 @@ async function handlePOST(request: Request) {
     assertTrustedOrigin(request);
     const x = input.parse(await request.json());
     const now = Date.now();
-    if (x.action === "reply") {
+    if (x.action === "suggest") {
+      // Re-draft with availability as of now (the draft is only shown to staff).
+      if (!can(u.role, "reservations.write", u.permissions)) return forbidden(u, "reservations.write", "social.reply");
+      const m = (await db().query(`SELECT id,platform,body FROM social_messages WHERE owner_id=$1 AND id=$2 AND direction='in'`, [u.ownerId, x.messageId])).rows[0];
+      if (!m) return Response.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+      const draft = await draftDmReply(u.ownerId, m.body, m.platform);
+      await db().query(`UPDATE social_messages SET suggested_reply=$1,stay_request_json=$2 WHERE id=$3`, [draft.reply, draft.request ? JSON.stringify(draft.request) : null, m.id]);
+    } else if (x.action === "reply" && x.platform === "tiktok") {
+      // TikTok replies are approved here and sent by staff from TikTok Business Center / the app.
+      if (!can(u.role, "reservations.write", u.permissions)) return forbidden(u, "reservations.write", "social.reply");
+      await db().query(`INSERT INTO social_messages(owner_id,platform,sender_id,direction,body,status,sent_by,created_at) VALUES($1,'tiktok',$2,'out',$3,'approved_manual',$4,$5)`, [u.ownerId, x.senderId, x.text, u.id, now]);
+      await db().query(`UPDATE social_messages SET status='answered' WHERE owner_id=$1 AND platform='tiktok' AND sender_id=$2 AND direction='in' AND status='new'`, [u.ownerId, x.senderId]);
+    } else if (x.action === "reply") {
       // Staff-approved reply within Meta's 24-hour messaging window; never sent automatically.
       if (!can(u.role, "reservations.write", u.permissions)) return forbidden(u, "reservations.write", "social.reply");
       const meta = await providerCredentials(u.ownerId, "meta");

@@ -10,6 +10,10 @@ const nextConfig: NextConfig = {
       allowedOrigins: ["pms.hotelcorali.gr", "booking.hotelcorali.gr"],
     },
   },
+  // Uptime monitors can use /healthz (same checks as /api/health).
+  async rewrites() {
+    return [{ source: "/healthz", destination: "/api/health" }];
+  },
   async headers() {
     return [
       {

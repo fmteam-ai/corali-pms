@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { suggestedReply } from "@/lib/social-reply";
 
 type Post = { id: number; channels: string; caption: string; image_url: string; link_url: string; scheduled_at: number; status: string; created_by: number; author: string | null; approver: string | null; results_json: string };
-type Message = { id: number; platform: string; sender_id: string; direction: string; body: string; status: string; created_at: number };
+type Message = { id: number; platform: string; sender_id: string; direction: string; body: string; status: string; created_at: number; suggested_reply?: string | null; stay_request_json?: string | null };
 type State = { posts: Post[]; messages: Message[]; bookingUrl: string };
 
 const statusLabel: Record<string, string> = { draft: "Πρόχειρο", pending_approval: "Αναμονή έγκρισης", approved: "Εγκρίθηκε · προγραμματισμένο", published: "Δημοσιεύτηκε", partially_published: "Μερική δημοσίευση", failed: "Αποτυχία", rejected: "Απορρίφθηκε" };
@@ -44,19 +44,26 @@ export function SocialManager({ initial, userId, canPost, canReply }: { initial:
       <div className="detailGrid">
         <article className="wide">
           <h2>Μηνύματα (DM → κράτηση)</h2>
-          {threads.length === 0 && <p>Δεν υπάρχουν μηνύματα τις τελευταίες 30 ημέρες. Ρυθμίστε το Meta webhook: <code>/api/webhooks/meta</code> στο Booking.</p>}
+          {threads.length === 0 && <p>Δεν υπάρχουν μηνύματα τις τελευταίες 30 ημέρες. Ρυθμίστε τα webhooks <code>/api/webhooks/meta</code> και <code>/api/webhooks/tiktok</code> στο Booking.</p>}
           {threads.map(([key, list]) => {
             const lastIn = [...list].reverse().find((m) => m.direction === "in");
-            const draft = drafts[key] ?? (lastIn ? suggestedReply(lastIn.body, state.bookingUrl, list[0].platform) : "");
-            const open = now > 0 && now - Number(lastIn?.created_at ?? 0) < 24 * 3_600_000;
+            const draft = drafts[key] ?? (lastIn ? lastIn.suggested_reply || suggestedReply(lastIn.body, state.bookingUrl, list[0].platform) : "");
+            const tiktok = list[0].platform === "tiktok";
+            const open = tiktok || (now > 0 && now - Number(lastIn?.created_at ?? 0) < 24 * 3_600_000);
+            let stay: { checkIn: string; checkOut: string; adults: number; children: number } | null = null;
+            try { stay = lastIn?.stay_request_json ? JSON.parse(lastIn.stay_request_json) : null; } catch { stay = null; }
             return (
               <div className="dmThread" key={key}>
-                <b>{list[0].platform === "instagram" ? "Instagram" : "Facebook"} · {list[0].sender_id}</b>
+                <b>{list[0].platform === "instagram" ? "Instagram" : tiktok ? "TikTok" : "Facebook"} · {list[0].sender_id}</b>
+                {stay && <small className="dmStay">📅 {stay.checkIn} → {stay.checkOut} · {stay.adults}+{stay.children} · πρόταση με ζωντανή διαθεσιμότητα</small>}
                 {list.slice(-6).map((m) => <p key={m.id} className={m.direction === "in" ? "dmIn" : "dmOut"}>{m.body}<small>{new Date(Number(m.created_at)).toLocaleString("el-GR")}</small></p>)}
                 {canReply && lastIn && (
                   <div className="dmReply">
                     <textarea value={draft} maxLength={1000} onChange={(e) => setDrafts((d) => ({ ...d, [key]: e.target.value }))} />
-                    <button type="button" disabled={!open || !draft.trim()} onClick={async () => { if (await send({ action: "reply", platform: list[0].platform, senderId: list[0].sender_id, text: draft }, "Το μήνυμα στάλθηκε.")) setDrafts((d) => ({ ...d, [key]: "" })); }}>Αποστολή (έγκριση)</button>
+                    <div className="actions">
+                      <button type="button" disabled={!open || !draft.trim()} onClick={async () => { if (tiktok) await navigator.clipboard?.writeText(draft).catch(() => undefined); if (await send({ action: "reply", platform: list[0].platform, senderId: list[0].sender_id, text: draft }, tiktok ? "Εγκρίθηκε και αντιγράφηκε· στείλτε το από το TikTok Business Center." : "Το μήνυμα στάλθηκε.")) setDrafts((d) => ({ ...d, [key]: "" })); }}>{tiktok ? "Έγκριση & αντιγραφή (αποστολή στο TikTok)" : "Αποστολή (έγκριση)"}</button>
+                      <button type="button" className="secondaryButton" onClick={async () => { if (lastIn && await send({ action: "suggest", messageId: lastIn.id }, "Η πρόταση ενημερώθηκε με τη διαθεσιμότητα τώρα.")) setDrafts((d) => { const n = { ...d }; delete n[key]; return n; }); }}>↻ Ζωντανή διαθεσιμότητα</button>
+                    </div>
                     {!open && <small>Έληξε το 24ωρο παράθυρο απάντησης του Meta.</small>}
                   </div>
                 )}

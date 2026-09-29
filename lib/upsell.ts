@@ -1,8 +1,10 @@
 // Rule-based upsell recommendations (pure; unit tested). Breakfast is never recommended (it is part of the default offer).
+// With CRM stay history, extras the guest bought on earlier stays rank first.
 
 export type UpsellContext = { adults: number; children: number; nights: number; checkIn: string; bookingDate: string };
 export type UpsellExtra = { id: number; code: string; name: string; description?: string; pricing_mode?: string };
-export type UpsellReason = "family" | "couple" | "long_stay" | "arrival" | "last_minute" | "summer" | "group";
+export type UpsellReason = "family" | "couple" | "long_stay" | "arrival" | "last_minute" | "summer" | "group" | "history";
+export type UpsellHistory = { purchasedIds: number[]; stays: number };
 
 const has = (extra: UpsellExtra, words: string[]) => {
   const text = `${extra.code} ${extra.name} ${extra.description ?? ""}`.toLowerCase();
@@ -18,7 +20,7 @@ function daysBetween(from: string, to: string) {
 }
 
 /** Up to `limit` extras with a reason, best first. */
-export function recommendExtras(extras: UpsellExtra[], ctx: UpsellContext, limit = 3): { id: number; reason: UpsellReason; score: number }[] {
+export function recommendExtras(extras: UpsellExtra[], ctx: UpsellContext, limit = 3, history?: UpsellHistory): { id: number; reason: UpsellReason; score: number }[] {
   const lead = daysBetween(ctx.bookingDate, ctx.checkIn);
   const month = Number(ctx.checkIn.slice(5, 7));
   const scored = extras.filter((e) => !isBreakfast(e)).map((e) => {
@@ -32,6 +34,7 @@ export function recommendExtras(extras: UpsellExtra[], ctx: UpsellContext, limit
     if (lead <= 7 && has(e, ["late check", "early check", "αργή αναχώρ", "πρώιμη άφιξ"])) bump(3, "last_minute");
     if (month >= 6 && month <= 9 && has(e, ["beach", "παραλί", "umbrella", "ομπρέλ", "snorkel", "sup", "kayak", "boat", "σκάφ"])) bump(2, "summer");
     if (ctx.adults + ctx.children >= 4 && has(e, ["transfer", "μεταφορ", "car", "αυτοκίν", "van"])) bump(2, "group");
+    if (history?.purchasedIds.includes(e.id)) bump(7, "history");
     return { id: e.id, reason, score };
   });
   return scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score || a.id - b.id).slice(0, limit);
