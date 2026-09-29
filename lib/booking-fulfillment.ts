@@ -5,6 +5,13 @@ import { splitCents } from "@/lib/stripe-fulfillment";
 
 type Queryable = Pick<PoolClient, "query">;
 
+export type BookingSessionRow = {
+  id: number; room_allocations: string; total_cents: number; check_in: string; check_out: string;
+  guest_first_name: string; guest_last_name: string; guest_email: string; guest_phone: string; country: string; language: string;
+  rate_policy: string; guests: number; children: number; special_requests: string; whatsapp_opt_in: number | null; email_marketing_opt_in: number | null;
+  coupon_code: string | null; room_subtotal_cents: number; extras_cents: number; charge_breakdown: string;
+};
+
 export type ConfirmedPayment = {
   provider: "stripe" | "viva";
   reference: string;
@@ -17,7 +24,7 @@ export type ConfirmedPayment = {
  * Turn a locked, verified booking session into confirmed reservations (one per room) with an itemised folio.
  * Payment-provider neutral: the caller verifies the provider's payment and holds the session row lock.
  */
-export async function fulfillBookingSession(client: Queryable, ownerId: string, source: Record<string, any>, payment: ConfirmedPayment): Promise<number> {
+export async function fulfillBookingSession(client: Queryable, ownerId: string, source: BookingSessionRow, payment: ConfirmedPayment): Promise<number> {
   const roomIds = JSON.parse(source.room_allocations) as number[];
   for (const roomId of [...roomIds].sort((a, b) => a - b)) await client.query("SELECT pg_advisory_xact_lock($1)", [roomId]);
   const charges = splitCents(Number(source.total_cents), roomIds.length);
@@ -34,7 +41,7 @@ export async function fulfillBookingSession(client: Queryable, ownerId: string, 
     );
     const bookingId = Number(b.rows[0].id);
     firstBooking ??= bookingId;
-    await postOnlineFolio(client, ownerId, bookingId, source as never, index, roomIds.length, charges[index], payments[index], `${payment.reference}#${index + 1}`);
+    await postOnlineFolio(client, ownerId, bookingId, source, index, roomIds.length, charges[index], payments[index], `${payment.reference}#${index + 1}`);
   }
   await client.query(`INSERT INTO payment_transactions(owner_id,booking_id,provider,provider_reference,status,amount_cents,currency,created_at) VALUES($1,$2,$3,$4,'succeeded',$5,'EUR',$6) ON CONFLICT(provider,provider_reference) DO NOTHING`, [ownerId, firstBooking, payment.provider, payment.reference, payment.amountCents, Date.now()]);
   await pushNotification(client, ownerId, { kind: "direct_booking", titleEl: `Νέα απευθείας κράτηση: ${source.guest_first_name} ${source.guest_last_name} · ${source.check_in} → ${source.check_out}`, titleEn: `New direct booking: ${source.guest_first_name} ${source.guest_last_name} · ${source.check_in} → ${source.check_out}`, link: `/pms/reservations/${firstBooking}` });
