@@ -164,6 +164,16 @@ cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/
 cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-mydata-queue.mjs >> /home/corali/logs/corali-mydata.log 2>&1
 ```
 
+### Channel Manager (Booking.com, Expedia, Airbnb)
+
+Ο συγχρονισμός γίνεται μέσω Channex (λογαριασμός και σύνδεση των OTA εκεί). Στο PMS → Συνδέσεις → Channel Manager συμπληρώστε property id, environment (production ή staging) και API key, και αντιστοιχίστε κάθε τύπο δωματίου με το room type id του Channex. Cron ανά 5 λεπτά, **σε ένα μόνο PMS instance**:
+
+```bash
+cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-channel-sync.mjs >> /home/corali/logs/corali-channels.log 2>&1
+```
+
+Μετά την πρώτη ρύθμιση πατήστε «Πλήρης συγχρονισμός διαθεσιμότητας». Αν χρησιμοποιείτε άλλον Channel Manager, αλλάζει μόνο ο adapter (scripts/run-channel-sync.mjs).
+
 ### Διαγραφή στοιχείων ταυτότητας (GDPR, cron)
 
 Ημερομηνία γέννησης και αριθμός διαβατηρίου/ταυτότητας από το online pre-check-in διαγράφονται οριστικά 3 χρόνια μετά την τελευταία αναχώρηση του επισκέπτη. Προσθέστε **σε ένα μόνο PMS instance** ημερήσιο cron (π.χ. 03:15):

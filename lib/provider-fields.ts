@@ -7,7 +7,7 @@ export const providerFields = {
   mydata: { label: "ΑΑΔΕ / myDATA", settings: ["environment", "issuerVat", "branch", "receiptSeries", "invoiceSeries", "accommodationVatCategory", "extrasVatCategory", "climateTaxCategory"], secrets: ["username", "subscriptionKey", "providerToken"] },
   meta: { label: "Facebook / Instagram", settings: ["appId", "pageId"], secrets: ["appSecret", "pageAccessToken"] },
   tiktok: { label: "TikTok", settings: ["clientKey"], secrets: ["clientSecret", "accessToken"] },
-  channelManager: { label: "Channel Manager", settings: ["propertyCode", "providerName"], secrets: ["apiKey"] },
+  channelManager: { label: "Channel Manager (Channex)", settings: ["propertyCode", "providerName", "environment"], secrets: ["apiKey"] },
   openai: { label: "OpenAI", settings: [], secrets: ["apiKey"] },
 } as const;
 export type ProviderKey = keyof typeof providerFields;

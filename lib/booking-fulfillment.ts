@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { postOnlineFolio } from "@/lib/folio-db";
 import { pushNotification } from "@/lib/pms-notifications";
 import { splitCents } from "@/lib/stripe-fulfillment";
+import { enqueueAvailability } from "@/lib/channel-sync";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -46,6 +47,7 @@ export async function fulfillBookingSession(client: Queryable, ownerId: string, 
   await client.query(`INSERT INTO payment_transactions(owner_id,booking_id,provider,provider_reference,status,amount_cents,currency,created_at) VALUES($1,$2,$3,$4,'succeeded',$5,'EUR',$6) ON CONFLICT(provider,provider_reference) DO NOTHING`, [ownerId, firstBooking, payment.provider, payment.reference, payment.amountCents, Date.now()]);
   await pushNotification(client, ownerId, { kind: "direct_booking", titleEl: `Νέα απευθείας κράτηση: ${source.guest_first_name} ${source.guest_last_name} · ${source.check_in} → ${source.check_out}`, titleEn: `New direct booking: ${source.guest_first_name} ${source.guest_last_name} · ${source.check_in} → ${source.check_out}`, link: `/pms/reservations/${firstBooking}` });
   if (source.coupon_code) await client.query(`UPDATE coupons SET usage_count=usage_count+1 WHERE owner_id=$1 AND upper(code)=upper($2)`, [ownerId, source.coupon_code]);
+  await enqueueAvailability(client, ownerId, source.check_in, source.check_out, "direct_booking");
   await client.query(`UPDATE booking_sessions SET status='completed',updated_at=$1 WHERE id=$2`, [Date.now(), source.id]);
   return firstBooking!;
 }

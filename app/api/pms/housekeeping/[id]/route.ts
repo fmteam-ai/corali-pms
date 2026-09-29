@@ -4,6 +4,8 @@ import { requireApiUser } from "@/lib/auth";
 import { withTransaction } from "@/lib/db";
 import { nextHousekeepingStatus, roomStatusAfter, validChecklist, validHousekeepingTransition } from "@/lib/housekeeping";
 import { pushNotification } from "@/lib/pms-notifications";
+import { enqueueAvailability } from "@/lib/channel-sync";
+import { addDays, hotelToday } from "@/lib/tape-chart";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 
 const schema = z.object({
@@ -49,6 +51,7 @@ async function handlePATCH(q: Request, { params }: { params: Promise<{ id: strin
       );
       const roomStatus = roomStatusAfter(r.status, x.action, x.severe === true);
       if (roomStatus) await c.query(`UPDATE rooms SET operational_status=$1 WHERE owner_id=$2 AND id=$3`, [roomStatus, u.ownerId, r.room_id]);
+      if (roomStatus === "out_of_order" || (x.action === "approve" && r.status === "repaired")) { const today = hotelToday(); await enqueueAvailability(c, u.ownerId, today, addDays(today, 180), "room_status"); }
       const code = String((await c.query(`SELECT code FROM rooms WHERE owner_id=$1 AND id=$2`, [u.ownerId, r.room_id])).rows[0]?.code ?? r.room_id);
       if (x.action === "report_issue") {
         await pushNotification(c, u.ownerId, { kind: "housekeeping", titleEl: `${x.severe ? "Σοβαρή βλάβη · εκτός λειτουργίας" : "Βλάβη"} · δωμάτιο ${code}: ${x.notes}`, titleEn: `${x.severe ? "Severe damage · out of order" : "Damage"} · room ${code}: ${x.notes}`, link: "/pms/housekeeping" });

@@ -4,6 +4,7 @@ import { requireApiUser } from "@/lib/auth";
 import { withTransaction } from "@/lib/db";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 import { listReservations } from "@/lib/reservations";
+import { enqueueAvailability } from "@/lib/channel-sync";
 
 const createSchema = z.object({
   guestName: z.string().trim().min(2).max(160), guestEmail: z.string().email().nullable().optional(),
@@ -40,6 +41,7 @@ async function handlePOST(request: Request) {
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'confirmed',$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
         [user.ownerId,reference,input.guestName,input.guestEmail??null,input.guestPhone,input.guestCountry,input.guestLanguage,input.roomId,input.checkIn,input.checkOut,input.channel,input.totalCents,input.balanceCents,input.adults,input.children,input.specialRequests,now,input.whatsappOptIn?1:0,input.emailMarketingOptIn?1:0]);
       await client.query(`INSERT INTO reservation_audit (owner_id,booking_id,actor_id,action,before_json,after_json,created_at) VALUES ($1,$2,$3,'created','{}',$4,$5)`, [user.ownerId,inserted.rows[0].id,String(user.id),JSON.stringify(inserted.rows[0]),now]);
+      await enqueueAvailability(client,user.ownerId,input.checkIn,input.checkOut,'manual_booking');
       return inserted.rows[0];
     });
     return Response.json({ ok:true, booking }, { status:201 });

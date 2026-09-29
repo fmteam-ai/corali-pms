@@ -984,3 +984,39 @@ CREATE TABLE IF NOT EXISTS fiscal_documents (
 );
 CREATE INDEX IF NOT EXISTS idx_fiscal_documents_booking ON fiscal_documents(owner_id,booking_id);
 CREATE INDEX IF NOT EXISTS idx_fiscal_documents_queue ON fiscal_documents(owner_id,status,next_attempt_at);
+
+-- Channel manager: room type mapping, availability outbox and OTA reservation import.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS external_reservation_id TEXT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS external_channel TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_external ON bookings(owner_id,external_channel,external_reservation_id,room_id) WHERE external_reservation_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS channel_room_mappings (
+ owner_id TEXT NOT NULL,
+ room_type TEXT NOT NULL,
+ external_room_type_id TEXT NOT NULL,
+ updated_at BIGINT NOT NULL,
+ PRIMARY KEY (owner_id, room_type)
+);
+CREATE TABLE IF NOT EXISTS channel_sync_outbox (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ date_from TEXT NOT NULL,
+ date_to TEXT NOT NULL,
+ reason TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL DEFAULT 'pending',
+ attempts BIGINT NOT NULL DEFAULT 0,
+ last_error TEXT,
+ next_attempt_at BIGINT NOT NULL DEFAULT 0,
+ created_at BIGINT NOT NULL,
+ updated_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_channel_outbox_due ON channel_sync_outbox(owner_id,status,next_attempt_at);
+CREATE TABLE IF NOT EXISTS channel_import_log (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ revision_id TEXT NOT NULL,
+ status TEXT NOT NULL,
+ booking_ids TEXT NOT NULL DEFAULT '[]',
+ error TEXT,
+ created_at BIGINT NOT NULL,
+ UNIQUE (owner_id, revision_id)
+);

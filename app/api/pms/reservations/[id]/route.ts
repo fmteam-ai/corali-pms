@@ -5,6 +5,7 @@ import { can } from "@/lib/security/permissions";
 import { withTransaction } from "@/lib/db";
 import { getReservation } from "@/lib/reservations";
 import { moveNights, recalcBooking } from "@/lib/folio-db";
+import { enqueueAvailability } from "@/lib/channel-sync";
 import { validReservationTransition } from "@/lib/reservation-transition";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 import { z } from "zod";
@@ -52,6 +53,7 @@ async function handlePATCH(request: Request, context: { params: Promise<{ id: st
       if(!result.rowCount) throw new Error("VERSION_CONFLICT");
       let saved=result.rows[0];
       if(input.action==="move"&&(next.checkIn!==before.check_in||next.checkOut!==before.check_out)&&await moveNights(client,user.ownerId,id,next.checkIn,next.checkOut,String(user.id))){await recalcBooking(client,user.ownerId,id);saved=(await client.query("SELECT * FROM bookings WHERE owner_id=$1 AND id=$2",[user.ownerId,id])).rows[0];}
+      if(['move','cancel','no_show','confirm'].includes(input.action)){await enqueueAvailability(client,user.ownerId,String(before.check_in),String(before.check_out),input.action);if(input.action==='move')await enqueueAvailability(client,user.ownerId,next.checkIn,next.checkOut,'move');}
       await client.query(`INSERT INTO reservation_audit(owner_id,booking_id,actor_id,action,before_json,after_json,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)`,[user.ownerId,id,String(user.id),input.action,JSON.stringify(before),JSON.stringify(saved),now]);
       if(input.action==="check_out" && next.roomId){
         // Departure: the room becomes dirty and is auto-assigned to its default housekeeper (manager-defined room blocks).
