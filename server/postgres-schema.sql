@@ -855,3 +855,16 @@ CREATE TABLE IF NOT EXISTS automation_access_tokens (
 ALTER TABLE message_automation_settings ADD COLUMN IF NOT EXISTS events_json TEXT NOT NULL DEFAULT '{"confirmation":true,"checkin":true,"balance":true,"review":false}';
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS email_marketing_opt_in BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE booking_sessions ADD COLUMN IF NOT EXISTS email_marketing_opt_in BIGINT NOT NULL DEFAULT 0;
+
+-- Staff notifications (direct bookings, OTA changes, housekeeping alerts). Guest messages and arrivals are derived at read time.
+CREATE TABLE IF NOT EXISTS pms_notifications (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ kind TEXT NOT NULL,
+ title_el TEXT NOT NULL,
+ title_en TEXT NOT NULL,
+ link TEXT NOT NULL DEFAULT '/pms',
+ created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pms_notifications_owner_created ON pms_notifications(owner_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bookings_owner_phone ON bookings(owner_id,guest_phone);

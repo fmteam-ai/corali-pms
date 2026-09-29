@@ -2,7 +2,7 @@
 import {useEffect} from "react";
 import {useRouter} from "next/navigation";
 
-export function DashboardRefresh(){
+export function DashboardRefresh({label,button}:{label:string;button:string}){
  const router=useRouter();
  useEffect(()=>{
   const refresh=()=>{if(document.visibilityState==="visible")router.refresh()};
@@ -10,5 +10,5 @@ export function DashboardRefresh(){
   document.addEventListener("visibilitychange",refresh);
   return()=>{window.clearInterval(interval);document.removeEventListener("visibilitychange",refresh)};
  },[router]);
- return <p className="dashboardRefresh">Η εικόνα ανανεώνεται αυτόματα κάθε λεπτό. <button type="button" onClick={()=>router.refresh()}>Ανανέωση τώρα</button></p>;
+ return <p className="dashboardRefresh">{label} <button type="button" onClick={()=>router.refresh()}>{button}</button></p>;
 }

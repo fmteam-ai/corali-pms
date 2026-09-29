@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { can } from "@/lib/security/permissions";
 import { addDays, heldRoomIds, hotelToday, isIsoDate } from "@/lib/tape-chart";
+import { getPmsT } from "@/lib/pms-lang";
 import { RoomGrid } from "./grid";
 
 const DAYS = 31;
@@ -10,6 +11,7 @@ const DAYS = 31;
 export default async function RoomsPage({ searchParams }: { searchParams: Promise<{ start?: string; cancelled?: string }> }) {
   const user = await requireUser("rooms.read");
   const params = await searchParams;
+  const { lang, t } = await getPmsT();
   const today = hotelToday();
   const start = isIsoDate(params.start) ? params.start : addDays(today, -2);
   const end = addDays(start, DAYS);
@@ -43,13 +45,14 @@ export default async function RoomsPage({ searchParams }: { searchParams: Promis
     <section>
       <div className="pageTitle">
         <div>
-          <h1>Πλάνο δωματίων</h1>
-          <p>Σύρετε μια κράτηση σε άλλο δωμάτιο ή ημερομηνία· κάθε αλλαγή ελέγχεται για overbooking. Διπλό κλικ σε κενό κελί ανοίγει νέα κράτηση.</p>
+          <h1>{t("tape.title")}</h1>
+          <p>{t("tape.subtitle")}</p>
         </div>
-        <Link className="secondaryLink" href="/pms/rooms/catalog">Κατηγορίες & χαρακτηριστικά</Link>
+        <Link className="secondaryLink" href="/pms/rooms/catalog">{t("tape.catalog")}</Link>
       </div>
       <RoomGrid
         key={`${start}-${showCancelled}`}
+        lang={lang}
         start={start}
         today={today}
         days={DAYS}

@@ -1,44 +1,25 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 import { addDays, barSpan, hasUnpaidBalance, housekeepingColors, housekeepingState, nightsBetween, tapeStatus, tapeStatusColors, type HousekeepingState, type TapeStatus } from "@/lib/tape-chart";
 
 type Room = { id: number; code: string; room_type: string; capacity: number; operational_status: string; open_task_status: string | null };
 type Booking = { id: number; reference: string; guest_name: string; room_id: number; check_in: string; check_out: string; status: string; balance_cents: number; total_cents: number; adults: number; children: number; channel: string; version: number };
 type Hold = { id: number; roomId: number; guestName: string; checkIn: string; checkOut: string };
 
-const statusLabels: Record<TapeStatus, string> = {
-  confirmed: "Επιβεβαιωμένη",
-  check_in_due: "Άφιξη σήμερα / εκκρεμεί check-in",
-  checked_in: "Checked-in",
-  checked_out: "Checked-out",
-  cancelled: "Ακυρωμένη",
-  tentative: "Προσωρινή δέσμευση",
-};
-const housekeepingLabels: Record<HousekeepingState, string> = {
-  clean: "Καθαρό",
-  dirty: "Βρώμικο",
-  cleaning: "Καθαρισμός σε εξέλιξη",
-  inspection_pending: "Αναμονή επιθεώρησης",
-  out_of_order: "Εκτός λειτουργίας",
-};
-const errors: Record<string, string> = {
-  ROOM_UNAVAILABLE: "Το δωμάτιο δεν είναι διαθέσιμο για αυτές τις ημερομηνίες.",
-  VERSION_CONFLICT: "Η κράτηση άλλαξε από άλλο χρήστη. Ανανεώστε τη σελίδα.",
-  INVALID_TRANSITION: "Η ενέργεια δεν επιτρέπεται στην τρέχουσα κατάσταση της κράτησης.",
-  INVALID_INPUT: "Μη έγκυρες ημερομηνίες.",
-  INVALID_ROOM: "Μη έγκυρο δωμάτιο.",
-  ROOM_OUT_OF_ORDER: "Το δωμάτιο είναι εκτός λειτουργίας.",
-  FORBIDDEN: "Δεν έχετε δικαίωμα για αυτή την ενέργεια.",
-};
 const CELL = 46;
 const euro = (cents: number) => `€${(cents / 100).toFixed(2)}`;
-const weekday = (date: string) => new Date(`${date}T00:00:00Z`).toLocaleDateString("el-GR", { weekday: "short", timeZone: "UTC" });
-const dayMonth = (date: string) => new Date(`${date}T00:00:00Z`).toLocaleDateString("el-GR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
 const HkDot = ({ state }: { state: HousekeepingState }) => <i className="hkDot" style={{ background: housekeepingColors[state] }} aria-hidden="true" />;
 
-export function RoomGrid({ start, today, days, showCancelled, canCreate, canEdit, rooms, initialBookings, holds }: { start: string; today: string; days: number; showCancelled: boolean; canCreate: boolean; canEdit: boolean; rooms: Room[]; initialBookings: Booking[]; holds: Hold[] }) {
+export function RoomGrid({ lang, start, today, days, showCancelled, canCreate, canEdit, rooms, initialBookings, holds }: { lang: PmsLang; start: string; today: string; days: number; showCancelled: boolean; canCreate: boolean; canEdit: boolean; rooms: Room[]; initialBookings: Booking[]; holds: Hold[] }) {
   const router = useRouter();
+  const t = pmsT(lang);
+  const locale = pmsLocale(lang);
+  const weekday = (date: string) => new Date(`${date}T00:00:00Z`).toLocaleDateString(locale, { weekday: "short", timeZone: "UTC" });
+  const dayMonth = (date: string) => new Date(`${date}T00:00:00Z`).toLocaleDateString(locale, { day: "2-digit", month: "2-digit", timeZone: "UTC" });
+  const statusLabel = (status: TapeStatus) => t(`tape.st.${status}` as PmsKey);
+  const hkLabel = (state: HousekeepingState) => t(`hk.${state}` as PmsKey);
   const [bookings, setBookings] = useState(initialBookings);
   const [message, setMessage] = useState("");
   const [menu, setMenu] = useState<Booking | null>(null);
@@ -59,7 +40,7 @@ export function RoomGrid({ start, today, days, showCancelled, canCreate, canEdit
       const response = await fetch(`/api/pms/reservations/${booking.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version: booking.version, ...body }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setMessage(errors[data.error] ?? "Η ενέργεια απέτυχε.");
+        setMessage(data.error && t(`err.${data.error}` as PmsKey) !== `err.${data.error}` ? t(`err.${data.error}` as PmsKey) : t("tape.failed"));
         return false;
       }
       setBookings((rows) => rows.map((row) => (row.id === booking.id ? { ...row, ...data.booking } : row)));
@@ -75,7 +56,7 @@ export function RoomGrid({ start, today, days, showCancelled, canCreate, canEdit
     if (!booking || !canEdit) return;
     const nights = Math.max(1, nightsBetween(booking.check_in, booking.check_out));
     if (booking.room_id === roomId && booking.check_in === checkIn) return;
-    await patch(booking, { action: "move", roomId, checkIn, checkOut: addDays(checkIn, nights) }, "Η κράτηση μετακινήθηκε.");
+    await patch(booking, { action: "move", roomId, checkIn, checkOut: addDays(checkIn, nights) }, t("tape.moved"));
   }
 
   function openMenu(booking: Booking) {
@@ -86,7 +67,7 @@ export function RoomGrid({ start, today, days, showCancelled, canCreate, canEdit
   async function quickAction(action: "check_in" | "check_out" | "move") {
     if (!menu) return;
     const body = action === "move" ? { action, roomId: menu.room_id, checkIn: dates.checkIn, checkOut: dates.checkOut } : { action };
-    const ok = await patch(menu, body, action === "move" ? "Οι ημερομηνίες ενημερώθηκαν." : "Η κατάσταση ενημερώθηκε.");
+    const ok = await patch(menu, body, action === "move" ? t("tape.datesSaved") : t("tape.statusSaved"));
     if (ok) setMenu(null);
   }
 
@@ -94,23 +75,23 @@ export function RoomGrid({ start, today, days, showCancelled, canCreate, canEdit
     <>
       <div className="tapeToolbar">
         <div className="tapeNav">
-          <button type="button" onClick={() => navigate(addDays(start, -7))} aria-label="Προηγούμενη εβδομάδα">‹ 7</button>
-          <button type="button" onClick={() => navigate(addDays(today, -2))}>Σήμερα</button>
-          <button type="button" onClick={() => navigate(addDays(start, 7))} aria-label="Επόμενη εβδομάδα">7 ›</button>
-          <input type="date" value={start} onChange={(e) => e.target.value && navigate(e.target.value)} aria-label="Έναρξη πλάνου" />
-          <label className="tapeToggle"><input type="checkbox" checked={showCancelled} onChange={(e) => navigate(start, e.target.checked)} /> Ακυρωμένες</label>
+          <button type="button" onClick={() => navigate(addDays(start, -7))} aria-label={t("tape.prevWeek")}>‹ 7</button>
+          <button type="button" onClick={() => navigate(addDays(today, -2))}>{t("tape.today")}</button>
+          <button type="button" onClick={() => navigate(addDays(start, 7))} aria-label={t("tape.nextWeek")}>7 ›</button>
+          <input type="date" value={start} onChange={(e) => e.target.value && navigate(e.target.value)} aria-label={t("tape.start")} />
+          <label className="tapeToggle"><input type="checkbox" checked={showCancelled} onChange={(e) => navigate(start, e.target.checked)} /> {t("tape.showCancelled")}</label>
         </div>
-        <p className="tapeOccupancy"><b>{occupancy}%</b> πληρότητα περιόδου · {rooms.length} δωμάτια</p>
+        <p className="tapeOccupancy"><b>{occupancy}%</b> {t("tape.occupancy", { n: rooms.length })}</p>
       </div>
-      <div className="tapeLegend" aria-label="Υπόμνημα">
-        {(Object.keys(tapeStatusColors) as TapeStatus[]).map((key) => <span key={key}><i style={{ background: tapeStatusColors[key] }} />{statusLabels[key]}</span>)}
-        <span><i className="legendUnpaid" />Ανεξόφλητο υπόλοιπο</span>
-        {(Object.keys(housekeepingColors) as HousekeepingState[]).map((key) => <span key={key}><HkDot state={key} />{housekeepingLabels[key]}</span>)}
+      <div className="tapeLegend" aria-label={t("tape.legend")}>
+        {(Object.keys(tapeStatusColors) as TapeStatus[]).map((key) => <span key={key}><i style={{ background: tapeStatusColors[key] }} />{statusLabel(key)}</span>)}
+        <span><i className="legendUnpaid" />{t("tape.unpaid")}</span>
+        {(Object.keys(housekeepingColors) as HousekeepingState[]).map((key) => <span key={key}><HkDot state={key} />{hkLabel(key)}</span>)}
       </div>
       <p className="notice" aria-live="polite">{message}</p>
       <div className="tape" style={{ ["--tape-days" as string]: days }}>
         <div className="tapeHead">
-          <b>Δωμάτιο</b>
+          <b>{t("tape.room")}</b>
           {columns.map((d) => <span key={d} className={d === today ? "today" : undefined}><small>{weekday(d)}</small>{dayMonth(d)}</span>)}
         </div>
         {rooms.map((room) => {
@@ -120,8 +101,8 @@ export function RoomGrid({ start, today, days, showCancelled, canCreate, canEdit
           return (
             <div className="tapeRow" key={room.id}>
               <b>
-                <span title={housekeepingLabels[hk]} role="img" aria-label={housekeepingLabels[hk]}><HkDot state={hk} /></span> {room.code}
-                <small>{room.room_type} · {room.capacity} άτομα</small>
+                <span title={hkLabel(hk)} role="img" aria-label={hkLabel(hk)}><HkDot state={hk} /></span> {room.code}
+                <small>{room.room_type} · {t("tape.persons", { n: room.capacity })}</small>
               </b>
               {columns.map((date) => (
                 <div
@@ -133,7 +114,7 @@ export function RoomGrid({ start, today, days, showCancelled, canCreate, canEdit
                     const occupied = roomBookings.some((b) => b.status !== "cancelled" && b.status !== "no_show" && b.check_in <= date && b.check_out > date);
                     if (!occupied && canCreate) router.push(`/pms/reservations/new?roomId=${room.id}&checkIn=${date}&checkOut=${addDays(date, 1)}`);
                   }}
-                  title={canCreate ? "Διπλό κλικ για νέα κράτηση" : undefined}
+                  title={canCreate ? t("tape.dblClick") : undefined}
                 />
               ))}
               {roomBookings.map((booking) => {
@@ -152,9 +133,9 @@ export function RoomGrid({ start, today, days, showCancelled, canCreate, canEdit
                     onClick={() => openMenu(booking)}
                     className={`bookingBar${unpaid ? " unpaid" : ""}${cancelled ? " cancelledBar" : ""}${span.clippedStart ? " clipStart" : ""}${span.clippedEnd ? " clipEnd" : ""}`}
                     style={{ left: `calc(var(--tape-room-col) + ${span.offset * CELL + 2}px)`, width: span.length * CELL - 4, background: tapeStatusColors[status] }}
-                    title={`${booking.guest_name} · ${booking.reference}\n${booking.check_in} → ${booking.check_out}\n${statusLabels[status]}${unpaid ? `\nΥπόλοιπο ${euro(Number(booking.balance_cents))}` : ""}`}
+                    title={`${booking.guest_name} · ${booking.reference}\n${booking.check_in} → ${booking.check_out}\n${statusLabel(status)}${unpaid ? `\n${t("tape.balance", { amount: euro(Number(booking.balance_cents)) })}` : ""}`}
                   >
-                    {unpaid && <span aria-label="Ανεξόφλητο">€ </span>}{booking.guest_name}
+                    {unpaid && <span aria-label={t("tape.unpaid")}>€ </span>}{booking.guest_name}
                   </button>
                 );
               })}
@@ -166,9 +147,9 @@ export function RoomGrid({ start, today, days, showCancelled, canCreate, canEdit
                     key={`h${hold.id}-${hold.roomId}`}
                     className="bookingBar holdBar"
                     style={{ left: `calc(var(--tape-room-col) + ${span.offset * CELL + 2}px)`, width: span.length * CELL - 4, background: tapeStatusColors.tentative }}
-                    title={`${hold.guestName} · online πληρωμή σε εξέλιξη\n${hold.checkIn} → ${hold.checkOut}`}
+                    title={`${hold.guestName} · ${t("tape.onlineHold")}\n${hold.checkIn} → ${hold.checkOut}`}
                   >
-                    {hold.guestName || "Online κράτηση"}
+                    {hold.guestName || t("tape.onlineBooking")}
                   </span>
                 );
               })}
@@ -180,19 +161,19 @@ export function RoomGrid({ start, today, days, showCancelled, canCreate, canEdit
         <div className="quickMenu" role="dialog" aria-label={menu.guest_name}>
           <b>{menu.guest_name}</b>
           <small>{menu.reference} · {menu.check_in} → {menu.check_out} · {menu.adults}+{menu.children} · {menu.channel}</small>
-          <small>Σύνολο {euro(Number(menu.total_cents))} · Υπόλοιπο {euro(Number(menu.balance_cents))}</small>
-          {canEdit && menu.status === "confirmed" && menu.check_in <= today && <button disabled={busy} onClick={() => quickAction("check_in")}>Check-in</button>}
-          {canEdit && menu.status === "checked_in" && <button disabled={busy} onClick={() => quickAction("check_out")}>Check-out</button>}
+          <small>{t("tape.total", { total: euro(Number(menu.total_cents)), balance: euro(Number(menu.balance_cents)) })}</small>
+          {canEdit && menu.status === "confirmed" && menu.check_in <= today && <button disabled={busy} onClick={() => quickAction("check_in")}>{t("desk.checkIn")}</button>}
+          {canEdit && menu.status === "checked_in" && <button disabled={busy} onClick={() => quickAction("check_out")}>{t("desk.checkOut")}</button>}
           {canEdit && (menu.status === "confirmed" || menu.status === "checked_in") && (
             <fieldset className="quickDates">
-              <legend>Αλλαγή ημερομηνιών</legend>
-              <label>Άφιξη<input type="date" value={dates.checkIn} disabled={menu.status === "checked_in"} onChange={(e) => setDates((d) => ({ ...d, checkIn: e.target.value }))} /></label>
-              <label>Αναχώρηση<input type="date" value={dates.checkOut} min={addDays(dates.checkIn || menu.check_in, 1)} onChange={(e) => setDates((d) => ({ ...d, checkOut: e.target.value }))} /></label>
-              <button disabled={busy || !dates.checkIn || !dates.checkOut || dates.checkOut <= dates.checkIn || (dates.checkIn === menu.check_in && dates.checkOut === menu.check_out)} onClick={() => quickAction("move")}>Αποθήκευση ημερομηνιών</button>
+              <legend>{t("tape.changeDates")}</legend>
+              <label>{t("tape.arrival")}<input type="date" value={dates.checkIn} disabled={menu.status === "checked_in"} onChange={(e) => setDates((d) => ({ ...d, checkIn: e.target.value }))} /></label>
+              <label>{t("tape.departure")}<input type="date" value={dates.checkOut} min={addDays(dates.checkIn || menu.check_in, 1)} onChange={(e) => setDates((d) => ({ ...d, checkOut: e.target.value }))} /></label>
+              <button disabled={busy || !dates.checkIn || !dates.checkOut || dates.checkOut <= dates.checkIn || (dates.checkIn === menu.check_in && dates.checkOut === menu.check_out)} onClick={() => quickAction("move")}>{t("tape.saveDates")}</button>
             </fieldset>
           )}
-          <button onClick={() => router.push(`/pms/reservations/${menu.id}`)}>Folio / στοιχεία</button>
-          <button className="close" onClick={() => setMenu(null)}>Κλείσιμο</button>
+          <button onClick={() => router.push(`/pms/reservations/${menu.id}`)}>{t("tape.folio")}</button>
+          <button className="close" onClick={() => setMenu(null)}>{t("tape.close")}</button>
         </div>
       )}
     </>

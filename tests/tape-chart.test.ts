@@ -59,3 +59,12 @@ test("held room ids tolerate legacy JSON", () => {
   assert.deepEqual(heldRoomIds("not json"), []);
   assert.deepEqual(heldRoomIds(["x", -1, 0]), []);
 });
+
+test("reservation search terms", async () => {
+  const { reservationSearchTerms } = await import("../lib/reservation-search.ts");
+  assert.deepEqual(reservationSearchTerms("  Smith "), { text: "%Smith%", digits: "", room: "Smith" });
+  assert.deepEqual(reservationSearchTerms("+30 690 123"), { text: "%+30 690 123%", digits: "%30690123%", room: "+30 690 123" });
+  assert.equal(reservationSearchTerms("50%_off").text, "%50\\%\\_off%");
+  assert.equal(reservationSearchTerms("").text, "%%");
+  assert.equal(reservationSearchTerms("12").digits, "");
+});
