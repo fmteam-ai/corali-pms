@@ -886,3 +886,30 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE INDEX IF NOT EXISTS idx_audit_logs_owner_created ON audit_logs(owner_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_owner_user ON audit_logs(owner_id,user_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_owner_entity ON audit_logs(owner_id,entity_name,created_at DESC);
+
+-- Folio v2: per-night accommodation rates, charge categories and billing details per payer.
+CREATE TABLE IF NOT EXISTS booking_nightly_rates (
+ owner_id TEXT NOT NULL,
+ booking_id BIGINT NOT NULL,
+ stay_date TEXT NOT NULL,
+ amount_cents BIGINT NOT NULL,
+ original_cents BIGINT NOT NULL,
+ payer TEXT NOT NULL DEFAULT 'guest',
+ updated_by TEXT NOT NULL DEFAULT 'system',
+ updated_at BIGINT NOT NULL,
+ PRIMARY KEY (owner_id, booking_id, stay_date)
+);
+ALTER TABLE folio_entries ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'other';
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS folio_initialized_at BIGINT;
+CREATE TABLE IF NOT EXISTS booking_payers (
+ owner_id TEXT NOT NULL,
+ booking_id BIGINT NOT NULL,
+ payer_type TEXT NOT NULL,
+ name TEXT NOT NULL DEFAULT '',
+ vat_number TEXT NOT NULL DEFAULT '',
+ tax_office TEXT NOT NULL DEFAULT '',
+ address TEXT NOT NULL DEFAULT '',
+ email TEXT NOT NULL DEFAULT '',
+ updated_at BIGINT NOT NULL,
+ PRIMARY KEY (owner_id, booking_id, payer_type)
+);

@@ -1,15 +1,37 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getReservation } from "@/lib/reservations";
-import {db} from "@/lib/db";
-import {ReservationManager} from "./reservation-manager";
+import { db } from "@/lib/db";
+import { folioView } from "@/lib/folio-db";
+import { getPmsT } from "@/lib/pms-lang";
+import { pmsLocale, pmsStatus } from "@/lib/pms-i18n";
+import { can } from "@/lib/security/permissions";
+import { stayDates } from "@/lib/folio";
+import { ReservationManager } from "./reservation-manager";
+import { FolioPanel } from "./folio-panel";
 
-export default async function ReservationPage({ params }: { params: Promise<{id:string}> }) {
-  const user=await requireUser("reservations.read"); const id=Number((await params).id); const data=await getReservation(user.ownerId,id); if(!data) notFound(); const b=data.booking;const folio=await db().query(`SELECT * FROM folio_entries WHERE owner_id=$1 AND booking_id=$2 ORDER BY created_at,id`,[user.ownerId,id]);
-  return <section><div className="pageTitle"><div><h1>Στοιχεία κράτησης</h1><p>{b.reference} · {b.guest_name}</p></div><span className={`status ${b.status}`}>{b.status}</span></div><div className="detailGrid">
-    <article><h2>Επισκέπτης</h2><dl><dt>Email</dt><dd>{b.guest_email??"—"}</dd><dt>Τηλέφωνο</dt><dd>{b.guest_phone||"—"}</dd><dt>Χώρα</dt><dd>{b.guest_country||"—"}</dd><dt>Γλώσσα</dt><dd>{b.guest_language}</dd></dl></article>
-    <article><h2>Διαμονή</h2><dl><dt>Δωμάτιο</dt><dd>{b.room_code??"—"} · {b.room_type??"Χωρίς ανάθεση"}</dd><dt>Άφιξη</dt><dd>{b.check_in}</dd><dt>Αναχώρηση</dt><dd>{b.check_out}</dd><dt>Ενήλικες / παιδιά</dt><dd>{b.adults} / {b.children}</dd></dl></article>
-    <article><h2>Πληρωμή & πολιτική</h2><dl><dt>Σύνολο</dt><dd>€{(b.total_cents/100).toFixed(2)}</dd><dt>Υπόλοιπο</dt><dd>€{(b.balance_cents/100).toFixed(2)}</dd><dt>Πλάνο</dt><dd>{b.rate_policy}</dd><dt>Δωρεάν ακύρωση</dt><dd>{b.cancellation_days} ημέρες</dd></dl></article>
-    <article><h2>Πρόσθετες πληροφορίες</h2><p>{b.special_requests||"Δεν υπάρχουν ειδικά αιτήματα."}</p></article></div>
-    <ReservationManager booking={b} initialEntries={folio.rows}/><article className="wide"><h2>Ιστορικό αλλαγών</h2><ul>{data.audit.map((a)=><li key={a.id}>{new Date(Number(a.created_at)).toLocaleString("el-GR")} · {a.action} · χρήστης {a.actor_id}</li>)}</ul></article></section>;
+export default async function ReservationPage({ params }: { params: Promise<{ id: string }> }) {
+  const user = await requireUser("reservations.read");
+  const { lang, t } = await getPmsT();
+  const id = Number((await params).id);
+  const data = await getReservation(user.ownerId, id);
+  if (!data) notFound();
+  const b = data.booking as typeof data.booking & { folio_initialized_at: number | null; created_at: number };
+  const financial = can(user.role, "folios.read", user.permissions);
+  const folio = financial ? await folioView(db(), user.ownerId, b) : null;
+  const money = (cents: number) => new Intl.NumberFormat(pmsLocale(lang), { style: "currency", currency: "EUR" }).format(Number(cents) / 100);
+  return (
+    <section>
+      <div className="pageTitle"><div><h1>{t("res.title")}</h1><p>{b.reference} · {b.guest_name}</p></div><span className={`status ${b.status}`}>{pmsStatus(lang, b.status)}</span></div>
+      <div className="detailGrid">
+        <article><h2>{t("res.guest")}</h2><dl><dt>Email</dt><dd>{b.guest_email ?? "—"}</dd><dt>{t("res.phone")}</dt><dd>{b.guest_phone || "—"}</dd><dt>{t("res.country")}</dt><dd>{b.guest_country || "—"}</dd><dt>{t("res.language")}</dt><dd>{b.guest_language}</dd></dl></article>
+        <article><h2>{t("res.stay")}</h2><dl><dt>{t("res.room")}</dt><dd>{b.room_code ?? "—"} · {b.room_type ?? t("res.noRoom")}</dd><dt>{t("res.arrival")}</dt><dd>{b.check_in}</dd><dt>{t("res.departure")}</dt><dd>{b.check_out}</dd><dt>{t("res.nights")}</dt><dd>{stayDates(b.check_in, b.check_out).length}</dd><dt>{t("res.adultsChildren")}</dt><dd>{b.adults} / {b.children}</dd><dt>{t("res.channel")}</dt><dd>{b.channel}</dd></dl></article>
+        <article><h2>{t("res.payment")}</h2><dl>{financial && <><dt>{t("res.total")}</dt><dd>{money(b.total_cents)}</dd><dt>{t("res.balance")}</dt><dd>{money(b.balance_cents)}</dd></>}<dt>{t("res.plan")}</dt><dd>{b.rate_policy}</dd><dt>{t("res.freeCancel")}</dt><dd>{t("res.days", { n: b.cancellation_days })}</dd></dl></article>
+        <article><h2>{t("res.extraInfo")}</h2><p>{b.special_requests || t("res.noRequests")}</p></article>
+      </div>
+      <ReservationManager lang={lang} booking={b} canDelete={can(user.role, "reservations.delete", user.permissions)} canEdit={can(user.role, "reservations.edit", user.permissions)} canLinks={can(user.role, "reservations.write", user.permissions)} />
+      {folio ? <FolioPanel lang={lang} bookingId={b.id} reference={b.reference} guestName={b.guest_name} initial={folio} canWrite={can(user.role, "folios.write", user.permissions)} canEditRates={can(user.role, "folios.write", user.permissions) && can(user.role, "reservations.edit", user.permissions)} /> : <article className="wide"><p>{t("folio.noAccess")}</p></article>}
+      <article className="wide"><h2>{t("res.history")}</h2><ul>{data.audit.map((a) => <li key={a.id}>{new Date(Number(a.created_at)).toLocaleString(pmsLocale(lang))} · {a.action} · {t("res.byUser", { id: a.actor_id })}</li>)}</ul></article>
+    </section>
+  );
 }

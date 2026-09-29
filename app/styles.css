@@ -170,3 +170,33 @@ p { line-height: 1.65; }
 .auditTable details summary{cursor:pointer;color:#19769b}
 .auditTable .diff{margin-top:6px;font-size:12px}
 .auditTable .diff td,.auditTable .diff th{padding:3px 6px;max-width:280px;word-break:break-word;text-align:left}
+.folioHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.folioHead small{color:#60757a}
+.secondaryButton{border:1px solid #cbd6da;background:#fff;color:#173e47;border-radius:9px;padding:9px 14px;font-weight:700;cursor:pointer}
+.folioSummary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:14px 0}
+.folioSummary>div{display:grid;gap:4px;padding:12px;border:1px solid #e1e7ea;border-radius:12px;background:#fbfcfc}
+.folioSummary small{color:#60757a}
+.folioSummary b{font-size:18px}
+.folioSummary .total{background:#eef6f8}
+.folioSummary .due{background:#ffecea;border-color:#f3b8b0}
+.folioSummary .settled{background:#e8f6ea;border-color:#b7e1bd}
+.folio h3{margin:22px 0 8px}
+.folio td small{display:block;color:#60757a;font-size:11px}
+.folio td.debit{color:#b3261e;font-weight:700}
+.folio .hint{color:#60757a;margin:0 0 8px}
+.nightTable input{width:110px;padding:6px;border:1px solid #cad5df;border-radius:7px}
+.nightTable select{padding:6px;border:1px solid #cad5df;border-radius:7px}
+.nightTools{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:10px 0}
+.nightTools input{width:100px;padding:7px;border:1px solid #cad5df;border-radius:7px}
+.nightTools select{padding:7px;border:1px solid #cad5df;border-radius:7px}
+.nightTools button{padding:9px 14px;border:0;border-radius:9px;background:#173e47;color:#fff;font-weight:700}
+.nightTools button:disabled{opacity:.5}
+.payerDetails{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:18px}
+.printOnly{display:none}
+@media print{
+ .pmsSidebar,.pmsTopbar,.actions,.adminForm,.payerDetails,.nightTools,.folioHead button,.copyLink,.dashboardRefresh{display:none!important}
+ .pms,.pmsBody{display:block}
+ .printOnly{display:block}
+ body{background:#fff}
+ article{break-inside:avoid;border:0!important}
+}

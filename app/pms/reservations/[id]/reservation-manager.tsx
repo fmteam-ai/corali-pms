@@ -1,3 +1,44 @@
-"use client";import{useState}from"react";
-type Booking={id:number;version:number;status:string;balance_cents:number};type Entry={id:number;entry_type:string;description:string;amount_cents:number;payer:string;created_at:number};
-export function ReservationManager({booking,initialEntries}:{booking:Booking;initialEntries:Entry[]}){const[b,setBooking]=useState(booking),[entries,setEntries]=useState(initialEntries),[msg,setMsg]=useState(""),[checkinUrl,setCheckinUrl]=useState(""),[manageUrl,setManageUrl]=useState("");async function action(action:string){if(!confirm("Να εκτελεστεί η ενέργεια;"))return;const r=await fetch(`/api/pms/reservations/${b.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,version:b.version})}),d=await r.json();if(r.ok){setBooking(d.booking);setMsg("Η κράτηση ενημερώθηκε.")}else setMsg(d.error??"Η ενέργεια απέτυχε.")}async function token(kind:"check-in"|"manage"){const r=await fetch(`/api/pms/reservations/${b.id}/${kind}-token`,{method:"POST"}),d=await r.json();if(r.ok){if(kind==="check-in")setCheckinUrl(d.url);else setManageUrl(d.url);setMsg("Δημιουργήθηκε ασφαλής σύνδεσμος.")}else setMsg(d.error??"Η δημιουργία συνδέσμου απέτυχε.")}async function add(f:FormData){const body={entryType:f.get("entryType"),description:f.get("description"),amountCents:Math.round(Number(f.get("amount"))*100),payer:f.get("payer"),paymentMethod:f.get("paymentMethod")||undefined,receiptReference:f.get("reference")||undefined};const r=await fetch(`/api/pms/reservations/${b.id}/folio`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}),d=await r.json();if(r.ok){setEntries(v=>[...v,d.entry]);setMsg("Η κίνηση καταχωρήθηκε.")}else setMsg(d.error??"Η καταχώρηση απέτυχε.")}return <><article className="wide"><h2>Ενέργειες κράτησης</h2><div className="actions">{b.status==="confirmed"&&<button onClick={()=>action("check_in")}>Check-in</button>}{b.status==="checked_in"&&<button onClick={()=>action("check_out")}>Check-out</button>}{!['cancelled','checked_out'].includes(b.status)&&<button onClick={()=>token("check-in")}>Σύνδεσμος pre-check-in</button>}<button onClick={()=>token("manage")}>Διαχείριση από επισκέπτη</button>{!['cancelled','checked_out'].includes(b.status)&&<button className="danger" onClick={()=>action("cancel")}>Ακύρωση</button>}{b.status==="confirmed"&&<button className="danger" onClick={()=>action("no_show")}>No-show</button>}</div>{checkinUrl&&<div className="copyLink"><input aria-label="Σύνδεσμος pre-check-in" readOnly value={checkinUrl}/><button onClick={()=>navigator.clipboard.writeText(checkinUrl)}>Αντιγραφή</button></div>}{manageUrl&&<div className="copyLink"><input aria-label="Σύνδεσμος διαχείρισης" readOnly value={manageUrl}/><button onClick={()=>navigator.clipboard.writeText(manageUrl)}>Αντιγραφή</button></div>}<p className="notice">{msg}</p></article><article className="wide"><h2>Λογαριασμός πελάτη (Folio)</h2><div className="tableWrap"><table><thead><tr><th>Ημερομηνία</th><th>Τύπος</th><th>Περιγραφή</th><th>Χρεώστης</th><th>Ποσό</th></tr></thead><tbody>{entries.map(e=><tr key={e.id}><td>{new Date(Number(e.created_at)).toLocaleString("el-GR")}</td><td>{e.entry_type}</td><td>{e.description}</td><td>{e.payer}</td><td className={Number(e.amount_cents)<0?"credit":""}>€{(Number(e.amount_cents)/100).toFixed(2)}</td></tr>)}</tbody></table></div><form action={add} className="adminForm"><select name="entryType"><option value="charge">Χρέωση</option><option value="payment">Πληρωμή</option><option value="refund">Επιστροφή</option><option value="adjustment">Προσαρμογή</option></select><input name="description" required placeholder="Περιγραφή"/><input name="amount" required type="number" min="0" step="0.01" placeholder="Ποσό €"/><select name="payer"><option value="guest">Επισκέπτης</option><option value="company">Εταιρεία</option><option value="agency">Πρακτορείο</option></select><input name="paymentMethod" placeholder="Τρόπος πληρωμής"/><input name="reference" placeholder="Αριθμός ήδη εκδομένου παραστατικού"/><button>Καταχώρηση</button></form></article></>}
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
+
+type Booking = { id: number; version: number; status: string };
+
+export function ReservationManager({ lang, booking, canDelete, canEdit, canLinks }: { lang: PmsLang; booking: Booking; canDelete: boolean; canEdit: boolean; canLinks: boolean }) {
+  const t = pmsT(lang);
+  const router = useRouter();
+  const [b, setBooking] = useState(booking);
+  const [msg, setMsg] = useState("");
+  const [links, setLinks] = useState<{ checkin?: string; manage?: string }>({});
+  const errorText = (code?: string) => (code && t(`err.${code}` as PmsKey) !== `err.${code}` ? t(`err.${code}` as PmsKey) : t("res.failed"));
+
+  async function action(name: string) {
+    if (!confirm(t("res.confirm"))) return;
+    const r = await fetch(`/api/pms/reservations/${b.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: name, version: b.version }) });
+    const d = await r.json();
+    if (r.ok) { setBooking(d.booking); setMsg(t("res.updated")); router.refresh(); } else setMsg(errorText(d.error));
+  }
+  async function token(kind: "check-in" | "manage") {
+    const r = await fetch(`/api/pms/reservations/${b.id}/${kind}-token`, { method: "POST" });
+    const d = await r.json();
+    if (r.ok) { setLinks((v) => ({ ...v, [kind === "check-in" ? "checkin" : "manage"]: d.url })); setMsg(t("res.linkCreated")); } else setMsg(errorText(d.error) || t("res.linkFailed"));
+  }
+  const open = !["cancelled", "checked_out", "no_show"].includes(b.status);
+  return (
+    <article className="wide">
+      <h2>{t("res.actions")}</h2>
+      <div className="actions">
+        {canEdit && b.status === "confirmed" && <button onClick={() => action("check_in")}>{t("desk.checkIn")}</button>}
+        {canEdit && b.status === "checked_in" && <button onClick={() => action("check_out")}>{t("desk.checkOut")}</button>}
+        {canLinks && open && <button onClick={() => token("check-in")}>{t("res.precheckinLink")}</button>}
+        {canLinks && <button onClick={() => token("manage")}>{t("res.manageLink")}</button>}
+        {canDelete && b.status === "confirmed" && <button className="danger" onClick={() => action("cancel")}>{t("res.cancel")}</button>}
+        {canDelete && b.status === "confirmed" && <button className="danger" onClick={() => action("no_show")}>{t("res.noShow")}</button>}
+      </div>
+      {links.checkin && <div className="copyLink"><input aria-label={t("res.precheckinLink")} readOnly value={links.checkin} /><button onClick={() => navigator.clipboard.writeText(links.checkin!)}>{t("res.copy")}</button></div>}
+      {links.manage && <div className="copyLink"><input aria-label={t("res.manageLink")} readOnly value={links.manage} /><button onClick={() => navigator.clipboard.writeText(links.manage!)}>{t("res.copy")}</button></div>}
+      <p className="notice">{msg}</p>
+    </article>
+  );
+}

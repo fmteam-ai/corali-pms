@@ -4,6 +4,7 @@ import { forbidden, requireApiUser } from "@/lib/auth";
 import { can } from "@/lib/security/permissions";
 import { withTransaction } from "@/lib/db";
 import { getReservation } from "@/lib/reservations";
+import { moveNights, recalcBooking } from "@/lib/folio-db";
 import { validReservationTransition } from "@/lib/reservation-transition";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 import { z } from "zod";
@@ -49,9 +50,11 @@ async function handlePATCH(request: Request, context: { params: Promise<{ id: st
       }
       const result=await client.query(`UPDATE bookings SET room_id=$1,check_in=$2,check_out=$3,status=$4,checked_in_at=$5,checked_out_at=$6,version=version+1 WHERE owner_id=$7 AND id=$8 AND version=$9 RETURNING *`,[next.roomId,next.checkIn,next.checkOut,next.status,next.checkedInAt,next.checkedOutAt,user.ownerId,id,input.version]);
       if(!result.rowCount) throw new Error("VERSION_CONFLICT");
-      await client.query(`INSERT INTO reservation_audit(owner_id,booking_id,actor_id,action,before_json,after_json,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)`,[user.ownerId,id,String(user.id),input.action,JSON.stringify(before),JSON.stringify(result.rows[0]),now]);
+      let saved=result.rows[0];
+      if(input.action==="move"&&(next.checkIn!==before.check_in||next.checkOut!==before.check_out)&&await moveNights(client,user.ownerId,id,next.checkIn,next.checkOut,String(user.id))){await recalcBooking(client,user.ownerId,id);saved=(await client.query("SELECT * FROM bookings WHERE owner_id=$1 AND id=$2",[user.ownerId,id])).rows[0];}
+      await client.query(`INSERT INTO reservation_audit(owner_id,booking_id,actor_id,action,before_json,after_json,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)`,[user.ownerId,id,String(user.id),input.action,JSON.stringify(before),JSON.stringify(saved),now]);
       if(input.action==="check_out" && next.roomId) await client.query(`INSERT INTO housekeeping_tasks(owner_id,room_id,task_type,status,assigned_to,due_at,checklist_json,inspection_status) VALUES($1,$2,'departure_clean','todo',(SELECT staff_user_id::text FROM housekeeping_staff_room_defaults WHERE owner_id=$1 AND room_id=$2 ORDER BY staff_user_id LIMIT 1),$3,'{}','pending')`,[user.ownerId,next.roomId,now]);
-      return result.rows[0];
+      return saved;
     });
     return Response.json({ok:true,booking:updated});
   } catch(error){
