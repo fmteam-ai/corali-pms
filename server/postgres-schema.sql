@@ -946,3 +946,41 @@ CREATE TABLE IF NOT EXISTS balance_collection_attempts (
  created_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_balance_attempts_booking ON balance_collection_attempts(owner_id,booking_id,created_at DESC);
+
+-- Tax documents sent to AADE myDATA (receipts 11.2, invoices 2.1) with sequential numbering and a retry queue.
+CREATE TABLE IF NOT EXISTS fiscal_series (
+ owner_id TEXT NOT NULL,
+ series TEXT NOT NULL,
+ invoice_type TEXT NOT NULL,
+ last_number BIGINT NOT NULL DEFAULT 0,
+ PRIMARY KEY (owner_id, series, invoice_type)
+);
+CREATE TABLE IF NOT EXISTS fiscal_documents (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ booking_id BIGINT NOT NULL,
+ payer TEXT NOT NULL,
+ invoice_type TEXT NOT NULL,
+ series TEXT NOT NULL,
+ aa BIGINT NOT NULL,
+ issue_date TEXT NOT NULL,
+ buckets_json TEXT NOT NULL,
+ payments_json TEXT NOT NULL DEFAULT '[]',
+ document_json TEXT NOT NULL,
+ total_cents BIGINT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'pending',
+ mark TEXT,
+ uid TEXT,
+ qr_url TEXT,
+ cancellation_mark TEXT,
+ attempts BIGINT NOT NULL DEFAULT 0,
+ last_error TEXT,
+ next_attempt_at BIGINT,
+ environment TEXT NOT NULL DEFAULT 'dev',
+ created_by TEXT NOT NULL,
+ created_at BIGINT NOT NULL,
+ updated_at BIGINT NOT NULL,
+ UNIQUE (owner_id, series, invoice_type, aa)
+);
+CREATE INDEX IF NOT EXISTS idx_fiscal_documents_booking ON fiscal_documents(owner_id,booking_id);
+CREATE INDEX IF NOT EXISTS idx_fiscal_documents_queue ON fiscal_documents(owner_id,status,next_attempt_at);

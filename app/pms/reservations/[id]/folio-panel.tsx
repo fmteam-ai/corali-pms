@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 import { payers, summarizeFolio, type FolioSummary } from "@/lib/folio";
+import { FiscalPanel } from "./fiscal-panel";
 
 type Night = { stay_date: string; amount_cents: number; original_cents?: number; payer: string };
 type Entry = { id: number; entry_type: string; category: string | null; description: string; amount_cents: number; payer: string; payment_method: string | null; receipt_reference: string | null; created_at: number };
@@ -155,6 +156,7 @@ export function FolioPanel({ lang, bookingId, reference, guestName, initial, can
         </div>
       )}
       <p className="notice" role="status">{msg}</p>
+      <FiscalPanel lang={lang} bookingId={bookingId} canWrite={canWrite} payersWithDetails={folio.payers.filter((d) => d.vat_number).map((d) => d.payer_type)} />
     </article>
   );
 }

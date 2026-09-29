@@ -1,0 +1,14 @@
+export declare const VAT_RATES: Record<number, number>;
+export declare const ENDPOINTS: { dev: string; prod: string };
+export type MydataSettings = { issuerVat: string; branch?: string; accommodationVatCategory?: string; extrasVatCategory?: string; climateTaxCategory?: string };
+export type MydataLine = { lineNumber: number; description: string; netValue: number; vatCategory: number; vatAmount: number; classificationType: string; classificationCategory: string; otherTaxesCategory: number | null; otherTaxesAmount: number };
+export type MydataDocument = { invoiceType: "11.2" | "2.1"; series: string; aa: number; issueDate: string; issuer: { vatNumber: string; branch: number }; counterpart: { vatNumber: string; name?: string } | null; lines: MydataLine[]; paymentMethods: { type: number; amount: number }[]; totals: { net: number; vat: number; otherTaxes: number; gross: number } };
+export type MydataResponse = { statusCode: string | null; mark: string | null; uid: string | null; qrUrl: string | null; cancellationMark?: string | null; errors: string[] };
+export declare function paymentMethodType(method: string | null): number;
+export declare function splitGross(grossCents: number, vatCategory: number): { net: number; vat: number };
+export declare function buildDocument(input: { invoiceType: "11.2" | "2.1"; series: string; aa: number; issueDate: string; settings: MydataSettings; counterpart?: { vatNumber: string; name?: string } | null; buckets: { accommodation: number; extras: number; fees: number; climate: number }; payments?: { method: string | null; amountCents: number }[] }): MydataDocument;
+export declare function invoiceXml(doc: MydataDocument): string;
+export declare function parseResponse(xml: string): MydataResponse;
+export declare function sendInvoice(xml: string, credentials: { username: string; subscriptionKey: string }, environment: string, request?: typeof fetch): Promise<MydataResponse>;
+export declare function cancelInvoice(mark: string, credentials: { username: string; subscriptionKey: string }, environment: string, request?: typeof fetch): Promise<MydataResponse>;
+export declare function nextAttemptAt(attempts: number, now: number): number;

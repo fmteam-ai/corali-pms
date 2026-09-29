@@ -260,3 +260,8 @@ p { line-height: 1.65; }
 .stay .couponInfo{color:#ffe2a8}
 .stay .couponBox p button{background:#ffffff26;color:#fff}
 .balanceNote{padding:10px 12px;border-radius:10px;background:#eef6f8;color:#173e47;font-size:14px}
+.fiscal{margin-top:24px;padding-top:12px;border-top:1px solid #e1e7ea}
+.fiscalStatus{display:inline-block;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:700;background:#eef2f3}
+.fiscalStatus.st-sent{background:#d9f7e7;color:#08734b}
+.fiscalStatus.st-failed{background:#ffe4e1;color:#9c2d22}
+.fiscalStatus.st-cancelled{background:#eceff1;color:#455a64;text-decoration:line-through}
