@@ -33,8 +33,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       if(next.checkOut<=next.checkIn) throw new Error("INVALID_DATES");
       if (next.roomId) {
         await client.query("SELECT pg_advisory_xact_lock($1)", [next.roomId]);
-        const room = await client.query("SELECT 1 FROM rooms WHERE owner_id=$1 AND id=$2 AND active=1", [user.ownerId,next.roomId]);
+        const room = await client.query("SELECT operational_status FROM rooms WHERE owner_id=$1 AND id=$2 AND active=1", [user.ownerId,next.roomId]);
         if (!room.rowCount) throw new Error("INVALID_ROOM");
+        if (input.action==="move" && Number(next.roomId)!==Number(before.room_id) && room.rows[0].operational_status==="out_of_order") throw new Error("ROOM_OUT_OF_ORDER");
       }
       if(input.action==="check_in"){next.status="checked_in";next.checkedInAt=now;} if(input.action==="check_out"){next.status="checked_out";next.checkedOutAt=now;} if(input.action==="cancel")next.status="cancelled"; if(input.action==="no_show")next.status="no_show"; if(input.action==="confirm")next.status="confirmed";
       if(next.roomId && !["cancelled","checked_out","no_show"].includes(next.status)){
@@ -53,7 +54,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if(error instanceof z.ZodError || (error instanceof Error && error.message==="INVALID_DATES")) return Response.json({ok:false,error:"INVALID_INPUT"},{status:400});
     if(error instanceof Error && error.message==="NOT_FOUND") return Response.json({ok:false,error:"NOT_FOUND"},{status:404});
     if(error instanceof Error && error.message==="INVALID_ROOM") return Response.json({ok:false,error:"INVALID_ROOM"},{status:400});
-    if(error instanceof Error && ["VERSION_CONFLICT","ROOM_UNAVAILABLE","INVALID_TRANSITION"].includes(error.message)) return Response.json({ok:false,error:error.message},{status:409});
+    if(error instanceof Error && ["VERSION_CONFLICT","ROOM_UNAVAILABLE","ROOM_OUT_OF_ORDER","INVALID_TRANSITION"].includes(error.message)) return Response.json({ok:false,error:error.message},{status:409});
     return Response.json({ok:false,error:"UPDATE_FAILED"},{status:500});
   }
 }
