@@ -15,6 +15,7 @@ export const permissionKeys = [
   "rooms.delete",
   "housekeeping.read",
   "housekeeping.write",
+  "maintenance.resolve",
   "pricing.read",
   "pricing.write",
   "pricing.create",
@@ -45,9 +46,10 @@ const rolePermissions: Record<Role, ReadonlySet<Permission>> = {
     "reservations.read", "reservations.write", "reservations.create", "reservations.edit", "reservations.delete",
     "folios.read", "folios.write",
     "rooms.read", "housekeeping.read", "pricing.read",
+    "maintenance.resolve",
   ]),
   // Housekeeping: mobile room status, checklists and damage reports.
-  housekeeping: new Set<Permission>(["dashboard.read", "rooms.read", "housekeeping.read", "housekeeping.write"]),
+  housekeeping: new Set<Permission>(["dashboard.read", "rooms.read", "housekeeping.read", "housekeeping.write", "maintenance.resolve"]),
   // Read-only: occupancy, calendars and non-financial reporting.
   readonly: new Set<Permission>(["dashboard.read", "reservations.read", "rooms.read", "housekeeping.read", "pricing.read", "reports.read"]),
 };
@@ -88,6 +90,7 @@ export const permissionMatrix: { module: string; cells: Partial<Record<Permissio
   { module: "folio", cells: { view: "folios.read", edit: "folios.write", financials: "folios.write" } },
   { module: "rooms", cells: { view: "rooms.read", create: "rooms.create", edit: "rooms.edit", delete: "rooms.delete" } },
   { module: "housekeeping", cells: { view: "housekeeping.read", edit: "housekeeping.write" } },
+  { module: "maintenance", cells: { view: "housekeeping.read", edit: "maintenance.resolve" } },
   { module: "pricing", cells: { view: "pricing.read", create: "pricing.create", edit: "pricing.edit", delete: "pricing.delete", settings: "pricing.write" } },
   { module: "reports", cells: { reports: "reports.read", financials: "reports.financial" } },
   { module: "integrations", cells: { view: "integrations.read", settings: "integrations.write" } },

@@ -8,7 +8,7 @@ const MAX_DEPTH = 6;
 export function redactForAudit(value: unknown, depth = 0): unknown {
   if (value === null || value === undefined) return value ?? null;
   if (depth > MAX_DEPTH) return "[depth]";
-  if (typeof value === "string") return value.length > MAX_STRING ? `${value.slice(0, MAX_STRING)}…` : value;
+  if (typeof value === "string") return value.startsWith("data:") ? `[data URL, ${value.length} chars]` : value.length > MAX_STRING ? `${value.slice(0, MAX_STRING)}…` : value;
   if (typeof value === "number" || typeof value === "boolean") return value;
   if (typeof value === "bigint") return value.toString();
   if (Array.isArray(value)) return value.slice(0, 200).map((item) => redactForAudit(item, depth + 1));

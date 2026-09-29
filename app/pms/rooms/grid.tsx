@@ -2,9 +2,11 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
+import { NoticeModal } from "../maintenance/notice-modal";
 import { addDays, barSpan, hasUnpaidBalance, housekeepingColors, housekeepingState, nightsBetween, tapeStatus, tapeStatusColors, type HousekeepingState, type TapeStatus } from "@/lib/tape-chart";
 
-type Room = { id: number; code: string; room_type: string; capacity: number; operational_status: string; open_task_status: string | null };
+type TopNotice = { id: number; severity: string; description: string; reported_at: number; reporter: string | null; photos: number };
+type Room = { id: number; code: string; room_type: string; capacity: number; operational_status: string; open_task_status: string | null; open_notices?: number; top_notice?: TopNotice | null };
 type Booking = { id: number; reference: string; guest_name: string; room_id: number; check_in: string; check_out: string; status: string; balance_cents: number; total_cents: number; adults: number; children: number; channel: string; version: number };
 type Hold = { id: number; roomId: number; guestName: string; checkIn: string; checkOut: string };
 
@@ -12,7 +14,7 @@ const CELL = 46;
 const euro = (cents: number) => `€${(cents / 100).toFixed(2)}`;
 const HkDot = ({ state }: { state: HousekeepingState }) => <i className="hkDot" style={{ background: housekeepingColors[state] }} aria-hidden="true" />;
 
-export function RoomGrid({ lang, start, today, days, showCancelled, canCreate, canEdit, rooms, initialBookings, holds }: { lang: PmsLang; start: string; today: string; days: number; showCancelled: boolean; canCreate: boolean; canEdit: boolean; rooms: Room[]; initialBookings: Booking[]; holds: Hold[] }) {
+export function RoomGrid({ lang, start, today, days, showCancelled, canCreate, canEdit, canResolve = false, canReport = false, rooms, initialBookings, holds }: { lang: PmsLang; start: string; today: string; days: number; showCancelled: boolean; canCreate: boolean; canEdit: boolean; canResolve?: boolean; canReport?: boolean; rooms: Room[]; initialBookings: Booking[]; holds: Hold[] }) {
   const router = useRouter();
   const t = pmsT(lang);
   const locale = pmsLocale(lang);
@@ -25,6 +27,8 @@ export function RoomGrid({ lang, start, today, days, showCancelled, canCreate, c
   const [menu, setMenu] = useState<Booking | null>(null);
   const [dates, setDates] = useState({ checkIn: "", checkOut: "" });
   const [busy, setBusy] = useState(false);
+  const [noticeRoom, setNoticeRoom] = useState<Room | null>(null);
+  const when = (ms: number) => new Date(Number(ms)).toLocaleString(locale, { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Athens" });
   const columns = useMemo(() => Array.from({ length: days }, (_, i) => addDays(start, i)), [start, days]);
   const active = bookings.filter((b) => b.status !== "cancelled" && b.status !== "no_show");
   const occupiedNights = columns.reduce((sum, date) => sum + active.filter((b) => b.check_in <= date && b.check_out > date).length, 0);
@@ -102,6 +106,20 @@ export function RoomGrid({ lang, start, today, days, showCancelled, canCreate, c
             <div className="tapeRow" key={room.id}>
               <b>
                 <span title={hkLabel(hk)} role="img" aria-label={hkLabel(hk)}><HkDot state={hk} /></span> {room.code}
+                {room.top_notice && (
+                  <span className="defectWrap">
+                    <button type="button" className={`defectBadge sev-${room.top_notice.severity}`} onClick={() => setNoticeRoom(room)} aria-label={t("mnt.badge", { n: room.open_notices ?? 1, severity: t(`mnt.sev.${room.top_notice.severity}` as PmsKey) })}>
+                      {room.top_notice.severity === "minor" ? "🛠️" : "⚠️"}{(room.open_notices ?? 1) > 1 && <sup>{room.open_notices}</sup>}
+                    </button>
+                    <span className="defectCard" role="tooltip">
+                      <span className={`sevTag sev-${room.top_notice.severity}`}>{t(`mnt.sev.${room.top_notice.severity}` as PmsKey)}</span>
+                      <small>{t("mnt.reportedBy", { name: room.top_notice.reporter ?? "—", time: when(room.top_notice.reported_at) })}</small>
+                      <span>{room.top_notice.description}</span>
+                      {Number(room.top_notice.photos) > 0 && <small>📷 {t("mnt.photos", { n: room.top_notice.photos })}</small>}
+                    </span>
+                  </span>
+                )}
+                {!room.top_notice && canReport && <button type="button" className="defectAdd" onClick={() => setNoticeRoom(room)} aria-label={`${t("mnt.report")} · ${room.code}`} title={t("mnt.report")}>+</button>}
                 <small>{room.room_type} · {t("tape.persons", { n: room.capacity })}</small>
               </b>
               {columns.map((date) => (
@@ -176,6 +194,7 @@ export function RoomGrid({ lang, start, today, days, showCancelled, canCreate, c
           <button className="close" onClick={() => setMenu(null)}>{t("tape.close")}</button>
         </div>
       )}
+      {noticeRoom && <NoticeModal lang={lang} roomId={noticeRoom.id} roomCode={noticeRoom.code} canResolve={canResolve} canReport={canReport} onClose={() => setNoticeRoom(null)} onChanged={() => router.refresh()} />}
     </>
   );
 }

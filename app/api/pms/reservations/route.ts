@@ -30,8 +30,10 @@ async function handlePOST(request: Request) {
       if (input.roomId) {
         // Use the same transaction lock as public checkout before checking availability.
         await client.query("SELECT pg_advisory_xact_lock($1)", [input.roomId]);
-        const room = await client.query("SELECT 1 FROM rooms WHERE owner_id=$1 AND id=$2 AND active=1", [user.ownerId,input.roomId]);
+        const room = await client.query("SELECT operational_status FROM rooms WHERE owner_id=$1 AND id=$2 AND active=1", [user.ownerId,input.roomId]);
         if (!room.rowCount) throw new Error("INVALID_ROOM");
+        // Rooms out of order (major defect) cannot take new bookings.
+        if (room.rows[0].operational_status === "out_of_order") throw new Error("ROOM_OUT_OF_ORDER");
         const conflict = await client.query(`SELECT 1 FROM bookings WHERE owner_id=$1 AND room_id=$2 AND status NOT IN ('cancelled','checked_out','no_show') AND check_in < $4 AND check_out > $3
           UNION ALL SELECT 1 FROM booking_sessions WHERE owner_id=$1 AND status='payment_pending' AND recovery_due_at>$5 AND check_in<$4 AND check_out>$3 AND room_allocations::jsonb @> $6::jsonb LIMIT 1`, [user.ownerId,input.roomId,input.checkIn,input.checkOut,now,JSON.stringify([input.roomId])]);
         if (conflict.rowCount) throw new Error("ROOM_UNAVAILABLE");
@@ -48,6 +50,7 @@ async function handlePOST(request: Request) {
   } catch (error) {
     if (error instanceof z.ZodError) return Response.json({ok:false,error:"INVALID_INPUT",issues:error.issues},{status:400});
     if (error instanceof Error && error.message === "ROOM_UNAVAILABLE") return Response.json({ok:false,error:"ROOM_UNAVAILABLE"},{status:409});
+    if (error instanceof Error && error.message === "ROOM_OUT_OF_ORDER") return Response.json({ok:false,error:"ROOM_OUT_OF_ORDER"},{status:409});
     if (error instanceof Error && error.message === "INVALID_ROOM") return Response.json({ok:false,error:"INVALID_ROOM"},{status:400});
     return Response.json({ok:false,error:"CREATE_FAILED"},{status:500});
   }

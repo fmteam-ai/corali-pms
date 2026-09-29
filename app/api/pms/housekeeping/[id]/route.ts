@@ -2,6 +2,8 @@ import { audited } from "@/lib/audit";
 import { z } from "zod";
 import { requireApiUser } from "@/lib/auth";
 import { withTransaction } from "@/lib/db";
+import { createNotice } from "@/lib/maintenance-db";
+import { maintenanceSeverities, severityBlocksRoom, severityFrom } from "@/lib/maintenance";
 import { nextHousekeepingStatus, roomStatusAfter, validChecklist, validHousekeepingTransition } from "@/lib/housekeeping";
 import { pushNotification } from "@/lib/pms-notifications";
 import { enqueueAvailability } from "@/lib/channel-sync";
@@ -13,9 +15,11 @@ const schema = z.object({
   checklist: z.record(z.string(), z.boolean()).optional(),
   notes: z.string().trim().max(2000).optional(),
   severe: z.boolean().optional(),
+  severity: z.enum(maintenanceSeverities).optional(),
+  photos: z.array(z.string().max(3_500_000)).max(6).optional(),
 });
 
-const errorStatus: Record<string, number> = { NOT_FOUND: 404, NOT_ASSIGNED: 403, CHECKLIST_INCOMPLETE: 409, SECOND_REVIEW_REQUIRED: 409, INVALID_TRANSITION: 409, DESCRIPTION_REQUIRED: 400 };
+const errorStatus: Record<string, number> = { NOT_FOUND: 404, NOT_ASSIGNED: 403, CHECKLIST_INCOMPLETE: 409, SECOND_REVIEW_REQUIRED: 409, INVALID_TRANSITION: 409, DESCRIPTION_REQUIRED: 400, INVALID_PHOTO: 400 };
 
 async function handlePATCH(q: Request, { params }: { params: Promise<{ id: string }> }) {
   const u = await requireApiUser("housekeeping.write");
@@ -37,7 +41,9 @@ async function handlePATCH(q: Request, { params }: { params: Promise<{ id: strin
       if (x.action === "complete" && !validChecklist(x.checklist)) throw Error("CHECKLIST_INCOMPLETE");
 
       const now = Date.now();
-      const status = nextHousekeepingStatus(r.status, x.action, x.severe === true);
+      const severity = severityFrom(x);
+      const severe = x.action === "report_issue" && severityBlocksRoom(severity);
+      const status = nextHousekeepingStatus(r.status, x.action, severe);
       let { inspection_status: inspection, completed_at: completed, cleaned_by_staff_id: cleaner, inspected_by_staff_id: inspector, inspected_at: inspectedAt, checklist_json: list } = r;
       if (x.action === "complete" || x.action === "repair_done") { inspection = "pending"; completed = now; cleaner = u.id; if (x.checklist) list = JSON.stringify(x.checklist); }
       if (review) { inspection = x.action === "approve" ? "approved" : "rejected"; inspector = u.id; inspectedAt = now; }
@@ -49,15 +55,24 @@ async function handlePATCH(q: Request, { params }: { params: Promise<{ id: strin
           WHERE owner_id=$10 AND id=$11 RETURNING *`,
         [status, inspection, completed, cleaner, inspector, inspectedAt, list, x.notes ?? null, x.action, u.ownerId, id, now],
       );
-      const roomStatus = roomStatusAfter(r.status, x.action, x.severe === true);
+      // Defects become maintenance notices (room status, channel sync and alert are handled there).
+      if (x.action === "report_issue") {
+        await createNotice(c, u.ownerId, { roomId: Number(r.room_id), taskId: id, severity, description: x.notes!, reportedBy: u.id, photos: x.photos });
+        return updated.rows[0];
+      }
+      const roomStatus = roomStatusAfter(r.status, x.action, false);
       if (roomStatus) await c.query(`UPDATE rooms SET operational_status=$1 WHERE owner_id=$2 AND id=$3`, [roomStatus, u.ownerId, r.room_id]);
       if (roomStatus === "out_of_order" || (x.action === "approve" && r.status === "repaired")) { const today = hotelToday(); await enqueueAvailability(c, u.ownerId, today, addDays(today, 180), "room_status"); }
       const code = String((await c.query(`SELECT code FROM rooms WHERE owner_id=$1 AND id=$2`, [u.ownerId, r.room_id])).rows[0]?.code ?? r.room_id);
-      if (x.action === "report_issue") {
-        await pushNotification(c, u.ownerId, { kind: "housekeeping", titleEl: `${x.severe ? "Σοβαρή βλάβη · εκτός λειτουργίας" : "Βλάβη"} · δωμάτιο ${code}: ${x.notes}`, titleEn: `${x.severe ? "Severe damage · out of order" : "Damage"} · room ${code}: ${x.notes}`, link: "/pms/housekeeping" });
-      } else if (x.action === "complete" || x.action === "repair_done") {
+      if (x.action === "complete" || x.action === "repair_done") {
         await pushNotification(c, u.ownerId, { kind: "housekeeping", titleEl: x.action === "complete" ? `Δωμάτιο ${code} καθαρίστηκε · αναμονή επιθεώρησης` : `Δωμάτιο ${code} επισκευάστηκε · αναμονή δεύτερης έγκρισης`, titleEn: x.action === "complete" ? `Room ${code} cleaned · inspection pending` : `Room ${code} repaired · second sign-off pending`, link: "/pms/housekeeping" });
       } else if (x.action === "approve" && r.status === "repaired") {
+        // Legacy two-step repair sign-off also closes the task's open notices, so the history stays consistent.
+        await c.query(
+          `UPDATE maintenance_notices SET status='resolved',resolved_by=$3,resolved_at=$4,resolution_notes=COALESCE(NULLIF(trim($5),''),'Repair approved'),post_repair_state='dirty'
+            WHERE owner_id=$1 AND housekeeping_task_id=$2 AND status='open'`,
+          [u.ownerId, id, u.id, now, r.notes ?? ""],
+        );
         // Back in service: schedule a fresh clean for the room's default housekeeper.
         await c.query(
           `INSERT INTO housekeeping_tasks(owner_id,room_id,task_type,status,assigned_to,due_at,checklist_json,inspection_status)

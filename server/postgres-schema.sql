@@ -1081,3 +1081,46 @@ CREATE TABLE IF NOT EXISTS birthday_settings (
  updated_by BIGINT,
  updated_at BIGINT NOT NULL
 );
+
+-- v48: maintenance notices. Never deleted: resolution adds timestamped metadata so management keeps the full history.
+CREATE TABLE IF NOT EXISTS maintenance_notices (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ room_id BIGINT NOT NULL,
+ housekeeping_task_id BIGINT,
+ severity TEXT NOT NULL DEFAULT 'minor' CHECK (severity IN ('minor','major','out_of_order')),
+ description TEXT NOT NULL,
+ reported_by BIGINT,
+ reported_at BIGINT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved')),
+ resolved_by BIGINT,
+ resolved_at BIGINT,
+ resolution_notes TEXT,
+ labor_hours NUMERIC(6,2),
+ cost_cents BIGINT,
+ vendor_reference TEXT,
+ post_repair_state TEXT CHECK (post_repair_state IS NULL OR post_repair_state IN ('clean','dirty')),
+ CHECK (status='open' OR (resolved_at IS NOT NULL AND resolution_notes IS NOT NULL AND length(trim(resolution_notes))>0))
+);
+CREATE INDEX IF NOT EXISTS idx_maintenance_notices_open ON maintenance_notices(owner_id,room_id) WHERE status='open';
+CREATE INDEX IF NOT EXISTS idx_maintenance_notices_history ON maintenance_notices(owner_id,reported_at DESC);
+CREATE TABLE IF NOT EXISTS maintenance_notice_photos (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ notice_id BIGINT NOT NULL REFERENCES maintenance_notices(id),
+ mime TEXT NOT NULL,
+ data_base64 TEXT NOT NULL,
+ byte_size BIGINT NOT NULL,
+ uploaded_by BIGINT,
+ created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_maintenance_photos_notice ON maintenance_notice_photos(owner_id,notice_id);
+CREATE OR REPLACE FUNCTION corali_keep_maintenance_history() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'maintenance history is append-only; resolve notices instead of deleting them';
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_maintenance_notices_no_delete ON maintenance_notices;
+CREATE TRIGGER trg_maintenance_notices_no_delete BEFORE DELETE ON maintenance_notices FOR EACH ROW EXECUTE PROCEDURE corali_keep_maintenance_history();
+DROP TRIGGER IF EXISTS trg_maintenance_photos_no_delete ON maintenance_notice_photos;
+CREATE TRIGGER trg_maintenance_photos_no_delete BEFORE DELETE ON maintenance_notice_photos FOR EACH ROW EXECUTE PROCEDURE corali_keep_maintenance_history();

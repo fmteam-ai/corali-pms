@@ -1,38 +1,44 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import type { MaintenanceSeverity } from "@/lib/maintenance";
+import { DefectForm } from "../maintenance/defect-form";
+import { NoticeModal } from "../maintenance/notice-modal";
 import { checklistLabels, checklistProgress, housekeepingChecklist } from "@/lib/housekeeping";
 import { housekeepingColors, housekeepingState } from "@/lib/tape-chart";
 import { pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 
-type Task = { id: number; room_code: string; room_type: string; task_type: string; status: string; assigned_to: string | null; assigned_name: string | null; cleaned_by_staff_id: number | null; notes: string | null; inspection_notes: string | null; checklist_json: string };
-type Room = { id: number; code: string; operational_status: string; open_task_status: string | null };
+type Task = { id: number; room_id: number; room_code: string; room_type: string; task_type: string; status: string; assigned_to: string | null; assigned_name: string | null; cleaned_by_staff_id: number | null; notes: string | null; inspection_notes: string | null; checklist_json: string };
+type Room = { id: number; code: string; operational_status: string; open_task_status: string | null; open_notices?: number; top_notice?: { severity: string } | null };
 type Filter = "mine" | "all" | "review" | "ooo";
 type Pending = { taskId: number; action: "report_issue" | "reject" | "repair_done" } | null;
 
-export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite }: { lang: PmsLang; initialTasks: Task[]; rooms: Room[]; userId: number; canWrite: boolean }) {
+export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite, canResolve = false }: { lang: PmsLang; initialTasks: Task[]; rooms: Room[]; userId: number; canWrite: boolean; canResolve?: boolean }) {
   const t = pmsT(lang);
+  const router = useRouter();
+  const [noticeRoom, setNoticeRoom] = useState<{ id: number; code: string } | null>(null);
   const labels = checklistLabels[lang];
   const [tasks, setTasks] = useState(initialTasks);
   const [checks, setChecks] = useState<Record<number, Record<string, boolean>>>(() => Object.fromEntries(initialTasks.map((x) => { try { return [x.id, JSON.parse(x.checklist_json || "{}")]; } catch { return [x.id, {}]; } })));
   const [filter, setFilter] = useState<Filter>(initialTasks.some((x) => x.assigned_to === String(userId)) ? "mine" : "all");
   const [pending, setPending] = useState<Pending>(null);
   const [notes, setNotes] = useState("");
-  const [severe, setSevere] = useState(false);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState<number | null>(null);
   const label = (prefix: string, key: string) => { const k = `${prefix}.${key}` as PmsKey; return t(k) === k ? key : t(k); };
 
-  async function act(task: Task, action: string, extra: { notes?: string; severe?: boolean } = {}) {
+  async function act(task: Task, action: string, extra: { notes?: string; severity?: MaintenanceSeverity; photos?: string[] } = {}): Promise<boolean> {
     setBusy(task.id);
     try {
       const r = await fetch(`/api/pms/housekeeping/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, checklist: checks[task.id] ?? {}, ...extra }) });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) { setMsg(label("err", d.error ?? "UPDATE_FAILED") === (d.error ?? "UPDATE_FAILED") ? t("desk.actionFailed") : label("err", d.error)); return; }
+      if (!r.ok) { setMsg(label("err", d.error ?? "UPDATE_FAILED") === (d.error ?? "UPDATE_FAILED") ? t("desk.actionFailed") : label("err", d.error)); return false; }
       setTasks((a) => a.map((v) => (v.id === task.id ? { ...v, ...d.task } : v)));
       setMsg(t("hkb.updated"));
       setPending(null);
       setNotes("");
-      setSevere(false);
+      if (action === "report_issue") router.refresh();
+      return true;
     } finally {
       setBusy(null);
     }
@@ -44,7 +50,7 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite 
   return (
     <>
       <div className="hkRooms" aria-label={t("hkb.rooms")}>
-        {rooms.map((r) => { const state = housekeepingState(r.operational_status, r.open_task_status); return <span key={r.id} title={t(`hk.${state}` as PmsKey)}><i style={{ background: housekeepingColors[state] }} />{r.code}</span>; })}
+        {rooms.map((r) => { const state = housekeepingState(r.operational_status, r.open_task_status); return <button type="button" key={r.id} title={t(`hk.${state}` as PmsKey)} onClick={() => setNoticeRoom({ id: r.id, code: r.code })}><i style={{ background: housekeepingColors[state] }} />{r.code}{r.top_notice && <span className={`defectBadge sev-${r.top_notice.severity}`} aria-label={t("mnt.badge", { n: r.open_notices ?? 1, severity: t(`mnt.sev.${r.top_notice.severity}` as PmsKey) })}>{r.top_notice.severity === "minor" ? "🛠️" : "⚠️"}</span>}</button>; })}
       </div>
       <div className="segmented hkFilters" role="group">
         {(["mine", "all", "review", "ooo"] as const).map((f) => <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)}>{t(f === "mine" ? "hkb.mine" : f === "all" ? "hkb.all" : f === "review" ? "hkb.review" : "hkb.ooo")} · {counts[f]}</button>)}
@@ -77,13 +83,13 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite 
                   ))}
                 </fieldset>
               )}
-              {form && (
+              {form?.action === "report_issue" && <DefectForm lang={lang} onCancel={() => setPending(null)} onSubmit={(x) => act(task, "report_issue", { notes: x.description, severity: x.severity, photos: x.photos })} />}
+              {form && form.action !== "report_issue" && (
                 <div className="hkForm">
                   <label>{t("hkb.describe")}<textarea value={notes} maxLength={2000} autoFocus onChange={(e) => setNotes(e.target.value)} /></label>
-                  {form.action === "report_issue" && <label className="hkSevere"><input type="checkbox" checked={severe} onChange={(e) => setSevere(e.target.checked)} /> {t("hkb.severe")}</label>}
                   <div className="actions">
-                    <button type="button" disabled={!notes.trim() || busy === task.id} onClick={() => act(task, form.action, { notes: notes.trim(), severe: form.action === "report_issue" ? severe : undefined })}>{t("hkb.submit")}</button>
-                    <button type="button" className="secondaryButton" onClick={() => { setPending(null); setNotes(""); setSevere(false); }}>{t("hkb.cancel")}</button>
+                    <button type="button" disabled={!notes.trim() || busy === task.id} onClick={() => act(task, form.action, { notes: notes.trim() })}>{t("hkb.submit")}</button>
+                    <button type="button" className="secondaryButton" onClick={() => { setPending(null); setNotes(""); }}>{t("hkb.cancel")}</button>
                   </div>
                 </div>
               )}
@@ -94,7 +100,9 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite 
                   {(task.status === "cleaned" || task.status === "repaired") && (reviewer
                     ? <><button disabled={busy === task.id} onClick={() => act(task, "approve")}>{t("hkb.approve")}</button><button className="danger" onClick={() => setPending({ taskId: task.id, action: "reject" })}>{t("hkb.reject")}</button></>
                     : <small>{t("hkb.secondPerson")}</small>)}
-                  {task.status === "out_of_order" && <button onClick={() => setPending({ taskId: task.id, action: "repair_done" })}>{t("hkb.repairDone")}</button>}
+                  {task.status === "out_of_order" && (canResolve
+                    ? <button onClick={() => setNoticeRoom({ id: task.room_id, code: task.room_code })}>{t("hkb.resolveDefect")}</button>
+                    : <button onClick={() => setPending({ taskId: task.id, action: "repair_done" })}>{t("hkb.repairDone")}</button>)}
                   {(task.status === "todo" || task.status === "in_progress") && <button className="danger" onClick={() => setPending({ taskId: task.id, action: "report_issue" })}>{t("hkb.report")}</button>}
                 </div>
               )}
@@ -102,6 +110,7 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite 
           );
         })}
       </div>
+      {noticeRoom && <NoticeModal lang={lang} roomId={noticeRoom.id} roomCode={noticeRoom.code} canResolve={canResolve} canReport={canWrite || canResolve} onClose={() => setNoticeRoom(null)} onChanged={() => router.refresh()} />}
     </>
   );
 }

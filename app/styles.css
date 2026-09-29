@@ -269,3 +269,89 @@ p { line-height: 1.65; }
 .extra.recommended{border-color:#e0a13a;background:#fff8ea10}
 .recommendTag{display:block;font-style:normal;font-size:12px;font-weight:700;color:#ffd58a}
 .loginLang{display:flex;justify-content:flex-end;margin-bottom:8px}
+
+/* v48 maintenance notices: tape chart badge, hover card, resolution modal, lightbox, mobile capture */
+.hkRooms button{display:inline-flex;align-items:center;gap:5px;min-height:48px;padding:6px 12px;border:1px solid #dce3e7;border-radius:999px;background:#fff;color:inherit;font-weight:700;font-size:14px;cursor:pointer}
+.defectWrap{position:relative;display:inline-block}
+.defectBadge{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;margin-left:4px;padding:0 4px;border:0;border-radius:8px;background:#fff4e5;font-size:15px;line-height:1;cursor:pointer;animation:defectPulse 1.6s ease-in-out infinite}
+.defectBadge.sev-major,.defectBadge.sev-out_of_order{background:#fde8e8;box-shadow:0 0 0 2px #c62828}
+.defectBadge sup{font-size:10px;font-weight:800;color:#b3261e;margin-left:1px}
+@keyframes defectPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+@media (prefers-reduced-motion:reduce){.defectBadge{animation:none}}
+.defectAdd{margin-left:4px;width:22px;height:22px;border:1px dashed #9aa9ad;border-radius:6px;background:transparent;color:#5b6d72;font-weight:800;cursor:pointer;opacity:0;transition:opacity .15s}
+.tapeRow>b:hover .defectAdd,.defectAdd:focus-visible{opacity:1}
+.defectCard{display:none;position:absolute;z-index:40;left:0;top:30px;width:260px;padding:12px;border-radius:12px;background:#fff;color:#173e47;border:1px solid #ded8ce;box-shadow:0 12px 30px rgba(23,62,71,.18);font-weight:400;white-space:normal;text-align:left}
+.defectCard>*{display:block;margin-bottom:6px}
+.defectWrap:hover .defectCard,.defectBadge:focus-visible+.defectCard{display:block}
+.sevTag{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:800;background:#fff4e5;color:#8a5300}
+.sevTag.sev-major{background:#fde8e8;color:#b3261e}
+.sevTag.sev-out_of_order{background:#b3261e;color:#fff}
+.noticeStatus{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;background:#e6f4ea;color:#1e6b34}
+.noticeStatus.open{background:#fff4e5;color:#8a5300}
+.modalBackdrop{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-start;justify-content:center;padding:4vh 12px;background:rgba(10,30,36,.45);overflow:auto}
+.noticeModal{width:min(640px,100%);background:#f6f3ed;color:#173e47;border-radius:18px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.noticeModal>header{display:flex;justify-content:space-between;align-items:center}
+.noticeModal>header h3{margin:0;font-size:22px}
+.noticeModal .close{min-width:48px;min-height:48px;border:0;background:transparent;font-size:28px;cursor:pointer;color:inherit}
+.noticeModal>.danger{min-height:48px;width:100%;margin-top:8px}
+.noticeCard{background:#fff;border:1px solid #ded8ce;border-left:6px solid #e0a100;border-radius:14px;padding:14px;margin:10px 0;display:grid;gap:8px}
+.noticeCard.sev-major,.noticeCard.sev-out_of_order{border-left-color:#c62828}
+.noticeCard.resolved{border-left-color:#2e7d32;opacity:.92}
+.noticeCard header{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.noticeText{margin:0;white-space:pre-wrap}
+.photoCarousel,.photoStrip{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}
+.photoThumb{position:relative;flex:0 0 auto;width:96px;height:96px;padding:0;border:1px solid #ded8ce;border-radius:10px;overflow:hidden;background:#eee;cursor:zoom-in;scroll-snap-align:start}
+.photoThumb img{width:100%;height:100%;object-fit:cover;display:block}
+.photoStrip .photoThumb{cursor:pointer}
+.photoStrip .photoThumb span{position:absolute;top:2px;right:2px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;font-weight:800;line-height:24px}
+.photoAdd{flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:96px;min-height:96px;border:2px dashed #9aa9ad;border-radius:10px;text-align:center;font-weight:700;font-size:13px;cursor:pointer;padding:6px}
+.photoAdd input{position:absolute;width:1px;height:1px;opacity:0}
+.lightbox{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.92)}
+.lightbox img{max-width:94vw;max-height:88vh;object-fit:contain;border-radius:6px}
+.lightbox button{position:absolute;min-width:56px;min-height:56px;border:0;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-size:32px;cursor:pointer}
+.lbPrev{left:12px;top:50%;transform:translateY(-50%)}.lbNext{right:12px;top:50%;transform:translateY(-50%)}.lbClose{top:12px;right:12px}
+.lbCount{position:absolute;bottom:16px;color:#fff;font-weight:700}
+.defectForm,.resolveForm{display:grid;gap:12px}
+.defectForm textarea,.resolveForm textarea{min-height:96px;font-size:16px}
+.defectForm button,.resolveForm button,.resolveForm input,.defectForm input:not([type=radio]):not([type=file]){min-height:48px;font-size:16px}
+.severityPick{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;border:0;padding:0}
+.severityPick legend{margin-bottom:6px;font-weight:700}
+.severityPick small{grid-column:1/-1}
+.sevOption{display:flex;align-items:center;justify-content:center;min-height:56px;border:2px solid #dce3e7;border-radius:12px;background:#fff;font-weight:800;text-align:center;cursor:pointer;padding:6px}
+.sevOption input{position:absolute;opacity:0;width:1px;height:1px}
+.sevOption.on.sev-minor{border-color:#e0a100;background:#fff4e5}
+.sevOption.on.sev-major{border-color:#c62828;background:#fde8e8}
+.sevOption.on.sev-out_of_order{border-color:#b3261e;background:#b3261e;color:#fff}
+.sevOption:has(input:focus-visible){outline:3px solid #173e47;outline-offset:2px}
+.afterRepair{display:grid;gap:8px;border:0;padding:0}
+.afterRepair label{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:center;min-height:56px;padding:10px 12px;border:2px solid #dce3e7;border-radius:12px;background:#fff;cursor:pointer}
+.afterRepair label small{grid-column:2}
+.afterRepair label.on{border-color:#173e47}
+.afterRepair input{width:22px;height:22px}
+.resolveForm .three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.resolveForm fieldset{min-width:0;border:1px solid #ded8ce;border-radius:12px}
+.resolutionInfo{border-top:1px dashed #ded8ce;padding-top:8px}
+.resolutionInfo p{margin:4px 0;white-space:pre-wrap}
+.noticeHistory summary{min-height:48px;display:flex;align-items:center;cursor:pointer;font-weight:700}
+.maintenanceTable td small{display:block;color:#5b6d72}
+.maintenanceTable tr.resolved{opacity:.8}
+.maintenanceTable button{min-height:44px}
+@media(max-width:600px){.resolveForm .three{grid-template-columns:1fr}.noticeModal{padding:14px;border-radius:14px}.modalBackdrop{padding:0}.noticeModal{min-height:100vh;border-radius:0}}
+/* Mobile housekeeping: large single-hand targets */
+.hkPage .actions button,.hkPage .segmented button,.hkPage .hkChecklist label{min-height:48px}
+.hkPage .hkChecklist input{width:24px;height:24px}
+@media (prefers-color-scheme:dark){
+  .hkPage{background:#0f1f24;color:#e8f1f2;border-radius:18px;padding:14px;margin:-8px}
+  .hkPage .pageTitle p,.hkPage small{color:#b7c9cc}
+  .hkPage .hkBoard article,.hkPage .hkRooms button{background:#17313a;border-color:#2b4a53;color:#e8f1f2}
+  .hkPage .actions button{background:#7fd1c7;color:#0f1f24}
+  .hkPage .actions .danger{background:#ff8a80;color:#2b0000}
+  .noticeModal{background:#0f1f24;color:#e8f1f2}
+  .noticeCard,.sevOption,.afterRepair label{background:#17313a;border-color:#2b4a53;color:#e8f1f2}
+  .noticeModal textarea,.noticeModal input{background:#0b181c;color:#e8f1f2;border-color:#2b4a53}
+  .sevOption.on.sev-minor{background:#4a3500}.sevOption.on.sev-major{background:#5a1414}
+  .afterRepair label.on{border-color:#7fd1c7}
+}
+.resolveForm>label,.resolveForm .three label,.defectForm>label{display:grid;gap:6px;font-weight:700}
+.resolveForm>label textarea,.resolveForm .three input,.defectForm>label textarea{width:100%;box-sizing:border-box;font-weight:400}
+.resolveForm h4{margin:4px 0 0;font-size:17px}

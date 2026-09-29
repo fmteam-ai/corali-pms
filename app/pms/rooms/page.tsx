@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { roomNoticeSql } from "@/lib/maintenance-db";
 import { can } from "@/lib/security/permissions";
 import { addDays, heldRoomIds, hotelToday, isIsoDate } from "@/lib/tape-chart";
 import { getPmsT } from "@/lib/pms-lang";
@@ -19,7 +20,7 @@ export default async function RoomsPage({ searchParams }: { searchParams: Promis
   const [rooms, bookings, holds] = await Promise.all([
     db().query(
       `SELECT r.id,r.code,r.room_type,r.capacity,r.operational_status,
-              (SELECT t.status FROM housekeeping_tasks t WHERE t.owner_id=r.owner_id AND t.room_id=r.id AND t.status NOT IN ('ready') ORDER BY t.id DESC LIMIT 1) AS open_task_status
+              (SELECT t.status FROM housekeeping_tasks t WHERE t.owner_id=r.owner_id AND t.room_id=r.id AND t.status NOT IN ('ready') ORDER BY t.id DESC LIMIT 1) AS open_task_status,${roomNoticeSql}
          FROM rooms r WHERE r.owner_id=$1 AND r.active=1 ORDER BY r.code`,
       [user.ownerId],
     ),
@@ -59,6 +60,8 @@ export default async function RoomsPage({ searchParams }: { searchParams: Promis
         showCancelled={showCancelled}
         canCreate={can(user.role, "reservations.create", user.permissions)}
         canEdit={can(user.role, "reservations.edit", user.permissions)}
+        canResolve={can(user.role, "maintenance.resolve", user.permissions)}
+        canReport={can(user.role, "maintenance.resolve", user.permissions) || can(user.role, "housekeeping.write", user.permissions)}
         rooms={rooms.rows}
         initialBookings={bookings.rows}
         holds={holdBars}

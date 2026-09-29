@@ -12,8 +12,11 @@ test("role defaults follow the specification", () => {
   // Reception: reservations, front desk, CRM, basic billing, housekeeping view.
   for (const key of ["reservations.create", "reservations.edit", "reservations.delete", "folios.write", "housekeeping.read", "pricing.read"] as const) assert.equal(can("reception", key), true, key);
   for (const key of ["housekeeping.write", "pricing.edit", "rooms.edit", "reports.read", "integrations.read", "users.manage", "audit.read"] as const) assert.equal(can("reception", key), false, key);
-  // Housekeeping: only cleaning.
-  assert.deepEqual(permissionKeys.filter((k) => can("housekeeping", k)), ["dashboard.read", "rooms.read", "housekeeping.read", "housekeeping.write"]);
+  // Housekeeping: cleaning, defect capture and (as maintenance staff) defect resolution.
+  assert.deepEqual(permissionKeys.filter((k) => can("housekeeping", k)), ["dashboard.read", "rooms.read", "housekeeping.read", "housekeeping.write", "maintenance.resolve"]);
+  // Reception and maintenance staff resolve defects from the tape chart; read-only users cannot.
+  assert.equal(can("reception", "maintenance.resolve"), true);
+  assert.equal(can("readonly", "maintenance.resolve"), false);
   // Read-only: views and non-financial reports only.
   for (const key of permissionKeys) {
     const allowed = can("readonly", key);
