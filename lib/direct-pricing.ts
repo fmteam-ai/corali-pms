@@ -102,6 +102,20 @@ export type OfferPrice = {
  * Final room price. Stackable codes apply on top of the direct price. Non-stackable codes apply to the standard price
  * without promotional offers and replace the direct discount; the guest always pays the lower of the two.
  */
+/**
+ * The direct-booking discount belongs only to the "Direct website rate" plan (direct_web), applied once against the
+ * standard price. Other plans keep their own adjustment (e.g. non-refundable −10%) with no direct discount. A
+ * direct_web plan with a negative adjustment of its own uses the direct discount setting instead (or its own
+ * percentage when the setting is off), so the discount is never applied twice.
+ */
+export function planPricing(planKey: string, adjustmentPercent: number, directPercent: number): { adjustmentPercent: number; directPercent: number } {
+  const adj = Number(adjustmentPercent) || 0;
+  const direct = Math.min(50, Math.max(0, Number(directPercent) || 0));
+  if (planKey !== "direct_web") return { adjustmentPercent: adj, directPercent: 0 };
+  if (adj < 0) return { adjustmentPercent: 0, directPercent: direct > 0 ? direct : Math.min(50, -adj) };
+  return { adjustmentPercent: adj, directPercent: direct };
+}
+
 export function priceWithOffers(input: { standardCents: number; nonPromoStandardCents: number; directPercent: number; coupon?: Coupon | null }): OfferPrice {
   const standard = Math.max(0, Math.trunc(input.standardCents));
   const percent = Math.min(50, Math.max(0, Number(input.directPercent) || 0));

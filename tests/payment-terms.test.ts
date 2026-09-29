@@ -17,7 +17,7 @@ test("each rate plan can set its own deposit and balance timing", () => {
   assert.equal(calculatePayment(100000, "2026-12-01", nonRefundable.policy, now).payableNowCents, 100000);
   assert.equal(balanceChargeDays(nonRefundable), null);
   const atHotel = planPaymentTerms(general, { depositPercent: 50, balanceMode: "at_hotel", balanceDaysBefore: null, fullPrepayment: false }, 14);
-  assert.equal(calculatePayment(100000, "2026-10-01", atHotel.policy, now).payableNowCents, 50000); // no window: balance at the hotel
+  assert.equal(calculatePayment(100000, "2026-11-01", atHotel.policy, now).payableNowCents, 50000); // no window: balance at the hotel
   assert.equal(balanceChargeDays(atHotel), -1);
   const days = planPaymentTerms(general, { depositPercent: null, balanceMode: "days_before", balanceDaysBefore: 21, fullPrepayment: false }, 14);
   assert.equal(days.autoChargeDays, 21);
@@ -42,4 +42,14 @@ test("policy texts default per language and fill plan details", () => {
   assert.equal(texts.el, "Δικό μας κείμενο");
   assert.equal(texts.de, defaultPolicyTexts.de);
   assert.equal(fillPolicy("{plan}: {cancellationDays} · {deposit} {balance}", { plan: "Flexible", cancellationDays: 14, deposit: "30%", balance: "later" }), "Flexible: 14 · 30% later");
+});
+
+test("bookings made less than 7 days before arrival pay in full on every plan", () => {
+  const general: PaymentPolicy = { fullPayment: false, depositPercent: 30, balanceDueDays: 5, fullPaymentWindowActive: false, fullPaymentDaysBeforeArrival: 7 };
+  const now = new Date("2026-07-01T10:00:00Z");
+  const atHotel = planPaymentTerms(general, { depositPercent: 30, balanceMode: "at_hotel", balanceDaysBefore: null, fullPrepayment: false }, 7).policy;
+  assert.equal(calculatePayment(100000, "2026-07-07", atHotel, now).mode, "full");
+  assert.equal(calculatePayment(100000, "2026-07-07", atHotel, now).payableNowCents, 100000);
+  assert.equal(calculatePayment(100000, "2026-07-08", atHotel, now).mode, "deposit");
+  assert.equal(calculatePayment(100000, "2026-07-08", atHotel, now).payableNowCents, 30000);
 });

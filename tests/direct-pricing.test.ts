@@ -67,3 +67,12 @@ test("couponProblem checks stay dates only when the search supplies them", () =>
   assert.equal(couponProblem(c, { today: "2027-06-01", checkIn: "2027-08-01", checkOut: "2027-08-05" }), "STAY_BLACKOUT");
   assert.equal(couponProblem(c, { today: "2027-06-01", checkIn: "2027-09-01", checkOut: "2027-09-05" }), null);
 });
+
+test("direct-booking discount applies only to the direct website rate, once", async () => {
+  const { planPricing } = await import("../lib/direct-pricing.ts");
+  assert.deepEqual(planPricing("flexible", 0, 5), { adjustmentPercent: 0, directPercent: 0 });
+  assert.deepEqual(planPricing("non_refundable", -10, 5), { adjustmentPercent: -10, directPercent: 0 });
+  assert.deepEqual(planPricing("direct_web", -5, 5), { adjustmentPercent: 0, directPercent: 5 });
+  assert.deepEqual(planPricing("direct_web", -5, 0), { adjustmentPercent: 0, directPercent: 5 });
+  assert.deepEqual(planPricing("direct_web", 0, 7), { adjustmentPercent: 0, directPercent: 7 });
+});

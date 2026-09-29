@@ -614,3 +614,64 @@ table.numeric tr.selected td{background:#fff8e6}
 .couponBox .couponApply:hover{background:#ffe6b8}
 .couponBox .couponApply:disabled{opacity:.6;cursor:wait}
 .stay .couponBox button.couponApply,.booking .couponBox button.couponApply{min-height:42px;padding:0 18px;border:0;border-radius:10px;background:#b64a2e;color:#fff;font-weight:800;cursor:pointer}.stay .couponBox button.couponApply:hover{background:#9c3c23}
+
+/* v50 booking engine: logo inside the hero, above the location line */
+.bookingHead{position:absolute;top:34px;right:calc(4vw + 28px);height:auto;padding:0;background:transparent;z-index:4}
+.booking{position:relative}
+.bookingHero{height:auto;min-height:330px;box-sizing:border-box;padding:34px 48px 90px}
+.heroLogo{display:inline-block;margin:0 0 26px;padding:10px 16px;background:#fff;border-radius:16px;box-shadow:0 6px 24px #0b2a3033}
+.heroLogo .bookingLogo{width:min(235px,50vw)}
+@media(max-width:600px){.bookingHero{padding:26px 22px 80px}.bookingHead{top:28px;right:calc(4vw + 14px)}.heroLogo{padding:8px 12px}.heroLogo .bookingLogo{width:min(170px,46vw)}}
+
+/* v50 hover feedback: every clickable option reacts to the mouse (booking engine and PMS) */
+@media(hover:hover){
+  .booking button,.booking select,.booking .rate,.booking .extra,.booking label.check,.booking .roomGallery img,.booking .roomResults article,
+  .pms button,.pms a,.pms select,.pms input,.pms textarea,.pms .card,.pms .widget,.pms tbody tr,.pms .bookingBar,.pms .slot,.pms .roomCard header,.pms .photoGrid figure,.pms .amenityChoice,.pms label.inline{transition:background-color .15s,border-color .15s,box-shadow .15s,color .15s,transform .15s,filter .15s,opacity .15s}
+  /* booking engine */
+  .booking .rate:hover{border-color:#b64b31;background:#fff8f5;box-shadow:0 6px 18px #b64b3122;transform:translateY(-1px);cursor:pointer}
+  .booking .rate:hover em{background:#8f3822}
+  .booking .roomResults article:hover{box-shadow:0 10px 30px #173e4718;border-color:#cfc6b8}
+  .booking .primary:not(:disabled):hover,.booking .couponApply:not(:disabled):hover{filter:brightness(.9);box-shadow:0 6px 16px #b64b3140;cursor:pointer}
+  .booking .searchBox select:hover,.booking .searchBox label button:hover,.booking .guestForm input:hover,.booking .guestForm select:hover,.booking .guestForm textarea:hover,.booking .languagePicker select:hover{border-color:#b64b31}
+  .booking .days button:not(:disabled):not(.chosen):hover{background:#f6dfd7;color:#8f3822;cursor:pointer}
+  .booking .calendarNav button:hover{color:#b64b31;cursor:pointer}
+  .booking .roomGallery button{overflow:hidden;cursor:zoom-in}
+  .booking .roomGallery button:hover img{transform:scale(1.04);filter:brightness(1.05)}
+  .booking .extra:hover{border-color:#ffffff66;background:#ffffff10;cursor:pointer}
+  .booking .back:hover,.booking .linkButton:hover{color:#fff;text-decoration-thickness:2px;cursor:pointer}
+  .booking label.check:hover{color:#8f3822;cursor:pointer}
+  .booking .policyModal header button:hover{color:#b64b31;cursor:pointer}
+  /* PMS */
+  .pms button:not(:disabled):hover{filter:brightness(1.12);box-shadow:0 3px 10px #173e4726;cursor:pointer}
+  .pms .secondaryButton:not(:disabled):hover,.pms a.secondaryLink:hover{background:#eef5f6;border-color:#8fb1b9;filter:none}
+  .pms button.danger:not(:disabled):hover{filter:brightness(.92)}
+  .pms main a:not(.secondaryLink):not([class*="Button"]):hover{text-decoration:underline;text-underline-offset:3px}
+  .pms select:hover,.pms input:not([type=checkbox]):not([type=radio]):hover,.pms textarea:hover{border-color:#5f8f99}
+  .pms tbody tr:hover{background:#f2f7f8}
+  .pms .card:hover,.pms .widget:hover{box-shadow:0 8px 24px #173e4714}
+  .pms .roomCard header:hover{background:#f6f9fa;cursor:pointer}
+  .pms .bookingBar:hover{filter:brightness(1.08);box-shadow:0 4px 12px #0003;z-index:5;cursor:pointer}
+  .pms .slot:hover{background:#eef5f6;cursor:pointer}
+  .pms .photoGrid figure:hover{box-shadow:0 6px 18px #173e4730}
+  .pms .photoUpload:hover{border-color:#173e47;background:#f2f7f8;cursor:pointer}
+  .pms label.inline:hover,.pms .amenityChoice:hover{color:#0f5d6b;cursor:pointer}
+}
+@media(prefers-reduced-motion:reduce){.booking .rate:hover{transform:none}.booking .roomGallery button:hover img{transform:none}}
+
+/* v50 season prices / rates overview (VikBooking-style) */
+.srHead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}.srHead h2{margin:0}
+.srNav{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.srNav label{display:flex;align-items:center;gap:6px;font-weight:600}.srNav input,.srNav select{padding:7px 9px;border:1px solid #cbd6da;border-radius:8px;font:inherit}
+.srHelp{margin:4px 0 0;color:#5a6b70;font-size:14px}
+.srGridWrap{overflow-x:auto;max-width:100%}
+.srGrid{border-collapse:separate;border-spacing:0;min-width:100%;font-size:13px}
+.srGrid th,.srGrid td{border-bottom:1px solid #e3e9eb;border-right:1px solid #eef2f3;text-align:center;white-space:nowrap}
+.srGrid thead th{position:sticky;top:0;background:#173e47;color:#fff;padding:6px 8px;font-weight:700}.srGrid thead th small{display:block;font-weight:400;opacity:.8}.srGrid thead th.weekend{background:#2a5a66}
+.srGrid tbody th{position:sticky;left:0;z-index:1;background:#fff;text-align:left;padding:6px 10px;min-width:150px}.srGrid tbody th small{display:block;color:#6b7b80;font-weight:400}
+.srGrid tr.srRoomRow th{padding-left:24px;background:#fafcfc}.srRoom{font-weight:600}
+.srGrid td{padding:0}.srGrid td button{display:block;width:100%;min-width:64px;padding:10px 6px;border:0;background:transparent;font:inherit;font-weight:600;color:#173e47;border-radius:0}
+.srGrid td.season button{color:#0d3139}.srGrid td.picked{outline:3px solid #b64b31;outline-offset:-3px}
+.srEditor{border:2px solid #b64b31}.srFields{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.srFields label{display:grid;gap:6px;font-weight:600}.srFields input,.srFields select{padding:10px;border:1px solid #cbd6da;border-radius:9px;font:inherit}
+.srChoices{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;border:1px solid #e3e9eb;border-radius:10px;padding:10px 14px}.srChoices b{flex-basis:100%;margin-top:4px}
+.srList td{vertical-align:middle}.srList tr.inactive{opacity:.55}.srSwatch{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;border:1px solid #0002}.srActions{display:flex;gap:6px;justify-content:flex-end}
+@media(hover:hover){.srGrid td button:not(:disabled):hover{background:#b64b3122;color:#8f3822;cursor:pointer}.srGrid tbody tr:hover th{background:#f2f7f8}}
+.srPage .card{max-width:none;width:100%;box-sizing:border-box;margin-bottom:18px}

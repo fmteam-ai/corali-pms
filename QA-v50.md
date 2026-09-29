@@ -3,6 +3,12 @@
 ## Scope in this package
 
 ### New in v50
+- **Season prices (VikBooking-style Rates Overview):** PMS → Pricing → Season prices shows a grid of room types (optionally each room) × days with the nightly price; click two cells to set a price for that period. Season prices apply to all rooms, a room type or specific rooms, optionally on chosen weekdays, and can be edited or deleted. Priority: specific rooms › room type › all rooms, then the shorter period, then the latest change. Offers apply on top.
+- **Special prices & restrictions** can now be deleted.
+- **Direct-booking discount (−5%)** applies only to the Direct website rate, once (no longer to every plan, no double discount).
+- **Last-minute bookings:** bookings made less than 7 days before arrival pay the full amount at booking on every plan.
+- **Booking engine:** hotel logo inside the hero above “Piso Livadi · Paros”; hover feedback on every option (rates, dates, buttons, gallery, extras).
+- **PMS:** hover feedback on buttons, links, table rows, cards, tape-chart bars and inputs.
 - **Room photos:** photos upload one at a time with progress (each resized to 1600 px), so large batches no longer fail on the web-server body limit; clear error reasons (too large, no permission, not found).
 - **Rooms screen shows every image the booking engine uses:** uploaded photos and existing image links (e.g. from the old website) appear together, can be reordered (first = cover) and removed; a broken image shows ⚠️ instead of a blank tile.
 - **Characteristics:** a new characteristic can be created with a name in any language (Greek or English filled from it); failures show the exact reason.

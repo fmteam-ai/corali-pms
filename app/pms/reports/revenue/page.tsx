@@ -53,7 +53,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Prom
     db().query(`SELECT competitor_id,stay_date,rate_cents,previous_rate_cents,sold_out FROM competitor_rates WHERE owner_id=$1 AND stay_date>=$2 AND stay_date<$3`, [u.ownerId, today, horizon]),
     // Reference public rate per night: the lowest active room price after date-specific rate rules.
     db().query(
-      `SELECT d::date::text AS date, min(COALESCE((SELECT rr.price_cents FROM rate_rules rr WHERE rr.owner_id=r.owner_id AND (rr.room_type IS NULL OR rr.room_type='' OR rr.room_type=r.room_type) AND rr.starts_on<=d::date::text AND rr.ends_on>=d::date::text AND rr.price_cents IS NOT NULL ORDER BY rr.id DESC LIMIT 1), r.base_rate_cents))::bigint AS rate
+      `SELECT d::date::text AS date, min(COALESCE((SELECT rr.price_cents FROM rate_rules rr WHERE rr.owner_id=r.owner_id AND rr.active=1 AND (rr.room_type IS NULL OR rr.room_type='' OR rr.room_type=r.room_type) AND rr.starts_on<=d::date::text AND rr.ends_on>=d::date::text AND rr.price_cents IS NOT NULL ORDER BY rr.id DESC LIMIT 1), r.base_rate_cents))::bigint AS rate
          FROM generate_series($2::date,$3::date - 1,interval '1 day') d CROSS JOIN rooms r WHERE r.owner_id=$1 AND r.active=1 GROUP BY d ORDER BY d`,
       [u.ownerId, today, horizon],
     ),

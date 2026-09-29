@@ -24,7 +24,7 @@ export async function openSuggestions(ownerId: string): Promise<(Suggestion & Co
     // Our reference rate per room type and night, and the competitor rates for the same nights.
     db().query(
       `SELECT d.day::date::text AS date, r.room_type,
-              min(COALESCE((SELECT rr.price_cents FROM rate_rules rr WHERE rr.owner_id=r.owner_id AND (rr.room_type IS NULL OR rr.room_type='' OR rr.room_type=r.room_type) AND rr.starts_on<=d.day::date::text AND rr.ends_on>=d.day::date::text AND rr.price_cents IS NOT NULL ORDER BY rr.id DESC LIMIT 1), r.base_rate_cents))::bigint AS rate
+              min(COALESCE((SELECT rr.price_cents FROM rate_rules rr WHERE rr.owner_id=r.owner_id AND rr.active=1 AND (rr.room_type IS NULL OR rr.room_type='' OR rr.room_type=r.room_type) AND rr.starts_on<=d.day::date::text AND rr.ends_on>=d.day::date::text AND rr.price_cents IS NOT NULL ORDER BY rr.id DESC LIMIT 1), r.base_rate_cents))::bigint AS rate
          FROM generate_series($2::date,$3::date,interval '1 day') AS d(day) JOIN rooms r ON r.owner_id=$1 AND r.active=1
         GROUP BY d.day, r.room_type`,
       [ownerId, today, addDays(today, HORIZON_DAYS)],

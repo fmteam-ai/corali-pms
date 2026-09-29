@@ -1271,3 +1271,10 @@ CREATE TABLE IF NOT EXISTS pms_dashboard_layouts (
  PRIMARY KEY(owner_id,staff_user_id)
 );
 ALTER TABLE room_amenities ADD COLUMN IF NOT EXISTS name_translations_json TEXT NOT NULL DEFAULT '{}';
+
+-- v50: season prices (nightly price per period for all rooms, a room type or specific rooms), managed in PMS → Pricing
+ALTER TABLE "rate_rules" ADD COLUMN IF NOT EXISTS "name" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "rate_rules" ADD COLUMN IF NOT EXISTS "room_codes" TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE "rate_rules" ADD COLUMN IF NOT EXISTS "weekdays" TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE "rate_rules" ADD COLUMN IF NOT EXISTS "active" BIGINT NOT NULL DEFAULT 1;
+ALTER TABLE "rate_rules" ADD COLUMN IF NOT EXISTS "updated_at" BIGINT NOT NULL DEFAULT 0;

@@ -17,4 +17,8 @@ async function handlePOST(request:Request){const u=await requireApiUser("pricing
  return Response.json({ok:Boolean(result.rowCount)},{status:result.rowCount?200:404})
  }catch(e){return Response.json({ok:false,error:e instanceof z.ZodError?"INVALID_INPUT":e instanceof Error?e.message:"SAVE_FAILED"},{status:e instanceof z.ZodError||e instanceof Error&&e.message==="INVALID_DATES"?400:500})}}
 
+const removal=z.object({kind:z.enum(["special","restriction"]),id:z.number().int().positive()});
+async function handleDELETE(request:Request){const u=await requireApiUser("pricing.delete");if(u instanceof Response)return u;try{assertTrustedOrigin(request);const x=removal.parse(await request.json());const r=await db().query(x.kind==="special"?`DELETE FROM special_prices WHERE owner_id=$1 AND id=$2`:`DELETE FROM booking_restrictions WHERE owner_id=$1 AND id=$2`,[u.ownerId,x.id]);return r.rowCount?Response.json({ok:true}):Response.json({ok:false,error:"NOT_FOUND"},{status:404})}catch(e){return Response.json({ok:false,error:e instanceof z.ZodError?"INVALID_INPUT":"DELETE_FAILED"},{status:e instanceof z.ZodError?400:500})}}
+
 export const POST = audited("rate_rule", handlePOST, { snapshot: rulesSnapshot });
+export const DELETE = audited("rate_rule", handleDELETE, { snapshot: rulesSnapshot });

@@ -69,7 +69,7 @@ test("full payment window includes exactly seven days before arrival", () => {
 
 test("disabled full payment window falls back to configured deposit", () => {
   const policy: PaymentPolicy = { fullPayment: false, depositPercent: 40, balanceDueDays: 5, fullPaymentWindowActive: false, fullPaymentDaysBeforeArrival: 7 };
-  assert.equal(calculatePayment(250_00, "2026-10-02", policy, new Date("2026-10-01T00:00:00Z")).payableNowCents, 100_00);
+  assert.equal(calculatePayment(250_00, "2026-10-20", policy, new Date("2026-10-01T00:00:00Z")).payableNowCents, 100_00);
 });
 
 test("CSRF origin and Fetch Metadata checks fail closed while allowing Hotel Corali subdomains", () => {

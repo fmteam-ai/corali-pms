@@ -3,7 +3,8 @@ import { differenceInCalendarDays, eachDayOfInterval, parseISO, subDays } from "
 import { db } from "@/lib/db";
 import {rateNames,type BookingLanguage} from "@/lib/booking-i18n";
 import { priceForRoomTotals } from "@/lib/room-pricing";
-import { DEFAULT_DIRECT_DISCOUNT_PERCENT, couponProblem, normalizeCouponCode, priceWithOffers, type Coupon, type CouponProblem } from "@/lib/direct-pricing";
+import { nightlyPrice, ruleTarget } from "@/lib/season-rates";
+import { DEFAULT_DIRECT_DISCOUNT_PERCENT, couponProblem, normalizeCouponCode, planPricing, priceWithOffers, type Coupon, type CouponProblem } from "@/lib/direct-pricing";
 import { hotelToday } from "@/lib/tape-chart";
 
 type Lang = BookingLanguage;
@@ -38,7 +39,7 @@ export async function publicAvailability(input:AvailabilityInput){
     db().query(`SELECT start_date,end_date,free_cancellation_days FROM cancellation_policies WHERE owner_id=$1 AND start_date<=$2 AND end_date>=$2 ORDER BY updated_at DESC LIMIT 1`,[input.ownerId,input.checkIn]),
     db().query(`SELECT id,code,name,name_el,name_en,description,description_el,description_en,name_translations_json,description_translations_json,price_cents,pricing_mode FROM extras WHERE owner_id=$1 AND active=1 ORDER BY sort_order,id`,[input.ownerId]),
     db().query(`SELECT id,name,name_el,name_en,name_translations_json,category,amount_cents,calculation_mode FROM mandatory_charges WHERE owner_id=$1 AND active=1 AND (valid_from IS NULL OR valid_from<=$3) AND (valid_to IS NULL OR valid_to>=$2) ORDER BY id`,[input.ownerId,input.checkIn,input.checkOut]),
-    db().query(`SELECT room_type,starts_on,ends_on,price_cents,minimum_stay,maximum_stay,closed,closed_to_arrival,closed_to_departure FROM rate_rules WHERE owner_id=$1 AND starts_on<$3 AND ends_on>=$2`,[input.ownerId,input.checkIn,input.checkOut]),
+    db().query(`SELECT id,room_type,room_codes,weekdays,active,updated_at,starts_on,ends_on,price_cents,minimum_stay,maximum_stay,closed,closed_to_arrival,closed_to_departure FROM rate_rules WHERE owner_id=$1 AND active=1 AND starts_on<$3 AND ends_on>=$2 ORDER BY id`,[input.ownerId,input.checkIn,input.checkOut]),
     db().query(`SELECT starts_on,ends_on,adjustment_type,adjustment_value,operation,weekdays,room_codes,rate_plan_keys,minimum_stay,priority,promotion FROM special_prices WHERE owner_id=$1 AND active=1 AND starts_on<$3 AND ends_on>=$2 ORDER BY priority,id`,[input.ownerId,input.checkIn,input.checkOut]),
     db().query(`SELECT starts_on,ends_on,minimum_stay,maximum_stay,closed_arrival_weekdays,closed_departure_weekdays,room_codes,rate_plan_keys,priority FROM booking_restrictions WHERE owner_id=$1 AND active=1 AND starts_on<$3 AND ends_on>=$2 ORDER BY priority,id`,[input.ownerId,input.checkIn,input.checkOut]),
     db().query(`SELECT direct_discount_percent,direct_discount_active FROM revenue_settings WHERE owner_id=$1 LIMIT 1`,[input.ownerId]),
@@ -63,9 +64,9 @@ export async function publicAvailability(input:AvailabilityInput){
       const roomTotals=selectedRooms.map(selected=>{
         let base=0,nonPromoBase=0;
         for(const date of dates){
-          const rule=rules.rows.filter(r=>(!r.room_type||r.room_type===roomType)&&r.starts_on<=date&&r.ends_on>=date).at(-1);
+          const rule=rules.rows.filter(r=>ruleTarget(r,roomType,selected.code)>0&&r.starts_on<=date&&r.ends_on>=date&&(r.minimum_stay!==null||r.maximum_stay!==null||Number(r.closed)===1||Number(r.closed_to_arrival)===1||Number(r.closed_to_departure)===1)).at(-1);
           if(Number(rule?.closed)===1||Number(rule?.minimum_stay??1)>nights||(rule?.maximum_stay&&Number(rule.maximum_stay)<nights)||date===input.checkIn&&Number(rule?.closed_to_arrival)===1||date===dates.at(-1)&&Number(rule?.closed_to_departure)===1)restricted=true;
-          let nightly=money(rule?.price_cents??selected.base_rate_cents),nonPromo=nightly;
+          let nightly=money(nightlyPrice(rules.rows,date,roomType,selected.code,Number(selected.base_rate_cents))),nonPromo=nightly;
           const applicable=specials.rows.filter(s=>s.starts_on<=date&&s.ends_on>=date&&Number(s.minimum_stay)<=nights&&(!jsonArray<string>(s.room_codes).length||jsonArray<string>(s.room_codes).includes(selected.code))&&(!jsonArray<string>(s.rate_plan_keys).length||jsonArray<string>(s.rate_plan_keys).includes(p.plan_key))&&(!jsonArray<number>(s.weekdays).length||jsonArray<number>(s.weekdays).includes(parseISO(date).getUTCDay())));
           for(const offer of applicable){const delta=offer.adjustment_type==="percentage"?Math.round(nightly*Math.abs(Number(offer.adjustment_value))/100):Math.abs(Number(offer.adjustment_value));nightly=offer.operation==="discount"?Math.max(0,nightly-delta):nightly+delta;
             // Promotional discounts are left out of the base a non-stackable promo code applies to.
@@ -77,9 +78,10 @@ export async function publicAvailability(input:AvailabilityInput){
         return base;
       });
       if(restricted)return [];
-      const offer=priceWithOffers({standardCents:priceForRoomTotals(roomTotals,Number(p.adjustment_percent)),nonPromoStandardCents:priceForRoomTotals(nonPromoTotals,Number(p.adjustment_percent)),directPercent,coupon});
+      const pricing=planPricing(p.plan_key,Number(p.adjustment_percent),directPercent);
+      const offer=priceWithOffers({standardCents:priceForRoomTotals(roomTotals,pricing.adjustmentPercent),nonPromoStandardCents:priceForRoomTotals(nonPromoTotals,pricing.adjustmentPercent),directPercent:pricing.directPercent,coupon});
       if(offer.couponApplied)couponUsed=true;
-      return [{key:p.plan_key,name:planName(p.plan_key,p.name,p.name_translations_json),adjustmentPercent:Number(p.adjustment_percent),paymentPolicy:p.payment_policy,payment:{depositPercent:p.deposit_percent===null||p.deposit_percent===undefined?null:Number(p.deposit_percent),balanceMode:String(p.balance_mode??"general"),balanceDaysBefore:p.balance_days_before===null||p.balance_days_before===undefined?null:Number(p.balance_days_before),fullPrepayment:Number(p.full_prepayment??0)===1},cancellationDays,totalCents:offer.totalCents,standardCents:offer.standardCents,directCents:offer.directCents,directSavingCents:offer.directSavingCents,couponCents:offer.couponCents}];
+      return [{key:p.plan_key,name:planName(p.plan_key,p.name,p.name_translations_json),adjustmentPercent:pricing.directPercent?-pricing.directPercent:pricing.adjustmentPercent,directPercent:pricing.directPercent,paymentPolicy:p.payment_policy,payment:{depositPercent:p.deposit_percent===null||p.deposit_percent===undefined?null:Number(p.deposit_percent),balanceMode:String(p.balance_mode??"general"),balanceDaysBefore:p.balance_days_before===null||p.balance_days_before===undefined?null:Number(p.balance_days_before),fullPrepayment:Number(p.full_prepayment??0)===1},cancellationDays,totalCents:offer.totalCents,standardCents:offer.standardCents,directCents:offer.directCents,directSavingCents:offer.directSavingCents,couponCents:offer.couponCents}];
     });
     return {roomType,roomIds:list.slice(0,input.rooms).map(r=>Number(r.id)),code:room.code,name:localized(room.name_translations_json,room.name_el,room.name_en,roomType),description:localized(room.description_translations_json,room.description_el,room.description_en,room.description),capacity:Number(room.capacity),amenities:jsonArray<string>(room.amenities),characteristics:jsonArray<{icon:string;el:string;en:string;tr:string}>(room.amenity_list).map(a=>{let tr:Record<string,string>={};try{tr=JSON.parse(a.tr||"{}")}catch{tr={}}return {icon:amenityIcon(a.icon),name:amenityName({...tr,el:a.el,en:a.en},input.lang)}}),images:jsonArray<string>(room.images),availableCount:list.length,plans:plansForRoom};
   }).filter(r=>r.plans.length>0);

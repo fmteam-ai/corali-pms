@@ -2,7 +2,9 @@ const dayMs=86400000;
 export type PaymentPolicy={fullPayment:boolean;depositPercent:number;balanceDueDays:number;fullPaymentWindowActive:boolean;fullPaymentDaysBeforeArrival:number};
 export type PaymentCalculation={mode:"full"|"deposit";payableNowCents:number;balanceCents:number;daysUntilArrival:number};
 function utc(v:string|Date){const d=typeof v==="string"?new Date(`${v}T00:00:00Z`):v;if(Number.isNaN(d.getTime()))throw Error("INVALID_DATE");return Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())}
-export function calculatePayment(total:number,checkIn:string,p:PaymentPolicy,now=new Date()):PaymentCalculation{if(!Number.isInteger(total)||total<0)throw Error("INVALID_TOTAL");const days=Math.ceil((utc(checkIn)-utc(now))/dayMs);const full=p.fullPayment||(p.fullPaymentWindowActive&&days>=0&&days<=p.fullPaymentDaysBeforeArrival);const pay=full?total:Math.min(total,Math.round(total*p.depositPercent/100));return{mode:full?"full":"deposit",payableNowCents:pay,balanceCents:total-pay,daysUntilArrival:days}}
+/** Bookings made less than this many days before arrival always pay the whole amount at booking, on every plan. */
+export const LAST_MINUTE_FULL_PAYMENT_DAYS=7;
+export function calculatePayment(total:number,checkIn:string,p:PaymentPolicy,now=new Date()):PaymentCalculation{if(!Number.isInteger(total)||total<0)throw Error("INVALID_TOTAL");const days=Math.ceil((utc(checkIn)-utc(now))/dayMs);const full=p.fullPayment||days<LAST_MINUTE_FULL_PAYMENT_DAYS||(p.fullPaymentWindowActive&&days>=0&&days<=p.fullPaymentDaysBeforeArrival);const pay=full?total:Math.min(total,Math.round(total*p.depositPercent/100));return{mode:full?"full":"deposit",payableNowCents:pay,balanceCents:total-pay,daysUntilArrival:days}}
 
 /** Per rate plan (cancellation policy) payment terms; empty values fall back to the general policy. */
 export type BalanceMode = "general" | "cancellation_deadline" | "days_before" | "at_hotel";

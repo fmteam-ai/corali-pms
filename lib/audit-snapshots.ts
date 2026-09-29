@@ -46,3 +46,7 @@ export async function paymentPolicySnapshot(ownerId: string) {
 export async function automationSnapshot(ownerId: string) {
   return row(`SELECT * FROM message_automation_settings WHERE owner_id=$1`, [ownerId]);
 }
+
+export async function seasonRateSnapshot(ownerId: string, body: Record<string, unknown>) {
+  return idOf(body) ? row(`SELECT * FROM rate_rules WHERE owner_id=$1 AND id=$2`, [ownerId, idOf(body)]) : null;
+}
