@@ -452,3 +452,55 @@ table.numeric tr.selected td{background:#fff8e6}
 @media(max-width:560px){.phoneField{grid-template-columns:1fr}}
 .rate b{min-width:150px;white-space:nowrap}
 .policyText p{margin:0 0 12px}
+/* v49 rooms management */
+.primaryAction{border:0;border-radius:12px;padding:12px 18px;background:#b64a2e;color:#fff;font-weight:800;cursor:pointer;margin-bottom:12px}
+.roomList{display:grid;gap:10px}
+.roomCard{max-width:none;width:100%;box-sizing:border-box;padding:14px 18px;border-radius:16px}
+.roomCard.inactive{opacity:.7}
+.roomCard>header{display:grid;grid-template-columns:72px 1fr auto auto auto;gap:14px;align-items:center;cursor:pointer}
+.roomCard>header img,.roomCard .noPhoto{width:72px;height:54px;object-fit:cover;border-radius:10px;background:#eef2f3;display:flex;align-items:center;justify-content:center;font-size:22px}
+.roomCard>header div{display:grid}
+.roomEditor{display:grid;gap:12px;margin-top:14px;border-top:1px solid #ded8ce;padding-top:14px}
+.roomFields{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.roomEditor label{display:grid;gap:4px;font-weight:700}.roomEditor label.inline{display:flex;align-items:center;gap:8px}
+.roomEditor input:not([type=checkbox]),.roomEditor select,.roomEditor textarea{box-sizing:border-box;width:100%;font-weight:400}
+.photoGrid{display:flex;flex-wrap:wrap;gap:10px}
+.photoGrid figure{position:relative;margin:0;width:170px;height:120px;border-radius:12px;overflow:hidden;background:#eee}
+.photoGrid figure.cover{outline:3px solid #b64a2e}
+.photoGrid figure img{width:100%;height:100%;object-fit:cover}
+.photoGrid figcaption{position:absolute;left:6px;top:6px;background:#b64a2e;color:#fff;font-size:11px;font-weight:800;border-radius:6px;padding:2px 6px}
+.photoTools{position:absolute;right:6px;bottom:6px;display:flex;gap:4px}
+.photoTools button{width:30px;height:30px;border:0;border-radius:8px;background:rgba(0,0,0,.65);color:#fff;font-weight:800;cursor:pointer}
+.photoTools button.danger{background:#b3261e}
+.photoUpload{display:flex;align-items:center;justify-content:center;width:170px;height:120px;border:2px dashed #9aa9ad;border-radius:12px;font-weight:700;cursor:pointer;text-align:center;padding:8px;box-sizing:border-box}
+.photoUpload input{position:absolute;width:1px;height:1px;opacity:0}
+@media(max-width:700px){.roomCard>header{grid-template-columns:60px 1fr auto}.roomCard>header>small,.roomCard>header>.noticeStatus{display:none}}
+.amenityPicker{display:grid;gap:10px;border-top:1px solid #ded8ce;padding-top:12px}.amenityPicker h3{margin:0}
+.amenityChips{display:flex;flex-wrap:wrap;gap:8px}
+.amenityChips label{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:4px 12px;border:1px solid #cdd6d9;border-radius:999px;background:#fff;cursor:pointer;font-weight:600}
+.amenityChips label.on{border-color:#173e47;background:#e8f1f2}
+.amenityChips label input{width:16px;height:16px}
+.iconGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:6px;margin-bottom:10px}
+.iconGrid button{min-height:44px;border:1px solid #cdd6d9;border-radius:10px;background:#fff;font-size:22px;cursor:pointer}
+.iconGrid button.on{border:2px solid #b64a2e;background:#fff4ef}
+.newAmenity{border:1px solid #ded8ce;border-radius:12px;padding:12px;min-width:0}
+.amenityIcons{display:flex;gap:6px;font-size:16px;margin-top:2px}
+/* v49 booking engine room photos & characteristics */
+.roomResults article.withPhoto{grid-template-columns:minmax(220px,300px) 1fr minmax(0,1.2fr)}
+.roomGallery{display:grid;gap:6px;align-self:start}
+.roomGallery .cover{position:relative;padding:0;border:0;border-radius:14px;overflow:hidden;cursor:zoom-in;aspect-ratio:4/3;background:#eef2f3}
+.roomGallery .cover img{width:100%;height:100%;object-fit:cover;display:block}
+.roomGallery .cover span{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.6);color:#fff;border-radius:8px;padding:2px 8px;font-size:12px;font-weight:700}
+.roomGallery .thumbs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.roomGallery .thumbs button{padding:0;border:0;border-radius:8px;overflow:hidden;aspect-ratio:1;cursor:zoom-in}
+.roomGallery .thumbs img{width:100%;height:100%;object-fit:cover}
+.galleryViewer{position:fixed;inset:0;z-index:95;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center}
+.galleryViewer img{max-width:94vw;max-height:88vh;object-fit:contain;border-radius:6px}
+.galleryViewer button{position:absolute;min-width:52px;min-height:52px;border:0;border-radius:50%;background:rgba(255,255,255,.15);color:#fff;font-size:30px;cursor:pointer}
+.galleryViewer .prev{left:14px;top:50%}.galleryViewer .next{right:14px;top:50%}.galleryViewer .closeViewer{top:14px;right:14px}
+.galleryViewer .count{position:absolute;bottom:16px;color:#fff;font-weight:700}
+.characteristics{list-style:none;padding:0;margin:6px 0 10px;display:flex;flex-wrap:wrap;gap:6px 14px;font-size:14px;color:#3d5a61}
+.characteristics li{display:inline-flex;align-items:center;gap:6px}
+.characteristics span{font-size:18px}
+@media(max-width:900px){.roomResults article.withPhoto{grid-template-columns:1fr}}
+.paymentsPage{display:grid;gap:14px}.segmented a{display:inline-flex;align-items:center;padding:8px 14px;border-radius:999px;font-weight:700;text-decoration:none;color:inherit}.segmented a.on{background:#173e47;color:#fff}.paymentsPage td small{display:block;color:#5b6d72}

@@ -1,3 +1,4 @@
+import { amenityIcon, amenityName } from "@/lib/amenity-icons";
 import { differenceInCalendarDays, eachDayOfInterval, parseISO, subDays } from "date-fns";
 import { db } from "@/lib/db";
 import {rateNames,type BookingLanguage} from "@/lib/booking-i18n";
@@ -27,7 +28,7 @@ export async function publicAvailability(input:AvailabilityInput){
   const dates=eachDayOfInterval({start:parseISO(input.checkIn),end:subDays(parseISO(input.checkOut),1)}).map(d=>d.toISOString().slice(0,10));
   const couponCode=normalizeCouponCode(input.couponCode);
   const [rooms,plans,policies,extras,charges,rules,specials,restrictions,revenue,couponRows]=await Promise.all([
-    db().query(`SELECT r.id,r.code,r.room_type,r.capacity,r.description,r.base_rate_cents,r.amenities,r.images,c.name_el,c.name_en,c.description_el,c.description_en,c.name_translations_json,c.description_translations_json
+    db().query(`SELECT r.id,r.code,r.room_type,r.capacity,r.description,r.base_rate_cents,r.amenities,r.images,(SELECT COALESCE(json_agg(json_build_object('icon',a.icon,'el',a.name_el,'en',a.name_en,'tr',a.name_translations_json) ORDER BY a.display_order,a.id),'[]'::json) FROM room_amenity_assignments x JOIN room_amenities a ON a.id=x.amenity_id AND a.owner_id=r.owner_id AND a.active=1 WHERE x.room_id=r.id) AS amenity_list,c.name_el,c.name_en,c.description_el,c.description_en,c.name_translations_json,c.description_translations_json
       FROM rooms r LEFT JOIN room_categories c ON c.id=r.category_id AND c.owner_id=r.owner_id
       WHERE r.owner_id=$1 AND r.active=1 AND r.operational_status<>'out_of_order' AND r.capacity >= $4
       AND NOT EXISTS(SELECT 1 FROM bookings b WHERE b.owner_id=r.owner_id AND b.room_id=r.id AND b.status NOT IN ('cancelled','checked_out','no_show') AND b.check_in<$3 AND b.check_out>$2)
@@ -80,7 +81,7 @@ export async function publicAvailability(input:AvailabilityInput){
       if(offer.couponApplied)couponUsed=true;
       return [{key:p.plan_key,name:planName(p.plan_key,p.name,p.name_translations_json),adjustmentPercent:Number(p.adjustment_percent),paymentPolicy:p.payment_policy,payment:{depositPercent:p.deposit_percent===null||p.deposit_percent===undefined?null:Number(p.deposit_percent),balanceMode:String(p.balance_mode??"general"),balanceDaysBefore:p.balance_days_before===null||p.balance_days_before===undefined?null:Number(p.balance_days_before),fullPrepayment:Number(p.full_prepayment??0)===1},cancellationDays,totalCents:offer.totalCents,standardCents:offer.standardCents,directCents:offer.directCents,directSavingCents:offer.directSavingCents,couponCents:offer.couponCents}];
     });
-    return {roomType,roomIds:list.slice(0,input.rooms).map(r=>Number(r.id)),code:room.code,name:localized(room.name_translations_json,room.name_el,room.name_en,roomType),description:localized(room.description_translations_json,room.description_el,room.description_en,room.description),capacity:Number(room.capacity),amenities:jsonArray<string>(room.amenities),images:jsonArray<string>(room.images),availableCount:list.length,plans:plansForRoom};
+    return {roomType,roomIds:list.slice(0,input.rooms).map(r=>Number(r.id)),code:room.code,name:localized(room.name_translations_json,room.name_el,room.name_en,roomType),description:localized(room.description_translations_json,room.description_el,room.description_en,room.description),capacity:Number(room.capacity),amenities:jsonArray<string>(room.amenities),characteristics:jsonArray<{icon:string;el:string;en:string;tr:string}>(room.amenity_list).map(a=>{let tr:Record<string,string>={};try{tr=JSON.parse(a.tr||"{}")}catch{tr={}}return {icon:amenityIcon(a.icon),name:amenityName({...tr,el:a.el,en:a.en},input.lang)}}),images:jsonArray<string>(room.images),availableCount:list.length,plans:plansForRoom};
   }).filter(r=>r.plans.length>0);
   const extraRows=extras.rows.map(e=>({...e,name:localized(e.name_translations_json,e.name_el,e.name_en,e.name),description:localized(e.description_translations_json,e.description_el,e.description_en,e.description),id:Number(e.id),price_cents:Number(e.price_cents)}));
   const chargeRows=charges.rows.map(c=>{const unit=money(c.amount_cents);const multiplier=c.calculation_mode==="per_night"?nights:c.calculation_mode==="per_room"?input.rooms:c.calculation_mode==="per_person"?(input.adults+input.children):c.calculation_mode==="per_room_night"?input.rooms*nights:1;return {...c,name:localized(c.name_translations_json,c.name_el,c.name_en,c.name),id:Number(c.id),amount_cents:unit,multiplier,total_cents:unit*multiplier};});

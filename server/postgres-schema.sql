@@ -1249,3 +1249,25 @@ CREATE TABLE IF NOT EXISTS booking_policy_texts (
 -- The Greek climate crisis resilience fee is charged per room per night, never per booking.
 UPDATE mandatory_charges SET calculation_mode='per_room_night'
  WHERE calculation_mode='per_booking' AND (category IN ('climate_resilience','climate_tax') OR name ILIKE '%climate%' OR name ILIKE '%κλιματ%' OR COALESCE(name_el,'') ILIKE '%κλιματ%' OR COALESCE(name_en,'') ILIKE '%climate%');
+
+-- v49: room photos uploaded from the PMS (served publicly to the booking engine) and per-user dashboard layout
+CREATE TABLE IF NOT EXISTS room_photos (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ room_id BIGINT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+ mime TEXT NOT NULL,
+ data_base64 TEXT NOT NULL,
+ byte_size BIGINT NOT NULL,
+ sort_order BIGINT NOT NULL DEFAULT 0,
+ created_by BIGINT,
+ created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_room_photos_room ON room_photos(owner_id,room_id,sort_order);
+CREATE TABLE IF NOT EXISTS pms_dashboard_layouts (
+ owner_id TEXT NOT NULL,
+ staff_user_id BIGINT NOT NULL,
+ layout_json TEXT NOT NULL,
+ updated_at BIGINT NOT NULL,
+ PRIMARY KEY(owner_id,staff_user_id)
+);
+ALTER TABLE room_amenities ADD COLUMN IF NOT EXISTS name_translations_json TEXT NOT NULL DEFAULT '{}';

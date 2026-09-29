@@ -34,7 +34,7 @@ export function ArrivalEditor({ lang, initial, canEdit }: { lang: PmsLang; initi
   return (
     <div className="arrivalEditor">
       <div className="segmented" role="tablist">
-        {arrivalModes.map((x) => <button key={x} type="button" role="tab" aria-selected={mode === x} aria-pressed={mode === x} onClick={() => setMode(x)}>{t(`arr.mode.${x}` as PmsKey)} · {s.modes[x].hubs.length}</button>)}
+        {arrivalModes.map((x) => <button key={x} type="button" aria-pressed={mode === x} onClick={() => setMode(x)}>{t(`arr.mode.${x}` as PmsKey)} · {s.modes[x].hubs.length}</button>)}
       </div>
       <fieldset disabled={!canEdit} className="arrivalMode">
         <label className="inline"><input type="checkbox" checked={m.enabled} onChange={(e) => setMode_(mode, (x) => ({ ...x, enabled: e.target.checked }))} /> {t("arr.enabled")}</label>
