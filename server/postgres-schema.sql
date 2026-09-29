@@ -925,3 +925,8 @@ ALTER TABLE guest_preferences ADD COLUMN IF NOT EXISTS tags TEXT NOT NULL DEFAUL
 
 -- The specification forbids storing photos: clear any legacy housekeeping photo data.
 UPDATE housekeeping_tasks SET photo_data=NULL WHERE photo_data IS NOT NULL;
+
+-- Direct-website discount shown against the standard rate (PMS → Rates).
+ALTER TABLE revenue_settings ADD COLUMN IF NOT EXISTS direct_discount_percent BIGINT NOT NULL DEFAULT 5;
+ALTER TABLE revenue_settings ADD COLUMN IF NOT EXISTS direct_discount_active BIGINT NOT NULL DEFAULT 1;
+CREATE INDEX IF NOT EXISTS idx_booking_sessions_coupon ON booking_sessions(owner_id,coupon_code) WHERE coupon_code IS NOT NULL;

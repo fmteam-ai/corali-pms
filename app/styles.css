@@ -239,3 +239,23 @@ p { line-height: 1.65; }
  .pmsTopbar .userMenu>a{display:none}
  .langToggle button{padding:6px}
 }
+.rate .standardPrice{display:block;font-size:13px;font-weight:400;color:#8a9aa0;text-decoration:line-through}
+.rate .saving{display:block;font-size:12px;color:#17643a;font-weight:700}
+.rate .directBadge{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:999px;background:#e9f5ed;color:#17643a;font-weight:700}
+.accessBanner{padding:14px 16px;margin:0 0 14px;border:2px solid #e0a13a;border-radius:14px;background:#fff8ea;color:#5b3b00}
+.accessBanner p{margin:6px 0 0}
+.couponBox{margin:14px 0;display:grid;gap:6px}
+.couponBox label{display:grid;gap:6px;font-weight:700}
+.couponBox span{display:flex;gap:8px}
+.couponBox input{flex:1;min-width:0;padding:10px;border:1px solid #cbd6da;border-radius:9px;text-transform:uppercase}
+.couponBox button{padding:10px 14px;border:0;border-radius:9px;background:#173e47;color:#fff;font-weight:700}
+.couponBox p{margin:0;font-size:13px}
+.couponBox p button{padding:3px 8px;background:#eef2f3;color:#173e47}
+.couponOk{color:#17643a;font-weight:700}
+.couponError{color:#b3261e;font-weight:700}
+.couponInfo{color:#5b3b00}
+.directDiscount input[type=number]{width:80px;padding:8px;border:1px solid #cad5df;border-radius:8px}
+.stay .couponOk{color:#a8f0bd}
+.stay .couponError{color:#ffb4a9}
+.stay .couponInfo{color:#ffe2a8}
+.stay .couponBox p button{background:#ffffff26;color:#fff}
