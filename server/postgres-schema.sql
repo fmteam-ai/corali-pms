@@ -1066,3 +1066,18 @@ CREATE TABLE IF NOT EXISTS social_messages (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_social_messages_external ON social_messages(owner_id,external_id) WHERE external_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_social_messages_thread ON social_messages(owner_id,platform,sender_id,created_at);
+
+-- v48: birthday code stay-date rules (allowed stay window and excluded periods, e.g. 07-20 → 08-20)
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS stay_from TEXT;
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS stay_to TEXT;
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS blackout_json TEXT NOT NULL DEFAULT '[]';
+CREATE TABLE IF NOT EXISTS birthday_settings (
+ owner_id TEXT PRIMARY KEY,
+ discount_percent BIGINT NOT NULL DEFAULT 10,
+ valid_days BIGINT NOT NULL DEFAULT 60,
+ stay_from TEXT,
+ stay_to TEXT,
+ blackout_json TEXT NOT NULL DEFAULT '[]',
+ updated_by BIGINT,
+ updated_at BIGINT NOT NULL
+);

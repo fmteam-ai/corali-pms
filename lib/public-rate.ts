@@ -47,7 +47,7 @@ export async function publicAvailability(input:AvailabilityInput){
   const settings=revenue.rows[0];
   const directPercent=settings?(Number(settings.direct_discount_active)===1?Number(settings.direct_discount_percent):0):DEFAULT_DIRECT_DISCOUNT_PERCENT;
   const couponRow=couponRows.rows[0] as (Coupon&{pending_uses:number})|undefined;
-  const problem:CouponProblem|null=couponCode?couponProblem(couponRow,{today:hotelToday(),email:input.guestEmail,pendingUses:Number(couponRow?.pending_uses??0)}):null;
+  const problem:CouponProblem|null=couponCode?couponProblem(couponRow,{today:hotelToday(),email:input.guestEmail,pendingUses:Number(couponRow?.pending_uses??0),checkIn:input.checkIn,checkOut:input.checkOut}):null;
   const coupon=couponCode&&!problem?couponRow:null;
   let couponUsed=false;
   const planRows=plans.rows.length?plans.rows:[{plan_key:"flexible",name:"Flexible",adjustment_percent:0,payment_policy:"flexible"}];

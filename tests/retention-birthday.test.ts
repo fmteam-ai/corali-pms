@@ -54,3 +54,15 @@ test("birthday codes are unambiguous and messages are localised", () => {
   assert.match(m.body, /δεν συνδυάζεται/);
   for (const lang of ["el", "en", "fr", "de", "it", "es"]) assert.doesNotMatch(birthdayMessage(lang, { name: "x", code: "C", percent: 10, until: "u" }).body, /\{\w+\}/);
 });
+
+test("birthday terms fall back to defaults and are spelled out in the guest message", async () => {
+  const { birthdayTerms } = await import("../scripts/birthday-core.mjs");
+  assert.deepEqual(birthdayTerms(null), { percent: 10, validDays: 60, stayFrom: null, stayTo: null, blackout: [] });
+  const t = birthdayTerms({ discount_percent: 15, valid_days: 90, stay_from: "04-01", stay_to: "10-31", blackout_json: '[{"from":"07-20","to":"08-20"},{"from":"x","to":"y"}]' });
+  assert.deepEqual(t, { percent: 15, validDays: 90, stayFrom: "04-01", stayTo: "10-31", blackout: [{ from: "07-20", to: "08-20" }] });
+  assert.equal(birthdayTerms({ discount_percent: 99, valid_days: 1 }).percent, 10);
+  const el = birthdayMessage("el", { ...t, name: "Μαρία", code: "BDAY-ABCDEFGH", until: "01/03/2027" });
+  assert.match(el.body, /Ισχύει για διαμονές από 01\/04 έως 31\/10\. Δεν ισχύει για διαμονές στις περιόδους 20\/07–20\/08\./);
+  assert.match(el.body, /Hotel Corali$/);
+  assert.doesNotMatch(birthdayMessage("en", { name: "A", code: "C", percent: 10, until: "x" }).body, /Not valid/);
+});

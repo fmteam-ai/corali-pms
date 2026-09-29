@@ -4,6 +4,30 @@ import { randomInt } from "node:crypto";
 export const BIRTHDAY_DISCOUNT_PERCENT = 10;
 export const BIRTHDAY_VALID_DAYS = 60;
 export const BIRTHDAY_MINIMUM_AGE = 18;
+const bound = /^(\d{4}-)?(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+/** Hotel-configured birthday offer terms, falling back to the defaults for anything missing or invalid. */
+export function birthdayTerms(row) {
+  const pct = Number(row?.discount_percent), days = Number(row?.valid_days);
+  const ok = (v) => typeof v === "string" && bound.test(v);
+  let blackout = [];
+  try { blackout = JSON.parse(row?.blackout_json || "[]"); } catch { blackout = []; }
+  if (!Array.isArray(blackout)) blackout = [];
+  return {
+    percent: Number.isInteger(pct) && pct >= 1 && pct <= 50 ? pct : BIRTHDAY_DISCOUNT_PERCENT,
+    validDays: Number.isInteger(days) && days >= 7 && days <= 365 ? days : BIRTHDAY_VALID_DAYS,
+    stayFrom: ok(row?.stay_from) ? row.stay_from : null,
+    stayTo: ok(row?.stay_to) ? row.stay_to : null,
+    blackout: blackout.filter((r) => r && ok(r.from) && ok(r.to) && r.from.length === r.to.length).slice(0, 20),
+  };
+}
+
+/** "20/07–20/08" style list of the excluded periods for the guest message. */
+export function formatRanges(ranges) {
+  const f = (v) => v.split("-").reverse().join("/");
+  return ranges.map((r) => `${f(r.from)}–${f(r.to)}`).join(", ");
+}
+
 const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I
 
 export function birthdayCode(random = randomInt) {
@@ -25,8 +49,26 @@ export function birthdayLanguage(value) {
   return Object.prototype.hasOwnProperty.call(copy, value) ? value : "en";
 }
 
+const termsCopy = {
+  el: { window: "Ισχύει για διαμονές από {from} έως {to}.", blackout: "Δεν ισχύει για διαμονές στις περιόδους {ranges}." },
+  en: { window: "Valid for stays from {from} to {to}.", blackout: "Not valid for stays during {ranges}." },
+  fr: { window: "Valable pour les séjours du {from} au {to}.", blackout: "Non valable pour les séjours pendant {ranges}." },
+  de: { window: "Gültig für Aufenthalte vom {from} bis {to}.", blackout: "Nicht gültig für Aufenthalte im Zeitraum {ranges}." },
+  it: { window: "Valido per soggiorni dal {from} al {to}.", blackout: "Non valido per soggiorni nei periodi {ranges}." },
+  es: { window: "Válido para estancias del {from} al {to}.", blackout: "No válido para estancias durante {ranges}." },
+};
+
 export function birthdayMessage(language, values) {
-  const text = copy[birthdayLanguage(language)];
-  const fill = (s) => s.replace(/\{(\w+)\}/g, (_, k) => String(values[k] ?? ""));
-  return { subject: fill(text.subject), body: fill(text.body) };
+  const lang = birthdayLanguage(language);
+  const text = copy[lang];
+  const fill = (s, v = values) => s.replace(/\{(\w+)\}/g, (_, k) => String(v[k] ?? ""));
+  const f = (v) => v.split("-").reverse().join("/");
+  const terms = [];
+  if (values.stayFrom && values.stayTo) terms.push(fill(termsCopy[lang].window, { from: f(values.stayFrom), to: f(values.stayTo) }));
+  if (values.blackout?.length) terms.push(fill(termsCopy[lang].blackout, { ranges: formatRanges(values.blackout) }));
+  const body = fill(text.body);
+  if (!terms.length) return { subject: fill(text.subject), body };
+  const parts = body.split("\n\n");
+  parts.splice(parts.length - 1, 0, terms.join(" "));
+  return { subject: fill(text.subject), body: parts.join("\n\n") };
 }

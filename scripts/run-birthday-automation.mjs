@@ -6,7 +6,7 @@ import pg from "pg";
 import nodemailer from "nodemailer";
 import { databaseSsl } from "./database-config.mjs";
 import { purgeExpiredIdentityData } from "./retention-core.mjs";
-import { BIRTHDAY_DISCOUNT_PERCENT, BIRTHDAY_MINIMUM_AGE, BIRTHDAY_VALID_DAYS, birthdayCode, birthdayLanguage, birthdayMessage } from "./birthday-core.mjs";
+import { BIRTHDAY_MINIMUM_AGE, birthdayCode, birthdayTerms, birthdayLanguage, birthdayMessage } from "./birthday-core.mjs";
 
 if (!process.env.DATABASE_URL) throw Error("DATABASE_URL is required");
 const owner = process.env.PMS_OWNER_ID ?? "hotel-corali";
@@ -44,6 +44,7 @@ try {
       ORDER BY lower(g.email), g.submitted_at DESC`,
     [owner, month, day],
   );
+  const terms = birthdayTerms((await pool.query(`SELECT * FROM birthday_settings WHERE owner_id=$1`, [owner])).rows[0]);
   let sent = 0;
   for (const g of r.rows) {
     const key = createHash("sha256").update(String(g.email).toLowerCase()).digest("hex");
@@ -52,20 +53,20 @@ try {
       [owner, g.id, key, year, Date.now()],
     );
     if (!claim.rowCount) continue; // already handled this year
-    const until = new Date(Date.UTC(year, month - 1, day + BIRTHDAY_VALID_DAYS)).toISOString().slice(0, 10);
+    const until = new Date(Date.UTC(year, month - 1, day + terms.validDays)).toISOString().slice(0, 10);
     let code = "";
     let couponId = null;
     for (let attempt = 0; attempt < 5 && !couponId; attempt++) {
       code = birthdayCode();
       const c = await pool.query(
-        `INSERT INTO coupons(owner_id,code,discount_type,discount_value,applies_to,valid_from,valid_to,max_uses,usage_count,active,created_at,combinable,purpose,restricted_email,minimum_age)
-         VALUES($1,$2,'percentage',$3,'room_only',$4,$5,1,0,1,$6,0,'birthday',lower($7),$8) ON CONFLICT DO NOTHING RETURNING id`,
-        [owner, code, BIRTHDAY_DISCOUNT_PERCENT, athens, until, Date.now(), g.email, BIRTHDAY_MINIMUM_AGE],
+        `INSERT INTO coupons(owner_id,code,discount_type,discount_value,applies_to,valid_from,valid_to,max_uses,usage_count,active,created_at,combinable,purpose,restricted_email,minimum_age,stay_from,stay_to,blackout_json)
+         VALUES($1,$2,'percentage',$3,'room_only',$4,$5,1,0,1,$6,0,'birthday',lower($7),$8,$9,$10,$11) ON CONFLICT DO NOTHING RETURNING id`,
+        [owner, code, terms.percent, athens, until, Date.now(), g.email, BIRTHDAY_MINIMUM_AGE, terms.stayFrom, terms.stayTo, JSON.stringify(terms.blackout)],
       );
       couponId = c.rows[0]?.id ?? null;
     }
     const language = birthdayLanguage(g.preferred_language);
-    const message = birthdayMessage(language, { name: g.first_name || "", code, percent: BIRTHDAY_DISCOUNT_PERCENT, until: until.split("-").reverse().join("/") });
+    const message = birthdayMessage(language, { name: g.first_name || "", code, percent: terms.percent, until: until.split("-").reverse().join("/"), stayFrom: terms.stayFrom, stayTo: terms.stayTo, blackout: terms.blackout });
     let es = "skipped", ws = "skipped";
     try { if (Number(g.email_marketing_consent)) es = await email(g.email, message); } catch { es = "failed"; }
     try { if (Number(g.whatsapp_marketing_consent)) ws = await whatsapp(g.phone, language, code); } catch { ws = "failed"; }

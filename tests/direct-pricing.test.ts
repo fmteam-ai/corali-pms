@@ -41,3 +41,29 @@ test("promo code validation", () => {
   assert.equal(couponProblem(null, { today }), "NOT_FOUND");
   assert.equal(normalizeCouponCode(" bday-abcd efgh "), "BDAY-ABCDEFGH");
 });
+
+test("birthday codes respect the allowed stay window and excluded periods", async () => {
+  const { stayProblem, dateInRange, parseDateRanges } = await import("../lib/direct-pricing.ts");
+  const summerBlock = { stay_from: null, stay_to: null, blackout_json: JSON.stringify([{ from: "07-20", to: "08-20" }]) };
+  assert.equal(stayProblem(summerBlock, "2027-07-10", "2027-07-15"), null);
+  assert.equal(stayProblem(summerBlock, "2027-07-18", "2027-07-21"), "STAY_BLACKOUT"); // night of 20/07 is excluded
+  assert.equal(stayProblem(summerBlock, "2027-08-21", "2027-08-25"), null); // check-out day itself is not a night
+  assert.equal(stayProblem(summerBlock, "2027-08-18", "2027-08-21"), "STAY_BLACKOUT");
+  assert.equal(stayProblem(summerBlock, "2028-08-01", "2028-08-02"), "STAY_BLACKOUT"); // repeats every year
+  const season = { stay_from: "04-01", stay_to: "10-31", blackout_json: "[]" };
+  assert.equal(stayProblem(season, "2027-10-30", "2027-11-01"), null);
+  assert.equal(stayProblem(season, "2027-10-30", "2027-11-02"), "STAY_OUTSIDE");
+  assert.equal(stayProblem({ stay_from: "2027-05-01", stay_to: "2027-06-30", blackout_json: null }, "2027-06-29", "2027-07-01"), null);
+  assert.equal(stayProblem({ stay_from: "2027-05-01", stay_to: "2027-06-30", blackout_json: null }, "2028-06-01", "2028-06-02"), "STAY_OUTSIDE");
+  assert.equal(dateInRange("2027-01-03", { from: "12-20", to: "01-06" }), true); // wraps the new year
+  assert.equal(dateInRange("2027-02-03", { from: "12-20", to: "01-06" }), false);
+  assert.deepEqual(parseDateRanges('[{"from":"07-20","to":"2027-08-20"},{"from":"bad","to":"08-01"},{"from":"01-01","to":"01-02"}]'), [{ from: "01-01", to: "01-02" }]);
+  assert.deepEqual(parseDateRanges("not json"), []);
+});
+
+test("couponProblem checks stay dates only when the search supplies them", () => {
+  const c = { id: 1, code: "BDAY-X", discount_type: "percentage", discount_value: 10, valid_from: "2027-01-01", valid_to: "2027-12-31", max_uses: 1, usage_count: 0, active: 1, combinable: 0, restricted_email: null, stay_from: null, stay_to: null, blackout_json: '[{"from":"07-20","to":"08-20"}]' } as Coupon;
+  assert.equal(couponProblem(c, { today: "2027-06-01" }), null);
+  assert.equal(couponProblem(c, { today: "2027-06-01", checkIn: "2027-08-01", checkOut: "2027-08-05" }), "STAY_BLACKOUT");
+  assert.equal(couponProblem(c, { today: "2027-06-01", checkIn: "2027-09-01", checkOut: "2027-09-05" }), null);
+});
