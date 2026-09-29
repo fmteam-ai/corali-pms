@@ -19,6 +19,7 @@ export async function GET(request: Request) {
     start = isIsoDate(requested) ? requested : hotelToday();
     days = Math.min(62, Math.max(1, Number(url.searchParams.get("days")) || 30));
   }
-  const [rows, totalRooms] = await Promise.all([dailyOccupancy(user.ownerId, start, days), activeRoomCount(user.ownerId)]);
+  const roomType = url.searchParams.get("roomType")?.slice(0, 60) || null;
+  const [rows, totalRooms] = await Promise.all([dailyOccupancy(user.ownerId, start, days, roomType), activeRoomCount(user.ownerId, roomType)]);
   return Response.json({ ok: true, start, end: addDays(start, days), totalRooms, days: rows }, { headers: { "Cache-Control": "no-store" } });
 }

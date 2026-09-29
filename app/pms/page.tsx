@@ -1,52 +1,64 @@
 import { requireUser } from "@/lib/auth";
-import {db} from "@/lib/db";
-import {can} from "@/lib/security/permissions";
-import {getPmsT} from "@/lib/pms-lang";
-import {loadNotifications,type FeedItem} from "@/lib/pms-notification-feed";
-import {dailyOccupancy,type DayOccupancy} from "@/lib/occupancy";
-import {hotelToday} from "@/lib/tape-chart";
-import {Dashboard} from "./dashboard";
-import {FrontDeskPanels} from "./front-desk-panels";
-import {DashboardRefresh} from "./dashboard-refresh";
+import { db } from "@/lib/db";
+import { normalizeLayout } from "@/lib/dashboard-widgets";
+import { getPmsT } from "@/lib/pms-lang";
+import { loadNotifications, type FeedItem } from "@/lib/pms-notification-feed";
+import { can } from "@/lib/security/permissions";
+import { hotelToday } from "@/lib/tape-chart";
+import { DashboardRefresh } from "./dashboard-refresh";
+import { WidgetDashboard, type DashboardData } from "./_dashboard/widget-dashboard";
 
-const stayColumns=`b.id,b.reference,b.guest_name,r.code room_code,b.check_in,b.check_out,b.status,b.balance_cents,b.version`;
-const hotelDay=(offset:number)=>`((now() AT TIME ZONE 'Europe/Athens')::date+${offset})::text`;
+const stayColumns = `b.id,b.reference,b.guest_name,r.code room_code,b.check_in,b.check_out,b.status,b.balance_cents,b.version,b.adults,b.children`;
+const hotelDay = (offset: number) => `((now() AT TIME ZONE 'Europe/Athens')::date+${offset})::text`;
 
 export default async function PmsPage() {
   const user = await requireUser("dashboard.read");
-  const {lang,t}=await getPmsT();
-  const failures:string[]=[];
-  const query=(sql:string,values:unknown[])=>db().query(sql,values).catch(error=>{const tag=sql.slice(0,90).replaceAll(/\s+/g," ");console.error("PMS dashboard query failed",tag,error);failures.push(tag);return {rows:[]}});
-  const guard=<T,>(work:Promise<T>,fallback:T,tag:string)=>work.catch(error=>{console.error("PMS dashboard query failed",tag,error);failures.push(tag);return fallback});
-  const today=hotelToday();
-  const financial=can(user.role,"folios.read",user.permissions);
-  const [notes,counts,bookings,forecast,recent,notifications,arrivalsToday,departuresToday,arrivalsTomorrow,departuresTomorrow,roomState,outstanding,services,tasks,holds,paymentsToday]=await Promise.all([
-    query(`SELECT id,body FROM pms_dashboard_notes WHERE owner_id=$1 ORDER BY updated_at DESC LIMIT 30`,[user.ownerId]),
-    query(`SELECT
- (SELECT count(*) FROM bookings WHERE owner_id=$1 AND check_in=${hotelDay(0)} AND status IN ('confirmed','checked_in')) AS arrivals_today,
- (SELECT count(*) FROM bookings WHERE owner_id=$1 AND check_out=${hotelDay(0)} AND status IN ('confirmed','checked_in','checked_out')) AS departures_today,
- (SELECT count(*) FROM bookings WHERE owner_id=$1 AND check_in=${hotelDay(1)} AND status='confirmed') AS arrivals_tomorrow,
- (SELECT count(*) FROM bookings WHERE owner_id=$1 AND check_out=${hotelDay(1)} AND status IN ('confirmed','checked_in')) AS departures_tomorrow,
- (SELECT count(DISTINCT room_id) FROM bookings WHERE owner_id=$1 AND check_in<=${hotelDay(0)} AND check_out>${hotelDay(0)} AND status IN ('confirmed','checked_in')) AS occupied,
- (SELECT count(*) FROM rooms WHERE owner_id=$1 AND active=1) AS total_rooms`,[user.ownerId]),
-    query(`SELECT id,guest_name,check_in,check_out,status,reference FROM bookings WHERE owner_id=$1 AND check_in>=${hotelDay(0)} AND status IN ('confirmed','checked_in') ORDER BY check_in,created_at DESC LIMIT 10`,[user.ownerId]),
-    guard<DayOccupancy[]>(dailyOccupancy(user.ownerId,today,30),[],"forecast"),
-    query(`SELECT id,guest_name,check_in,check_out,status,reference FROM bookings WHERE owner_id=$1 ORDER BY created_at DESC,id DESC LIMIT 10`,[user.ownerId]),
-    guard<FeedItem[]>(loadNotifications(user.ownerId,lang),[],"notifications"),
-    query(`SELECT ${stayColumns} FROM bookings b LEFT JOIN rooms r ON r.id=b.room_id AND r.owner_id=b.owner_id WHERE b.owner_id=$1 AND b.check_in=${hotelDay(0)} AND b.status IN ('confirmed','checked_in') ORDER BY r.code,b.guest_name`,[user.ownerId]),
-    query(`SELECT ${stayColumns} FROM bookings b LEFT JOIN rooms r ON r.id=b.room_id AND r.owner_id=b.owner_id WHERE b.owner_id=$1 AND b.check_out=${hotelDay(0)} AND b.status IN ('confirmed','checked_in','checked_out') ORDER BY r.code,b.guest_name`,[user.ownerId]),
-    query(`SELECT ${stayColumns} FROM bookings b LEFT JOIN rooms r ON r.id=b.room_id AND r.owner_id=b.owner_id WHERE b.owner_id=$1 AND b.check_in=${hotelDay(1)} AND b.status='confirmed' ORDER BY r.code,b.guest_name`,[user.ownerId]),
-    query(`SELECT ${stayColumns} FROM bookings b LEFT JOIN rooms r ON r.id=b.room_id AND r.owner_id=b.owner_id WHERE b.owner_id=$1 AND b.check_out=${hotelDay(1)} AND b.status IN ('confirmed','checked_in') ORDER BY r.code,b.guest_name`,[user.ownerId]),
-    query(`SELECT r.id,r.code,r.room_type,r.operational_status,b.guest_name,b.id booking_id,b.balance_cents FROM rooms r LEFT JOIN LATERAL (SELECT id,guest_name,balance_cents FROM bookings b WHERE b.owner_id=r.owner_id AND b.room_id=r.id AND b.status IN ('confirmed','checked_in') AND b.check_in<=${hotelDay(0)} AND b.check_out>${hotelDay(0)} ORDER BY b.id DESC LIMIT 1) b ON true WHERE r.owner_id=$1 AND r.active=1 ORDER BY r.code`,[user.ownerId]),
-    financial?query(`SELECT id,reference,guest_name,check_in,check_out,status,balance_cents FROM bookings WHERE owner_id=$1 AND status IN ('confirmed','checked_in') AND balance_cents>0 ORDER BY check_out LIMIT 50`,[user.ownerId]):Promise.resolve({rows:[]}),
-    query(`SELECT id,name_el,name_en,name,price_cents,pricing_mode FROM extras WHERE owner_id=$1 AND active=1 ORDER BY sort_order,id LIMIT 30`,[user.ownerId]),
-    query(`SELECT t.id,r.code room_code,t.status,t.task_type,t.assigned_to FROM housekeeping_tasks t JOIN rooms r ON r.id=t.room_id AND r.owner_id=t.owner_id WHERE t.owner_id=$1 AND t.status NOT IN ('ready','completed') ORDER BY t.id DESC LIMIT 30`,[user.ownerId]),
-    query(`SELECT count(*)::int AS total FROM booking_sessions WHERE owner_id=$1 AND status='payment_pending' AND recovery_due_at>(extract(epoch from now())*1000)::bigint`,[user.ownerId]),
-    financial?query(`SELECT COALESCE(sum(CASE WHEN entry_type IN ('payment','refund') THEN -amount_cents ELSE 0 END),0)::bigint AS net_cents FROM folio_entries WHERE owner_id=$1 AND created_at>=(extract(epoch from ((now() AT TIME ZONE 'Europe/Athens')::date AT TIME ZONE 'Europe/Athens'))*1000)::bigint AND created_at<(extract(epoch from (((now() AT TIME ZONE 'Europe/Athens')::date+1) AT TIME ZONE 'Europe/Athens'))*1000)::bigint`,[user.ownerId]):Promise.resolve({rows:[{net_cents:0}]})
+  const { lang, t } = await getPmsT();
+  const failures: string[] = [];
+  const query = (sql: string, values: unknown[]) => db().query(sql, values).catch((error) => { const tag = sql.slice(0, 90).replaceAll(/\s+/g, " "); console.error("PMS dashboard query failed", tag, error); failures.push(tag); return { rows: [] as Record<string, unknown>[] }; });
+  const financial = can(user.role, "folios.read", user.permissions);
+  const stays = (column: "check_in" | "check_out", offset: number, statuses: string) => query(`SELECT ${stayColumns} FROM bookings b LEFT JOIN rooms r ON r.id=b.room_id AND r.owner_id=b.owner_id WHERE b.owner_id=$1 AND b.${column}=${hotelDay(offset)} AND b.status IN (${statuses}) ORDER BY r.code,b.guest_name`, [user.ownerId]);
+  const arrivalStatuses = `'confirmed','checked_in','checked_out','no_show'`, departureStatuses = `'confirmed','checked_in','checked_out'`;
+  const [notes, rooms, recent, roomState, balances, payments, hk, layout, notifications, aY, aT, aM, dY, dT, dM] = await Promise.all([
+    query(`SELECT id,body,color FROM pms_dashboard_notes WHERE owner_id=$1 ORDER BY updated_at DESC LIMIT 40`, [user.ownerId]),
+    query(`SELECT count(*)::int total,COALESCE(array_agg(DISTINCT room_type),'{}') types FROM rooms WHERE owner_id=$1 AND active=1`, [user.ownerId]),
+    query(`SELECT id,reference,guest_name,check_in,check_out,status,channel,created_at FROM bookings WHERE owner_id=$1 ORDER BY created_at DESC,id DESC LIMIT 8`, [user.ownerId]),
+    query(`SELECT r.id,r.code,r.room_type,r.operational_status,b.guest_name,b.id booking_id FROM rooms r LEFT JOIN LATERAL (SELECT id,guest_name FROM bookings b WHERE b.owner_id=r.owner_id AND b.room_id=r.id AND b.status IN ('confirmed','checked_in') AND b.check_in<=${hotelDay(0)} AND b.check_out>${hotelDay(0)} ORDER BY b.id DESC LIMIT 1) b ON true WHERE r.owner_id=$1 AND r.active=1 ORDER BY r.code`, [user.ownerId]),
+    financial ? query(`SELECT id,reference,guest_name,check_out,balance_cents FROM bookings WHERE owner_id=$1 AND status IN ('confirmed','checked_in') AND balance_cents>0 ORDER BY check_out LIMIT 20`, [user.ownerId]) : Promise.resolve({ rows: [] }),
+    financial ? query(`SELECT COALESCE(sum(CASE WHEN entry_type IN ('payment','refund') THEN -amount_cents ELSE 0 END),0)::bigint AS net_cents FROM folio_entries WHERE owner_id=$1 AND created_at>=(extract(epoch from ((now() AT TIME ZONE 'Europe/Athens')::date AT TIME ZONE 'Europe/Athens'))*1000)::bigint`, [user.ownerId]) : Promise.resolve({ rows: [{ net_cents: 0 }] }),
+    query(`SELECT count(*) FILTER (WHERE status='todo')::int todo,count(*) FILTER (WHERE status='in_progress')::int in_progress,count(*) FILTER (WHERE status IN ('cleaned','repaired'))::int review,count(*) FILTER (WHERE status='out_of_order')::int ooo,(SELECT count(*)::int FROM maintenance_notices m WHERE m.owner_id=$1 AND m.status='open') open_defects FROM housekeeping_tasks WHERE owner_id=$1`, [user.ownerId]),
+    query(`SELECT layout_json FROM pms_dashboard_layouts WHERE owner_id=$1 AND staff_user_id=$2`, [user.ownerId, user.id]),
+    loadNotifications(user.ownerId, lang).catch((e) => { console.error("PMS dashboard notifications failed", e); failures.push("notifications"); return [] as FeedItem[]; }),
+    stays("check_in", -1, arrivalStatuses), stays("check_in", 0, arrivalStatuses), stays("check_in", 1, arrivalStatuses),
+    stays("check_out", -1, departureStatuses), stays("check_out", 0, departureStatuses), stays("check_out", 1, departureStatuses),
   ]);
-  const c=counts.rows[0]??{};
-  const totalRooms=Number(c.total_rooms??0);
-  return <section><p className="eyebrow">{t("dash.eyebrow")}</p><h1>{t("dash.title")}</h1><p>{t("dash.welcome",{name:user.displayName})}</p><DashboardRefresh label={t("dash.autoRefresh")} button={t("dash.refreshNow")}/>{failures.length>0&&<p role="alert" className="notice">{t("dash.partialFailure")} <a href="/api/pms/diagnostics" target="_blank" rel="noopener noreferrer">{t("dash.diagnostics")}</a></p>}
-    <Dashboard lang={lang} today={today} canCreateReservation={can(user.role,"reservations.create",user.permissions)} canEditNotes={can(user.role,"dashboard.write",user.permissions)} initialNotes={notes.rows} initialNotifications={notifications} bookings={bookings.rows} recent={recent.rows} forecast={forecast} counts={{arrivalsToday:Number(c.arrivals_today??0),departuresToday:Number(c.departures_today??0),arrivalsTomorrow:Number(c.arrivals_tomorrow??0),departuresTomorrow:Number(c.departures_tomorrow??0),occupied:Number(c.occupied??0),totalRooms}}/>
-    <FrontDeskPanels lang={lang} canEdit={can(user.role,"reservations.edit",user.permissions)} stays={{today:{arrivals:arrivalsToday.rows,departures:departuresToday.rows},tomorrow:{arrivals:arrivalsTomorrow.rows,departures:departuresTomorrow.rows}}} rooms={roomState.rows} balances={outstanding.rows} services={services.rows.map(row=>({...row,name:String((lang==="en"?row.name_en:row.name_el)||row.name)}))} tasks={tasks.rows} holds={Number(holds.rows[0]?.total??0)} paymentsToday={Number(paymentsToday.rows[0]?.net_cents??0)} showFinancial={financial}/></section>;
+  const num = (v: unknown) => Number(v ?? 0);
+  const asStays = (rows: Record<string, unknown>[]) => rows.map((r) => ({ ...r, id: num(r.id), balance_cents: num(r.balance_cents), version: num(r.version), adults: num(r.adults), children: num(r.children) })) as DashboardData["arrivals"]["today"];
+  const h = hk.rows[0] ?? {};
+  const data: DashboardData = {
+    today: hotelToday(),
+    totalRooms: num(rooms.rows[0]?.total),
+    roomTypes: ((rooms.rows[0]?.types as string[] | undefined) ?? []).filter(Boolean).sort(),
+    notes: notes.rows.map((n) => ({ id: num(n.id), body: String(n.body), color: String(n.color ?? "yellow") })),
+    arrivals: { yesterday: asStays(aY.rows), today: asStays(aT.rows), tomorrow: asStays(aM.rows) },
+    departures: { yesterday: asStays(dY.rows), today: asStays(dT.rows), tomorrow: asStays(dM.rows) },
+    recent: recent.rows.map((r) => ({ ...r, id: num(r.id), created_at: num(r.created_at) })) as DashboardData["recent"],
+    rooms: roomState.rows.map((r) => ({ ...r, id: num(r.id), booking_id: r.booking_id ? num(r.booking_id) : null })) as DashboardData["rooms"],
+    balances: balances.rows.map((b) => ({ ...b, id: num(b.id), balance_cents: num(b.balance_cents) })) as DashboardData["balances"],
+    paymentsToday: num(payments.rows[0]?.net_cents),
+    housekeeping: { todo: num(h.todo), inProgress: num(h.in_progress), review: num(h.review), ooo: num(h.ooo), openDefects: num(h.open_defects) },
+    notifications,
+  };
+  return (
+    <section className="dashboardPage">
+      <div className="pageTitle"><div><h1>{t("dash.title")}</h1><p>{t("dash.welcome", { name: user.displayName })}</p></div><DashboardRefresh label={t("dash.autoRefresh")} button={t("dash.refreshNow")} /></div>
+      {failures.length > 0 && <p role="alert" className="notice">{t("dash.partialFailure")} <a href="/api/pms/diagnostics" target="_blank" rel="noopener noreferrer">{t("dash.diagnostics")}</a></p>}
+      <WidgetDashboard
+        lang={lang}
+        data={data}
+        initialLayout={normalizeLayout(layout.rows[0]?.layout_json ?? null)}
+        can={{ editNotes: can(user.role, "dashboard.write", user.permissions), editStays: can(user.role, "reservations.edit", user.permissions), createReservation: can(user.role, "reservations.create", user.permissions), financial, housekeeping: can(user.role, "housekeeping.read", user.permissions) }}
+      />
+    </section>
+  );
 }
