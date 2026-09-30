@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- room photos are served by our own API; next/image optimisation is not used on cPanel */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { amenityIcon, amenityIcons, amenityName, type AmenityNames } from "@/lib/amenity-icons";
+import { amenityIcon, amenityIcons, amenityName, type AmenityNames, amenityDefaults, standardAmenities } from "@/lib/amenity-icons";
 import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 
 /** Error text with the server reason so problems can be diagnosed (e.g. "SAVE_FAILED · HTTP 500"). */
@@ -31,39 +31,84 @@ async function resize(file: File): Promise<string> {
   return canvas.toDataURL("image/jpeg", 0.8);
 }
 
+async function catalogPost(body: object) {
+  try {
+    const r = await fetch("/api/pms/catalog", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    return { ok: r.ok, status: r.status, d: await r.json().catch(() => ({})) };
+  } catch {
+    return { ok: false, status: 0, d: { error: "NETWORK" } };
+  }
+}
+
+// One click: create the usual characteristics that do not exist yet (matched by icon), in all six languages.
+async function createStandardAmenities(existing: Amenity[]): Promise<{ created: Amenity[]; error?: { status: number; code?: string } }> {
+  const icons = new Set(existing.map((a) => a.icon));
+  const created: Amenity[] = [];
+  for (const key of standardAmenities) {
+    if (icons.has(key)) continue;
+    const n = amenityDefaults[key];
+    const { ok, status, d } = await catalogPost({ kind: "amenity", nameEl: n.el, nameEn: n.en, group: "comfort", showOnCard: true, active: true, icon: key, translations: { fr: n.fr, de: n.de, it: n.it, es: n.es } });
+    if (!ok || !d.id) return { created, error: { status, code: d.error } };
+    created.push({ id: d.id, icon: key, active: true, names: { ...n } });
+  }
+  return { created };
+}
+
+/** New characteristic: picking an icon fills its name in six languages (editable); a name in any one language is enough. */
+function NewAmenityForm({ lang, onCreated, onClose, onError }: { lang: PmsLang; onCreated: (a: Amenity) => void; onClose: () => void; onError: (message: string) => void }) {
+  const t = pmsT(lang);
+  const [icon, setIcon] = useState("sparkles");
+  const [names, setNames] = useState<AmenityNames>({});
+  const [busy, setBusy] = useState(false);
+  function pickIcon(key: string) {
+    const previous = amenityDefaults[icon];
+    const untouched = Object.values(names).every((v) => !v?.trim()) || (previous && (["el", "en", "fr", "de", "it", "es"] as const).every((l) => (names[l] ?? "") === (previous[l] ?? "")));
+    setIcon(key);
+    if (untouched && amenityDefaults[key]?.en) setNames({ ...amenityDefaults[key] });
+  }
+  async function create() {
+    const first = Object.values(names).find((v) => v && v.trim().length >= 2)?.trim() ?? "";
+    const el = names.el?.trim() || names.en?.trim() || first, en = names.en?.trim() || el;
+    setBusy(true);
+    const { ok, status, d } = await catalogPost({ kind: "amenity", nameEl: el, nameEn: en, group: "comfort", showOnCard: true, active: true, icon, translations: { fr: names.fr ?? "", de: names.de ?? "", it: names.it ?? "", es: names.es ?? "" } });
+    setBusy(false);
+    if (!ok || !d.id) { onError(reason(t, status, d.error)); return; }
+    onCreated({ id: d.id, icon, active: true, names: { ...names, el, en } });
+    setNames({});
+    setIcon("sparkles");
+  }
+  return (
+    <fieldset className="newAmenity">
+      <legend>{t("rm.newCharacteristic")}</legend>
+      <small>{t("rm.pickIconHint")}</small>
+      <div className="iconGrid" role="radiogroup" aria-label={t("rm.icon")}>
+        {Object.entries(amenityIcons).map(([key, glyph]) => <button key={key} type="button" role="radio" aria-checked={icon === key} title={amenityDefaults[key]?.[lang] || key} aria-label={amenityDefaults[key]?.[lang] || key} className={icon === key ? "on" : undefined} onClick={() => pickIcon(key)}>{glyph}</button>)}
+      </div>
+      <div className="roomFields">
+        {(["el", "en", "fr", "de", "it", "es"] as const).map((l) => <label key={l}>{t("rm.nameIn", { lang: l.toUpperCase() })}<input value={names[l] ?? ""} maxLength={100} onChange={(e) => setNames((n) => ({ ...n, [l]: e.target.value }))} /></label>)}
+      </div>
+      <div className="actions"><button type="button" disabled={busy || !Object.values(names).some((v) => (v ?? "").trim().length >= 2)} onClick={create}>{t("rm.create")}</button><button type="button" className="secondaryButton" onClick={onClose}>{t("rm.close")}</button></div>
+    </fieldset>
+  );
+}
+
 function AmenityPicker({ lang, room, amenities, canEdit, onAmenities, onRoom }: { lang: PmsLang; room: Room; amenities: Amenity[]; canEdit: boolean; onAmenities: (list: Amenity[]) => void; onRoom: (ids: number[]) => void }) {
   const t = pmsT(lang);
   const [selected, setSelected] = useState(room.amenityIds);
   const [adding, setAdding] = useState(false);
-  const [icon, setIcon] = useState("sparkles");
-  const [names, setNames] = useState<AmenityNames>({});
   const [msg, setMsg] = useState("");
-  async function post(body: object) {
-    try {
-      const r = await fetch("/api/pms/catalog", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      return { ok: r.ok, status: r.status, d: await r.json().catch(() => ({})) };
-    } catch {
-      return { ok: false, status: 0, d: { error: "NETWORK" } };
-    }
-  }
+  const [busy, setBusy] = useState(false);
   async function save(ids = selected) {
-    const { ok, status, d } = await post({ kind: "room_amenities", roomId: room.id, amenityIds: ids });
+    const { ok, status, d } = await catalogPost({ kind: "room_amenities", roomId: room.id, amenityIds: ids });
     setMsg(ok ? t("rm.saved") : reason(t, status, d.error));
     if (ok) onRoom(ids);
   }
-  async function create() {
-    // A name in any one language is enough; Greek and English fall back to each other or to the first name given.
-    const first = Object.values(names).find((v) => v && v.trim().length >= 2)?.trim() ?? "";
-    const el = names.el?.trim() || names.en?.trim() || first, en = names.en?.trim() || el;
-    const { ok, status, d } = await post({ kind: "amenity", nameEl: el, nameEn: en, group: "comfort", showOnCard: true, active: true, icon, translations: { fr: names.fr ?? "", de: names.de ?? "", it: names.it ?? "", es: names.es ?? "" } });
-    if (!ok || !d.id) { setMsg(reason(t, status, d.error)); return; }
-    onAmenities([...amenities, { id: d.id, icon, active: true, names: { ...names, el, en } }]);
-    const next = [...selected, d.id];
-    setSelected(next);
-    setAdding(false);
-    setNames({});
-    setIcon("sparkles");
-    await save(next);
+  async function addStandard() {
+    setBusy(true);
+    const { created, error } = await createStandardAmenities(amenities);
+    if (created.length) { onAmenities([...amenities, ...created]); setMsg(t("rm.addedStandard", { n: created.length })); }
+    if (error) setMsg(reason(t, error.status, error.code));
+    setBusy(false);
   }
   return (
     <div className="amenityPicker">
@@ -76,22 +121,83 @@ function AmenityPicker({ lang, room, amenities, canEdit, onAmenities, onRoom }: 
           </label>
         ))}
         {canEdit && !adding && <button type="button" className="secondaryButton" onClick={() => setAdding(true)}>+ {t("rm.newCharacteristic")}</button>}
+        {canEdit && !adding && standardAmenities.some((k) => !amenities.some((a) => a.icon === k)) && <button type="button" className="secondaryButton" disabled={busy} onClick={addStandard}>{t("rm.addStandard")}</button>}
       </div>
-      {adding && (
-        <fieldset className="newAmenity">
-          <legend>{t("rm.newCharacteristic")}</legend>
-          <div className="iconGrid" role="radiogroup" aria-label={t("rm.icon")}>
-            {Object.entries(amenityIcons).map(([key, glyph]) => <button key={key} type="button" role="radio" aria-checked={icon === key} title={key} className={icon === key ? "on" : undefined} onClick={() => setIcon(key)}>{glyph}</button>)}
-          </div>
-          <div className="roomFields">
-            {(["el", "en", "fr", "de", "it", "es"] as const).map((l) => <label key={l}>{t("rm.nameIn", { lang: l.toUpperCase() })}<input value={names[l] ?? ""} maxLength={100}  onChange={(e) => setNames((n) => ({ ...n, [l]: e.target.value }))} /></label>)}
-          </div>
-          <div className="actions"><button type="button" disabled={!Object.values(names).some((v) => (v ?? "").trim().length >= 2)} onClick={create}>{t("rm.create")}</button><button type="button" className="secondaryButton" onClick={() => setAdding(false)}>{t("rm.close")}</button></div>
-        </fieldset>
-      )}
+      {amenities.length === 0 && <p className="hint">{t("rm.noCharacteristics")}</p>}
+      {adding && <NewAmenityForm lang={lang} onError={setMsg} onClose={() => setAdding(false)} onCreated={(a) => { onAmenities([...amenities, a]); const next = [...selected, a.id]; setSelected(next); setAdding(false); void save(next); }} />}
       {canEdit && <div className="actions"><button type="button" onClick={() => save()}>{t("rm.saveCharacteristics")}</button></div>}
       <p className="notice" role="status">{msg}</p>
     </div>
+  );
+}
+
+/** Characteristics for many rooms at once: tick characteristics and rooms, then add or remove them together. */
+function BulkAmenities({ lang, rooms, amenities, onAmenities, onRooms }: { lang: PmsLang; rooms: Room[]; amenities: Amenity[]; onAmenities: (list: Amenity[]) => void; onRooms: (update: (list: Room[]) => Room[]) => void }) {
+  const t = pmsT(lang);
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<number[]>([]);
+  const [roomIds, setRoomIds] = useState<number[]>([]);
+  const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const types = [...new Set(rooms.map((r) => r.roomType))];
+  const toggle = (list: number[], id: number, on: boolean) => (on ? [...new Set([...list, id])] : list.filter((x) => x !== id));
+  const typeIds = (type: string) => rooms.filter((r) => r.roomType === type).map((r) => r.id);
+  async function apply(mode: "add" | "remove") {
+    setBusy(true);
+    const { ok, status, d } = await catalogPost({ kind: "room_amenities_bulk", roomIds, amenityIds: picked, mode });
+    setBusy(false);
+    if (!ok) { setMsg(reason(t, status, d.error)); return; }
+    onRooms((list) => list.map((r) => (roomIds.includes(r.id) ? { ...r, amenityIds: mode === "add" ? [...new Set([...r.amenityIds, ...picked])] : r.amenityIds.filter((id) => !picked.includes(id)) } : r)));
+    setMsg(t(mode === "add" ? "rm.bulkAdded" : "rm.bulkRemoved", { a: picked.length, r: roomIds.length }));
+  }
+  async function addStandard() {
+    setBusy(true);
+    const { created, error } = await createStandardAmenities(amenities);
+    if (created.length) { onAmenities([...amenities, ...created]); setPicked((p) => [...new Set([...p, ...created.map((a) => a.id)])]); setMsg(t("rm.addedStandard", { n: created.length })); }
+    if (error) setMsg(reason(t, error.status, error.code));
+    setBusy(false);
+  }
+  if (!open) return <button type="button" className="secondaryButton bulkOpen" onClick={() => setOpen(true)}>🏷️ {t("rm.bulkTitle")}</button>;
+  return (
+    <article className="card bulkAmenities">
+      <div className="srHead"><h2>🏷️ {t("rm.bulkTitle")}</h2><button type="button" className="secondaryButton" onClick={() => setOpen(false)}>{t("rm.close")}</button></div>
+      <h3>1. {t("rm.bulkPickCharacteristics")} <small>({picked.length})</small></h3>
+      <div className="amenityChips">
+        {amenities.filter((a) => a.active).map((a) => (
+          <label key={a.id} className={picked.includes(a.id) ? "on" : undefined}>
+            <input type="checkbox" checked={picked.includes(a.id)} onChange={(e) => setPicked((p) => toggle(p, a.id, e.target.checked))} />
+            <span aria-hidden="true">{amenityIcon(a.icon)}</span> {amenityName(a.names, lang)}
+          </label>
+        ))}
+        {!adding && <button type="button" className="secondaryButton" onClick={() => setAdding(true)}>+ {t("rm.newCharacteristic")}</button>}
+        {!adding && standardAmenities.some((k) => !amenities.some((a) => a.icon === k)) && <button type="button" className="secondaryButton" disabled={busy} onClick={addStandard}>{t("rm.addStandard")}</button>}
+        {amenities.length > 0 && <button type="button" className="linkButton" onClick={() => setPicked(picked.length ? [] : amenities.filter((a) => a.active).map((a) => a.id))}>{picked.length ? t("rm.bulkNone") : t("rm.bulkAll")}</button>}
+      </div>
+      {adding && <NewAmenityForm lang={lang} onError={setMsg} onClose={() => setAdding(false)} onCreated={(a) => { onAmenities([...amenities, a]); setPicked((p) => [...p, a.id]); setAdding(false); }} />}
+      <h3>2. {t("rm.bulkPickRooms")} <small>({roomIds.length})</small></h3>
+      <div className="bulkRooms">
+        <button type="button" className="linkButton" onClick={() => setRoomIds(roomIds.length === rooms.length ? [] : rooms.map((r) => r.id))}>{roomIds.length === rooms.length ? t("rm.bulkNone") : t("rm.bulkAllRooms")}</button>
+        {types.map((type) => {
+          const ids = typeIds(type), all = ids.every((id) => roomIds.includes(id));
+          return (
+            <div key={type} className="bulkType">
+              <label className="bulkTypeHead"><input type="checkbox" checked={all} onChange={(e) => setRoomIds((list) => (e.target.checked ? [...new Set([...list, ...ids])] : list.filter((id) => !ids.includes(id))))} /> <b>{type}</b> <small>({ids.length})</small></label>
+              <div className="bulkTypeRooms">
+                {rooms.filter((r) => r.roomType === type).map((r) => (
+                  <label key={r.id} className={roomIds.includes(r.id) ? "on" : undefined}><input type="checkbox" checked={roomIds.includes(r.id)} onChange={(e) => setRoomIds((list) => toggle(list, r.id, e.target.checked))} /> {r.code}</label>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="actions">
+        <button type="button" disabled={busy || !picked.length || !roomIds.length} onClick={() => apply("add")}>＋ {t("rm.bulkAdd", { a: picked.length, r: roomIds.length })}</button>
+        <button type="button" className="secondaryButton" disabled={busy || !picked.length || !roomIds.length} onClick={() => apply("remove")}>− {t("rm.bulkRemove")}</button>
+      </div>
+      <p className="notice" role="status">{msg}</p>
+    </article>
   );
 }
 
@@ -235,6 +341,7 @@ export function RoomsManager({ lang, rooms: initial, categories, amenities: init
     <>
       <p className="notice" role="status">{msg}</p>
       {canCreate && open !== "new" && <button type="button" className="primaryAction" onClick={() => edit(null)}>+ {t("rm.add")}</button>}
+      {canEdit && <BulkAmenities lang={lang} rooms={rooms} amenities={amenities} onAmenities={setAmenities} onRooms={setRooms} />}
       {open === "new" && <article className="card roomCard">{editor(null)}</article>}
       <div className="roomList">
         {rooms.map((r) => (

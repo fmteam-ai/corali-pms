@@ -17,6 +17,8 @@
 
 - **Several rooms of one category:** a room without a base price (0 €) is charged at its category price instead of adding a free room to the total (4 adults / 2 rooms showed a one-room total); a category without any price is not offered; the PMS rooms screen and diagnostics (`unpricedRooms`) flag rooms without a base price.
 
+- **Room characteristics:** picking an icon fills the name in six languages (editable); “Add standard characteristics” creates the usual set (A/C, Wi-Fi, TV, fridge, safe …) in one click; new panel “Characteristics for many rooms” adds or removes several characteristics on many rooms at once (select all, per room type or single rooms), keeping each room’s other characteristics.
+
 ### New in v51
 - **Minimum stay per room category:** PMS → Pricing → Minimum stay sets minimum nights per category all year and for periods (checked on the arrival date), with add/edit/delete. A period overrides the all-year value, a category overrides “all categories”, the shorter overlapping period wins. The booking engine hides categories that need more nights and tells the guest the minimum in six languages; PMS bookings are not restricted.
 

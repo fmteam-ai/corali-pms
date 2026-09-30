@@ -1020,6 +1020,20 @@ const el = {
   "ms.failed": "Αποτυχία ({code}).",
   "nav.minStay": "Ελάχιστη διαμονή",
   "rm.noPrice": "⚠️ Χωρίς βασική τιμή — στο booking engine χρεώνεται η τιμή της κατηγορίας",
+  "rm.addStandard": "✨ Προσθήκη βασικών χαρακτηριστικών",
+  "rm.addedStandard": "Προστέθηκαν {n} χαρακτηριστικά. Τικάρετε όσα έχει το δωμάτιο και πατήστε «Αποθήκευση χαρακτηριστικών».",
+  "rm.pickIconHint": "Διαλέξτε εικονίδιο: το όνομα συμπληρώνεται αυτόματα σε 6 γλώσσες (μπορείτε να το αλλάξετε).",
+  "rm.noCharacteristics": "Δεν υπάρχουν ακόμη χαρακτηριστικά. Προσθέστε τα βασικά με ένα κλικ ή δημιουργήστε νέο.",
+  "rm.bulkTitle": "Χαρακτηριστικά σε πολλά δωμάτια",
+  "rm.bulkPickCharacteristics": "Επιλέξτε χαρακτηριστικά",
+  "rm.bulkPickRooms": "Επιλέξτε δωμάτια",
+  "rm.bulkAll": "Επιλογή όλων",
+  "rm.bulkNone": "Καμία επιλογή",
+  "rm.bulkAllRooms": "Όλα τα δωμάτια",
+  "rm.bulkAdd": "Προσθήκη {a} χαρακτηριστικών σε {r} δωμάτια",
+  "rm.bulkRemove": "Αφαίρεση από τα επιλεγμένα δωμάτια",
+  "rm.bulkAdded": "Προστέθηκαν {a} χαρακτηριστικά σε {r} δωμάτια.",
+  "rm.bulkRemoved": "Αφαιρέθηκαν {a} χαρακτηριστικά από {r} δωμάτια.",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -2036,6 +2050,20 @@ const en: Record<PmsKey, string> = {
   "ms.failed": "Failed ({code}).",
   "nav.minStay": "Minimum stay",
   "rm.noPrice": "⚠️ No base price — the booking engine charges the category price",
+  "rm.addStandard": "✨ Add standard characteristics",
+  "rm.addedStandard": "{n} characteristics added. Tick the ones this room has and press “Save characteristics”.",
+  "rm.pickIconHint": "Pick an icon: the name is filled in automatically in 6 languages (you can change it).",
+  "rm.noCharacteristics": "No characteristics yet. Add the standard ones with one click or create a new one.",
+  "rm.bulkTitle": "Characteristics for many rooms",
+  "rm.bulkPickCharacteristics": "Choose characteristics",
+  "rm.bulkPickRooms": "Choose rooms",
+  "rm.bulkAll": "Select all",
+  "rm.bulkNone": "Clear selection",
+  "rm.bulkAllRooms": "All rooms",
+  "rm.bulkAdd": "Add {a} characteristics to {r} rooms",
+  "rm.bulkRemove": "Remove from the selected rooms",
+  "rm.bulkAdded": "Added {a} characteristics to {r} rooms.",
+  "rm.bulkRemoved": "Removed {a} characteristics from {r} rooms.",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

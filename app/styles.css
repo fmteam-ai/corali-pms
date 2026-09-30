@@ -725,3 +725,10 @@ table.numeric tr.selected td{background:#fff8e6}
 @media(max-width:480px){.shell .loginForm{padding:22px 16px}.checkinBooking .cbDate .cbDay{font-size:30px}}
 .checkinBooking .cbDates{align-items:stretch}.checkinBooking .cbNights{align-self:center}.checkinBooking .cbDate{align-content:center}
 .noPriceWarn{display:block;color:#a12828!important;font-weight:700}
+/* rooms: characteristics for many rooms */
+.bulkOpen{margin:0 0 12px 10px}
+.bulkAmenities{margin:0 0 16px}.bulkAmenities h3{margin:18px 0 8px;font-size:16px}.bulkAmenities h3 small{color:#5a6b70;font-weight:600}
+.bulkRooms{display:grid;gap:10px}.bulkRooms>.linkButton{justify-self:start}
+.bulkType{border:1px solid #e1eaec;border-radius:12px;padding:10px 12px}.bulkTypeHead{display:flex;align-items:center;gap:8px;cursor:pointer}
+.bulkTypeRooms{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.bulkTypeRooms label{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid #d5e0e3;border-radius:999px;cursor:pointer;font-weight:600}.bulkTypeRooms label.on{background:#e3f1f3;border-color:#5f8f99}
+.pms .linkButton{border:0;background:transparent;color:#0f5d6b;text-decoration:underline;font-weight:700;cursor:pointer;padding:4px 6px}
