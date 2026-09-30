@@ -13,6 +13,8 @@
 
 - **Pre-filled check-in:** the guest’s personal check-in link opens with the booking number, stay dates and nights, room, party and the guest’s name, email and phone (country code split out) already filled in; an earlier submission is loaded for updating. Only for an active, unexpired link; identity-document data is never returned. An invalid or expired link shows a clear message. The booking appears as a summary card: booking number in the header, arrival and departure as date blocks (weekday, day, month, year) with the nights between them, then room and guests; stacks cleanly on phones.
 
+- **Multiple rooms in the booking engine:** a slower response from an earlier search can no longer replace newer fields (only the latest search is shown), so e.g. 4 adults / 2 rooms never shows a one-room price; once searched, results refresh automatically when dates, party, rooms or language change; the breakdown reads “€87.50 × 5 nights × 2 rooms”.
+
 ### New in v51
 - **Minimum stay per room category:** PMS → Pricing → Minimum stay sets minimum nights per category all year and for periods (checked on the arrival date), with add/edit/delete. A period overrides the all-year value, a category overrides “all categories”, the shorter overlapping period wins. The booking engine hides categories that need more nights and tells the guest the minimum in six languages; PMS bookings are not restricted.
 
