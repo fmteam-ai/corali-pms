@@ -1019,6 +1019,7 @@ const el = {
   "ms.err.INVALID_INPUT": "Οι νύχτες πρέπει να είναι από 1 έως 60.",
   "ms.failed": "Αποτυχία ({code}).",
   "nav.minStay": "Ελάχιστη διαμονή",
+  "rm.noPrice": "⚠️ Χωρίς βασική τιμή — στο booking engine χρεώνεται η τιμή της κατηγορίας",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -2034,6 +2035,7 @@ const en: Record<PmsKey, string> = {
   "ms.err.INVALID_INPUT": "Nights must be between 1 and 60.",
   "ms.failed": "Failed ({code}).",
   "nav.minStay": "Minimum stay",
+  "rm.noPrice": "⚠️ No base price — the booking engine charges the category price",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

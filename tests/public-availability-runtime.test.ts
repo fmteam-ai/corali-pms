@@ -48,6 +48,14 @@ test("public availability serves a room despite legacy JSON null and invalid tra
     assert.equal((await run({...base,couponCode:"NOPE"})).coupon.problem,"NOT_FOUND");
     await database.query("INSERT INTO revenue_settings(owner_id,direct_discount_percent,direct_discount_active,updated_at) VALUES($1,5,0,1)",["hotel-corali"]);
     assert.equal((await run(base)).rooms[0].plans[0].totalCents,40000,"flexible rate unaffected when the discount is off");
+    // Two rooms of the same category: a room without a base price is charged at the category price, never for free.
+    await database.query("INSERT INTO rooms(owner_id,code,room_type,capacity,active,base_rate_cents,operational_status,amenities,images) VALUES($1,'102','double',2,1,0,'available','[]','[]')",["hotel-corali"]);
+    const two=await (availability.publicAvailability as (input:object)=>Promise<{rooms:{plans:{key:string;totalCents:number}[]}[];charges:{multiplier:number}[]}>)({...base,adults:4,rooms:2});
+    assert.equal(two.rooms[0].plans.find(p=>p.key==="flexible")!.totalCents,80000,"2 rooms × 4 nights × €100");
+    await database.query("UPDATE rooms SET base_rate_cents=0 WHERE owner_id=$1",["hotel-corali"]);
+    assert.equal((await (availability.publicAvailability as (input:object)=>Promise<{rooms:unknown[]}>)(base)).rooms.length,0,"a category without any price is not offered");
+    await database.query("UPDATE rooms SET base_rate_cents=10000 WHERE owner_id=$1 AND code='101'",["hotel-corali"]);
+    await database.query("DELETE FROM rooms WHERE owner_id=$1 AND code='102'",["hotel-corali"]);
     await database.query("INSERT INTO min_stay_rules(owner_id,room_type,starts_on,ends_on,min_nights,active,updated_at) VALUES($1,'double','2026-09-01','2026-10-31',5,1,1)",["hotel-corali"]);
     const short=await (availability.publicAvailability as (input:object)=>Promise<{rooms:unknown[];minStay:{roomType:string;minNights:number}[]}>)(base);
     assert.equal(short.rooms.length,0,"4 nights hidden by a 5-night minimum for the category");

@@ -15,6 +15,8 @@
 
 - **Multiple rooms in the booking engine:** a slower response from an earlier search can no longer replace newer fields (only the latest search is shown), so e.g. 4 adults / 2 rooms never shows a one-room price; once searched, results refresh automatically when dates, party, rooms or language change; the breakdown reads “€87.50 × 5 nights × 2 rooms”.
 
+- **Several rooms of one category:** a room without a base price (0 €) is charged at its category price instead of adding a free room to the total (4 adults / 2 rooms showed a one-room total); a category without any price is not offered; the PMS rooms screen and diagnostics (`unpricedRooms`) flag rooms without a base price.
+
 ### New in v51
 - **Minimum stay per room category:** PMS → Pricing → Minimum stay sets minimum nights per category all year and for periods (checked on the arrival date), with add/edit/delete. A period overrides the all-year value, a category overrides “all categories”, the shorter overlapping period wins. The booking engine hides categories that need more nights and tells the guest the minimum in six languages; PMS bookings are not restricted.
 

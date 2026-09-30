@@ -241,7 +241,7 @@ export function RoomsManager({ lang, rooms: initial, categories, amenities: init
           <article key={r.id} className={`card roomCard${r.active ? "" : " inactive"}`}>
             <header onClick={() => (open === r.id ? setOpen(null) : edit(r))}>
               {r.images[0] ? <RoomImage src={r.images[0]} alt="" /> : <span className="noPhoto">📷</span>}
-              <div><b>{r.code}</b><small>{r.roomType} · {t("rm.persons", { n: r.capacity })} · {money(r.baseRateCents)}</small><span className="amenityIcons">{r.amenityIds.map((id) => { const a = amenities.find((x) => x.id === id); return a ? <span key={id} title={amenityName(a.names, lang)}>{amenityIcon(a.icon)}</span> : null; })}</span></div>
+              <div><b>{r.code}</b><small>{r.roomType} · {t("rm.persons", { n: r.capacity })} · {money(r.baseRateCents)}</small>{r.baseRateCents <= 0 && <small className="noPriceWarn">{t("rm.noPrice")}</small>}<span className="amenityIcons">{r.amenityIds.map((id) => { const a = amenities.find((x) => x.id === id); return a ? <span key={id} title={amenityName(a.names, lang)}>{amenityIcon(a.icon)}</span> : null; })}</span></div>
               <span className={`noticeStatus ${r.active ? "" : "open"}`}>{r.active ? t("rm.st.active") : t("rm.st.inactive")}</span>
               <small>{t("rm.photos", { n: r.images.length })}</small>
               {(canEdit || canDelete) && <button type="button" className="secondaryButton">{open === r.id ? t("rm.close") : t("rm.edit")}</button>}

@@ -724,3 +724,4 @@ table.numeric tr.selected td{background:#fff8e6}
 .checkinBooking .cbMonth{font-size:14px;font-weight:600;color:#173e47}
 @media(max-width:480px){.shell .loginForm{padding:22px 16px}.checkinBooking .cbDate .cbDay{font-size:30px}}
 .checkinBooking .cbDates{align-items:stretch}.checkinBooking .cbNights{align-self:center}.checkinBooking .cbDate{align-content:center}
+.noPriceWarn{display:block;color:#a12828!important;font-weight:700}

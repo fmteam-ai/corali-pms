@@ -62,16 +62,20 @@ export async function publicAvailability(input:AvailabilityInput){
   const minStayRows=(await db().query(`SELECT id,room_type,starts_on,ends_on,min_nights,active,updated_at FROM min_stay_rules WHERE owner_id=$1 AND active=1`,[input.ownerId])).rows as MinStayRule[];
   const minStayNotices:{roomType:string;name:string;minNights:number}[]=[];
   const available=[...grouped.entries()].filter(([roomType,list])=>{if(list.length<input.rooms)return false;const need=requiredMinStay(minStayRows,input.checkIn,roomType);if(nights<need){const first=list[0];minStayNotices.push({roomType,name:localized(first.name_translations_json,first.name_el,first.name_en,roomType),minNights:need});return false}return true}).map(([roomType,list])=>{
+    // A room without a base price (0 €, e.g. added in the PMS without one) takes its category's price, so booking
+    // several rooms never adds a free room to the total; a category with no price at all is not offered.
+    const typeBaseCents=Math.max(0,...list.map(r=>Number(r.base_rate_cents)||0));
+    const roomBase=(r:{base_rate_cents:unknown})=>Number(r.base_rate_cents)>0?Number(r.base_rate_cents):typeBaseCents;
     const selectedRooms=list.slice(0,input.rooms),room=selectedRooms[0],arrivalDow=parseISO(input.checkIn).getUTCDay(),departureDow=parseISO(input.checkOut).getUTCDay();
     const plansForRoom=planRows.flatMap(p=>{
-      let restricted=false;
+      let restricted=false,unpriced=false;
       const nonPromoTotals:number[]=[];
       const roomTotals=selectedRooms.map(selected=>{
         let base=0,nonPromoBase=0;
         for(const date of dates){
           const rule=rules.rows.filter(r=>ruleTarget(r,roomType,selected.code)>0&&r.starts_on<=date&&r.ends_on>=date&&(r.minimum_stay!==null||r.maximum_stay!==null||Number(r.closed)===1||Number(r.closed_to_arrival)===1||Number(r.closed_to_departure)===1)).at(-1);
           if(Number(rule?.closed)===1||Number(rule?.minimum_stay??1)>nights||(rule?.maximum_stay&&Number(rule.maximum_stay)<nights)||date===input.checkIn&&Number(rule?.closed_to_arrival)===1||date===dates.at(-1)&&Number(rule?.closed_to_departure)===1)restricted=true;
-          let nightly=money(nightlyPrice(rules.rows,date,roomType,selected.code,Number(selected.base_rate_cents))),nonPromo=nightly;
+          let nightly=money(nightlyPrice(rules.rows,date,roomType,selected.code,roomBase(selected))),nonPromo=nightly;if(nightly<=0)unpriced=true;
           const applicable=specials.rows.filter(s=>s.starts_on<=date&&s.ends_on>=date&&Number(s.minimum_stay)<=nights&&(!jsonArray<string>(s.room_codes).length||jsonArray<string>(s.room_codes).includes(selected.code))&&(!jsonArray<string>(s.rate_plan_keys).length||jsonArray<string>(s.rate_plan_keys).includes(p.plan_key))&&(!jsonArray<number>(s.weekdays).length||jsonArray<number>(s.weekdays).includes(parseISO(date).getUTCDay())));
           for(const offer of applicable){const delta=offer.adjustment_type==="percentage"?Math.round(nightly*Math.abs(Number(offer.adjustment_value))/100):Math.abs(Number(offer.adjustment_value));nightly=offer.operation==="discount"?Math.max(0,nightly-delta):nightly+delta;
             // Promotional discounts are left out of the base a non-stackable promo code applies to.
@@ -82,7 +86,7 @@ export async function publicAvailability(input:AvailabilityInput){
         nonPromoTotals.push(nonPromoBase);
         return base;
       });
-      if(restricted)return [];
+      if(restricted||unpriced)return [];
       const pricing=planPricing(p.plan_key,Number(p.adjustment_percent),directPercent);
       // Price before the plan's own discount (e.g. non-refundable −10%), shown struck through so guests see what they save.
       const referenceCents=priceForRoomTotals(roomTotals,Math.max(0,pricing.adjustmentPercent));
