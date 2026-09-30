@@ -1278,3 +1278,16 @@ ALTER TABLE "rate_rules" ADD COLUMN IF NOT EXISTS "room_codes" TEXT NOT NULL DEF
 ALTER TABLE "rate_rules" ADD COLUMN IF NOT EXISTS "weekdays" TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE "rate_rules" ADD COLUMN IF NOT EXISTS "active" BIGINT NOT NULL DEFAULT 1;
 ALTER TABLE "rate_rules" ADD COLUMN IF NOT EXISTS "updated_at" BIGINT NOT NULL DEFAULT 0;
+
+-- v51: minimum stay per room category (room type): all-year value and per-period values, checked on the check-in date
+CREATE TABLE IF NOT EXISTS "min_stay_rules" (
+  "id" BIGSERIAL PRIMARY KEY NOT NULL,
+  "owner_id" TEXT NOT NULL,
+  "room_type" TEXT,
+  "starts_on" TEXT,
+  "ends_on" TEXT,
+  "min_nights" BIGINT NOT NULL DEFAULT 1,
+  "active" BIGINT NOT NULL DEFAULT 1,
+  "updated_at" BIGINT NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS "idx_min_stay_rules_owner" ON "min_stay_rules" ("owner_id", "room_type");

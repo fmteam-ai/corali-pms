@@ -1,4 +1,4 @@
-# Hotel Corali PMS v50 — αυτόματη ασφαλής εγκατάσταση cPanel
+# Hotel Corali PMS v51 — αυτόματη ασφαλής εγκατάσταση cPanel
 
 ## Προτεινόμενη εγκατάσταση για τον συγκεκριμένο server
 
@@ -8,16 +8,16 @@
 
 Η διορθωμένη έκδοση περιλαμβάνει προσωρινό web installer τύπου WordPress. Ανεβάστε:
 
-- `corali-pms-cpanel-v50-root.tar.gz` και το `.sha256` στον `/home/corali/`
-- μόνο το `corali-web-installer-v50.php` ως `/home/corali/public_html/corali-installer.php`
+- `corali-pms-cpanel-v51-root.tar.gz` και το `.sha256` στον `/home/corali/`
+- μόνο το `corali-web-installer-v51.php` ως `/home/corali/public_html/corali-installer.php`
 
-Μην ανεβάσετε το `corali-web-installer-v50-access.txt`. Ανοίξτε το τοπικά και επισκεφθείτε την ιδιωτική διεύθυνση μίας χρήσης που περιέχει. Εναλλακτικά, ανοίξτε απευθείας τον installer και επικολλήστε τον προσωπικό κωδικό στη φόρμα. Επιλέξτε **Ελληνικά** ή **English** πριν την έναρξη. Ο web installer εντοπίζει το EA/CloudLinux Node.js του cPanel, εκτελεί προέλεγχο, checksum, backup PostgreSQL, migrations, δύο runtime tests, atomic swap και rollback. Μετά την εγκατάσταση προσφέρει ασφαλή δημιουργία/ανάκτηση του κύριου owner και επαναφορά 2FA χωρίς terminal. Αν οι παλιοί `/home/corali/releases` ή `/home/corali/backups` έχουν λάθος ιδιοκτησία, χρησιμοποιεί ιδιωτικούς εναλλακτικούς φακέλους μέσα στο εγγράψιμο `/home/corali/apps`. Μετά τον έλεγχο σύνδεσης πατήστε «Κλείδωμα και διαγραφή installer» και απενεργοποιήστε ξανά την PHP `exec`.
+Μην ανεβάσετε το `corali-web-installer-v51-access.txt`. Ανοίξτε το τοπικά και επισκεφθείτε την ιδιωτική διεύθυνση μίας χρήσης που περιέχει. Εναλλακτικά, ανοίξτε απευθείας τον installer και επικολλήστε τον προσωπικό κωδικό στη φόρμα. Επιλέξτε **Ελληνικά** ή **English** πριν την έναρξη. Ο web installer εντοπίζει το EA/CloudLinux Node.js του cPanel, εκτελεί προέλεγχο, checksum, backup PostgreSQL, migrations, δύο runtime tests, atomic swap και rollback. Μετά την εγκατάσταση προσφέρει ασφαλή δημιουργία/ανάκτηση του κύριου owner και επαναφορά 2FA χωρίς terminal. Αν οι παλιοί `/home/corali/releases` ή `/home/corali/backups` έχουν λάθος ιδιοκτησία, χρησιμοποιεί ιδιωτικούς εναλλακτικούς φακέλους μέσα στο εγγράψιμο `/home/corali/apps`. Μετά τον έλεγχο σύνδεσης πατήστε «Κλείδωμα και διαγραφή installer» και απενεργοποιήστε ξανά την PHP `exec`.
 
 Αν εμφανιστεί «Ο installer είναι κλειδωμένος», έχει οριστικοποιηθεί παλαιότερη εγκατάσταση. Κάθε νέο πακέτο αποκτά δικό του κλείδωμα με βάση το checksum του αρχείου. Ανεβάστε **μαζί** τον νέο installer, το νέο αρχείο πρόσβασης (μόνο τοπικά, ποτέ στον server), το νέο archive και το νέο checksum. Μην διαγράψετε το ιδιωτικό `locked` του παλιού installer για να παρακάμψετε το μήνυμα.
 
 Αν ο προέλεγχος δείξει ότι η PHP `exec` είναι απενεργοποιημένη ή ότι ο ενεργός φάκελος `/home/corali/apps` δεν είναι εγγράψιμος, δεν γίνεται καμία αλλαγή.
 
-Η v50 ενημερώνει μαζί τις δύο ενεργές εφαρμογές:
+Η v51 ενημερώνει μαζί τις δύο ενεργές εφαρμογές:
 
 - `/home/corali/apps/corali-pms`
 - `/home/corali/apps/corali-booking`
@@ -28,14 +28,14 @@
 
 Ανεβάστε τα παρακάτω στο `/home/corali/`:
 
-- `corali-pms-cpanel-v50-root.tar.gz`
-- `corali-pms-cpanel-v50-root.tar.gz.sha256`
+- `corali-pms-cpanel-v51-root.tar.gz`
+- `corali-pms-cpanel-v51-root.tar.gz.sha256`
 
 Στο Terminal:
 
 ```bash
 cd /home/corali
-sha256sum -c corali-pms-cpanel-v50-root.tar.gz.sha256
+sha256sum -c corali-pms-cpanel-v51-root.tar.gz.sha256
 ```
 
 Πρέπει να εμφανιστεί `OK`. Αν αποτύχει, μη συνεχίσετε.
@@ -43,9 +43,9 @@ sha256sum -c corali-pms-cpanel-v50-root.tar.gz.sha256
 ## 2. Καθαρή εξαγωγή
 
 ```bash
-mkdir -p /home/corali/releases/corali-v50
-tar -xzf /home/corali/corali-pms-cpanel-v50-root.tar.gz \
-  -C /home/corali/releases/corali-v50
+mkdir -p /home/corali/releases/corali-v51
+tar -xzf /home/corali/corali-pms-cpanel-v51-root.tar.gz \
+  -C /home/corali/releases/corali-v51
 ```
 
 Μην αντιγράψετε `runtime.env` στον release φάκελο. Ο installer το παίρνει αυτόματα από κάθε ενεργή εφαρμογή.
@@ -55,7 +55,7 @@ tar -xzf /home/corali/corali-pms-cpanel-v50-root.tar.gz \
 Ως `root`:
 
 ```bash
-cd /home/corali/releases/corali-v50
+cd /home/corali/releases/corali-v51
 bash INSTALL-CPANEL.sh
 ```
 
@@ -88,16 +88,16 @@ bash INSTALL-CPANEL.sh --yes
 
 ## 4. Τελικός έλεγχος
 
-Μετά το `INSTALLATION COMPLETE — v50`, ανοίξτε από browser:
+Μετά το `INSTALLATION COMPLETE — v51`, ανοίξτε από browser:
 
 ```text
 https://pms.hotelcorali.gr/api/health
 https://booking.hotelcorali.gr/api/health
 ```
 
-Και τα δύο πρέπει να επιστρέφουν `"ok":true` και `"version":"v50"`. Ο έλεγχος γίνεται από browser επειδή το ModSecurity/Cloudflare μπορεί να επιστρέψει 406 σε server-side `curl`.
+Και τα δύο πρέπει να επιστρέφουν `"ok":true` και `"version":"v51"`. Ο έλεγχος γίνεται από browser επειδή το ModSecurity/Cloudflare μπορεί να επιστρέψει 406 σε server-side `curl`.
 
-Ελέγξτε επίσης login/2FA/profile, σημειώσεις και ειδοποιήσεις, μία δοκιμαστική κράτηση, folio/check-in/out, room grid, housekeeping, `/book` στα Ελληνικά και Αγγλικά και πληρωμή μόνο σε Stripe test mode. Η v50 δεν προσφέρει Viva ως μέθοδο πληρωμής επισκέπτη.
+Ελέγξτε επίσης login/2FA/profile, σημειώσεις και ειδοποιήσεις, μία δοκιμαστική κράτηση, folio/check-in/out, room grid, housekeeping, `/book` στα Ελληνικά και Αγγλικά και πληρωμή μόνο σε Stripe test mode. Η v51 δεν προσφέρει Viva ως μέθοδο πληρωμής επισκέπτη.
 
 Η δρομολόγηση πρέπει να είναι:
 
@@ -111,7 +111,7 @@ https://booking.hotelcorali.gr/api/health
 
 ```bash
 bash /home/corali/apps/corali-pms/ROLLBACK-CPANEL.sh \
-  /home/corali/backups/corali-deployment-v50-TIMESTAMP.manifest
+  /home/corali/backups/corali-deployment-v51-TIMESTAMP.manifest
 ```
 
 Το rollback επαναφέρει και τις δύο εφαρμογές. Δεν επαναφέρει αυτόματα τη βάση, επειδή οι migrations είναι additive και η επαναφορά παλιού dump θα μπορούσε να διαγράψει νεότερες κρατήσεις.

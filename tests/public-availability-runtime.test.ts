@@ -25,7 +25,7 @@ test("public availability serves a room despite legacy JSON null and invalid tra
     await database.query("INSERT INTO booking_restrictions(owner_id,name,starts_on,ends_on,closed_arrival_weekdays,room_codes,rate_plan_keys,created_at,updated_at) VALUES($1,'Legacy','2026-09-01','2026-10-31','null','null','null',1,1)",["hotel-corali"]);
     const rateNames=moduleFromSource("lib/booking-i18n.ts").rateNames;
     const pricing=moduleFromSource("lib/room-pricing.ts");
-    const availability=moduleFromSource("lib/public-rate.ts",{"@/lib/db":{db:()=>database},"@/lib/booking-i18n":{rateNames},"@/lib/room-pricing":pricing,"@/lib/direct-pricing":moduleFromSource("lib/direct-pricing.ts"),"@/lib/amenity-icons":moduleFromSource("lib/amenity-icons.ts"),"@/lib/tape-chart":moduleFromSource("lib/tape-chart.ts"),"@/lib/season-rates":moduleFromSource("lib/season-rates.ts")});
+    const availability=moduleFromSource("lib/public-rate.ts",{"@/lib/db":{db:()=>database},"@/lib/booking-i18n":{rateNames},"@/lib/room-pricing":pricing,"@/lib/direct-pricing":moduleFromSource("lib/direct-pricing.ts"),"@/lib/amenity-icons":moduleFromSource("lib/amenity-icons.ts"),"@/lib/tape-chart":moduleFromSource("lib/tape-chart.ts"),"@/lib/season-rates":moduleFromSource("lib/season-rates.ts"),"@/lib/min-stay":moduleFromSource("lib/min-stay.ts")});
     const result=await (availability.publicAvailability as (input:object)=>Promise<{rooms:{name:string;plans:{totalCents:number}[]}[]}> )({ownerId:"hotel-corali",checkIn:"2026-09-29",checkOut:"2026-10-03",adults:2,children:0,rooms:1,lang:"en"});
     assert.equal(result.rooms.length,1);
     // The direct-booking discount belongs to the direct website rate only: the flexible rate stays at the standard price.
@@ -48,5 +48,11 @@ test("public availability serves a room despite legacy JSON null and invalid tra
     assert.equal((await run({...base,couponCode:"NOPE"})).coupon.problem,"NOT_FOUND");
     await database.query("INSERT INTO revenue_settings(owner_id,direct_discount_percent,direct_discount_active,updated_at) VALUES($1,5,0,1)",["hotel-corali"]);
     assert.equal((await run(base)).rooms[0].plans[0].totalCents,40000,"flexible rate unaffected when the discount is off");
+    await database.query("INSERT INTO min_stay_rules(owner_id,room_type,starts_on,ends_on,min_nights,active,updated_at) VALUES($1,'double','2026-09-01','2026-10-31',5,1,1)",["hotel-corali"]);
+    const short=await (availability.publicAvailability as (input:object)=>Promise<{rooms:unknown[];minStay:{roomType:string;minNights:number}[]}>)(base);
+    assert.equal(short.rooms.length,0,"4 nights hidden by a 5-night minimum for the category");
+    assert.equal(JSON.stringify(short.minStay.map(m=>[m.roomType,m.minNights])),JSON.stringify([["double",5]]));
+    const long=await (availability.publicAvailability as (input:object)=>Promise<{rooms:unknown[]}>)({...base,checkOut:"2026-10-04"});
+    assert.equal(long.rooms.length,1,"5 nights allowed");
   }finally{await database.close()}
 });

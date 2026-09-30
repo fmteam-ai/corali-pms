@@ -3,6 +3,7 @@ import { differenceInCalendarDays, eachDayOfInterval, parseISO, subDays } from "
 import { db } from "@/lib/db";
 import {rateNames,type BookingLanguage} from "@/lib/booking-i18n";
 import { priceForRoomTotals } from "@/lib/room-pricing";
+import { requiredMinStay, type MinStayRule } from "@/lib/min-stay";
 import { nightlyPrice, ruleTarget } from "@/lib/season-rates";
 import { DEFAULT_DIRECT_DISCOUNT_PERCENT, couponProblem, normalizeCouponCode, planPricing, priceWithOffers, type Coupon, type CouponProblem } from "@/lib/direct-pricing";
 import { hotelToday } from "@/lib/tape-chart";
@@ -56,7 +57,10 @@ export async function publicAvailability(input:AvailabilityInput){
   const localized=(value:unknown,el:unknown,en:unknown,fallback:unknown)=>translatedText(value,input.lang,el,en,fallback);
   const planName=(key:string,fallback:string,translations:unknown)=>localized(translations,rateNames.el[key],rateNames[input.lang][key]||rateNames.en[key],fallback);
   const grouped=new Map<string,typeof rooms.rows>(); for(const row of rooms.rows){const key=String(row.room_type);grouped.set(key,[...(grouped.get(key)??[]),row])}
-  const available=[...grouped.entries()].filter(([,list])=>list.length>=input.rooms).map(([roomType,list])=>{
+  // Minimum stay per room category, judged on the check-in date; rooms hidden for it are reported so the guest knows why.
+  const minStayRows=(await db().query(`SELECT id,room_type,starts_on,ends_on,min_nights,active,updated_at FROM min_stay_rules WHERE owner_id=$1 AND active=1`,[input.ownerId])).rows as MinStayRule[];
+  const minStayNotices:{roomType:string;name:string;minNights:number}[]=[];
+  const available=[...grouped.entries()].filter(([roomType,list])=>{if(list.length<input.rooms)return false;const need=requiredMinStay(minStayRows,input.checkIn,roomType);if(nights<need){const first=list[0];minStayNotices.push({roomType,name:localized(first.name_translations_json,first.name_el,first.name_en,roomType),minNights:need});return false}return true}).map(([roomType,list])=>{
     const selectedRooms=list.slice(0,input.rooms),room=selectedRooms[0],arrivalDow=parseISO(input.checkIn).getUTCDay(),departureDow=parseISO(input.checkOut).getUTCDay();
     const plansForRoom=planRows.flatMap(p=>{
       let restricted=false;
@@ -87,5 +91,5 @@ export async function publicAvailability(input:AvailabilityInput){
   }).filter(r=>r.plans.length>0);
   const extraRows=extras.rows.map(e=>({...e,name:localized(e.name_translations_json,e.name_el,e.name_en,e.name),description:localized(e.description_translations_json,e.description_el,e.description_en,e.description),id:Number(e.id),price_cents:Number(e.price_cents)}));
   const chargeRows=charges.rows.map(c=>{const unit=money(c.amount_cents);const multiplier=c.calculation_mode==="per_night"?nights:c.calculation_mode==="per_room"?input.rooms:c.calculation_mode==="per_person"?(input.adults+input.children):c.calculation_mode==="per_room_night"?input.rooms*nights:1;return {...c,name:localized(c.name_translations_json,c.name_el,c.name_en,c.name),id:Number(c.id),amount_cents:unit,multiplier,total_cents:unit*multiplier};});
-  return {nights,cancellationDays,directDiscountPercent:directPercent,coupon:couponCode?{code:couponCode,problem,applied:couponUsed,combinable:coupon?Number(coupon.combinable)===1:null}:null,rooms:available,extras:extraRows,charges:chargeRows};
+  return {nights,cancellationDays,directDiscountPercent:directPercent,coupon:couponCode?{code:couponCode,problem,applied:couponUsed,combinable:coupon?Number(coupon.combinable)===1:null}:null,rooms:available,minStay:minStayNotices,extras:extraRows,charges:chargeRows};
 }

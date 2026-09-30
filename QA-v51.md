@@ -1,6 +1,9 @@
-# Hotel Corali PMS v50 — release verification
+# Hotel Corali PMS v51 — release verification
 
 ## Scope in this package
+
+### New in v51
+- **Minimum stay per room category:** PMS → Pricing → Minimum stay sets minimum nights per category all year and for periods (checked on the arrival date), with add/edit/delete. A period overrides the all-year value, a category overrides “all categories”, the shorter overlapping period wins. The booking engine hides categories that need more nights and tells the guest the minimum in six languages; PMS bookings are not restricted.
 
 ### New in v50
 - **Season prices (VikBooking-style Rates Overview):** PMS → Pricing → Season prices shows a grid of room types (optionally each room) × days with the nightly price; click two cells to set a price for that period. Season prices apply to all rooms, a room type or specific rooms, optionally on chosen weekdays, and can be edited or deleted. Priority: specific rooms › room type › all rooms, then the shorter period, then the latest change. Offers apply on top.
