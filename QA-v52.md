@@ -9,6 +9,10 @@
 - **PMS header:** the notifications panel (and other header drop-downs) now opens above the sticky menu bar.
 - **Overview “some data could not be loaded”:** the notice now names the failing sections; databases created before sticky-note colours get the missing `pms_dashboard_notes.color` column; diagnostics also check the dashboard layout, notes, maintenance, season prices, minimum stay and room photo tables.
 
+- **Guest pre-check-in page:** hotel logo on top; the three consent checkboxes sit before their text; drop-downs and text areas match the other fields; languages show their country flag (also in the booking engine); phone with country flag and calling code (defaults to the guest language’s country) saved in international format, as in the booking form.
+
+- **Pre-filled check-in:** the guest’s personal check-in link opens with the booking number, stay dates and nights, room, party and the guest’s name, email and phone (country code split out) already filled in; an earlier submission is loaded for updating. Only for an active, unexpired link; identity-document data is never returned. An invalid or expired link shows a clear message.
+
 ### New in v51
 - **Minimum stay per room category:** PMS → Pricing → Minimum stay sets minimum nights per category all year and for periods (checked on the arrival date), with add/edit/delete. A period overrides the all-year value, a category overrides “all categories”, the shorter overlapping period wins. The booking engine hides categories that need more nights and tells the guest the minimum in six languages; PMS bookings are not restricted.
 

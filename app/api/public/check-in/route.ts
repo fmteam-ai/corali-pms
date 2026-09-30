@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { arrivalInstructions, arrivalModes, pick, transferQuote } from "@/lib/arrival";
 import { loadArrivalSettings } from "@/lib/arrival-db";
-import { withTransaction } from "@/lib/db";
+import { splitGuestName, splitPhone } from "@/lib/checkin-prefill";
+import { db, withTransaction } from "@/lib/db";
 import { env } from "@/lib/env";
 import { ensureFolio, recalcBooking } from "@/lib/folio-db";
 import { pushNotification } from "@/lib/pms-notifications";
@@ -36,6 +37,49 @@ function ageOn(now: number, dob: Date) {
 }
 
 const euro = (cents: number) => `€${(cents / 100).toFixed(2)}`;
+
+/**
+ * Booking details for the guest's own check-in link, so the form opens pre-filled (reference, stay, room, contact).
+ * Only for an active, unexpired link; identity-document data is never returned.
+ */
+export async function GET(request: Request) {
+  try {
+    const c = env();
+    const token = new URL(request.url).searchParams.get("token") ?? "";
+    if (token.length < 32 || token.length > 200) return Response.json({ ok: false, error: "INVALID_OR_EXPIRED_TOKEN" }, { status: 401, headers: { "Cache-Control": "no-store" } });
+    const r = await db().query(
+      `SELECT b.reference,b.check_in,b.check_out,b.adults,b.children,b.guest_name,b.guest_email,b.guest_phone,b.guest_country,b.guest_language,r.room_type,
+              cat.name_el,cat.name_en,cat.name_translations_json,
+              g.first_name,g.last_name,g.email g_email,g.phone g_phone,g.arrival_time,g.travel_details,g.special_requests,g.luggage_assistance,g.submitted_at
+         FROM checkin_access_tokens t
+         JOIN bookings b ON b.id=t.booking_id AND b.owner_id=t.owner_id
+         LEFT JOIN rooms r ON r.id=b.room_id AND r.owner_id=b.owner_id
+         LEFT JOIN room_categories cat ON cat.id=r.category_id AND cat.owner_id=r.owner_id
+         LEFT JOIN guest_checkins g ON g.booking_id=b.id AND g.owner_id=b.owner_id
+        WHERE t.token_hash=$1 AND t.owner_id=$2 AND t.status='active' AND t.expires_at>$3 LIMIT 1`,
+      [hashToken(token), c.PMS_OWNER_ID, Date.now()],
+    );
+    const x = r.rows[0];
+    if (!x) return Response.json({ ok: false, error: "INVALID_OR_EXPIRED_TOKEN" }, { status: 401, headers: { "Cache-Control": "no-store" } });
+    let names: Record<string, string> = {};
+    try { names = JSON.parse(x.name_translations_json || "{}"); } catch { names = {}; }
+    const name = splitGuestName(String(x.guest_name ?? ""));
+    const phone = splitPhone(String(x.g_phone || x.guest_phone || ""), String(x.guest_country ?? ""));
+    const nights = Math.round((Date.parse(`${x.check_out}T00:00:00Z`) - Date.parse(`${x.check_in}T00:00:00Z`)) / 86_400_000);
+    return Response.json({
+      ok: true,
+      booking: { reference: x.reference, checkIn: x.check_in, checkOut: x.check_out, nights, adults: Number(x.adults ?? 0), children: Number(x.children ?? 0), room: { type: x.room_type ?? "", names: { ...names, ...(x.name_el ? { el: x.name_el } : {}), ...(x.name_en ? { en: x.name_en } : {}) } }, language: x.guest_language ?? null },
+      guest: {
+        firstName: x.first_name || name.firstName, lastName: x.last_name || name.lastName, email: x.g_email || x.guest_email || "",
+        phoneCountry: phone.country, phoneLocal: phone.local, arrivalTime: x.arrival_time ?? "", travelDetails: x.travel_details ?? "",
+        specialRequests: x.special_requests ?? "", luggageAssistance: Number(x.luggage_assistance ?? 0) === 1, submitted: Boolean(x.submitted_at),
+      },
+    }, { headers: { "Cache-Control": "no-store" } });
+  } catch (e) {
+    console.error("Check-in prefill failed", e);
+    return Response.json({ ok: false, error: "PREFILL_FAILED" }, { status: 500, headers: { "Cache-Control": "no-store" } });
+  }
+}
 
 export async function POST(request: Request) {
   try {

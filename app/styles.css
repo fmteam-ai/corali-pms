@@ -688,3 +688,16 @@ table.numeric tr.selected td{background:#fff8e6}
 /* v52: header dropdowns (notifications, quick search) open above the sticky menu bar */
 .pmsTopbar{position:relative;z-index:60}
 .bellPanel{z-index:70}
+
+/* v52 guest check-in: logo on top, checkboxes before their text */
+.guestLogo{display:block;width:min(240px,70%);margin:0 auto 18px}.guestLogo img{display:block;width:100%;height:auto}
+.loginForm label.guestCheck{display:flex;flex-direction:row;align-items:flex-start;gap:10px;font-weight:600;cursor:pointer}
+.loginForm label.guestCheck input{flex:0 0 auto;width:20px;height:20px;min-height:0;margin:2px 0 0;padding:0;accent-color:#b64b31}
+.loginForm label.guestCheck span{flex:1;line-height:1.4}
+.shell .loginForm select,.shell .loginForm textarea{width:100%;box-sizing:border-box;font:inherit;padding:12px;border:1px solid #cad5df;border-radius:12px;background:#fff}
+.shell .loginForm textarea{min-height:90px;resize:vertical}
+.shell .loginForm fieldset select{margin-top:6px}
+.checkinBooking{margin:0 0 8px;padding:16px 18px;background:#eef6f7;border:1px solid #cfe2e5;border-radius:14px}.checkinBooking h2{margin:0 0 10px;font-size:18px}
+.checkinBooking dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 16px;margin:0}.checkinBooking dl div{display:grid;gap:2px}.checkinBooking dt{font-size:12px;color:#5a6b70;font-weight:600}.checkinBooking dd{margin:0}
+.checkinBooking p{margin:12px 0 0;font-size:14px;color:#173e47}
+.checkinBooking dl div{display:grid!important;justify-content:start!important;border:0!important;padding:0!important;margin:0!important}.checkinBooking dt,.checkinBooking dd{text-align:left!important;border:0!important;padding:0!important;margin:0!important}.checkinBooking dd{font-weight:700}
