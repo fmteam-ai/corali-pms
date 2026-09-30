@@ -1291,3 +1291,13 @@ CREATE TABLE IF NOT EXISTS "min_stay_rules" (
   "updated_at" BIGINT NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS "idx_min_stay_rules_owner" ON "min_stay_rules" ("owner_id", "room_type");
+
+-- v52: the climate resilience fee match above missed Greek capitals on C-locale databases; match common spellings explicitly.
+UPDATE mandatory_charges SET calculation_mode='per_room_night'
+ WHERE calculation_mode<>'per_room_night' AND (
+   COALESCE(name,'')||' '||COALESCE(name_el,'')||' '||COALESCE(name_en,'')||' '||COALESCE(name_translations_json,'') ~* '(κλιματ|Κλιματ|ΚΛΙΜΑΤ|ανθεκτικ|Ανθεκτικ|ΑΝΘΕΚΤΙΚ|climate|resilience)');
+
+-- v52: databases created before sticky-note colours existed kept the old pms_dashboard_notes table (CREATE TABLE IF NOT EXISTS
+-- never adds columns); add them explicitly so the dashboard notes load.
+ALTER TABLE "pms_dashboard_notes" ADD COLUMN IF NOT EXISTS "color" TEXT NOT NULL DEFAULT 'yellow';
+ALTER TABLE "pms_dashboard_notes" ADD COLUMN IF NOT EXISTS "created_at" BIGINT NOT NULL DEFAULT 0;

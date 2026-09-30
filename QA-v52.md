@@ -1,6 +1,13 @@
-# Hotel Corali PMS v51 — release verification
+# Hotel Corali PMS v52 — release verification
 
 ## Scope in this package
+
+### New in v52
+- **Climate resilience fee** is always charged per room per night: the booking engine and checkout enforce it whatever mode is stored, and the migration now also matches Greek capitals (e.g. «Κλιματική») on C-locale databases.
+- **Booking engine:** only the logo above the title (location line removed); rate options use a name | price | button grid so long words (e.g. «διανυκτερεύσεις») never cover the Select button, stacked on phones; the non-refundable rate shows the struck-through flexible price and “You save”, like the direct website rate.
+
+- **PMS header:** the notifications panel (and other header drop-downs) now opens above the sticky menu bar.
+- **Overview “some data could not be loaded”:** the notice now names the failing sections; databases created before sticky-note colours get the missing `pms_dashboard_notes.color` column; diagnostics also check the dashboard layout, notes, maintenance, season prices, minimum stay and room photo tables.
 
 ### New in v51
 - **Minimum stay per room category:** PMS → Pricing → Minimum stay sets minimum nights per category all year and for periods (checked on the arrival date), with add/edit/delete. A period overrides the all-year value, a category overrides “all categories”, the shorter overlapping period wins. The booking engine hides categories that need more nights and tells the guest the minimum in six languages; PMS bookings are not restricted.

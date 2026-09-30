@@ -14,6 +14,13 @@ const checks=[
  {name:"extras",table:"extras",columns:["owner_id","name_el","name","price_cents","pricing_mode","active","sort_order"]},
  {name:"payment_holds",table:"booking_sessions",columns:["owner_id","status","recovery_due_at"]},
  {name:"folio",table:"folio_entries",columns:["owner_id","entry_type","amount_cents","created_at"]},
+ {name:"dashboard_note_colors",table:"pms_dashboard_notes",columns:["color","created_at"]},
+ {name:"dashboard_layout",table:"pms_dashboard_layouts",columns:["owner_id","staff_user_id","layout_json"]},
+ {name:"booking_party",table:"bookings",columns:["version","adults","children","reference","created_at"]},
+ {name:"maintenance",table:"maintenance_notices",columns:["owner_id","room_id","severity","status"]},
+ {name:"season_prices",table:"rate_rules",columns:["name","room_codes","weekdays","active","updated_at"]},
+ {name:"min_stay",table:"min_stay_rules",columns:["owner_id","room_type","min_nights","active"]},
+ {name:"room_photos",table:"room_photos",columns:["owner_id","room_id","mime","data_base64"]},
 ] as const;
 
 const dashboardQueries=[
@@ -72,6 +79,6 @@ export async function GET(){
    for(const check of availabilityQueries){try{await db().query(check.sql,check.values(user,date,next))}catch(error){const code=typeof error==="object"&&error!==null&&"code" in error?String(error.code):"QUERY_FAILED";failed.push({area:check.name,code});console.error("PMS diagnostic availability query failed",check.name,error)}}
    if(!failed.some(item=>item.area.startsWith("availability_")))await publicAvailability({ownerId:user.ownerId,checkIn:date,checkOut:next,adults:2,children:0,rooms:1,lang:"en"})}
   catch(error){const code=typeof error==="object"&&error!==null&&"code" in error?String(error.code):error instanceof Error&&["INVALID_ROOM_PRICE","INVALID_DATES"].includes(error.message)?error.message:error instanceof TypeError?"DATA_PROCESSING_TYPE_ERROR":"AVAILABILITY_FAILED";failed.push({area:"availability",code});console.error("PMS diagnostic availability failed",error)}
-  return Response.json({ok:missing.length===0&&failed.length===0,version:"v51",area:"pms_and_booking",missing,failed,activeRooms:Number((await db().query("SELECT count(*)::int AS total FROM rooms WHERE owner_id=$1 AND active=1",[user.ownerId])).rows[0]?.total??0)},{status:missing.length||failed.length?503:200,headers:{"Cache-Control":"private, no-store"}});
+  return Response.json({ok:missing.length===0&&failed.length===0,version:"v52",area:"pms_and_booking",missing,failed,activeRooms:Number((await db().query("SELECT count(*)::int AS total FROM rooms WHERE owner_id=$1 AND active=1",[user.ownerId])).rows[0]?.total??0)},{status:missing.length||failed.length?503:200,headers:{"Cache-Control":"private, no-store"}});
  }catch(e){console.error("PMS dashboard diagnostic failed",e);return Response.json({ok:false,area:"pms_dashboard",error:"DATABASE_CHECK_FAILED"},{status:503,headers:{"Cache-Control":"private, no-store"}})}
 }

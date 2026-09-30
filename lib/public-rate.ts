@@ -3,6 +3,7 @@ import { differenceInCalendarDays, eachDayOfInterval, parseISO, subDays } from "
 import { db } from "@/lib/db";
 import {rateNames,type BookingLanguage} from "@/lib/booking-i18n";
 import { priceForRoomTotals } from "@/lib/room-pricing";
+import { chargeMode } from "@/lib/climate-fee";
 import { requiredMinStay, type MinStayRule } from "@/lib/min-stay";
 import { nightlyPrice, ruleTarget } from "@/lib/season-rates";
 import { DEFAULT_DIRECT_DISCOUNT_PERCENT, couponProblem, normalizeCouponCode, planPricing, priceWithOffers, type Coupon, type CouponProblem } from "@/lib/direct-pricing";
@@ -83,13 +84,15 @@ export async function publicAvailability(input:AvailabilityInput){
       });
       if(restricted)return [];
       const pricing=planPricing(p.plan_key,Number(p.adjustment_percent),directPercent);
+      // Price before the plan's own discount (e.g. non-refundable −10%), shown struck through so guests see what they save.
+      const referenceCents=priceForRoomTotals(roomTotals,Math.max(0,pricing.adjustmentPercent));
       const offer=priceWithOffers({standardCents:priceForRoomTotals(roomTotals,pricing.adjustmentPercent),nonPromoStandardCents:priceForRoomTotals(nonPromoTotals,pricing.adjustmentPercent),directPercent:pricing.directPercent,coupon});
       if(offer.couponApplied)couponUsed=true;
-      return [{key:p.plan_key,name:planName(p.plan_key,p.name,p.name_translations_json),adjustmentPercent:pricing.directPercent?-pricing.directPercent:pricing.adjustmentPercent,directPercent:pricing.directPercent,paymentPolicy:p.payment_policy,payment:{depositPercent:p.deposit_percent===null||p.deposit_percent===undefined?null:Number(p.deposit_percent),balanceMode:String(p.balance_mode??"general"),balanceDaysBefore:p.balance_days_before===null||p.balance_days_before===undefined?null:Number(p.balance_days_before),fullPrepayment:Number(p.full_prepayment??0)===1},cancellationDays,totalCents:offer.totalCents,standardCents:offer.standardCents,directCents:offer.directCents,directSavingCents:offer.directSavingCents,couponCents:offer.couponCents}];
+      return [{key:p.plan_key,name:planName(p.plan_key,p.name,p.name_translations_json),adjustmentPercent:pricing.directPercent?-pricing.directPercent:pricing.adjustmentPercent,directPercent:pricing.directPercent,paymentPolicy:p.payment_policy,payment:{depositPercent:p.deposit_percent===null||p.deposit_percent===undefined?null:Number(p.deposit_percent),balanceMode:String(p.balance_mode??"general"),balanceDaysBefore:p.balance_days_before===null||p.balance_days_before===undefined?null:Number(p.balance_days_before),fullPrepayment:Number(p.full_prepayment??0)===1},cancellationDays,totalCents:offer.totalCents,standardCents:offer.standardCents,referenceCents:Math.max(referenceCents,offer.standardCents),directCents:offer.directCents,directSavingCents:offer.directSavingCents,couponCents:offer.couponCents}];
     });
     return {roomType,roomIds:list.slice(0,input.rooms).map(r=>Number(r.id)),code:room.code,name:localized(room.name_translations_json,room.name_el,room.name_en,roomType),description:localized(room.description_translations_json,room.description_el,room.description_en,room.description),capacity:Number(room.capacity),amenities:jsonArray<string>(room.amenities),characteristics:jsonArray<{icon:string;el:string;en:string;tr:string}>(room.amenity_list).map(a=>{let tr:Record<string,string>={};try{tr=JSON.parse(a.tr||"{}")}catch{tr={}}return {icon:amenityIcon(a.icon),name:amenityName({...tr,el:a.el,en:a.en},input.lang)}}),images:jsonArray<string>(room.images),availableCount:list.length,plans:plansForRoom};
   }).filter(r=>r.plans.length>0);
   const extraRows=extras.rows.map(e=>({...e,name:localized(e.name_translations_json,e.name_el,e.name_en,e.name),description:localized(e.description_translations_json,e.description_el,e.description_en,e.description),id:Number(e.id),price_cents:Number(e.price_cents)}));
-  const chargeRows=charges.rows.map(c=>{const unit=money(c.amount_cents);const multiplier=c.calculation_mode==="per_night"?nights:c.calculation_mode==="per_room"?input.rooms:c.calculation_mode==="per_person"?(input.adults+input.children):c.calculation_mode==="per_room_night"?input.rooms*nights:1;return {...c,name:localized(c.name_translations_json,c.name_el,c.name_en,c.name),id:Number(c.id),amount_cents:unit,multiplier,total_cents:unit*multiplier};});
+  const chargeRows=charges.rows.map(c=>{const unit=money(c.amount_cents);const mode=chargeMode(c);const multiplier=mode==="per_night"?nights:mode==="per_room"?input.rooms:mode==="per_person"?(input.adults+input.children):mode==="per_room_night"?input.rooms*nights:1;return {...c,calculation_mode:mode,name:localized(c.name_translations_json,c.name_el,c.name_en,c.name),id:Number(c.id),amount_cents:unit,multiplier,total_cents:unit*multiplier};});
   return {nights,cancellationDays,directDiscountPercent:directPercent,coupon:couponCode?{code:couponCode,problem,applied:couponUsed,combinable:coupon?Number(coupon.combinable)===1:null}:null,rooms:available,minStay:minStayNotices,extras:extraRows,charges:chargeRows};
 }

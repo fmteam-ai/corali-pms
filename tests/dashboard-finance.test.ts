@@ -5,7 +5,7 @@ import {PGlite} from "@electric-sql/pglite";
 
 test("front desk net receipts account for signed payments and refunds",async()=>{
  const source=readFileSync("app/pms/page.tsx","utf8");
- const sql=source.match(/financial\s*\?\s*query\(`(SELECT COALESCE\(sum\(CASE WHEN entry_type IN \('payment','refund'\)[\s\S]*?)`,\s*\[user\.ownerId\]\)/)?.[1];
+ const sql=source.match(/financial\s*\?\s*query\(`(SELECT COALESCE\(sum\(CASE WHEN entry_type IN \('payment','refund'\)[\s\S]*?)`,\s*\[user\.ownerId\](?:,\s*"[a-z_]+")?\)/)?.[1];
  assert.ok(sql);
  const database=new PGlite();
  try{

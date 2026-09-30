@@ -677,3 +677,14 @@ table.numeric tr.selected td{background:#fff8e6}
 .srPage .card{max-width:none;width:100%;box-sizing:border-box;margin-bottom:18px}
 .minStayNotes{margin:16px 0;padding:12px 18px;background:#eef6f7;border:1px solid #cfe2e5;border-radius:14px;color:#173e47}.minStayNotes p{margin:4px 0}
 .msYear{display:flex;gap:8px;align-items:center}.msYear input{width:90px;padding:8px 10px;border:1px solid #cbd6da;border-radius:8px;font:inherit}.msTable td small{color:#6b7b80}.msEditor{margin:12px 0;padding:16px;border-radius:14px;background:#fffaf7}
+
+/* v52 rate options: name | price | button never overlap (long Greek words wrap inside the price column) */
+.rate{display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,auto) auto;align-items:center}
+.rate b{min-width:0;white-space:normal;overflow-wrap:anywhere;text-align:right}
+.rate b .nightly,.rate b .saving,.rate b .standardPrice{white-space:normal}
+.rate em{white-space:nowrap;justify-self:end}
+.bookingHero .heroLogo{margin-bottom:34px}
+@media(max-width:600px){.rate{grid-template-columns:1fr;gap:8px}.rate em{justify-self:stretch;text-align:center}.rate b{text-align:left}}
+/* v52: header dropdowns (notifications, quick search) open above the sticky menu bar */
+.pmsTopbar{position:relative;z-index:60}
+.bellPanel{z-index:70}
