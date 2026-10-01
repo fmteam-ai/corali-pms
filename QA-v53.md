@@ -1,6 +1,13 @@
-# Hotel Corali PMS v52 — release verification
+# Hotel Corali PMS v53 — release verification
 
 ## Scope in this package
+
+### New in v53
+- **Guest self-service (“My booking”):** guests sign in with booking number + email (rate-limited, generic error) and can change dates or cancel within the reservation & cancellation policy: refundable rates until the free-cancellation deadline (new price for the same room type and rate; a higher price adds to the balance with a payment link, a lower one flags a refund to reception); cancellation always possible before arrival, refunding what was paid only when free cancellation applies. Every change is audited, synced to channels and notified to reception. Link “My booking” in the booking engine header.
+- **AI assistant in the booking form:** chat in six languages. With an Anthropic key (PMS → Integrations → “Anthropic (Claude)” or `ANTHROPIC_API_KEY`) it answers with Claude (`claude-opus-5-5`, low effort, cached system prompt with hotel facts, room categories, characteristics, extras and the policy, plus the guest’s current search); without a key or if the API fails it answers from the policy text and the current search. It cannot book or change anything; rate-limited per IP.
+- **Last-minute bookings:** notice in the guest details (highlighted when it applies) and a “Last-minute bookings” section in the policy pop-up in all languages, also with customised policy texts.
+- **Non-refundable rate:** the policy pop-up shows the non-refundable rule instead of “Free cancellation until 7 days”.
+- **PMS → Rooms → Room availability check:** for dates and guests, every room with offered / not offered and why (inactive, out of order, capacity, booking with reference, online payment hold, minimum stay, closed dates, restriction, no price, not enough rooms), and a warning when rooms of different categories share a room type and appear in one card.
 
 ### New in v52
 - **Climate resilience fee** is always charged per room per night: the booking engine and checkout enforce it whatever mode is stored, and the migration now also matches Greek capitals (e.g. «Κλιματική») on C-locale databases.

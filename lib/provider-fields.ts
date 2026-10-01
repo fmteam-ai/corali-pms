@@ -9,6 +9,7 @@ export const providerFields = {
   tiktok: { label: "TikTok", settings: ["clientKey"], secrets: ["clientSecret", "accessToken"] },
   channelManager: { label: "Channel Manager (Channex)", settings: ["propertyCode", "providerName", "environment"], secrets: ["apiKey"] },
   openai: { label: "OpenAI", settings: [], secrets: ["apiKey"] },
+  anthropic: { label: "Anthropic (Claude) · AI assistant", settings: [], secrets: ["apiKey"] },
 } as const;
 export type ProviderKey = keyof typeof providerFields;
 export const providerKeySchema = z.enum(Object.keys(providerFields) as [ProviderKey, ...ProviderKey[]]);

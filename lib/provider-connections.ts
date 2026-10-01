@@ -30,5 +30,12 @@ export async function stripeCredentials(ownerId: string) {
   return legacy.STRIPE_SECRET_KEY && legacy.STRIPE_WEBHOOK_SECRET ? { secretKey: legacy.STRIPE_SECRET_KEY, webhookSecret: legacy.STRIPE_WEBHOOK_SECRET } : null;
 }
 
+/** API key for the guest AI assistant: PMS → Integrations (Anthropic), else the ANTHROPIC_API_KEY environment variable. */
+export async function anthropicApiKey(ownerId: string): Promise<string | null> {
+  const configured = await providerCredentials(ownerId, "anthropic").catch(() => null);
+  if (configured) return configured.active && configured.secrets.apiKey ? String(configured.secrets.apiKey) : null;
+  return env().ANTHROPIC_API_KEY || null;
+}
+
 export function sealProviderSecrets(secrets: Record<string,string>) { return encryptField(JSON.stringify(secrets),documentKey()); }
 export function unsealProviderSecrets(ciphertext: string) { return JSON.parse(decryptField(ciphertext,documentKey())) as Record<string,string>; }

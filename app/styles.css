@@ -732,3 +732,27 @@ table.numeric tr.selected td{background:#fff8e6}
 .bulkType{border:1px solid #e1eaec;border-radius:12px;padding:10px 12px}.bulkTypeHead{display:flex;align-items:center;gap:8px;cursor:pointer}
 .bulkTypeRooms{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.bulkTypeRooms label{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid #d5e0e3;border-radius:999px;cursor:pointer;font-weight:600}.bulkTypeRooms label.on{background:#e3f1f3;border-color:#5f8f99}
 .pms .linkButton{border:0;background:transparent;color:#0f5d6b;text-decoration:underline;font-weight:700;cursor:pointer;padding:4px 6px}
+.axTable td ul{margin:4px 0 0;padding-left:18px;font-size:13px}.axBadge{font-weight:700;font-size:13px}.axBadge.ok{color:#17643a}.axBadge.no{color:#a12828}.axTable tr.axNo{background:#fff8f7}.notice.warn{background:#fff8df;border:1px solid #e6a800;padding:10px 12px;border-radius:10px;color:#5b4300}
+.lastMinuteNote{display:grid;gap:4px;margin:0;padding:12px 14px;border:1px solid #cfe2e5;background:#eef6f7;border-radius:12px;font-size:14px;color:#173e47}.lastMinuteNote.active{border-color:#e6a800;background:#fff8df}
+/* guest self-service */
+.manageLogin{max-width:520px;margin:auto}.manageLogin label{display:grid;gap:6px;font-weight:700}.manageLogin input{padding:12px;border:1px solid #cad5df;border-radius:12px;font:inherit}
+.selfService{margin:18px 0;padding:16px 18px;border:1px solid #d5e3e6;border-radius:16px;background:#f7fbfb}.selfService h2{margin:0 0 8px}.selfService h3{margin:14px 0 8px;font-size:16px}
+.selfService .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.selfService label{display:grid;gap:6px;font-weight:700}.selfService input{padding:10px;border:1px solid #cad5df;border-radius:10px;font:inherit}
+.selfService .actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}.quoteBox{margin-top:10px;padding:12px;border:1px solid #cfe2e5;border-radius:12px;background:#fff}
+.cancelBox{margin-top:16px;padding-top:12px;border-top:1px solid #e1eaec}.shell .danger{background:#a12828;color:#fff;border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}.shell .secondaryButton.danger{background:#fff;color:#a12828;border:1px solid #a12828}
+.shell .linkButton{border:0;background:transparent;color:#0f5d6b;text-decoration:underline;font-weight:700;cursor:pointer}.payLink{display:inline-block;text-decoration:none;padding:12px 18px}
+.selfService .hint{margin:6px 0;color:#5a6b70}
+@media(max-width:560px){.selfService .two{grid-template-columns:1fr}}
+.bookingHead{display:flex;align-items:center;gap:10px}.manageLink{color:#fff;font-weight:700;text-decoration:none;padding:9px 14px;border:1px solid #ffffff66;border-radius:10px;background:#ffffff1a}.manageLink:hover{background:#ffffff33}
+.manageCard .thread:empty{min-height:0;height:auto;padding:0;border:0}
+/* booking assistant */
+.assistantFab{position:fixed;right:20px;bottom:20px;z-index:40;border:0;border-radius:999px;padding:14px 20px;background:#173e47;color:#fff;font-weight:800;font-size:15px;box-shadow:0 10px 30px #0b2a3055;cursor:pointer}.assistantFab:hover{background:#0f2f37}
+.assistantPanel{position:fixed;right:20px;bottom:20px;z-index:40;width:min(380px,calc(100vw - 32px));height:min(560px,calc(100vh - 40px));display:grid;grid-template-rows:auto 1fr auto auto;background:#fff;border:1px solid #d5e3e6;border-radius:18px;box-shadow:0 20px 60px #0b2a3055;overflow:hidden}
+.assistantPanel header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#173e47;color:#fff}.assistantPanel header button{border:0;background:transparent;color:#fff;font-size:24px;cursor:pointer}
+.assistantLog{overflow-y:auto;padding:12px;display:grid;gap:8px;align-content:start;background:#f7fbfb}
+.assistantMsg{margin:0;padding:9px 12px;border-radius:14px;max-width:85%;white-space:pre-wrap;line-height:1.45;font-size:14px}.assistantMsg.assistant{background:#fff;border:1px solid #e1eaec;justify-self:start}.assistantMsg.user{background:#b64b31;color:#fff;justify-self:end}
+.assistantMsg.typing{display:flex;gap:4px}.assistantMsg.typing span{width:7px;height:7px;border-radius:50%;background:#8aa;animation:assistantDot 1s infinite}.assistantMsg.typing span:nth-child(2){animation-delay:.15s}.assistantMsg.typing span:nth-child(3){animation-delay:.3s}
+@keyframes assistantDot{0%,80%,100%{opacity:.3}40%{opacity:1}}
+.assistantPanel form{display:flex;gap:8px;padding:10px;border-top:1px solid #e1eaec}.assistantPanel form input{flex:1;min-width:0;padding:10px 12px;border:1px solid #cad5df;border-radius:10px;font:inherit}.assistantPanel form button{border:0;border-radius:10px;padding:0 14px;background:#b64b31;color:#fff;font-weight:700;cursor:pointer}.assistantPanel form button:disabled{opacity:.5}
+.assistantPanel small{padding:0 12px 10px;color:#6b7b80;font-size:11px;line-height:1.35}
+@media(prefers-reduced-motion:reduce){.assistantMsg.typing span{animation:none}}

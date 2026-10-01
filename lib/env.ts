@@ -47,6 +47,7 @@ const schema = z.object({
   MYDATA_PROVIDER_TOKEN: optionalText,
   CHANNEL_MANAGER_API_KEY: optionalText,
   OPENAI_API_KEY: optionalText,
+  ANTHROPIC_API_KEY: optionalText,
 });
 
 export type AppEnv = z.infer<typeof schema>;

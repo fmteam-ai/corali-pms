@@ -43,7 +43,7 @@ async function handlePUT(request:Request) {
         whatsapp:{secrets:["accessToken","verifyToken","appSecret"],settings:["phoneNumberId","businessAccountId"]},
         smtp:{secrets:["password"],settings:["host","username","from"]},mydata:{secrets:["subscriptionKey"],settings:[]},
         meta:{secrets:["appSecret","pageAccessToken"],settings:["pageId"]},tiktok:{secrets:["clientSecret"],settings:["clientKey"]},
-        channelManager:{secrets:["apiKey"],settings:["propertyCode"]},openai:{secrets:["apiKey"],settings:[]},
+        channelManager:{secrets:["apiKey"],settings:["propertyCode"]},openai:{secrets:["apiKey"],settings:[]},anthropic:{secrets:["apiKey"],settings:[]},
       };
       const needed=required[input.providerKey];
       if (input.active && (needed.secrets.some(key => !secrets[key])||needed.settings.some(key => !input.settings[key]))) throw new Error("CREDENTIALS_REQUIRED");

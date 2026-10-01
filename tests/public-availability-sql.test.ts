@@ -7,7 +7,7 @@ test("every public availability query binds the exact PostgreSQL parameters",asy
  const source=readFileSync("lib/public-rate.ts","utf8");
  const queries=[...source.matchAll(/db\(\)\.query\(`([\s\S]*?)`,\[([^\]]*)\]\)/g)];
  assert.equal(queries.length,11);
- const values:Record<string,string|number>={"input.ownerId":"hotel-corali","input.checkIn":"2026-09-30","input.checkOut":"2026-10-08","input.adults":2,"input.lang":"en","Date.now()":Date.now(),"Math.ceil((input.adults+input.children)/input.rooms)":2,"couponCode":"BDAY-TEST"};
+ const values:Record<string,string|number>={"input.ownerId":"hotel-corali","input.checkIn":"2026-09-30","input.checkOut":"2026-10-08","input.adults":2,"input.lang":"en","Date.now()":Date.now(),"input.excludeBookingId??0":0,"Math.ceil((input.adults+input.children)/input.rooms)":2,"couponCode":"BDAY-TEST"};
  const database=new PGlite();
  try{
   await database.exec(readFileSync("server/postgres-schema.sql","utf8"));
