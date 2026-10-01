@@ -1,6 +1,12 @@
-# Hotel Corali PMS v54 — release verification
+# Hotel Corali PMS v55 — release verification
 
 ## Scope in this package
+
+### New in v55
+- **Dashboard spacing (VikBooking-style):** widgets are packed like masonry (each widget spans the rows its height needs, holes filled), with smaller gaps, padding and headers.
+- **AI assistant widget** on the dashboard (after Booking details, also added to saved layouts): staff ask about arrivals/departures, occupancy, unpaid balances (only with financial permission), unread guest messages, housekeeping, or ask for guest reply drafts. Read-only snapshot of live data; Claude with the Anthropic key from Integrations, built-in answers otherwise.
+- **Booking engine:** the room description is taken from the first room of the card that has one (it disappeared when the first room had none).
+- **Overview “(rooms)” failure:** the room count/type query is rewritten without array aggregation.
 
 ### New in v54
 - **Booking-engine cards show the photos of their rooms:** a card (one room type) takes the photos of the first room that has photos and the characteristics of all its rooms, so a room with photos is no longer hidden behind a first room without any (e.g. room 112 in the “Deluxe Double Room” card).

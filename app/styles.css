@@ -757,3 +757,16 @@ table.numeric tr.selected td{background:#fff8e6}
 .assistantPanel small{padding:0 12px 10px;color:#6b7b80;font-size:11px;line-height:1.35}
 @media(prefers-reduced-motion:reduce){.assistantMsg.typing span{animation:none}}
 .axTable td.axDiff{color:#8a5a00;font-weight:700}.axCards{display:grid;gap:6px;padding-left:18px}.axCards span{display:inline-block;margin:0 3px;padding:1px 8px;border-radius:999px;font-weight:700;font-size:13px}.axCards span.ok{background:#e3f4e8;color:#17643a}.axCards span.no{background:#fbe5e3;color:#a12828}
+/* v54 dashboard: masonry packing and tighter spacing (VikBooking-style) */
+.widgetGrid{grid-auto-rows:4px;grid-auto-flow:row dense;row-gap:0;column-gap:12px;align-items:start}
+.widget{align-self:start;border-radius:12px;box-shadow:0 1px 6px rgba(23,62,71,.08)}
+.widget>header{padding:10px 14px}.widget>header h2{font-size:16px}.widgetBody{padding:10px 14px}
+.widgetBar{margin-bottom:10px}
+/* AI assistant widget */
+.aiWidget{display:grid;gap:8px}.aiLog{max-height:340px;min-height:150px;overflow-y:auto;display:grid;gap:6px;align-content:start;padding:2px}
+.aiEmpty{display:grid;justify-items:center;text-align:center;gap:6px;color:#5a6b70;padding:8px 4px}.aiEmpty>span{font-size:40px;opacity:.6}.aiEmpty p{margin:0;font-size:13px}
+.aiChips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}.aiChips button{border:1px solid #cfe2e5;background:#f4f8f9;color:#0f5d6b;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}.aiChips button:hover{background:#e3f1f3}
+.aiMsg{margin:0;padding:8px 11px;border-radius:12px;max-width:92%;white-space:pre-wrap;font-size:13px;line-height:1.45}.aiMsg.user{justify-self:end;background:#173e47;color:#fff}.aiMsg.assistant{justify-self:start;background:#f2f6f7;border:1px solid #e1eaec}
+.aiTyping{display:flex;gap:4px}.aiTyping span{width:6px;height:6px;border-radius:50%;background:#8aa;animation:assistantDot 1s infinite}.aiTyping span:nth-child(2){animation-delay:.15s}.aiTyping span:nth-child(3){animation-delay:.3s}
+.aiWidget textarea{width:100%;box-sizing:border-box;resize:none;padding:9px 11px;border:1px solid #cad5df;border-radius:10px;font:inherit;font-size:13px;background:#f7fafb}
+.aiWidget .linkButton{justify-self:end;font-size:12px;padding:0}

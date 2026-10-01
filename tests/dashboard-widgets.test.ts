@@ -26,3 +26,8 @@ test("room characteristics fall back to a default icon and English/Greek names",
   assert.equal(amenityName({ el: "Κλιματισμός", en: "Air conditioning" }, "it"), "Air conditioning");
   assert.equal(amenityName({ el: "Κλιματισμός" }, "fr"), "Κλιματισμός");
 });
+
+test("the AI assistant joins saved layouts right after the booking lookup", () => {
+  const saved = normalizeLayout(JSON.stringify(defaultLayout.filter((w) => w.id !== "ai_assistant")));
+  assert.deepEqual(saved.slice(0, 3).map((w) => w.id), ["sticky_notes", "booking_search", "ai_assistant"]);
+});

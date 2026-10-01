@@ -21,7 +21,8 @@ export default async function PmsPage() {
   const arrivalStatuses = `'confirmed','checked_in','checked_out','no_show'`, departureStatuses = `'confirmed','checked_in','checked_out'`;
   const [notes, rooms, recent, roomState, balances, payments, hk, layout, notifications, aY, aT, aM, dY, dT, dM] = await Promise.all([
     query(`SELECT id,body,color FROM pms_dashboard_notes WHERE owner_id=$1 ORDER BY updated_at DESC LIMIT 40`, [user.ownerId], "notes"),
-    query(`SELECT count(*)::int total,COALESCE(array_agg(DISTINCT room_type),'{}') types FROM rooms WHERE owner_id=$1 AND active=1`, [user.ownerId], "rooms"),
+    // Count and room types as two plain queries (the combined array_agg failed on some installations).
+    query(`SELECT count(*)::int AS total,(SELECT string_agg(DISTINCT room_type::text, '\n') FROM rooms WHERE owner_id=$1 AND active=1 AND room_type IS NOT NULL) AS types FROM rooms WHERE owner_id=$1 AND active=1`, [user.ownerId], "rooms"),
     query(`SELECT id,reference,guest_name,check_in,check_out,status,channel,created_at FROM bookings WHERE owner_id=$1 ORDER BY created_at DESC,id DESC LIMIT 8`, [user.ownerId], "latest_bookings"),
     query(`SELECT r.id,r.code,r.room_type,r.operational_status,b.guest_name,b.id booking_id FROM rooms r LEFT JOIN LATERAL (SELECT id,guest_name FROM bookings b WHERE b.owner_id=r.owner_id AND b.room_id=r.id AND b.status IN ('confirmed','checked_in') AND b.check_in<=${hotelDay(0)} AND b.check_out>${hotelDay(0)} ORDER BY b.id DESC LIMIT 1) b ON true WHERE r.owner_id=$1 AND r.active=1 ORDER BY r.code`, [user.ownerId], "rooms_today"),
     financial ? query(`SELECT id,reference,guest_name,check_out,balance_cents FROM bookings WHERE owner_id=$1 AND status IN ('confirmed','checked_in') AND balance_cents>0 ORDER BY check_out LIMIT 20`, [user.ownerId], "balances") : Promise.resolve({ rows: [] }),
@@ -38,7 +39,7 @@ export default async function PmsPage() {
   const data: DashboardData = {
     today: hotelToday(),
     totalRooms: num(rooms.rows[0]?.total),
-    roomTypes: ((rooms.rows[0]?.types as string[] | undefined) ?? []).filter(Boolean).sort(),
+    roomTypes: String(rooms.rows[0]?.types ?? "").split("\n").filter(Boolean).sort(),
     notes: notes.rows.map((n) => ({ id: num(n.id), body: String(n.body), color: String(n.color ?? "yellow") })),
     arrivals: { yesterday: asStays(aY.rows), today: asStays(aT.rows), tomorrow: asStays(aM.rows) },
     departures: { yesterday: asStays(dY.rows), today: asStays(dT.rows), tomorrow: asStays(dM.rows) },

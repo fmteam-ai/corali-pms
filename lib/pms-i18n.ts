@@ -1057,6 +1057,15 @@ const el = {
   "ax.cards": "Τι περιέχει κάθε κάρτα του booking engine",
   "ax.cardsHelp": "Τα δωμάτια πωλούνται ανά «Τύπο δωματίου». Η κάρτα παίρνει το όνομα της κατηγορίας του πρώτου δωματίου, τις φωτογραφίες του πρώτου δωματίου που έχει φωτογραφίες και τα χαρακτηριστικά όλων. Για να εμφανίζεται ένα δωμάτιο σε άλλη κάρτα, αλλάξτε τον «Τύπο δωματίου» του στα Δωμάτια → Διαχείριση.",
   "ax.noCategory": "χωρίς κατηγορία",
+  "w.title.ai_assistant": "AI βοηθός",
+  "ai.empty": "Δεν υπάρχουν μηνύματα ακόμα. Ρωτήστε για αφίξεις, πληρότητα, υπόλοιπα ή ζητήστε απάντηση προς επισκέπτη.",
+  "ai.placeholder": "Γράψτε κάτι και πατήστε Enter",
+  "ai.error": "Ο βοηθός δεν μπόρεσε να απαντήσει. Δοκιμάστε ξανά.",
+  "ai.clear": "Νέα συζήτηση",
+  "ai.s.arrivals": "Ποιοι φτάνουν σήμερα;",
+  "ai.s.occupancy": "Πληρότητα επόμενων 7 ημερών",
+  "ai.s.balances": "Εκκρεμή υπόλοιπα",
+  "ai.s.reply": "Αδιάβαστα μηνύματα επισκεπτών",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -2110,6 +2119,15 @@ const en: Record<PmsKey, string> = {
   "ax.cards": "What each booking-engine card contains",
   "ax.cardsHelp": "Rooms are sold per room type. A card takes the category name of its first room, the photos of the first room that has photos and the characteristics of all rooms. To show a room in another card, change its room type in Rooms → Manage.",
   "ax.noCategory": "no category",
+  "w.title.ai_assistant": "AI assistant",
+  "ai.empty": "No messages yet. Ask about arrivals, occupancy, balances or ask for a reply to a guest.",
+  "ai.placeholder": "Type something and press Enter",
+  "ai.error": "The assistant could not answer. Please try again.",
+  "ai.clear": "New conversation",
+  "ai.s.arrivals": "Who arrives today?",
+  "ai.s.occupancy": "Occupancy next 7 days",
+  "ai.s.balances": "Unpaid balances",
+  "ai.s.reply": "Unread guest messages",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

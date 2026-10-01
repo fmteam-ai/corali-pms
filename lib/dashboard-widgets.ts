@@ -1,5 +1,5 @@
 // Dashboard widgets: catalogue, default arrangement and validation of a user's saved layout (pure; unit tested).
-export const widgetIds = ["sticky_notes", "booking_search", "forecast", "arriving", "departing", "check_availability", "bookings_calendar", "latest_bookings", "rooms_today", "finance", "housekeeping", "notifications"] as const;
+export const widgetIds = ["sticky_notes", "booking_search", "ai_assistant", "forecast", "arriving", "departing", "check_availability", "bookings_calendar", "latest_bookings", "rooms_today", "finance", "housekeeping", "notifications"] as const;
 export type WidgetId = (typeof widgetIds)[number];
 export type WidgetSize = 1 | 2 | 3;
 export type WidgetPlacement = { id: WidgetId; size: WidgetSize; hidden: boolean };
@@ -8,6 +8,7 @@ export type WidgetPlacement = { id: WidgetId; size: WidgetSize; hidden: boolean 
 export const defaultLayout: WidgetPlacement[] = [
   { id: "sticky_notes", size: 2, hidden: false },
   { id: "booking_search", size: 1, hidden: false },
+  { id: "ai_assistant", size: 1, hidden: false },
   { id: "arriving", size: 2, hidden: false },
   { id: "forecast", size: 1, hidden: false },
   { id: "departing", size: 2, hidden: false },
@@ -19,6 +20,8 @@ export const defaultLayout: WidgetPlacement[] = [
   { id: "housekeeping", size: 1, hidden: false },
   { id: "notifications", size: 1, hidden: false },
 ];
+
+const insertAfter: Partial<Record<WidgetId, WidgetId>> = { ai_assistant: "booking_search" };
 
 /** Keep known widgets once each, in the saved order; widgets added in later releases are appended visible. */
 export function normalizeLayout(raw: unknown): WidgetPlacement[] {
@@ -34,7 +37,15 @@ export function normalizeLayout(raw: unknown): WidgetPlacement[] {
     const size = [1, 2, 3].includes(Number(item.size)) ? (Number(item.size) as WidgetSize) : defaultLayout.find((w) => w.id === id)!.size;
     out.push({ id, size, hidden: item.hidden === true });
   }
-  for (const w of defaultLayout) if (!seen.has(w.id)) out.push({ ...w });
+  for (const w of defaultLayout) {
+    if (seen.has(w.id)) continue;
+    // Widgets added in later releases go where they sit in the default layout (after their predecessor) when it is
+    // the one they are designed to follow; otherwise at the end.
+    const after = insertAfter[w.id];
+    const at = after ? out.findIndex((x) => x.id === after) : -1;
+    if (at >= 0) out.splice(at + 1, 0, { ...w });
+    else out.push({ ...w });
+  }
   return out;
 }
 

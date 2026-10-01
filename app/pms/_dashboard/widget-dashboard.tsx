@@ -1,8 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { moveWidget, type WidgetId, type WidgetPlacement, type WidgetSize } from "@/lib/dashboard-widgets";
 import { pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
-import { BookingSearch, BookingsCalendar, CheckAvailability, Finance, Forecast, Housekeeping, LatestBookings, Notifications, RoomsToday, StayList, StickyNotes, type Balance, type Feed, type Note, type Recent, type RoomToday, type Stay } from "./widgets";
+import { AiAssistant, BookingSearch, BookingsCalendar, CheckAvailability, Finance, Forecast, Housekeeping, LatestBookings, Notifications, RoomsToday, StayList, StickyNotes, type Balance, type Feed, type Note, type Recent, type RoomToday, type Stay } from "./widgets";
 
 export type DashboardData = {
   today: string;
@@ -20,7 +20,7 @@ export type DashboardData = {
 };
 export type DashboardPermissions = { editNotes: boolean; editStays: boolean; createReservation: boolean; financial: boolean; housekeeping: boolean };
 
-const icons: Record<WidgetId, string> = { sticky_notes: "📌", booking_search: "🪪", forecast: "🌤️", arriving: "🛬", departing: "🛫", check_availability: "🧮", bookings_calendar: "📅", latest_bookings: "🆕", rooms_today: "🛏️", finance: "💶", housekeeping: "🧹", notifications: "🔔" };
+const icons: Record<WidgetId, string> = { sticky_notes: "📌", booking_search: "🪪", ai_assistant: "🤖", forecast: "🌤️", arriving: "🛬", departing: "🛫", check_availability: "🧮", bookings_calendar: "📅", latest_bookings: "🆕", rooms_today: "🛏️", finance: "💶", housekeeping: "🧹", notifications: "🔔" };
 
 export function WidgetDashboard({ lang, data, can, initialLayout }: { lang: PmsLang; data: DashboardData; can: DashboardPermissions; initialLayout: WidgetPlacement[] }) {
   const t = pmsT(lang);
@@ -45,6 +45,7 @@ export function WidgetDashboard({ lang, data, can, initialLayout }: { lang: PmsL
     switch (id) {
       case "sticky_notes": return <StickyNotes t={t} initial={data.notes} canEdit={can.editNotes} />;
       case "booking_search": return <BookingSearch t={t} lang={lang} />;
+      case "ai_assistant": return <AiAssistant t={t} lang={lang} />;
       case "forecast": return <Forecast t={t} lang={lang} today={data.today} totalRooms={data.totalRooms} />;
       case "arriving": return <StayList t={t} lang={lang} kind="arriving" stays={data.arrivals} canEdit={can.editStays} />;
       case "departing": return <StayList t={t} lang={lang} kind="departing" stays={data.departures} canEdit={can.editStays} />;
@@ -75,7 +76,7 @@ export function WidgetDashboard({ lang, data, can, initialLayout }: { lang: PmsL
       )}
       <div className="widgetGrid">
         {visible.map((w) => (
-          <section key={w.id} className={`widget span${w.size}${customize ? " editing" : ""}`} aria-labelledby={`w-${w.id}`}>
+          <MasonryItem key={w.id} className={`widget span${w.size}${customize ? " editing" : ""}`} labelledBy={`w-${w.id}`}>
             <header>
               <h2 id={`w-${w.id}`}><span aria-hidden="true">{icons[w.id]}</span> {t(`w.title.${w.id}` as PmsKey)}</h2>
               {customize && (
@@ -90,9 +91,25 @@ export function WidgetDashboard({ lang, data, can, initialLayout }: { lang: PmsL
               )}
             </header>
             <div className="widgetBody">{body(w.id)}</div>
-          </section>
+          </MasonryItem>
         ))}
       </div>
     </div>
   );
+}
+
+// Masonry packing like the VikBooking dashboard: the grid has 4px rows and each widget spans as many rows as its
+// height needs, so short widgets no longer leave gaps under taller neighbours (grid-auto-flow: dense fills holes).
+const ROW = 4, GAP = 12;
+function MasonryItem({ className, labelledBy, children }: { className: string; labelledBy: string; children: ReactNode }) {
+  const ref = useRef<HTMLElement>(null);
+  const [span, setSpan] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setSpan(Math.ceil((el.getBoundingClientRect().height + GAP) / ROW)));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return <section ref={ref} className={className} aria-labelledby={labelledBy} style={span ? { gridRowEnd: `span ${span}` } : undefined}>{children}</section>;
 }

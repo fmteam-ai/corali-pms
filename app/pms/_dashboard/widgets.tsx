@@ -287,3 +287,35 @@ export function Housekeeping({ t, counts }: { t: T; counts: { todo: number; inPr
 export function Notifications({ t, lang, items }: { t: T; lang: PmsLang; items: Feed[] }) {
   return items.length ? <ul className="wList">{items.slice(0, 8).map((n) => <li key={n.key} className={n.read ? "read" : undefined}>{n.link ? <Link href={n.link}>{n.title}</Link> : <span>{n.title}</span>}<small>{new Date(Number(n.created_at)).toLocaleString(pmsLocale(lang), { dateStyle: "short", timeStyle: "short" })}</small></li>)}</ul> : <p className="muted">{t("w.none")}</p>;
 }
+
+/** AI assistant for staff: questions about today's operations, guest reply drafts. Read-only. */
+export function AiAssistant({ t, lang }: { t: T; lang: PmsLang }) {
+  const [turns, setTurns] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const suggestions = [t("ai.s.arrivals"), t("ai.s.occupancy"), t("ai.s.balances"), t("ai.s.reply")];
+  async function ask(question: string) {
+    const q = question.trim();
+    if (!q || busy) return;
+    const next = [...turns, { role: "user" as const, content: q.slice(0, 4000) }];
+    setTurns(next); setText(""); setBusy(true);
+    try {
+      const r = await fetch("/api/pms/assistant", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lang, messages: next }) });
+      const d = await r.json().catch(() => ({}));
+      setTurns([...next, { role: "assistant", content: r.ok && d.reply ? String(d.reply) : t("ai.error") }]);
+    } catch { setTurns([...next, { role: "assistant", content: t("ai.error") }]); } finally { setBusy(false); }
+  }
+  return (
+    <div className="aiWidget">
+      <div className="aiLog" aria-live="polite">
+        {turns.length === 0 && <div className="aiEmpty"><span aria-hidden="true">💬</span><p>{t("ai.empty")}</p><div className="aiChips">{suggestions.map((s) => <button key={s} type="button" onClick={() => ask(s)}>{s}</button>)}</div></div>}
+        {turns.map((m, i) => <p key={i} className={`aiMsg ${m.role}`}>{m.content}</p>)}
+        {busy && <p className="aiMsg assistant aiTyping"><span /><span /><span /></p>}
+      </div>
+      <form onSubmit={(e) => { e.preventDefault(); void ask(text); }}>
+        <textarea value={text} rows={2} maxLength={4000} placeholder={t("ai.placeholder")} aria-label={t("ai.placeholder")} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void ask(text); } }} />
+      </form>
+      {turns.length > 0 && <button type="button" className="linkButton" onClick={() => setTurns([])}>{t("ai.clear")}</button>}
+    </div>
+  );
+}
