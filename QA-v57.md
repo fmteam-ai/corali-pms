@@ -1,6 +1,10 @@
-# Hotel Corali PMS v56 — release verification
+# Hotel Corali PMS v57 — release verification
 
 ## Scope in this package
+
+### New in v57
+- **Test send in Automated messages:** send a test email (any message template and language, sample booking data, subject “[TEST]”) or a WhatsApp test (Meta “hello_world” to check the connection, or your own approved template with sample parameters) using the saved SMTP / WhatsApp credentials. The result shows success (SMTP server, Meta message id) or the error code with a plain explanation: missing settings, wrong SMTP password, unreachable host/port, rejected sender, expired WhatsApp token, recipient not in the test-number list, template missing/not approved, number without WhatsApp. Requires Integrations edit permission; 10 tests per 10 minutes; not written to the delivery history.
+- **Automated messages in two columns:** settings and test send side by side; message templates in a two-column grid (one column on narrow screens).
 
 ### New in v56
 - **Offers & promotions (PMS → Pricing → Offers, VikBooking “special prices”):** discount or surcharge, % or fixed € per night, by period, weekdays, rooms (category tick selects its rooms) and rate plans, minimum nights, “check-in must be within the period”, rounding to whole euros, different values for longer stays (e.g. 7+ nights 15%). Marked as a promotion, an offer shows a badge and its text (6 languages) in the booking engine, with the pre-promotion price struck through and the saving; last-minute (arrival within N days) and early-booking (at least N days ahead) windows. Templates (last minute, early booking, long stay), edit, duplicate, delete, running/upcoming/ended status.

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 app_dir="${1:-}"
-expected_version="${2:-v56}"
+expected_version="${2:-v57}"
 port="${3:-}"
 [[ -d "$app_dir" && -f "$app_dir/app.js" && -f "$app_dir/runtime.env" ]] || {
   echo "Usage: bash smoke-runtime.sh APP_DIR [EXPECTED_VERSION] [PORT]" >&2

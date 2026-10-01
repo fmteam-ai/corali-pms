@@ -796,3 +796,15 @@ table.numeric tr.selected td{background:#fff8e6}
 .fInsight{display:grid;gap:4px;margin-top:10px;padding:10px 12px;border-radius:10px;background:#fff6e5;border:1px solid #f0d49a;font-size:13px}.fInsight b{color:#8a5a00}.fInsight a{justify-self:start;margin-top:4px;padding:6px 12px;border-radius:8px;background:#b64b31;color:#fff;font-weight:700;text-decoration:none}
 @media(hover:hover){.fInsight a:hover{background:#8f3822}}
 @media(hover:hover){.pms .tableWrap .secondaryButton:not(:disabled):hover{color:#173e47}}
+/* v57: automated messages in two columns + test send */
+.automationEditor .card{max-width:none;width:100%;box-sizing:border-box;margin:0}
+.autoTop,.autoEvents{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+@media(max-width:1000px){.autoTop,.autoEvents{grid-template-columns:1fr}}
+.autoEvents .translationFields{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.autoTop .translationFields{grid-template-columns:repeat(2,minmax(0,1fr))}
+.testSend p{margin:4px 0 10px;color:#5a6b70}.testSend select{font:inherit;padding:9px;border:1px solid #cbd7df;border-radius:8px}
+.testTabs{display:flex;gap:6px;margin:6px 0}.testTabs button{padding:8px 14px;border:1px solid #cbd6da;border-radius:999px;background:#fff;font:inherit;font-weight:600;color:#173e47}.testTabs button.active{background:#173e47;color:#fff;border-color:#173e47}
+.automationEditor label.testRadio{display:flex;gap:8px;align-items:flex-start;margin:6px 0}
+.testPick{display:grid;grid-template-columns:1fr 120px;gap:10px}
+.testSend .primary{margin-top:10px}
+.testResult{margin-top:12px;padding:12px 14px;border-radius:10px}.testResult.ok{background:#e2f4e8;color:#17643a}.testResult.fail{display:grid;gap:4px;background:#fdecea;color:#8a1f1f}.testResult small{color:#6b4b4b}
