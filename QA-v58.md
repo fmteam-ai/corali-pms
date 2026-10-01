@@ -1,6 +1,10 @@
-# Hotel Corali PMS v57 — release verification
+# Hotel Corali PMS v58 — release verification
 
 ## Scope in this package
+
+### New in v58
+- **Test send no longer hangs:** SMTP connections time out after 10 s (greeting 10 s, socket 20 s) — also for automated messages — and the page gives up after 45 s, showing “SMTP_ETIMEDOUT” with what to check (host/port; cPanel “SMTP Restrictions” blocking external SMTP such as Gmail → use the server's own mail, e.g. mail.hotelcorali.gr:465).
+- **No more bare “HTTP_502”:** a failed test send is returned as a normal result (200, ok:false), so hosting proxies cannot replace the diagnosis with their own error page; a proxy-generated 5xx is explained as such.
 
 ### New in v57
 - **Test send in Automated messages:** send a test email (any message template and language, sample booking data, subject “[TEST]”) or a WhatsApp test (Meta “hello_world” to check the connection, or your own approved template with sample parameters) using the saved SMTP / WhatsApp credentials. The result shows success (SMTP server, Meta message id) or the error code with a plain explanation: missing settings, wrong SMTP password, unreachable host/port, rejected sender, expired WhatsApp token, recipient not in the test-number list, template missing/not approved, number without WhatsApp. Requires Integrations edit permission; 10 tests per 10 minutes; not written to the delivery history.

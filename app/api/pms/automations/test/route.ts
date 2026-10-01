@@ -14,6 +14,8 @@ import { assertTrustedOrigin } from "@/lib/security/origin";
 import { whatsappVariables } from "../../../../../scripts/automation-core.mjs";
 
 // Test send from PMS → Automated messages: proves SMTP / WhatsApp work with the saved credentials and templates.
+// A failed send is a result, not a server error: it is answered with 200 + ok:false, because hosting proxies (cPanel,
+// Cloudflare) replace 5xx bodies with their own page and the diagnosis would be lost.
 const input = z.discriminatedUnion("channel", [
   z.object({ channel: z.literal("email"), to: z.email().max(200), event: z.enum(messageEvents), lang: z.enum(bookingLanguages) }),
   z.object({ channel: z.literal("whatsapp"), to: z.string().trim().min(8).max(24), mode: z.enum(["hello_world", "event"]), event: z.enum(messageEvents), lang: z.enum(bookingLanguages) }),
@@ -41,7 +43,7 @@ async function handlePOST(request: Request) {
         return Response.json({ ok: true, channel: "email", server });
       } catch (e) {
         const d = smtpDiagnosis(e);
-        return Response.json({ ok: false, error: d.code, hint: d.hint, server }, { status: 502 });
+        return Response.json({ ok: false, error: d.code, hint: d.hint, server });
       }
     }
     const to = whatsappNumber(x.to);
@@ -57,12 +59,12 @@ async function handlePOST(request: Request) {
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
       const d = metaDiagnosis(response.status, body);
-      return Response.json({ ok: false, error: d.code, hint: d.hint, detail: d.detail, template: name }, { status: 502 });
+      return Response.json({ ok: false, error: d.code, hint: d.hint, detail: d.detail, template: name });
     }
     return Response.json({ ok: true, channel: "whatsapp", template: name, messageId: String((body as { messages?: { id?: string }[] }).messages?.[0]?.id ?? "accepted") });
   } catch (e) {
     if (e instanceof z.ZodError) return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
-    if (e instanceof Error && e.name === "TimeoutError") return Response.json({ ok: false, error: "WHATSAPP_TIMEOUT", hint: "connection" }, { status: 504 });
+    if (e instanceof Error && e.name === "TimeoutError") return Response.json({ ok: false, error: "WHATSAPP_TIMEOUT", hint: "connection" });
     return Response.json({ ok: false, error: "TEST_FAILED" }, { status: 500 });
   }
 }
