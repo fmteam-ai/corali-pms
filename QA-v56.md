@@ -1,6 +1,12 @@
-# Hotel Corali PMS v55 — release verification
+# Hotel Corali PMS v56 — release verification
 
 ## Scope in this package
+
+### New in v56
+- **Offers & promotions (PMS → Pricing → Offers, VikBooking “special prices”):** discount or surcharge, % or fixed € per night, by period, weekdays, rooms (category tick selects its rooms) and rate plans, minimum nights, “check-in must be within the period”, rounding to whole euros, different values for longer stays (e.g. 7+ nights 15%). Marked as a promotion, an offer shows a badge and its text (6 languages) in the booking engine, with the pre-promotion price struck through and the saving; last-minute (arrival within N days) and early-booking (at least N days ahead) windows. Templates (last minute, early booking, long stay), edit, duplicate, delete, running/upcoming/ended status.
+- **Discount coupons (PMS → Pricing → Discount coupons):** create, edit, enable/disable and delete promo codes: random readable code, % or fixed € off the room price, booking window, optional stay window and blackout periods, maximum uses, stacking with the direct discount, restriction to one email. Uses, pending checkouts and (with financial permission) room revenue per code; birthday codes listed separately (disable/delete only). Duplicate codes are refused.
+- **Dashboard forecast insight:** below 50% occupancy for the shown range, “Create promotion” opens a prefilled promotion for those dates.
+- “Special prices & restrictions” is now “Booking restrictions”, linking to the new screens. Table buttons stay readable on hover.
 
 ### New in v55
 - **Dashboard spacing (VikBooking-style):** widgets are packed like masonry (each widget spans the rows its height needs, holes filled), with smaller gaps, padding and headers.

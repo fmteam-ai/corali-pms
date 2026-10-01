@@ -770,3 +770,29 @@ table.numeric tr.selected td{background:#fff8e6}
 .aiTyping{display:flex;gap:4px}.aiTyping span{width:6px;height:6px;border-radius:50%;background:#8aa;animation:assistantDot 1s infinite}.aiTyping span:nth-child(2){animation-delay:.15s}.aiTyping span:nth-child(3){animation-delay:.3s}
 .aiWidget textarea{width:100%;box-sizing:border-box;resize:none;padding:9px 11px;border:1px solid #cad5df;border-radius:10px;font:inherit;font-size:13px;background:#f7fafb}
 .aiWidget .linkButton{justify-self:end;font-size:12px;padding:0}
+
+/* v56: promotions in the booking engine, PMS offers & coupons */
+.promoRibbon{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin:6px 0 10px;padding:8px 12px;border-radius:12px;background:linear-gradient(90deg,#fff1e8,#fff8f2);border:1px solid #f1c9b4;color:#7d3320;font-size:14px}.promoRibbon b{color:#b64b31;white-space:nowrap}
+.rate .promoBadge{display:inline-block;width:max-content;margin-top:4px;padding:2px 8px;border-radius:999px;background:#fde8de;color:#9b3a22;font-weight:700}
+.offerPresets{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}.offerPresets button{display:grid;gap:4px;text-align:left;padding:14px 16px;border:1px solid #d9e0e3;border-radius:12px;background:#fff;font:inherit;cursor:pointer}.offerPresets small{color:#5a6b70}
+@media(hover:hover){.offerPresets button:hover{border-color:#b64b31;box-shadow:0 4px 14px #b64b3122}}
+.offerSections{display:grid;gap:18px}.offerSections section{display:grid;gap:12px;padding:14px 16px;border:1px solid #e3e9eb;border-radius:12px;background:#fff}.offerSections h3{margin:0;font-size:16px;color:#173e47}
+.offerSections .srFields small{font-weight:400;color:#6b7b80}
+.offerCheck{display:flex;gap:10px;align-items:flex-start}.offerCheck input{margin-top:3px}.offerCheck span{display:grid;gap:2px}.offerCheck small{color:#6b7b80;font-weight:400}
+.offerToggle{padding:10px 12px;border-radius:10px;background:#fff6f1}
+.offerOverrides,.offerTexts{display:grid;gap:8px}.offerOverrides>small,.offerTexts>small{color:#6b7b80}
+.offerOverride{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}.offerOverride label{display:grid;gap:4px;font-weight:600}.offerOverride input{width:140px;padding:8px 10px;border:1px solid #cbd6da;border-radius:8px;font:inherit}
+.offerTexts label{display:grid;grid-template-columns:44px 1fr;gap:8px;align-items:start}.offerTexts textarea{padding:8px 10px;border:1px solid #cbd6da;border-radius:8px;font:inherit;resize:vertical}.offerLang{display:inline-block;padding:6px 0;text-align:center;border-radius:6px;background:#173e47;color:#fff;font-size:12px;font-weight:700}
+.offerRooms{display:grid;gap:8px}
+.offerList td small{display:block;color:#6b7b80;margin-top:2px}.offerList .offerText{font-style:italic;color:#7d3320}
+.promoTag{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;background:#fde8de;color:#9b3a22;font-size:12px;font-weight:700}
+.offerMinus{color:#17643a}.offerPlus{color:#a12828}
+.offerStatus{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;background:#eef2f3;color:#4a5b60}.offerStatus.running{background:#e2f4e8;color:#17643a}.offerStatus.upcoming{background:#e3ecfb;color:#284f99}.offerStatus.ended{background:#f3eeee;color:#7a5555}.offerStatus.inactive{background:#eef2f3;color:#6b7b80}
+.couponStats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px}.couponStats div{display:grid;gap:4px;padding:14px 16px;background:#fff;border:1px solid #e3e9eb;border-radius:12px}.couponStats small{color:#6b7b80}.couponStats b{font-size:24px;color:#173e47}
+.couponTabs{display:flex;gap:6px}.couponTabs button{padding:8px 14px;border:1px solid #cbd6da;border-radius:999px;background:#fff;font:inherit;font-weight:600;color:#173e47;cursor:pointer}.couponTabs button.active{background:#173e47;color:#fff;border-color:#173e47}.couponTabs small{opacity:.75;margin-left:4px}
+.couponCodeField{display:flex;gap:6px}.couponCodeField input{flex:1;font-family:ui-monospace,Menlo,monospace!important;letter-spacing:.04em;text-transform:uppercase}
+.tableWrap button.couponCode{padding:4px 10px;border:1px dashed #b64b31;border-radius:8px;background:#fff6f1;color:#8f3822;font-family:ui-monospace,Menlo,monospace;font-weight:700;letter-spacing:.04em;cursor:copy}
+.srNav input[type=search]{min-width:180px}
+.fInsight{display:grid;gap:4px;margin-top:10px;padding:10px 12px;border-radius:10px;background:#fff6e5;border:1px solid #f0d49a;font-size:13px}.fInsight b{color:#8a5a00}.fInsight a{justify-self:start;margin-top:4px;padding:6px 12px;border-radius:8px;background:#b64b31;color:#fff;font-weight:700;text-decoration:none}
+@media(hover:hover){.fInsight a:hover{background:#8f3822}}
+@media(hover:hover){.pms .tableWrap .secondaryButton:not(:disabled):hover{color:#173e47}}

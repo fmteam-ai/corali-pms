@@ -54,3 +54,7 @@ export async function seasonRateSnapshot(ownerId: string, body: Record<string, u
 export async function minStaySnapshot(ownerId: string, body: Record<string, unknown>) {
   return idOf(body) ? row(`SELECT * FROM min_stay_rules WHERE owner_id=$1 AND id=$2`, [ownerId, idOf(body)]) : null;
 }
+
+export async function couponSnapshot(ownerId: string, body: Record<string, unknown>) {
+  return idOf(body) ? row(`SELECT id,code,name,discount_type,discount_value,valid_from,valid_to,stay_from,stay_to,max_uses,usage_count,combinable,active,purpose FROM coupons WHERE owner_id=$1 AND id=$2`, [ownerId, idOf(body)]) : null;
+}

@@ -9,6 +9,7 @@ import { requiredMinStay, type MinStayRule } from "@/lib/min-stay";
 import { nightlyPrice, ruleTarget } from "@/lib/season-rates";
 import { DEFAULT_DIRECT_DISCOUNT_PERCENT, couponProblem, normalizeCouponCode, planPricing, priceWithOffers, type Coupon, type CouponProblem } from "@/lib/direct-pricing";
 import { hotelToday } from "@/lib/tape-chart";
+import { applyOffer, isPromotion, offerCoversNight, offerFitsStay, promotionText, type Offer } from "@/lib/offers";
 
 type Lang = BookingLanguage;
 export type AvailabilityInput = { ownerId:string; checkIn:string; checkOut:string; adults:number; children:number; rooms:number; lang:Lang; couponCode?:string|null; guestEmail?:string|null; excludeBookingId?:number|null };
@@ -43,7 +44,7 @@ export async function publicAvailability(input:AvailabilityInput){
     db().query(`SELECT id,code,name,name_el,name_en,description,description_el,description_en,name_translations_json,description_translations_json,price_cents,pricing_mode FROM extras WHERE owner_id=$1 AND active=1 ORDER BY sort_order,id`,[input.ownerId]),
     db().query(`SELECT id,name,name_el,name_en,name_translations_json,category,amount_cents,calculation_mode FROM mandatory_charges WHERE owner_id=$1 AND active=1 AND (valid_from IS NULL OR valid_from<=$3) AND (valid_to IS NULL OR valid_to>=$2) ORDER BY id`,[input.ownerId,input.checkIn,input.checkOut]),
     db().query(`SELECT id,room_type,room_codes,weekdays,active,updated_at,starts_on,ends_on,price_cents,minimum_stay,maximum_stay,closed,closed_to_arrival,closed_to_departure FROM rate_rules WHERE owner_id=$1 AND active=1 AND starts_on<$3 AND ends_on>=$2 ORDER BY id`,[input.ownerId,input.checkIn,input.checkOut]),
-    db().query(`SELECT starts_on,ends_on,adjustment_type,adjustment_value,operation,weekdays,room_codes,rate_plan_keys,minimum_stay,priority,promotion FROM special_prices WHERE owner_id=$1 AND active=1 AND starts_on<$3 AND ends_on>=$2 ORDER BY priority,id`,[input.ownerId,input.checkIn,input.checkOut]),
+    db().query(`SELECT name,starts_on,ends_on,adjustment_type,adjustment_value,operation,weekdays,room_codes,rate_plan_keys,minimum_stay,priority,promotion,promotion_text_json,last_minute_days,min_advance_days,checkin_in_season,round_integer,nights_overrides_json FROM special_prices WHERE owner_id=$1 AND active=1 AND starts_on<$3 AND ends_on>=$2 ORDER BY priority,id`,[input.ownerId,input.checkIn,input.checkOut]),
     db().query(`SELECT starts_on,ends_on,minimum_stay,maximum_stay,closed_arrival_weekdays,closed_departure_weekdays,room_codes,rate_plan_keys,priority FROM booking_restrictions WHERE owner_id=$1 AND active=1 AND starts_on<$3 AND ends_on>=$2 ORDER BY priority,id`,[input.ownerId,input.checkIn,input.checkOut]),
     db().query(`SELECT direct_discount_percent,direct_discount_active FROM revenue_settings WHERE owner_id=$1 LIMIT 1`,[input.ownerId]),
     couponCode?db().query(`SELECT c.*,(SELECT count(*)::int FROM booking_sessions s WHERE s.owner_id=c.owner_id AND s.coupon_code=c.code AND s.status='payment_pending' AND s.recovery_due_at>$3) AS pending_uses FROM coupons c WHERE c.owner_id=$1 AND upper(c.code)=$2 LIMIT 1`,[input.ownerId,couponCode,Date.now()]):Promise.resolve({rows:[]}),
@@ -58,6 +59,8 @@ export async function publicAvailability(input:AvailabilityInput){
   const planRows=plans.rows.length?plans.rows:[{plan_key:"flexible",name:"Flexible",adjustment_percent:0,payment_policy:"flexible"}];
   const localized=(value:unknown,el:unknown,en:unknown,fallback:unknown)=>translatedText(value,input.lang,el,en,fallback);
   const planName=(key:string,fallback:string,translations:unknown)=>localized(translations,rateNames.el[key],rateNames[input.lang][key]||rateNames.en[key],fallback);
+  // Offers whose stay-level conditions hold (min nights, last-minute / early-booking window, arrival within the period).
+  const stayOffers=(specials.rows as Offer[]).filter(o=>offerFitsStay(o,{checkIn:input.checkIn,nights,today:hotelToday()}));
   const grouped=new Map<string,typeof rooms.rows>(); for(const row of rooms.rows){const key=String(row.room_type);grouped.set(key,[...(grouped.get(key)??[]),row])}
   // Minimum stay per room category, judged on the check-in date; rooms hidden for it are reported so the guest knows why.
   const minStayRows=(await db().query(`SELECT id,room_type,starts_on,ends_on,min_nights,active,updated_at FROM min_stay_rules WHERE owner_id=$1 AND active=1`,[input.ownerId])).rows as MinStayRule[];
@@ -70,6 +73,7 @@ export async function publicAvailability(input:AvailabilityInput){
     const selectedRooms=list.slice(0,input.rooms),room=selectedRooms[0],arrivalDow=parseISO(input.checkIn).getUTCDay(),departureDow=parseISO(input.checkOut).getUTCDay();
     const plansForRoom=planRows.flatMap(p=>{
       let restricted=false,unpriced=false;
+      const promos=new Map<string,string>();
       const nonPromoTotals:number[]=[];
       const roomTotals=selectedRooms.map(selected=>{
         let base=0,nonPromoBase=0;
@@ -77,10 +81,11 @@ export async function publicAvailability(input:AvailabilityInput){
           const rule=rules.rows.filter(r=>ruleTarget(r,roomType,selected.code)>0&&r.starts_on<=date&&r.ends_on>=date&&(r.minimum_stay!==null||r.maximum_stay!==null||Number(r.closed)===1||Number(r.closed_to_arrival)===1||Number(r.closed_to_departure)===1)).at(-1);
           if(Number(rule?.closed)===1||Number(rule?.minimum_stay??1)>nights||(rule?.maximum_stay&&Number(rule.maximum_stay)<nights)||date===input.checkIn&&Number(rule?.closed_to_arrival)===1||date===dates.at(-1)&&Number(rule?.closed_to_departure)===1)restricted=true;
           let nightly=money(nightlyPrice(rules.rows,date,roomType,selected.code,roomBase(selected))),nonPromo=nightly;if(nightly<=0)unpriced=true;
-          const applicable=specials.rows.filter(s=>s.starts_on<=date&&s.ends_on>=date&&Number(s.minimum_stay)<=nights&&(!jsonArray<string>(s.room_codes).length||jsonArray<string>(s.room_codes).includes(selected.code))&&(!jsonArray<string>(s.rate_plan_keys).length||jsonArray<string>(s.rate_plan_keys).includes(p.plan_key))&&(!jsonArray<number>(s.weekdays).length||jsonArray<number>(s.weekdays).includes(parseISO(date).getUTCDay())));
-          for(const offer of applicable){const delta=offer.adjustment_type==="percentage"?Math.round(nightly*Math.abs(Number(offer.adjustment_value))/100):Math.abs(Number(offer.adjustment_value));nightly=offer.operation==="discount"?Math.max(0,nightly-delta):nightly+delta;
+          const applicable=stayOffers.filter(o=>offerCoversNight(o,{date,roomCode:String(selected.code),planKey:p.plan_key}));
+          for(const offer of applicable){nightly=applyOffer(nightly,offer,nights);
+            if(isPromotion(offer)){const name=String(offer.name??"");if(!promos.has(name))promos.set(name,promotionText(offer,input.lang))}
             // Promotional discounts are left out of the base a non-stackable promo code applies to.
-            if(!(Number(offer.promotion)===1&&offer.operation==="discount")){const d2=offer.adjustment_type==="percentage"?Math.round(nonPromo*Math.abs(Number(offer.adjustment_value))/100):Math.abs(Number(offer.adjustment_value));nonPromo=offer.operation==="discount"?Math.max(0,nonPromo-d2):nonPromo+d2}}
+            else nonPromo=applyOffer(nonPromo,offer,nights)}
           base+=nightly;nonPromoBase+=nonPromo;
         }
         for(const r of restrictions.rows.filter(r=>r.starts_on<input.checkOut&&r.ends_on>=input.checkIn&&(!jsonArray<string>(r.room_codes).length||jsonArray<string>(r.room_codes).includes(selected.code)))){if(jsonArray<string>(r.rate_plan_keys).length&&!jsonArray<string>(r.rate_plan_keys).includes(p.plan_key))continue;if(Number(r.minimum_stay)>nights||(r.maximum_stay&&Number(r.maximum_stay)<nights)||jsonArray<number>(r.closed_arrival_weekdays).includes(arrivalDow)||jsonArray<number>(r.closed_departure_weekdays).includes(departureDow))restricted=true}
@@ -89,11 +94,11 @@ export async function publicAvailability(input:AvailabilityInput){
       });
       if(restricted||unpriced)return [];
       const pricing=planPricing(p.plan_key,Number(p.adjustment_percent),directPercent);
-      // Price before the plan's own discount (e.g. non-refundable −10%), shown struck through so guests see what they save.
-      const referenceCents=priceForRoomTotals(roomTotals,Math.max(0,pricing.adjustmentPercent));
+      // Price before the plan's own discount (e.g. non-refundable −10%) and before promotions, shown struck through so guests see what they save.
+      const referenceCents=priceForRoomTotals(nonPromoTotals,Math.max(0,pricing.adjustmentPercent));
       const offer=priceWithOffers({standardCents:priceForRoomTotals(roomTotals,pricing.adjustmentPercent),nonPromoStandardCents:priceForRoomTotals(nonPromoTotals,pricing.adjustmentPercent),directPercent:pricing.directPercent,coupon});
       if(offer.couponApplied)couponUsed=true;
-      return [{key:p.plan_key,name:planName(p.plan_key,p.name,p.name_translations_json),adjustmentPercent:pricing.directPercent?-pricing.directPercent:pricing.adjustmentPercent,directPercent:pricing.directPercent,paymentPolicy:p.payment_policy,payment:{depositPercent:p.deposit_percent===null||p.deposit_percent===undefined?null:Number(p.deposit_percent),balanceMode:String(p.balance_mode??"general"),balanceDaysBefore:p.balance_days_before===null||p.balance_days_before===undefined?null:Number(p.balance_days_before),fullPrepayment:Number(p.full_prepayment??0)===1},cancellationDays,totalCents:offer.totalCents,standardCents:offer.standardCents,referenceCents:Math.max(referenceCents,offer.standardCents),directCents:offer.directCents,directSavingCents:offer.directSavingCents,couponCents:offer.couponCents}];
+      return [{key:p.plan_key,name:planName(p.plan_key,p.name,p.name_translations_json),adjustmentPercent:pricing.directPercent?-pricing.directPercent:pricing.adjustmentPercent,directPercent:pricing.directPercent,paymentPolicy:p.payment_policy,payment:{depositPercent:p.deposit_percent===null||p.deposit_percent===undefined?null:Number(p.deposit_percent),balanceMode:String(p.balance_mode??"general"),balanceDaysBefore:p.balance_days_before===null||p.balance_days_before===undefined?null:Number(p.balance_days_before),fullPrepayment:Number(p.full_prepayment??0)===1},cancellationDays,totalCents:offer.totalCents,standardCents:offer.standardCents,referenceCents:Math.max(referenceCents,offer.standardCents),directCents:offer.directCents,directSavingCents:offer.directSavingCents,couponCents:offer.couponCents,promotions:[...promos].map(([name,text])=>({name,text}))}];
     });
     return {roomType,roomIds:list.slice(0,input.rooms).map(r=>Number(r.id)),code:room.code,name:localized(room.name_translations_json,room.name_el,room.name_en,roomType),description:list.map(r=>localized(r.description_translations_json,r.description_el,r.description_en,r.description)).find(d=>String(d??"").trim())??"",capacity:Number(room.capacity),amenities:jsonArray<string>(room.amenities),characteristics:cardAmenities<{icon:string;el:string;en:string;tr:string}>(list).map(a=>{let tr:Record<string,string>={};try{tr=JSON.parse(a.tr||"{}")}catch{tr={}}return {icon:amenityIcon(a.icon),name:amenityName({...tr,el:a.el,en:a.en},input.lang)}}),images:cardImages(list),availableCount:list.length,plans:plansForRoom};
   }).filter(r=>r.plans.length>0);

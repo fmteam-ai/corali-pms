@@ -25,7 +25,7 @@ test("public availability serves a room despite legacy JSON null and invalid tra
     await database.query("INSERT INTO booking_restrictions(owner_id,name,starts_on,ends_on,closed_arrival_weekdays,room_codes,rate_plan_keys,created_at,updated_at) VALUES($1,'Legacy','2026-09-01','2026-10-31','null','null','null',1,1)",["hotel-corali"]);
     const rateNames=moduleFromSource("lib/booking-i18n.ts").rateNames;
     const pricing=moduleFromSource("lib/room-pricing.ts");
-    const availability=moduleFromSource("lib/public-rate.ts",{"@/lib/db":{db:()=>database},"@/lib/booking-i18n":{rateNames},"@/lib/room-pricing":pricing,"@/lib/direct-pricing":moduleFromSource("lib/direct-pricing.ts"),"@/lib/amenity-icons":moduleFromSource("lib/amenity-icons.ts"),"@/lib/tape-chart":moduleFromSource("lib/tape-chart.ts"),"@/lib/season-rates":moduleFromSource("lib/season-rates.ts"),"@/lib/min-stay":moduleFromSource("lib/min-stay.ts"),"@/lib/climate-fee":moduleFromSource("lib/climate-fee.ts"),"@/lib/room-card":moduleFromSource("lib/room-card.ts")});
+    const availability=moduleFromSource("lib/public-rate.ts",{"@/lib/db":{db:()=>database},"@/lib/booking-i18n":{rateNames},"@/lib/room-pricing":pricing,"@/lib/direct-pricing":moduleFromSource("lib/direct-pricing.ts"),"@/lib/amenity-icons":moduleFromSource("lib/amenity-icons.ts"),"@/lib/tape-chart":moduleFromSource("lib/tape-chart.ts"),"@/lib/season-rates":moduleFromSource("lib/season-rates.ts"),"@/lib/min-stay":moduleFromSource("lib/min-stay.ts"),"@/lib/climate-fee":moduleFromSource("lib/climate-fee.ts"),"@/lib/room-card":moduleFromSource("lib/room-card.ts"),"@/lib/offers":moduleFromSource("lib/offers.ts")});
     const result=await (availability.publicAvailability as (input:object)=>Promise<{rooms:{name:string;plans:{totalCents:number}[]}[]}> )({ownerId:"hotel-corali",checkIn:"2026-09-29",checkOut:"2026-10-03",adults:2,children:0,rooms:1,lang:"en"});
     assert.equal(result.rooms.length,1);
     // The direct-booking discount belongs to the direct website rate only: the flexible rate stays at the standard price.
@@ -62,5 +62,16 @@ test("public availability serves a room despite legacy JSON null and invalid tra
     assert.equal(JSON.stringify(short.minStay.map(m=>[m.roomType,m.minNights])),JSON.stringify([["double",5]]));
     const long=await (availability.publicAvailability as (input:object)=>Promise<{rooms:unknown[]}>)({...base,checkOut:"2026-10-04"});
     assert.equal(long.rooms.length,1,"5 nights allowed");
+    // A promotion: −10% shown to guests with its text; an early-booking window the stay misses switches it off.
+    await database.query("DELETE FROM min_stay_rules");
+    await database.query(`INSERT INTO special_prices(owner_id,name,starts_on,ends_on,adjustment_type,adjustment_value,operation,promotion,promotion_text_json,round_integer,created_at,updated_at) VALUES($1,'Autumn','2026-09-01','2026-10-31','percentage',10,'discount',1,'{"en":"Autumn deal"}',1,1,1)`,["hotel-corali"]);
+    type Promo={rooms:{plans:{key:string;totalCents:number;promotions:{name:string;text:string}[]}[]}[]};
+    const promo=await (availability.publicAvailability as (input:object)=>Promise<Promo>)(base);
+    assert.equal(promo.rooms[0].plans[0].totalCents,36000);
+    assert.equal(JSON.stringify(promo.rooms[0].plans[0].promotions),JSON.stringify([{name:"Autumn",text:"Autumn deal"}]));
+    await database.query("UPDATE special_prices SET min_advance_days=3650 WHERE name='Autumn'");
+    const missed=await (availability.publicAvailability as (input:object)=>Promise<Promo>)(base);
+    assert.equal(missed.rooms[0].plans[0].totalCents,40000);
+    assert.equal(missed.rooms[0].plans[0].promotions.length,0);
   }finally{await database.close()}
 });

@@ -142,3 +142,23 @@ export function priceWithOffers(input: { standardCents: number; nonPromoStandard
 export function chargeUnit(mode: string): "night" | "room" | "person" | "room_night" | "booking" {
   return mode === "per_night" ? "night" : mode === "per_room" ? "room" : mode === "per_person" ? "person" : mode === "per_room_night" ? "room_night" : "booking";
 }
+
+export type CouponStatus = "active" | "inactive" | "upcoming" | "expired" | "used_up";
+
+/** Status of a code on a given day, for the PMS list (booking window and remaining uses, pending checkouts included). */
+export function couponStatus(coupon: Pick<Coupon, "active" | "valid_from" | "valid_to" | "max_uses" | "usage_count">, today: string, pendingUses = 0): CouponStatus {
+  if (Number(coupon.active) !== 1) return "inactive";
+  if (coupon.valid_from && today < coupon.valid_from) return "upcoming";
+  if (coupon.valid_to && today > coupon.valid_to) return "expired";
+  if (coupon.max_uses !== null && coupon.max_uses !== undefined && Number(coupon.usage_count) + pendingUses >= Number(coupon.max_uses)) return "used_up";
+  return "active";
+}
+
+const codeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+/** A readable random code (no 0/O or 1/I), e.g. "SUMMER-7KQ4X2", from caller-supplied random bytes. */
+export function couponCodeFrom(prefix: string, bytes: ArrayLike<number>, length = 6): string {
+  const head = normalizeCouponCode(prefix).replace(/[^A-Z0-9]/g, "").slice(0, 12);
+  let tail = "";
+  for (let i = 0; i < length; i++) tail += codeAlphabet[(bytes[i] ?? 0) % codeAlphabet.length];
+  return head ? `${head}-${tail}` : tail;
+}

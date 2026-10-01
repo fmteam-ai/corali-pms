@@ -120,6 +120,13 @@ export function Forecast({ t, lang, today, totalRooms }: { t: T; lang: PmsLang; 
         <text x="70" y="76" textAnchor="middle">{pct}%</text>
       </svg>
       <div className="legendRow"><span><i className="sold" />{t("w.forecast.sold")}</span><span><i className="unsold" />{t("w.forecast.unsold")}</span></div>
+      {days && capacity > 0 && pct < 50 && (
+        <div className="fInsight" role="note">
+          <b>💡 {t("w.forecast.insight")}</b>
+          <span>{t("w.forecast.insightText", { pct, n: capacity - nights })}</span>
+          <a href={`/pms/pricing/offers?new=promotion&from=${start}&to=${addDays(start, span - 1)}`}>{t("w.forecast.createPromotion")} →</a>
+        </div>
+      )}
     </div>
   );
 }

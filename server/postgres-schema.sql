@@ -1301,3 +1301,14 @@ UPDATE mandatory_charges SET calculation_mode='per_room_night'
 -- never adds columns); add them explicitly so the dashboard notes load.
 ALTER TABLE "pms_dashboard_notes" ADD COLUMN IF NOT EXISTS "color" TEXT NOT NULL DEFAULT 'yellow';
 ALTER TABLE "pms_dashboard_notes" ADD COLUMN IF NOT EXISTS "created_at" BIGINT NOT NULL DEFAULT 0;
+
+-- Promotions (VikBooking-style special prices): guest-facing text, last-minute / early-booking windows,
+-- arrival within the period, rounding and per-length value overrides.
+ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS promotion_text_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS last_minute_days BIGINT;
+ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS min_advance_days BIGINT;
+ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS checkin_in_season BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS round_integer BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS nights_overrides_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS updated_at BIGINT;
