@@ -1053,6 +1053,10 @@ const el = {
   "ax.r.restriction": "Περιορισμός «{name}»",
   "ax.r.not_enough": "Ελεύθερα {f} δωμάτια αυτού του τύπου, ζητήθηκαν {r}",
   "nav.availabilityExplain": "Έλεγχος διαθεσιμότητας δωματίων",
+  "ax.category": "Κατηγορία",
+  "ax.cards": "Τι περιέχει κάθε κάρτα του booking engine",
+  "ax.cardsHelp": "Τα δωμάτια πωλούνται ανά «Τύπο δωματίου». Η κάρτα παίρνει το όνομα της κατηγορίας του πρώτου δωματίου, τις φωτογραφίες του πρώτου δωματίου που έχει φωτογραφίες και τα χαρακτηριστικά όλων. Για να εμφανίζεται ένα δωμάτιο σε άλλη κάρτα, αλλάξτε τον «Τύπο δωματίου» του στα Δωμάτια → Διαχείριση.",
+  "ax.noCategory": "χωρίς κατηγορία",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -2102,6 +2106,10 @@ const en: Record<PmsKey, string> = {
   "ax.r.restriction": "Restriction “{name}”",
   "ax.r.not_enough": "{f} free rooms of this type, {r} requested",
   "nav.availabilityExplain": "Room availability check",
+  "ax.category": "Category",
+  "ax.cards": "What each booking-engine card contains",
+  "ax.cardsHelp": "Rooms are sold per room type. A card takes the category name of its first room, the photos of the first room that has photos and the characteristics of all rooms. To show a room in another card, change its room type in Rooms → Manage.",
+  "ax.noCategory": "no category",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

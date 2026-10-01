@@ -55,12 +55,13 @@ export function AvailabilityCheck({ lang, today }: { lang: PmsLang; today: strin
           {merged.length > 0 && <p className="notice warn">⚠️ {t("ax.merged", { list: merged.join(", ") })}</p>}
           <div className="tableWrap">
             <table className="srList axTable">
-              <thead><tr><th>#</th><th>{t("sr.roomType")}</th><th>{t("ax.card")}</th><th></th></tr></thead>
+              <thead><tr><th>#</th><th>{t("sr.roomType")}</th><th>{t("ax.category")}</th><th>{t("ax.card")}</th><th></th></tr></thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id} className={r.offered ? "axOk" : "axNo"}>
                     <td><b>{r.code}</b></td>
-                    <td>{r.roomType}{r.category && r.category !== r.card ? <small> · {r.category}</small> : null}</td>
+                    <td>{r.roomType}</td>
+                    <td className={r.category !== r.card ? "axDiff" : undefined}>{r.category || <i>{t("ax.noCategory")}</i>}</td>
                     <td>{r.card}</td>
                     <td>{r.offered ? <span className="axBadge ok">✅ {t("ax.offered")}</span> : <><span className="axBadge no">⛔ {t("ax.notOffered")}</span><ul>{r.reasons.map((x, i) => <li key={i}>{reasonText(x)}</li>)}</ul></>}</td>
                   </tr>
@@ -68,6 +69,14 @@ export function AvailabilityCheck({ lang, today }: { lang: PmsLang; today: strin
               </tbody>
             </table>
           </div>
+          <h3>{t("ax.cards")}</h3>
+          <p className="srHelp">{t("ax.cardsHelp")}</p>
+          <ul className="axCards">
+            {[...new Set(rows.map((r) => r.roomType))].map((type) => {
+              const group = rows.filter((r) => r.roomType === type);
+              return <li key={type}><b>{group[0].card}</b> <small>({t("sr.roomType")}: {type})</small> — {group.map((r) => <span key={r.id} className={r.offered ? "ok" : "no"}>{r.code}</span>)}</li>;
+            })}
+          </ul>
         </article>
       )}
     </>

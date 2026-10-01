@@ -1,6 +1,10 @@
-# Hotel Corali PMS v53 — release verification
+# Hotel Corali PMS v54 — release verification
 
 ## Scope in this package
+
+### New in v54
+- **Booking-engine cards show the photos of their rooms:** a card (one room type) takes the photos of the first room that has photos and the characteristics of all its rooms, so a room with photos is no longer hidden behind a first room without any (e.g. room 112 in the “Deluxe Double Room” card).
+- **Room availability check:** a “Category” column and a list of which rooms each booking-engine card contains, with the rule for moving a room to another card (change its room type).
 
 ### New in v53
 - **Guest self-service (“My booking”):** guests sign in with booking number + email (rate-limited, generic error) and can change dates or cancel within the reservation & cancellation policy: refundable rates until the free-cancellation deadline (new price for the same room type and rate; a higher price adds to the balance with a payment link, a lower one flags a refund to reception); cancellation always possible before arrival, refunding what was paid only when free cancellation applies. Every change is audited, synced to channels and notified to reception. Link “My booking” in the booking engine header.

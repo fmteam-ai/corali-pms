@@ -756,3 +756,4 @@ table.numeric tr.selected td{background:#fff8e6}
 .assistantPanel form{display:flex;gap:8px;padding:10px;border-top:1px solid #e1eaec}.assistantPanel form input{flex:1;min-width:0;padding:10px 12px;border:1px solid #cad5df;border-radius:10px;font:inherit}.assistantPanel form button{border:0;border-radius:10px;padding:0 14px;background:#b64b31;color:#fff;font-weight:700;cursor:pointer}.assistantPanel form button:disabled{opacity:.5}
 .assistantPanel small{padding:0 12px 10px;color:#6b7b80;font-size:11px;line-height:1.35}
 @media(prefers-reduced-motion:reduce){.assistantMsg.typing span{animation:none}}
+.axTable td.axDiff{color:#8a5a00;font-weight:700}.axCards{display:grid;gap:6px;padding-left:18px}.axCards span{display:inline-block;margin:0 3px;padding:1px 8px;border-radius:999px;font-weight:700;font-size:13px}.axCards span.ok{background:#e3f4e8;color:#17643a}.axCards span.no{background:#fbe5e3;color:#a12828}
