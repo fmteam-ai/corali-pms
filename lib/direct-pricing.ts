@@ -116,14 +116,15 @@ export function planPricing(planKey: string, adjustmentPercent: number, directPe
   return { adjustmentPercent: adj, directPercent: direct };
 }
 
-export function priceWithOffers(input: { standardCents: number; nonPromoStandardCents: number; directPercent: number; coupon?: Coupon | null }): OfferPrice {
+export function priceWithOffers(input: { standardCents: number; nonPromoStandardCents: number; directPercent: number; coupon?: Coupon | null; couponExclusive?: boolean }): OfferPrice {
   const standard = Math.max(0, Math.trunc(input.standardCents));
   const percent = Math.min(50, Math.max(0, Number(input.directPercent) || 0));
   const direct = Math.round((standard * (100 - percent)) / 100);
   let total = direct;
   let applied = false;
   if (input.coupon) {
-    if (Number(input.coupon.combinable) === 1) {
+    // A stacking code still cannot stack on an offer that excludes promo codes: it then competes with that price instead.
+    if (Number(input.coupon.combinable) === 1 && !input.couponExclusive) {
       total = direct - couponDiscount(input.coupon, direct);
       applied = total < direct;
     } else {

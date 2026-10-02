@@ -1,6 +1,9 @@
-# Hotel Corali PMS v59 — release verification
+# Hotel Corali PMS v60 — release verification
 
 ## Scope in this package
+
+### New in v60
+- **Offers choose what they combine with** (PMS → Offers → section 5): other offers on the same night, a rate plan's own discount (e.g. Non-refundable −10%), the direct-booking discount, discount coupons. Unticked = never both: the guest gets the larger discount (offer alone vs. the others / the plan's discount / the coupon). Surcharges always apply. The list shows “does not combine with: …”.
 
 ### New in v59
 - **Booking engine promotion banner above the prices** with the discount: “Special offer −15%” (or “−€10 / night” for fixed offers) and the promotion text. Per-rate badges only when a promotion covers some of the rates.

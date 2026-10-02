@@ -73,5 +73,17 @@ test("public availability serves a room despite legacy JSON null and invalid tra
     const missed=await (availability.publicAvailability as (input:object)=>Promise<Promo>)(base);
     assert.equal(missed.rooms[0].plans[0].totalCents,40000);
     assert.equal(missed.rooms[0].plans[0].promotions.length,0);
+    // Combining: a 20% offer that does not combine with the plan's own −10% gives the better of the two, not both.
+    await database.query("UPDATE special_prices SET min_advance_days=NULL,adjustment_value=20 WHERE name='Autumn'");
+    await database.query("INSERT INTO rate_plans(owner_id,plan_key,name,adjustment_percent,payment_policy) VALUES($1,'non_refundable','Non-refundable',-10,'non_refundable')",["hotel-corali"]);
+    const plan=(r:Promo,key:string)=>r.rooms[0].plans.find(x=>x.key===key)!.totalCents;
+    const stacked=await (availability.publicAvailability as (input:object)=>Promise<Promo>)(base);
+    assert.deepEqual([plan(stacked,"flexible"),plan(stacked,"non_refundable")],[32000,28800]);
+    await database.query("UPDATE special_prices SET combine_plan=0 WHERE name='Autumn'");
+    const single=await (availability.publicAvailability as (input:object)=>Promise<Promo>)(base);
+    assert.deepEqual([plan(single,"flexible"),plan(single,"non_refundable")],[32000,32000]);
+    // A non-stacking 30% offer replaces the 20% one instead of adding to it.
+    await database.query(`INSERT INTO special_prices(owner_id,name,starts_on,ends_on,adjustment_type,adjustment_value,operation,combine_offers,created_at,updated_at) VALUES($1,'Solo','2026-09-01','2026-10-31','percentage',30,'discount',0,1,1)`,["hotel-corali"]);
+    assert.equal(plan(await (availability.publicAvailability as (input:object)=>Promise<Promo>)(base),"flexible"),28000);
   }finally{await database.close()}
 });

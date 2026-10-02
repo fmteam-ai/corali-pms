@@ -60,3 +60,13 @@ test("coupon statuses and readable random codes", () => {
   assert.equal(code, "SUMMER26-ABCDE9");
   assert.match(couponCodeFrom("", [255, 128, 64, 32, 16, 8]), /^[A-Z2-9]{6}$/);
 });
+
+test("offers that do not combine: the cheaper of stacking or the exclusive one alone", async () => {
+  const { bestOfferSet, combines } = await import("../lib/offers.ts");
+  const a = { ...base, name: "A", adjustment_value: 10 }, b = { ...base, name: "B", adjustment_value: 10 }, solo = { ...base, name: "Solo", adjustment_value: 15, combine_offers: 0 }, fee = { ...base, name: "Fee", operation: "charge", adjustment_type: "fixed", adjustment_value: 500 };
+  assert.equal(combines(a, "plan"), true);
+  assert.equal(combines({ ...a, combine_plan: "0" }, "plan"), false);
+  assert.deepEqual(bestOfferSet(10000, [a, b, fee], 2).map((o) => o.name), ["A", "B", "Fee"]);
+  assert.deepEqual(bestOfferSet(10000, [a, b, solo, fee], 2).map((o) => o.name), ["A", "B", "Fee"], "10%+10% beats 15% alone");
+  assert.deepEqual(bestOfferSet(10000, [a, { ...solo, adjustment_value: 25 }, fee], 2).map((o) => o.name), ["Solo", "Fee"], "25% alone beats 10%; surcharge kept");
+});

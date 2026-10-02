@@ -29,6 +29,10 @@ const input = z.object({
   checkinInSeason: z.boolean().default(false),
   roundInteger: z.boolean().default(false),
   nightsOverrides: z.array(z.object({ nights: z.number().int().min(2).max(365), value: z.number().int().min(0).max(1_000_000) })).max(10).default([]),
+  combineOffers: z.boolean().default(true),
+  combinePlan: z.boolean().default(true),
+  combineDirect: z.boolean().default(true),
+  combineCoupons: z.boolean().default(true),
   active: z.boolean().default(true),
 });
 const removal = z.object({ id: z.number().int().positive() });
@@ -54,10 +58,10 @@ async function handlePOST(request: Request) {
     const text = Object.fromEntries(Object.entries(x.promotionText).filter(([, v]) => v));
     const overrides = [...new Map(x.nightsOverrides.map((o) => [o.nights, o])).values()].sort((a, b) => a.nights - b.nights);
     const now = Date.now();
-    const values = [x.name, x.startsOn, x.endsOn, x.adjustmentType, x.adjustmentValue, x.operation, x.minimumStay, x.active ? 1 : 0, JSON.stringify(x.weekdays), JSON.stringify(x.roomCodes), JSON.stringify(x.ratePlanKeys), x.promotion ? 1 : 0, JSON.stringify(text), x.lastMinuteDays, x.minAdvanceDays, x.checkinInSeason ? 1 : 0, x.roundInteger ? 1 : 0, JSON.stringify(overrides), now, u.ownerId] as const;
+    const values = [x.name, x.startsOn, x.endsOn, x.adjustmentType, x.adjustmentValue, x.operation, x.minimumStay, x.active ? 1 : 0, JSON.stringify(x.weekdays), JSON.stringify(x.roomCodes), JSON.stringify(x.ratePlanKeys), x.promotion ? 1 : 0, JSON.stringify(text), x.lastMinuteDays, x.minAdvanceDays, x.checkinInSeason ? 1 : 0, x.roundInteger ? 1 : 0, JSON.stringify(overrides), now, u.ownerId, x.combineOffers ? 1 : 0, x.combinePlan ? 1 : 0, x.combineDirect ? 1 : 0, x.combineCoupons ? 1 : 0] as const;
     const r = x.id
-      ? await db().query(`UPDATE special_prices SET name=$1,starts_on=$2,ends_on=$3,adjustment_type=$4,adjustment_value=$5,operation=$6,minimum_stay=$7,active=$8,weekdays=$9,room_codes=$10,rate_plan_keys=$11,promotion=$12,promotion_text_json=$13,last_minute_days=$14,min_advance_days=$15,checkin_in_season=$16,round_integer=$17,nights_overrides_json=$18,updated_at=$19 WHERE owner_id=$20 AND id=$21 RETURNING id`, [values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8], values[9], values[10], values[11], values[12], values[13], values[14], values[15], values[16], values[17], values[18], values[19], x.id])
-      : await db().query(`INSERT INTO special_prices(name,starts_on,ends_on,adjustment_type,adjustment_value,operation,minimum_stay,active,weekdays,room_codes,rate_plan_keys,promotion,promotion_text_json,last_minute_days,min_advance_days,checkin_in_season,round_integer,nights_overrides_json,updated_at,created_at,owner_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$19,$20) RETURNING id`, [values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8], values[9], values[10], values[11], values[12], values[13], values[14], values[15], values[16], values[17], values[18], values[19]]);
+      ? await db().query(`UPDATE special_prices SET name=$1,starts_on=$2,ends_on=$3,adjustment_type=$4,adjustment_value=$5,operation=$6,minimum_stay=$7,active=$8,weekdays=$9,room_codes=$10,rate_plan_keys=$11,promotion=$12,promotion_text_json=$13,last_minute_days=$14,min_advance_days=$15,checkin_in_season=$16,round_integer=$17,nights_overrides_json=$18,updated_at=$19,combine_offers=$22,combine_plan=$23,combine_direct=$24,combine_coupons=$25 WHERE owner_id=$20 AND id=$21 RETURNING id`, [values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8], values[9], values[10], values[11], values[12], values[13], values[14], values[15], values[16], values[17], values[18], values[19], x.id, values[20], values[21], values[22], values[23]])
+      : await db().query(`INSERT INTO special_prices(name,starts_on,ends_on,adjustment_type,adjustment_value,operation,minimum_stay,active,weekdays,room_codes,rate_plan_keys,promotion,promotion_text_json,last_minute_days,min_advance_days,checkin_in_season,round_integer,nights_overrides_json,updated_at,created_at,owner_id,combine_offers,combine_plan,combine_direct,combine_coupons) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$19,$20,$21,$22,$23,$24) RETURNING id`, [values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8], values[9], values[10], values[11], values[12], values[13], values[14], values[15], values[16], values[17], values[18], values[19], values[20], values[21], values[22], values[23]]);
     return r.rowCount ? Response.json({ ok: true, id: Number(r.rows[0].id) }) : Response.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
   } catch (e) {
     return fail(e);

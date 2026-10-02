@@ -1227,6 +1227,21 @@ const el = {
   "w.forecast.insight": "Πρόταση",
   "w.forecast.insightText": "Πληρότητα μόνο {pct}% — {n} νύχτες δωματίων ακόμη διαθέσιμες. Μια προσφορά για αυτές τις ημερομηνίες μπορεί να φέρει κρατήσεις.",
   "w.forecast.createPromotion": "Δημιουργία προσφοράς",
+  "of.sec.combine": "Συνδυασμός με άλλες εκπτώσεις",
+  "of.combineHelp": "Τσεκαρισμένο = η προσφορά προστίθεται σε αυτή την έκπτωση. Χωρίς τσεκ = δεν συνδυάζονται και ο πελάτης παίρνει τη μεγαλύτερη από τις δύο (ποτέ και τις δύο).",
+  "of.cmb.offers": "Με άλλες προσφορές της ίδιας νύχτας",
+  "of.cmb.offersHint": "Αλλιώς εφαρμόζεται μόνη της ή οι άλλες μαζί — ό,τι συμφέρει τον πελάτη. Οι προσαυξήσεις ισχύουν πάντα.",
+  "of.cmb.plan": "Με την έκπτωση του τύπου τιμής (π.χ. Μη επιστρέψιμη −10%)",
+  "of.cmb.planHint": "Αλλιώς στη Μη επιστρέψιμη ισχύει είτε η προσφορά είτε το −10%.",
+  "of.cmb.direct": "Με την έκπτωση απευθείας κράτησης (Direct website rate)",
+  "of.cmb.directHint": "Αλλιώς στην Απευθείας τιμή ισχύει είτε η προσφορά είτε το −5%.",
+  "of.cmb.coupons": "Με κουπόνια έκπτωσης",
+  "of.cmb.couponsHint": "Αλλιώς το κουπόνι υπολογίζεται στην τιμή χωρίς την προσφορά και ισχύει η χαμηλότερη τιμή.",
+  "of.cmb.short.offers": "άλλες προσφορές",
+  "of.cmb.short.plan": "έκπτωση τύπου τιμής",
+  "of.cmb.short.direct": "έκπτωση direct",
+  "of.cmb.short.coupons": "κουπόνια",
+  "of.sum.noCombine": "δεν συνδυάζεται με: {list}",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -2450,6 +2465,21 @@ const en: Record<PmsKey, string> = {
   "w.forecast.insight": "Insight",
   "w.forecast.insightText": "Occupancy is only {pct}% — {n} room nights still available. A promotion for these dates could bring bookings.",
   "w.forecast.createPromotion": "Create promotion",
+  "of.sec.combine": "Combining with other discounts",
+  "of.combineHelp": "Ticked = the offer is added on top of that discount. Unticked = they do not combine and the guest gets the larger of the two (never both).",
+  "of.cmb.offers": "With other offers on the same night",
+  "of.cmb.offersHint": "Otherwise it applies alone or the others together — whichever is cheaper for the guest. Surcharges always apply.",
+  "of.cmb.plan": "With a rate plan's own discount (e.g. Non-refundable −10%)",
+  "of.cmb.planHint": "Otherwise the non-refundable rate gets either the offer or its −10%.",
+  "of.cmb.direct": "With the direct-booking discount (Direct website rate)",
+  "of.cmb.directHint": "Otherwise the direct website rate gets either the offer or its −5%.",
+  "of.cmb.coupons": "With discount coupons",
+  "of.cmb.couponsHint": "Otherwise the coupon is calculated on the price without the offer and the lower price applies.",
+  "of.cmb.short.offers": "other offers",
+  "of.cmb.short.plan": "rate plan discount",
+  "of.cmb.short.direct": "direct discount",
+  "of.cmb.short.coupons": "coupons",
+  "of.sum.noCombine": "does not combine with: {list}",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

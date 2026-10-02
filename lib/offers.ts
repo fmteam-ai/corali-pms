@@ -19,6 +19,10 @@ export type Offer = {
   checkin_in_season?: number | string | null; // 1 = the arrival date itself must fall within the offer period
   round_integer?: number | string | null; // 1 = the discounted night is rounded to whole euros
   nights_overrides_json?: unknown; // [{nights, value}]: a different value for longer stays
+  combine_offers?: number | string | null; // 0 = not together with other discount offers on the same night
+  combine_plan?: number | string | null; // 0 = not together with a rate plan's own discount (e.g. non-refundable −10%)
+  combine_direct?: number | string | null; // 0 = not together with the direct-website discount
+  combine_coupons?: number | string | null; // 0 = not together with promo codes
 };
 
 export type NightOverride = { nights: number; value: number };
@@ -107,4 +111,26 @@ export function offerStatus(offer: { starts_on: string; ends_on: string; active:
   if (today < offer.starts_on) return "upcoming";
   if (today > offer.ends_on) return "ended";
   return "running";
+}
+
+export type Combination = "offers" | "plan" | "direct" | "coupons";
+const combineColumn: Record<Combination, keyof Offer> = { offers: "combine_offers", plan: "combine_plan", direct: "combine_direct", coupons: "combine_coupons" };
+
+/** Whether an offer may be added on top of another discount (default yes; stored 0 = no). */
+export function combines(offer: Offer, what: Combination): boolean {
+  const v = offer[combineColumn[what]];
+  return v === null || v === undefined || v === "" || Number(v) !== 0;
+}
+
+/**
+ * Offers to apply on one night. Discounts that stack are applied together; a discount that does not combine with other
+ * offers is applied alone instead. Surcharges always apply. The guest gets whichever choice is cheaper.
+ */
+export function bestOfferSet(nightlyCents: number, offers: Offer[], nights: number): Offer[] {
+  const isCharge = (o: Offer) => o.operation !== "discount";
+  const exclusive = offers.filter((o) => !isCharge(o) && !combines(o, "offers"));
+  if (!exclusive.length) return offers;
+  const options = [offers.filter((o) => isCharge(o) || combines(o, "offers")), ...exclusive.map((x) => offers.filter((o) => isCharge(o) || o === x))];
+  const price = (set: Offer[]) => set.reduce((n, o) => applyOffer(n, o, nights), nightlyCents);
+  return options.reduce((best, set) => (price(set) < price(best) ? set : best));
 }

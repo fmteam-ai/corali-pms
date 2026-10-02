@@ -1312,3 +1312,8 @@ ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS round_integer BIGINT NOT NUL
 ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS nights_overrides_json TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE coupons ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
 ALTER TABLE coupons ADD COLUMN IF NOT EXISTS updated_at BIGINT;
+-- v60: offers choose which other discounts they combine with (1 = yes, 0 = the guest gets the better of the two).
+ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS combine_offers BIGINT NOT NULL DEFAULT 1;
+ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS combine_plan BIGINT NOT NULL DEFAULT 1;
+ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS combine_direct BIGINT NOT NULL DEFAULT 1;
+ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS combine_coupons BIGINT NOT NULL DEFAULT 1;

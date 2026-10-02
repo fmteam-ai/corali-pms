@@ -7,7 +7,7 @@ import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 export type OfferRow = {
   id: number; name: string; starts_on: string; ends_on: string; adjustment_type: string; adjustment_value: number; operation: string;
   weekdays: string; room_codes: string; rate_plan_keys: string; minimum_stay: number; promotion: number; promotion_text_json: string;
-  last_minute_days: number | null; min_advance_days: number | null; checkin_in_season: number; round_integer: number; nights_overrides_json: string; active: number;
+  last_minute_days: number | null; min_advance_days: number | null; checkin_in_season: number; round_integer: number; nights_overrides_json: string; combine_offers: number; combine_plan: number; combine_direct: number; combine_coupons: number; active: number;
 };
 type Room = { code: string; type: string; label: string };
 type Plan = { key: string; name: string };
@@ -15,8 +15,11 @@ type Draft = {
   id?: number; name: string; startsOn: string; endsOn: string; weekdays: number[]; checkinInSeason: boolean;
   promotion: boolean; text: Record<string, string>; lastMinuteDays: string; minAdvanceDays: string;
   operation: "discount" | "charge"; type: "percentage" | "fixed"; value: string; roundInteger: boolean; minimumStay: string;
-  overrides: { nights: string; value: string }[]; roomCodes: string[]; planKeys: string[]; active: boolean;
+  overrides: { nights: string; value: string }[]; roomCodes: string[]; planKeys: string[]; combine: Record<Combo, boolean>; active: boolean;
 };
+type Combo = "offers" | "plan" | "direct" | "coupons";
+const combos: Combo[] = ["offers", "plan", "direct", "coupons"];
+const allCombine: Record<Combo, boolean> = { offers: true, plan: true, direct: true, coupons: true };
 
 const textLangs = ["el", "en", "fr", "de", "it", "es"] as const;
 const parse = <T,>(v: string): T[] => { try { const x = JSON.parse(v || "[]"); return Array.isArray(x) ? x : []; } catch { return []; } };
@@ -29,7 +32,7 @@ export function OffersManager({ lang, today, preset, rooms, plans, offers, canCr
   const t = pmsT(lang);
   const router = useRouter();
   const locale = pmsLocale(lang);
-  const blank = (partial: Partial<Draft> = {}): Draft => ({ name: "", startsOn: today, endsOn: addDays(today, 30), weekdays: [], checkinInSeason: false, promotion: false, text: {}, lastMinuteDays: "", minAdvanceDays: "", operation: "discount", type: "percentage", value: "10", roundInteger: false, minimumStay: "1", overrides: [], roomCodes: [], planKeys: [], active: true, ...partial });
+  const blank = (partial: Partial<Draft> = {}): Draft => ({ name: "", startsOn: today, endsOn: addDays(today, 30), weekdays: [], checkinInSeason: false, promotion: false, text: {}, lastMinuteDays: "", minAdvanceDays: "", operation: "discount", type: "percentage", value: "10", roundInteger: false, minimumStay: "1", overrides: [], roomCodes: [], planKeys: [], combine: allCombine, active: true, ...partial });
   const [draft, setDraft] = useState<Draft | null>(() => (preset && canCreate ? blank({ name: t("of.preset.lowName"), promotion: true, startsOn: preset.from ?? today, endsOn: preset.to ?? addDays(today, 14), value: "15" }) : null));
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -52,7 +55,7 @@ export function OffersManager({ lang, today, preset, rooms, plans, offers, canCr
       id: copy ? undefined : o.id, name: copy ? `${o.name} (2)` : o.name, startsOn: o.starts_on, endsOn: o.ends_on, weekdays: parse<number>(o.weekdays).map(Number), checkinInSeason: o.checkin_in_season === 1,
       promotion: o.promotion === 1, text: parseObj(o.promotion_text_json), lastMinuteDays: o.last_minute_days ? String(o.last_minute_days) : "", minAdvanceDays: o.min_advance_days ? String(o.min_advance_days) : "",
       operation: o.operation === "charge" ? "charge" : "discount", type: o.adjustment_type === "fixed" ? "fixed" : "percentage", value: toMoney(o.adjustment_type, o.adjustment_value), roundInteger: o.round_integer === 1, minimumStay: String(o.minimum_stay || 1),
-      overrides: nightOverrides(o.nights_overrides_json).map((x) => ({ nights: String(x.nights), value: toMoney(o.adjustment_type, x.value) })), roomCodes: parse<string>(o.room_codes).map(String), planKeys: parse<string>(o.rate_plan_keys).map(String), active: o.active === 1,
+      overrides: nightOverrides(o.nights_overrides_json).map((x) => ({ nights: String(x.nights), value: toMoney(o.adjustment_type, x.value) })), roomCodes: parse<string>(o.room_codes).map(String), planKeys: parse<string>(o.rate_plan_keys).map(String), combine: { offers: o.combine_offers !== 0, plan: o.combine_plan !== 0, direct: o.combine_direct !== 0, coupons: o.combine_coupons !== 0 }, active: o.active === 1,
     });
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -74,7 +77,7 @@ export function OffersManager({ lang, today, preset, rooms, plans, offers, canCr
       weekdays: draft.weekdays, roomCodes: draft.roomCodes, ratePlanKeys: draft.planKeys, minimumStay: Math.max(1, Math.trunc(Number(draft.minimumStay) || 1)),
       promotion: draft.promotion, promotionText: draft.promotion ? draft.text : {}, lastMinuteDays: draft.promotion && Number(draft.lastMinuteDays) > 0 ? Math.trunc(Number(draft.lastMinuteDays)) : null,
       minAdvanceDays: draft.promotion && Number(draft.minAdvanceDays) > 0 ? Math.trunc(Number(draft.minAdvanceDays)) : null, checkinInSeason: draft.checkinInSeason, roundInteger: draft.roundInteger,
-      nightsOverrides: draft.overrides.filter((o) => Number(o.nights) >= 2 && o.value !== "").map((o) => ({ nights: Math.trunc(Number(o.nights)), value: fromMoney(draft.type, o.value) })), active: draft.active,
+      nightsOverrides: draft.overrides.filter((o) => Number(o.nights) >= 2 && o.value !== "").map((o) => ({ nights: Math.trunc(Number(o.nights)), value: fromMoney(draft.type, o.value) })), combineOffers: draft.combine.offers, combinePlan: draft.combine.plan, combineDirect: draft.combine.direct, combineCoupons: draft.combine.coupons, active: draft.active,
     };
     if (await send("POST", body)) setDraft(null);
   }
@@ -89,6 +92,8 @@ export function OffersManager({ lang, today, preset, rooms, plans, offers, canCr
     if (o.checkin_in_season === 1) parts.push(t("of.sum.checkin"));
     const wd = parse<number>(o.weekdays);
     if (wd.length) parts.push(wd.map((d) => t(`sr.wd.${d}` as PmsKey)).join(" "));
+    const excluded = combos.filter((c) => Number(o[`combine_${c}` as keyof OfferRow]) === 0);
+    if (o.operation === "discount" && excluded.length) parts.push(t("of.sum.noCombine", { list: excluded.map((c) => t(`of.cmb.short.${c}` as PmsKey)).join(", ") }));
     for (const x of nightOverrides(o.nights_overrides_json)) parts.push(t("of.sum.override", { n: x.nights, value: amount(o.adjustment_type, x.value) }));
     return parts.join(" · ");
   }
@@ -192,6 +197,15 @@ export function OffersManager({ lang, today, preset, rooms, plans, offers, canCr
                 {plans.map((p) => <label key={p.key} className="inline"><input type="checkbox" checked={draft.planKeys.includes(p.key)} onChange={(e) => setDraft({ ...draft, planKeys: toggle(draft.planKeys, p.key, e.target.checked) })} /> {p.name}</label>)}
               </fieldset>
             </section>
+            {draft.operation === "discount" && (
+              <section>
+                <h3>5 · {t("of.sec.combine")}</h3>
+                <p className="srHelp">{t("of.combineHelp")}</p>
+                {combos.map((c) => (
+                  <label key={c} className="inline offerCheck"><input type="checkbox" checked={draft.combine[c]} onChange={(e) => setDraft({ ...draft, combine: { ...draft.combine, [c]: e.target.checked } })} /> <span>{t(`of.cmb.${c}` as PmsKey)}<small>{t(`of.cmb.${c}Hint` as PmsKey)}</small></span></label>
+                ))}
+              </section>
+            )}
           </div>
           <label className="inline offerCheck"><input type="checkbox" checked={draft.active} onChange={(e) => setDraft({ ...draft, active: e.target.checked })} /> <b>{t("of.active")}</b></label>
           <div className="actions">
