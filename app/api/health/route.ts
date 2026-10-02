@@ -6,14 +6,14 @@ export async function GET(): Promise<Response> {
   const service = process.env.APP_ROLE === "booking" ? "corali-booking" : "corali-pms";
   try {
     await db().query("SELECT 1");
-    return Response.json({ ok: true, service, version: "v58" });
+    return Response.json({ ok: true, service, version: "v59" });
   } catch (error) {
     const reason = error instanceof Error && error.name === "ZodError"
       ? "runtime_configuration_invalid"
       : "database_unavailable";
     console.error(`Health check failed: ${reason}`);
     return Response.json(
-      { ok: false, service, version: "v58", reason },
+      { ok: false, service, version: "v59", reason },
       { status: 503 },
     );
   }

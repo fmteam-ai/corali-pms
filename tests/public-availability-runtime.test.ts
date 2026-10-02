@@ -65,10 +65,10 @@ test("public availability serves a room despite legacy JSON null and invalid tra
     // A promotion: −10% shown to guests with its text; an early-booking window the stay misses switches it off.
     await database.query("DELETE FROM min_stay_rules");
     await database.query(`INSERT INTO special_prices(owner_id,name,starts_on,ends_on,adjustment_type,adjustment_value,operation,promotion,promotion_text_json,round_integer,created_at,updated_at) VALUES($1,'Autumn','2026-09-01','2026-10-31','percentage',10,'discount',1,'{"en":"Autumn deal"}',1,1,1)`,["hotel-corali"]);
-    type Promo={rooms:{plans:{key:string;totalCents:number;promotions:{name:string;text:string}[]}[]}[]};
+    type Promo={rooms:{plans:{key:string;totalCents:number;promotions:{name:string;text:string;percent:number|null}[]}[]}[]};
     const promo=await (availability.publicAvailability as (input:object)=>Promise<Promo>)(base);
     assert.equal(promo.rooms[0].plans[0].totalCents,36000);
-    assert.equal(JSON.stringify(promo.rooms[0].plans[0].promotions),JSON.stringify([{name:"Autumn",text:"Autumn deal"}]));
+    assert.equal(JSON.stringify(promo.rooms[0].plans[0].promotions),JSON.stringify([{name:"Autumn",text:"Autumn deal",percent:10,amountCents:null}]));
     await database.query("UPDATE special_prices SET min_advance_days=3650 WHERE name='Autumn'");
     const missed=await (availability.publicAvailability as (input:object)=>Promise<Promo>)(base);
     assert.equal(missed.rooms[0].plans[0].totalCents,40000);

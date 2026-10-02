@@ -1,6 +1,10 @@
-# Hotel Corali PMS v58 — release verification
+# Hotel Corali PMS v59 — release verification
 
 ## Scope in this package
+
+### New in v59
+- **Booking engine promotion banner above the prices** with the discount: “Special offer −15%” (or “−€10 / night” for fixed offers) and the promotion text. Per-rate badges only when a promotion covers some of the rates.
+- **Room characteristics under the photos** (left column); cards without photos keep them under the room name.
 
 ### New in v58
 - **Test send no longer hangs:** SMTP connections time out after 10 s (greeting 10 s, socket 20 s) — also for automated messages — and the page gives up after 45 s, showing “SMTP_ETIMEDOUT” with what to check (host/port; cPanel “SMTP Restrictions” blocking external SMTP such as Gmail → use the server's own mail, e.g. mail.hotelcorali.gr:465).

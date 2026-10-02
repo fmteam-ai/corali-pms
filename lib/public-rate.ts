@@ -9,7 +9,7 @@ import { requiredMinStay, type MinStayRule } from "@/lib/min-stay";
 import { nightlyPrice, ruleTarget } from "@/lib/season-rates";
 import { DEFAULT_DIRECT_DISCOUNT_PERCENT, couponProblem, normalizeCouponCode, planPricing, priceWithOffers, type Coupon, type CouponProblem } from "@/lib/direct-pricing";
 import { hotelToday } from "@/lib/tape-chart";
-import { applyOffer, isPromotion, offerCoversNight, offerFitsStay, promotionText, type Offer } from "@/lib/offers";
+import { applyOffer, isPromotion, offerCoversNight, offerValue, offerFitsStay, promotionText, type Offer } from "@/lib/offers";
 
 type Lang = BookingLanguage;
 export type AvailabilityInput = { ownerId:string; checkIn:string; checkOut:string; adults:number; children:number; rooms:number; lang:Lang; couponCode?:string|null; guestEmail?:string|null; excludeBookingId?:number|null };
@@ -73,7 +73,7 @@ export async function publicAvailability(input:AvailabilityInput){
     const selectedRooms=list.slice(0,input.rooms),room=selectedRooms[0],arrivalDow=parseISO(input.checkIn).getUTCDay(),departureDow=parseISO(input.checkOut).getUTCDay();
     const plansForRoom=planRows.flatMap(p=>{
       let restricted=false,unpriced=false;
-      const promos=new Map<string,string>();
+      const promos=new Map<string,{text:string;percent:number|null;amountCents:number|null}>();
       const nonPromoTotals:number[]=[];
       const roomTotals=selectedRooms.map(selected=>{
         let base=0,nonPromoBase=0;
@@ -83,7 +83,7 @@ export async function publicAvailability(input:AvailabilityInput){
           let nightly=money(nightlyPrice(rules.rows,date,roomType,selected.code,roomBase(selected))),nonPromo=nightly;if(nightly<=0)unpriced=true;
           const applicable=stayOffers.filter(o=>offerCoversNight(o,{date,roomCode:String(selected.code),planKey:p.plan_key}));
           for(const offer of applicable){nightly=applyOffer(nightly,offer,nights);
-            if(isPromotion(offer)){const name=String(offer.name??"");if(!promos.has(name))promos.set(name,promotionText(offer,input.lang))}
+            if(isPromotion(offer)){const name=String(offer.name??""),value=offerValue(offer,nights);if(!promos.has(name))promos.set(name,{text:promotionText(offer,input.lang),percent:offer.adjustment_type==="fixed"?null:value,amountCents:offer.adjustment_type==="fixed"?Math.trunc(value):null})}
             // Promotional discounts are left out of the base a non-stackable promo code applies to.
             else nonPromo=applyOffer(nonPromo,offer,nights)}
           base+=nightly;nonPromoBase+=nonPromo;
@@ -98,7 +98,7 @@ export async function publicAvailability(input:AvailabilityInput){
       const referenceCents=priceForRoomTotals(nonPromoTotals,Math.max(0,pricing.adjustmentPercent));
       const offer=priceWithOffers({standardCents:priceForRoomTotals(roomTotals,pricing.adjustmentPercent),nonPromoStandardCents:priceForRoomTotals(nonPromoTotals,pricing.adjustmentPercent),directPercent:pricing.directPercent,coupon});
       if(offer.couponApplied)couponUsed=true;
-      return [{key:p.plan_key,name:planName(p.plan_key,p.name,p.name_translations_json),adjustmentPercent:pricing.directPercent?-pricing.directPercent:pricing.adjustmentPercent,directPercent:pricing.directPercent,paymentPolicy:p.payment_policy,payment:{depositPercent:p.deposit_percent===null||p.deposit_percent===undefined?null:Number(p.deposit_percent),balanceMode:String(p.balance_mode??"general"),balanceDaysBefore:p.balance_days_before===null||p.balance_days_before===undefined?null:Number(p.balance_days_before),fullPrepayment:Number(p.full_prepayment??0)===1},cancellationDays,totalCents:offer.totalCents,standardCents:offer.standardCents,referenceCents:Math.max(referenceCents,offer.standardCents),directCents:offer.directCents,directSavingCents:offer.directSavingCents,couponCents:offer.couponCents,promotions:[...promos].map(([name,text])=>({name,text}))}];
+      return [{key:p.plan_key,name:planName(p.plan_key,p.name,p.name_translations_json),adjustmentPercent:pricing.directPercent?-pricing.directPercent:pricing.adjustmentPercent,directPercent:pricing.directPercent,paymentPolicy:p.payment_policy,payment:{depositPercent:p.deposit_percent===null||p.deposit_percent===undefined?null:Number(p.deposit_percent),balanceMode:String(p.balance_mode??"general"),balanceDaysBefore:p.balance_days_before===null||p.balance_days_before===undefined?null:Number(p.balance_days_before),fullPrepayment:Number(p.full_prepayment??0)===1},cancellationDays,totalCents:offer.totalCents,standardCents:offer.standardCents,referenceCents:Math.max(referenceCents,offer.standardCents),directCents:offer.directCents,directSavingCents:offer.directSavingCents,couponCents:offer.couponCents,promotions:[...promos].map(([name,p])=>({name,...p}))}];
     });
     return {roomType,roomIds:list.slice(0,input.rooms).map(r=>Number(r.id)),code:room.code,name:localized(room.name_translations_json,room.name_el,room.name_en,roomType),description:list.map(r=>localized(r.description_translations_json,r.description_el,r.description_en,r.description)).find(d=>String(d??"").trim())??"",capacity:Number(room.capacity),amenities:jsonArray<string>(room.amenities),characteristics:cardAmenities<{icon:string;el:string;en:string;tr:string}>(list).map(a=>{let tr:Record<string,string>={};try{tr=JSON.parse(a.tr||"{}")}catch{tr={}}return {icon:amenityIcon(a.icon),name:amenityName({...tr,el:a.el,en:a.en},input.lang)}}),images:cardImages(list),availableCount:list.length,plans:plansForRoom};
   }).filter(r=>r.plans.length>0);
