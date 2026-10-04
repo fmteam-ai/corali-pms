@@ -4,7 +4,7 @@ import type { BookingLanguage } from "@/lib/booking-i18n";
 import { LAST_MINUTE_FULL_PAYMENT_DAYS, calculatePayment, planPaymentTerms, type PaymentPolicy } from "@/lib/payment-policy";
 import { pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 
-type Plan = { planKey: string; name: string; active: boolean; depositPercent: number | null; balanceMode: string; balanceDaysBefore: number | null; fullPrepayment: boolean; cancellationDays: number | null };
+type Plan = { planKey: string; name: string; active: boolean; depositPercent: number | null; balanceMode: string; balanceDaysBefore: number | null; fullPrepayment: boolean; cancellationDays: number | null; refundPercent: number | null };
 const modes = ["general", "cancellation_deadline", "days_before", "at_hotel"] as const;
 
 export function PlanTermsEditor({ lang, plans: initial, general, cancellationDays, canEdit }: { lang: PmsLang; plans: Plan[]; general: PaymentPolicy; cancellationDays: number; canEdit: boolean }) {
@@ -20,6 +20,15 @@ export function PlanTermsEditor({ lang, plans: initial, general, cancellationDay
     const terms = planPaymentTerms(general, p, cancelDays(p));
     return terms.fullPrepayment ? null : Math.max(LAST_MINUTE_FULL_PAYMENT_DAYS - 1, terms.policy.fullPaymentWindowActive ? terms.policy.fullPaymentDaysBeforeArrival : -1);
   };
+  const refundLabel = (p: Plan) => {
+    if (p.fullPrepayment || p.planKey === "non_refundable" || p.refundPercent === 0) return t("pp.refundNone");
+    const pct = p.refundPercent ?? 100;
+    return pct === 100 ? t("pp.refundFull", { days: cancelDays(p) }) : t("pp.refundPartly", { pct, days: cancelDays(p) });
+  };
+  async function addPartly() {
+    const r = await fetch("/api/pms/payment-policy/plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    if (r.ok) window.location.reload(); else setMsg(r.status === 409 ? t("pp.partlyExists") : t("pp.failed"));
+  }
   const example = (p: Plan) => {
     const terms = planPaymentTerms(general, p, cancelDays(p));
     const pay = calculatePayment(100000, arrival, terms.policy);
@@ -27,7 +36,7 @@ export function PlanTermsEditor({ lang, plans: initial, general, cancellationDay
     return terms.fullPrepayment ? t("pp.exFull") : t("pp.exDeposit", { now: (pay.payableNowCents / 100).toFixed(0), rest: (pay.balanceCents / 100).toFixed(0), when });
   };
   async function save() {
-    const r = await fetch("/api/pms/payment-policy/plans", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plans: plans.map(({ planKey, depositPercent, balanceMode, balanceDaysBefore, fullPrepayment, cancellationDays }) => ({ planKey, depositPercent, balanceMode, balanceDaysBefore, fullPrepayment, cancellationDays })) }) });
+    const r = await fetch("/api/pms/payment-policy/plans", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plans: plans.map(({ planKey, depositPercent, balanceMode, balanceDaysBefore, fullPrepayment, cancellationDays, refundPercent }) => ({ planKey, depositPercent, balanceMode, balanceDaysBefore, fullPrepayment, cancellationDays, refundPercent })) }) });
     setMsg(r.ok ? t("pp.saved") : t("pp.failed"));
   }
   return (
@@ -36,12 +45,13 @@ export function PlanTermsEditor({ lang, plans: initial, general, cancellationDay
       <p>{t("pp.plansHelp", { days: cancellationDays })}</p>
       <div className="tableWrap">
         <table className="planTerms">
-          <thead><tr><th>{t("pp.plan")}</th><th>{t("pp.cancelDays")}</th><th>{t("pp.fullPrepayment")}</th><th>{t("pp.deposit")}</th><th>{t("pp.balance")}</th><th>{t("pp.days")}</th><th>{t("pp.fullWithin")}</th><th>{t("pp.example")}</th></tr></thead>
+          <thead><tr><th>{t("pp.plan")}</th><th>{t("pp.cancelDays")}</th><th>{t("pp.refundPct")}</th><th>{t("pp.fullPrepayment")}</th><th>{t("pp.deposit")}</th><th>{t("pp.balance")}</th><th>{t("pp.days")}</th><th>{t("pp.fullWithin")}</th><th>{t("pp.example")}</th></tr></thead>
           <tbody>
             {plans.map((p, i) => (
               <tr key={p.planKey} className={p.active ? undefined : "inactive"}>
                 <td><b>{p.name}</b><small>{p.planKey}</small></td>
                 <td><input type="number" min={0} max={365} placeholder={`${cancellationDays}`} aria-label={t("pp.cancelDays")} value={p.fullPrepayment ? "" : p.cancellationDays ?? ""} disabled={!canEdit || p.fullPrepayment} onChange={(e) => set(i, { cancellationDays: e.target.value === "" ? null : Math.max(0, Math.min(365, Math.trunc(Number(e.target.value)))) })} /><small>{p.fullPrepayment ? t("pp.noRefund") : p.cancellationDays === null ? t("pp.cancelGeneral", { days: cancellationDays }) : ""}</small></td>
+                <td><input type="number" min={0} max={100} placeholder="100" aria-label={t("pp.refundPct")} value={p.fullPrepayment || p.planKey === "non_refundable" ? "" : p.refundPercent ?? ""} disabled={!canEdit || p.fullPrepayment || p.planKey === "non_refundable"} onChange={(e) => set(i, { refundPercent: e.target.value === "" ? null : Math.max(0, Math.min(100, Math.trunc(Number(e.target.value)))) })} /><small>{refundLabel(p)}</small></td>
                 <td><input type="checkbox" aria-label={t("pp.fullPrepayment")} checked={p.fullPrepayment} disabled={!canEdit} onChange={(e) => set(i, { fullPrepayment: e.target.checked })} /></td>
                 <td><input type="number" min={0} max={100} placeholder={`${general.depositPercent}`} aria-label={t("pp.deposit")} value={p.depositPercent ?? ""} disabled={!canEdit || p.fullPrepayment} onChange={(e) => set(i, { depositPercent: e.target.value === "" ? null : Math.max(0, Math.min(100, Math.trunc(Number(e.target.value)))) })} /></td>
                 <td><select aria-label={t("pp.balance")} value={p.balanceMode} disabled={!canEdit || p.fullPrepayment} onChange={(e) => set(i, { balanceMode: e.target.value })}>{modes.map((m) => <option key={m} value={m}>{t(`pp.mode.${m}` as PmsKey)}</option>)}</select></td>
@@ -53,7 +63,7 @@ export function PlanTermsEditor({ lang, plans: initial, general, cancellationDay
           </tbody>
         </table>
       </div>
-      {canEdit && <div className="actions"><button type="button" onClick={save}>{t("pp.save")}</button></div>}
+      {canEdit && <div className="actions"><button type="button" onClick={save}>{t("pp.save")}</button>{!plans.some((p) => p.planKey === "partly_refundable") && <button type="button" className="secondaryButton" onClick={addPartly}>+ {t("pp.addPartly")}</button>}</div>}
       <p className="notice" role="status">{msg}</p>
     </article>
   );

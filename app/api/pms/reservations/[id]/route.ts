@@ -8,6 +8,8 @@ import { moveNights, recalcBooking } from "@/lib/folio-db";
 import { enqueueAvailability } from "@/lib/channel-sync";
 import { validReservationTransition } from "@/lib/reservation-transition";
 import { assertTrustedOrigin } from "@/lib/security/origin";
+import { cancellationPayload, queueGuestMessage } from "@/lib/guest-messages";
+import { hotelToday } from "@/lib/tape-chart";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -16,6 +18,10 @@ const updateSchema = z.object({
   roomId: z.number().int().positive().nullable().optional(),
   checkIn: z.iso.date().optional(),
   checkOut: z.iso.date().optional(),
+  // Cancellation: reason shown to the guest (a known code, or the staff's own words) and whether to message them.
+  reason: z.enum(["guest_request", "unpaid_balance", "payment_failed", "hotel", "duplicate", "other"]).optional(),
+  note: z.string().trim().max(300).optional(),
+  notifyGuest: z.boolean().default(true),
 });
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
@@ -54,6 +60,7 @@ async function handlePATCH(request: Request, context: { params: Promise<{ id: st
       let saved=result.rows[0];
       if(input.action==="move"&&(next.checkIn!==before.check_in||next.checkOut!==before.check_out)&&await moveNights(client,user.ownerId,id,next.checkIn,next.checkOut,String(user.id))){await recalcBooking(client,user.ownerId,id);saved=(await client.query("SELECT * FROM bookings WHERE owner_id=$1 AND id=$2",[user.ownerId,id])).rows[0];}
       if(['move','cancel','no_show','confirm'].includes(input.action)){await enqueueAvailability(client,user.ownerId,String(before.check_in),String(before.check_out),input.action);if(input.action==='move')await enqueueAvailability(client,user.ownerId,next.checkIn,next.checkOut,'move');}
+      if(input.action==="cancel"&&input.notifyGuest)await queueGuestMessage(client,user.ownerId,before,"cancellation",cancellationPayload(before,input.reason&&input.reason!=="other"?input.reason:"hotel",input.reason==="other"?input.note??null:null,hotelToday()));
       await client.query(`INSERT INTO reservation_audit(owner_id,booking_id,actor_id,action,before_json,after_json,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)`,[user.ownerId,id,String(user.id),input.action,JSON.stringify(before),JSON.stringify(saved),now]);
       if(input.action==="check_out" && next.roomId){
         // Departure: the room becomes dirty and is auto-assigned to its default housekeeper (manager-defined room blocks).

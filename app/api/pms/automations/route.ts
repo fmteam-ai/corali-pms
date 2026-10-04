@@ -21,7 +21,7 @@ const input = z.object({
   events: eventFlags, templates,
 });
 
-const defaultEvents: Record<MessageEvent, boolean> = { confirmation: true, pre_arrival: true, checkin: true, welcome: true, balance: true, pre_departure: true, review: false };
+const defaultEvents: Record<MessageEvent, boolean> = { confirmation: true, pre_arrival: true, checkin: true, welcome: true, balance: true, pre_departure: true, review: false, payment_failed: true, cancellation: true };
 
 export async function GET() {
   const u = await requireApiUser("integrations.read");

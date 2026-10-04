@@ -1,6 +1,13 @@
-# Hotel Corali PMS v62 — release verification
+# Hotel Corali PMS v63 — release verification
 
 ## Scope in this package
+
+### New in v63
+- **Two new automated messages (email + WhatsApp)** in PMS → Automated messages, editable per language with their own WhatsApp template name: “Balance charge failed · 48-hour payment link” ({{name}}, {{amount}}, {{link}}, {{deadline}}) and “Booking cancellation” ({{reference}}, {{checkIn}}, {{checkOut}}, {{reason}}, {{refund}}). They are transactional: sent even when scheduled automations are off (email always; WhatsApp when enabled, the guest opted in and a template is set), never for OTA bookings, and they appear in the delivery history.
+- **Cancellation message on every cancellation** (PMS, guest via “My booking”, automatic after the 48-hour deadline) with the booking details, the reason and the refund under the rate plan's policy: full refund (cancelled in time), partial refund (partly refundable), no refund (non-refundable or after the deadline), or nothing paid.
+- **PMS cancel dialog:** reason shown to the guest (guest request, unpaid balance, payment/card failure, hotel reasons, duplicate, other with free text) and “Notify the guest”.
+- **Partly refundable policy:** Payment policy → “New policy: Partly refundable” adds the rate plan (default −5%, 50% back until 30 days before arrival); per-plan “Refund %” column for any plan. The booking form shows “50% refundable if cancelled up to 30 days before arrival” and the policy pop-up the matching rule; “My booking” refunds only that share; the % travels with the booking.
+- The balance worker now queues the payment-problem and cancellation messages (hotel emails unchanged).
 
 ### New in v62
 - **Failed automatic balance charge (or no saved card):** the guest gets an email (6 languages) saying the card could not be charged, with a secure payment link and the deadline — payment within 48 hours or the booking is cancelled automatically. The hotel gets a PMS notification and an email (to the SMTP “From” address) with the readable reason, the link and the deadline; if the guest email fails, a separate alert says so. No more card retries once the link is sent.

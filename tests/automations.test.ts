@@ -64,3 +64,27 @@ test("settings read as strings from BIGINT columns still schedule correctly",()=
  assert.equal(scheduleFor("review",b,{review_days_after_checkout:"2",send_hour:"10"} as never),greekTime("2026-09-27",2,10));
  assert.equal(scheduleFor("checkin",b,{review_days_after_checkout:2,send_hour:"10",checkin_days_before:"3"} as never),greekTime("2026-09-24",-3,10));
 });
+
+test("cancellation message: refund under the policy, reasons and WhatsApp parameters", async () => {
+  const { cancellationRefund, refundText, reasonText, guestMessaging, whatsappVariables, eligible, triggeredTemplates } = await import("../scripts/automation-core.mjs");
+  const base = { paidCents: 11640, ratePolicy: "flexible", cancellationDays: 14, checkIn: "2026-11-20" };
+  assert.deepEqual(cancellationRefund({ ...base, cancelledOn: "2026-11-01" }), { outcome: "refund", freeUntil: "2026-11-06", refundCents: 11640, percent: 100 });
+  assert.equal(cancellationRefund({ ...base, cancelledOn: "2026-11-10" }).outcome, "no_refund");
+  assert.deepEqual(cancellationRefund({ ...base, ratePolicy: "partly_refundable", refundPercent: 50, cancellationDays: 30, cancelledOn: "2026-10-01" }), { outcome: "partial_refund", freeUntil: "2026-10-21", refundCents: 5820, percent: 50 });
+  assert.equal(cancellationRefund({ ...base, ratePolicy: "non_refundable", cancelledOn: "2026-10-01" }).outcome, "no_refund");
+  assert.equal(cancellationRefund({ ...base, paidCents: 0, cancelledOn: "2026-10-01" }).outcome, "none_paid");
+  assert.match(refundText("partial_refund", "en", { paid: "€116.40", refund: "€58.20", percent: 50 }), /50% of the amount paid will be refunded: €58.20 of €116.40/);
+  assert.match(refundText("no_refund", "el", { paid: "116,40 €", nonRefundable: true }), /μη επιστρέψιμη τιμή/);
+  assert.equal(reasonText("unpaid_balance", "de"), "Der Restbetrag wurde nicht rechtzeitig bezahlt");
+  assert.equal(reasonText("other", "en", "Overbooking — we are very sorry"), "Overbooking — we are very sorry");
+  assert.equal(guestMessaging("booking.com"), false);
+  assert.equal(guestMessaging("direct"), true);
+  assert.deepEqual(whatsappVariables("cancellation", { reference: "CR-1", checkIn: "a", checkOut: "b", reason: "r", refund: "x" }), ["CR-1", "a", "b", "r", "x"]);
+  assert.equal(eligible("cancellation", { status: "cancelled", check_in: "2026-11-20", check_out: "2026-11-24", balance_cents: 0 }, new Date()), true);
+  assert.equal(eligible("payment_failed", { status: "confirmed", check_in: "2026-11-20", check_out: "2026-11-24", balance_cents: 100 }, new Date()), true);
+  for (const lang of ["el", "en", "fr", "de", "it", "es"] as const) {
+    assert.match(triggeredTemplates.cancellation[lang].body, /{{reason}}[\s\S]*{{refund}}/);
+    assert.match(triggeredTemplates.payment_failed[lang].body, /{{link}}[\s\S]*/);
+    assert.match(triggeredTemplates.payment_failed[lang].body, /{{deadline}}/);
+  }
+});

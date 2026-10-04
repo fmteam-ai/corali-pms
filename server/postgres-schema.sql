@@ -1326,3 +1326,9 @@ ALTER TABLE rate_plans ADD COLUMN IF NOT EXISTS cancellation_days BIGINT;
 ALTER TABLE booking_sessions ADD COLUMN IF NOT EXISTS cancellation_days BIGINT;
 -- v62: after a failed automatic balance charge the guest gets a payment link with a 48-hour deadline; unpaid → cancelled.
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS balance_deadline_at BIGINT;
+-- v63: triggered guest messages (payment problem, cancellation) carry their details (reason, refund, deadline).
+ALTER TABLE message_deliveries ADD COLUMN IF NOT EXISTS payload_json TEXT NOT NULL DEFAULT '{}';
+-- v63: partly refundable rate plans — share of the amount paid that is refunded when cancelled in time (NULL = 100%).
+ALTER TABLE rate_plans ADD COLUMN IF NOT EXISTS refund_percent BIGINT;
+ALTER TABLE booking_sessions ADD COLUMN IF NOT EXISTS refund_percent BIGINT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS refund_percent BIGINT;

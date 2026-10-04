@@ -30,7 +30,7 @@ test("charge attempts are limited and spaced", () => {
 });
 
 test("failed balance charge: 48-hour deadline, guest emails and automatic cancellation rule", async () => {
-  const { PAYMENT_DEADLINE_MS, balanceEmail, deadlineExpired, deadlineLabel } = await import("../scripts/balance-collection-core.mjs");
+  const { PAYMENT_DEADLINE_MS, deadlineExpired, deadlineLabel } = await import("../scripts/balance-collection-core.mjs");
   assert.equal(PAYMENT_DEADLINE_MS, 48 * 3600 * 1000);
   const now = Date.parse("2026-10-05T07:00:00Z");
   assert.equal(deadlineExpired({ status: "confirmed", balance_cents: 1000, balance_deadline_at: now - 1 }, now), true);
@@ -38,10 +38,4 @@ test("failed balance charge: 48-hour deadline, guest emails and automatic cancel
   assert.equal(deadlineExpired({ status: "confirmed", balance_cents: 1000, balance_deadline_at: null }, now), false, "no deadline / kept by staff");
   assert.equal(deadlineExpired({ status: "cancelled", balance_cents: 1000, balance_deadline_at: now - 1 }, now), false);
   assert.equal(deadlineLabel(now + PAYMENT_DEADLINE_MS, "en"), "7 Oct 2026, 10:00");
-  const mail = balanceEmail("failed", "el", { name: "Μαρία", reference: "CR-1", amount: "175,35 €", checkIn: "2026-10-20", checkOut: "2026-10-27", link: "https://x/pay", deadline: "7 Οκτ 2026, 10:00" });
-  assert.match(mail.subject, /CR-1/);
-  assert.match(mail.body, /48 ώρες/);
-  assert.match(mail.body, /https:\/\/x\/pay/);
-  assert.match(mail.body, /ακυρωθεί αυτόματα/);
-  assert.match(balanceEmail("cancelled", "xx", { name: "A", reference: "CR-2", amount: "€1", checkIn: "a", checkOut: "b" }).subject, /CR-2 has been cancelled/);
 });

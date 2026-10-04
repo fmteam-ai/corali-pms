@@ -11,13 +11,14 @@ import { guestChangePolicy, validNewStay } from "@/lib/guest-changes";
 import { pushNotification } from "@/lib/pms-notifications";
 import { publicAvailability } from "@/lib/public-rate";
 import { hashToken, newOpaqueToken } from "@/lib/security/tokens";
+import { cancellationPayload, queueGuestMessage } from "@/lib/guest-messages";
 import { hotelToday } from "@/lib/tape-chart";
 import type { BookingLanguage } from "@/lib/booking-i18n";
 
 type Q = Pick<PoolClient, "query">;
 const euro = (c: number) => `€${(c / 100).toFixed(2)}`;
 
-export const BOOKING_COLUMNS = `b.id,b.reference,b.guest_name,b.guest_email,b.guest_language,b.room_id,b.check_in,b.check_out,b.status,b.total_cents,b.balance_cents,b.rate_policy,b.cancellation_days,b.adults,b.children,b.folio_initialized_at,b.created_at,b.version,r.room_type`;
+export const BOOKING_COLUMNS = `b.id,b.reference,b.guest_name,b.guest_email,b.guest_language,b.room_id,b.check_in,b.check_out,b.status,b.total_cents,b.balance_cents,b.rate_policy,b.cancellation_days,b.adults,b.children,b.folio_initialized_at,b.created_at,b.version,b.channel,b.guest_phone,b.whatsapp_opt_in,b.refund_percent,r.room_type`;
 
 export async function bookingForToken(q: Q, token: string, lock = false) {
   const r = await q.query(
@@ -29,7 +30,7 @@ export async function bookingForToken(q: Q, token: string, lock = false) {
 }
 
 export function policyFor(b: Record<string, unknown>) {
-  return guestChangePolicy({ status: String(b.status), checkIn: String(b.check_in), today: hotelToday(), ratePlanKey: String(b.rate_policy ?? ""), cancellationDays: Number(b.cancellation_days ?? 0), totalCents: Number(b.total_cents), balanceCents: Number(b.balance_cents) });
+  return guestChangePolicy({ status: String(b.status), checkIn: String(b.check_in), today: hotelToday(), ratePlanKey: String(b.rate_policy ?? ""), cancellationDays: Number(b.cancellation_days ?? 0), totalCents: Number(b.total_cents), balanceCents: Number(b.balance_cents), refundPercent: b.refund_percent === null || b.refund_percent === undefined ? null : Number(b.refund_percent) });
 }
 
 /** Booking number + email → a manage link token (2 hours). Same generic failure for any mismatch. */
@@ -122,6 +123,7 @@ export async function cancelBooking(token: string) {
     const after = (await c.query(`SELECT * FROM bookings WHERE owner_id=$1 AND id=$2`, [owner, b.id])).rows[0];
     await c.query(`INSERT INTO reservation_audit(owner_id,booking_id,actor_id,action,before_json,after_json,created_at) VALUES($1,$2,'guest','guest_cancel',$3,$4,$5)`, [owner, b.id, JSON.stringify(b), JSON.stringify(after), now]);
     await enqueueAvailability(c, owner, String(b.check_in), String(b.check_out), "guest_cancel");
+    await queueGuestMessage(c, owner, b, "cancellation", cancellationPayload(b, "guest_request", null, hotelToday()));
     const refundEl = policy.refundCents > 0 ? ` · ΕΠΙΣΤΡΟΦΗ ${euro(policy.refundCents)} (δωρεάν ακύρωση)` : " · χωρίς επιστροφή";
     const refundEn = policy.refundCents > 0 ? ` · REFUND ${euro(policy.refundCents)} (free cancellation)` : " · no refund";
     await pushNotification(c, owner, { kind: "direct_booking", titleEl: `Ακύρωση από τον επισκέπτη: ${b.reference} · ${b.guest_name}${refundEl}`, titleEn: `Guest cancelled: ${b.reference} · ${b.guest_name}${refundEn}`, link: `/pms/reservations/${b.id}` });

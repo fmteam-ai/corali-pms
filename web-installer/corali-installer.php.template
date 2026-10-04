@@ -5,14 +5,14 @@ const CORALI_INSTALL_TOKEN_HASH = '__INSTALL_TOKEN_HASH__';
 const CORALI_FONT_REGULAR = '__FONT_REGULAR_BASE64__';
 const CORALI_FONT_BOLD = '__FONT_BOLD_BASE64__';
 const CORALI_HOME = '/home/corali';
-const CORALI_ARCHIVE = 'corali-pms-cpanel-v62-root.tar.gz';
-const CORALI_CHECKSUM = 'corali-pms-cpanel-v62-root.tar.gz.sha256';
+const CORALI_ARCHIVE = 'corali-pms-cpanel-v63-root.tar.gz';
+const CORALI_CHECKSUM = 'corali-pms-cpanel-v63-root.tar.gz.sha256';
 const CORALI_PMS_ROOT = '/home/corali/apps/corali-pms';
 const CORALI_BOOKING_ROOT = '/home/corali/apps/corali-booking';
 const CORALI_APP_USER = 'corali';
 const CORALI_PMS_URL = 'https://pms.hotelcorali.gr';
 const CORALI_BOOKING_URL = 'https://booking.hotelcorali.gr';
-const CORALI_INSTALLER_RELEASE = 'v62';
+const CORALI_INSTALLER_RELEASE = 'v63';
 
 $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
     || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
@@ -479,7 +479,7 @@ function startInstallation(array $checks): void
     }
 
     $suffix = gmdate('Ymd\THis\Z') . '-' . bin2hex(random_bytes(3));
-    $release = $releaseRoot . '/corali-v62-web-' . $suffix;
+    $release = $releaseRoot . '/corali-v63-web-' . $suffix;
     $archive = CORALI_HOME . '/' . CORALI_ARCHIVE;
     $log = $stateDir . '/install.log';
     $status = $stateDir . '/exit.status';

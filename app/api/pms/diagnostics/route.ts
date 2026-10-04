@@ -22,6 +22,8 @@ const checks=[
  {name:"min_stay",table:"min_stay_rules",columns:["owner_id","room_type","min_nights","active"]},
  {name:"plan_cancellation",table:"rate_plans",columns:["cancellation_days"]},
  {name:"session_cancellation",table:"booking_sessions",columns:["cancellation_days"]},
+ {name:"message_payload",table:"message_deliveries",columns:["payload_json"]},
+ {name:"refund_percent",table:"bookings",columns:["refund_percent"]},
  {name:"balance_deadline",table:"bookings",columns:["balance_deadline_at"]},
  {name:"stripe_holds",table:"bookings",columns:["stripe_authorization_ref","stripe_authorized_cents","stripe_authorized_at"]},
  {name:"room_photos",table:"room_photos",columns:["owner_id","room_id","mime","data_base64"]},
@@ -87,6 +89,6 @@ export async function GET(){
   catch(error){const code=typeof error==="object"&&error!==null&&"code" in error?String(error.code):error instanceof Error&&["INVALID_ROOM_PRICE","INVALID_DATES"].includes(error.message)?error.message:error instanceof TypeError?"DATA_PROCESSING_TYPE_ERROR":"AVAILABILITY_FAILED";failed.push({area:"availability",code});console.error("PMS diagnostic availability failed",error)}
   // Active rooms without a base price: the booking engine falls back to the category price (or hides the category).
   const unpricedRooms=(await db().query("SELECT code,room_type FROM rooms WHERE owner_id=$1 AND active=1 AND COALESCE(base_rate_cents,0)<=0 ORDER BY code",[user.ownerId])).rows.map(r=>`${r.code} (${r.room_type})`);
-  return Response.json({ok:missing.length===0&&failed.length===0,unpricedRooms,version:"v62",area:"pms_and_booking",missing,failed,activeRooms:Number((await db().query("SELECT count(*)::int AS total FROM rooms WHERE owner_id=$1 AND active=1",[user.ownerId])).rows[0]?.total??0)},{status:missing.length||failed.length?503:200,headers:{"Cache-Control":"private, no-store"}});
+  return Response.json({ok:missing.length===0&&failed.length===0,unpricedRooms,version:"v63",area:"pms_and_booking",missing,failed,activeRooms:Number((await db().query("SELECT count(*)::int AS total FROM rooms WHERE owner_id=$1 AND active=1",[user.ownerId])).rows[0]?.total??0)},{status:missing.length||failed.length?503:200,headers:{"Cache-Control":"private, no-store"}});
  }catch(e){console.error("PMS dashboard diagnostic failed",e);return Response.json({ok:false,area:"pms_dashboard",error:"DATABASE_CHECK_FAILED"},{status:503,headers:{"Cache-Control":"private, no-store"}})}
 }

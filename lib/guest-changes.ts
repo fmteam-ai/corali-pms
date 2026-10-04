@@ -3,10 +3,10 @@
 // - After that deadline, or on a non-refundable rate: cancellation is possible but nothing is refunded, and dates
 //   cannot be changed online (the guest is asked to contact the hotel).
 
-export type GuestChangeInput = { status: string; checkIn: string; today: string; ratePlanKey: string; cancellationDays: number; totalCents: number; balanceCents: number };
+export type GuestChangeInput = { status: string; checkIn: string; today: string; ratePlanKey: string; cancellationDays: number; totalCents: number; balanceCents: number; refundPercent?: number | null };
 export type GuestChangePolicy = {
   nonRefundable: boolean; daysUntilArrival: number; deadline: string; freeCancellation: boolean;
-  canCancel: boolean; refundCents: number; paidCents: number; canChangeDates: boolean;
+  canCancel: boolean; refundCents: number; paidCents: number; canChangeDates: boolean; refundPercent: number;
   blocked: null | "not_confirmed" | "arrival_passed";
 };
 
@@ -21,10 +21,12 @@ export function guestChangePolicy(x: GuestChangeInput): GuestChangePolicy {
   const deadline = addDays(x.checkIn, -cancellationDays);
   const paidCents = Math.max(0, Math.trunc(Number(x.totalCents) - Number(x.balanceCents)));
   const blocked = x.status !== "confirmed" ? "not_confirmed" : days < 0 ? "arrival_passed" : null;
-  const freeCancellation = !blocked && !nonRefundable && x.today <= deadline;
+  // Partly refundable plans give back only their share of what was paid when cancelled in time.
+  const refundPercent = nonRefundable ? 0 : x.refundPercent === null || x.refundPercent === undefined ? 100 : Math.max(0, Math.min(100, Math.trunc(Number(x.refundPercent))));
+  const freeCancellation = !blocked && refundPercent > 0 && x.today <= deadline;
   return {
     nonRefundable, daysUntilArrival: days, deadline, freeCancellation,
-    canCancel: !blocked, refundCents: freeCancellation ? paidCents : 0, paidCents,
+    canCancel: !blocked, refundCents: freeCancellation ? Math.round((paidCents * refundPercent) / 100) : 0, paidCents, refundPercent,
     canChangeDates: freeCancellation, blocked,
   };
 }
