@@ -1336,3 +1336,6 @@ ALTER TABLE bookings ADD COLUMN IF NOT EXISTS refund_percent BIGINT;
 INSERT INTO rate_plans(owner_id,plan_key,name,adjustment_percent,payment_policy,active,deposit_percent,balance_mode,full_prepayment,cancellation_days,refund_percent,updated_at)
 SELECT DISTINCT owner_id,'partly_refundable','Partly refundable',-5,'flexible',0,50,'general',0,30,50,0 FROM rate_plans
 ON CONFLICT (owner_id,plan_key) DO NOTHING;
+-- v65: AI help for guest messages — automatic replies are marked, and the switch lives with the automation settings.
+ALTER TABLE booking_messages ADD COLUMN IF NOT EXISTS ai_generated BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE message_automation_settings ADD COLUMN IF NOT EXISTS ai_auto_reply BIGINT NOT NULL DEFAULT 0;

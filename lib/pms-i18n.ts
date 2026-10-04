@@ -1298,6 +1298,16 @@ const el = {
   "res.cancelConfirm": "Ακύρωση κράτησης",
   "res.cancelBack": "Πίσω",
   "pp.planActive": "Ενεργή στη φόρμα κράτησης",
+  "msg.aiSuggest": "Πρόταση απάντησης",
+  "msg.aiWorking": "Ο AI γράφει πρόταση απάντησης…",
+  "msg.aiReady": "Έτοιμη πρόταση: ελέγξτε ή διορθώστε τη και πατήστε Αποστολή.",
+  "msg.aiNoQuestion": "Δεν υπάρχει νέο μήνυμα του επισκέπτη για απάντηση.",
+  "msg.ai.AI_NOT_CONFIGURED": "Ορίστε το Anthropic API key στις Συνδέσεις για να λειτουργήσει ο AI.",
+  "msg.ai.AI_UNAVAILABLE": "Ο AI δεν μπόρεσε να γράψει πρόταση τώρα· δοκιμάστε ξανά.",
+  "msg.ai.TOO_MANY_REQUESTS": "Πολλές προτάσεις σε λίγο χρόνο· δοκιμάστε σε λίγα λεπτά.",
+  "msg.aiAuto": "Αυτόματη απάντηση AI σε απλές ερωτήσεις",
+  "msg.aiAutoHelp": "Απαντά μόνο σε ερωτήσεις πληροφοριών (ώρες, πρόσβαση, άφιξη, εγκαταστάσεις, περιοχή, transfer, στοιχεία κράτησης). Πληρωμές, αλλαγές, ακυρώσεις, παράπονα και ειδικά αιτήματα μένουν πάντα για τη ρεσεψιόν. Λαμβάνετε ειδοποίηση για κάθε αυτόματη απάντηση.",
+  "msg.aiTag": "αυτόματη απάντηση AI",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -2592,6 +2602,16 @@ const en: Record<PmsKey, string> = {
   "res.cancelConfirm": "Cancel the reservation",
   "res.cancelBack": "Back",
   "pp.planActive": "Active in the booking form",
+  "msg.aiSuggest": "Suggest a reply",
+  "msg.aiWorking": "The AI is drafting a reply…",
+  "msg.aiReady": "Draft ready: check or edit it, then press Send.",
+  "msg.aiNoQuestion": "There is no new guest message to answer.",
+  "msg.ai.AI_NOT_CONFIGURED": "Add the Anthropic API key in Connections to use the AI.",
+  "msg.ai.AI_UNAVAILABLE": "The AI could not draft a reply right now; try again.",
+  "msg.ai.TOO_MANY_REQUESTS": "Too many drafts in a short time; try again in a few minutes.",
+  "msg.aiAuto": "AI automatic replies to simple questions",
+  "msg.aiAutoHelp": "Answers only information questions (times, access, arrival, facilities, area, transfers, booking details). Payments, changes, cancellations, complaints and special requests always stay with reception. You are notified of every automatic reply.",
+  "msg.aiTag": "AI automatic reply",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

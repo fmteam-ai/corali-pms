@@ -822,3 +822,9 @@ table.numeric tr.selected td{background:#fff8e6}
 .stripePanel .deadlineWarn{background:#fff4e5;border-radius:10px;padding:10px 12px;border-top:0}
 .cancelDialog{display:grid;gap:10px;max-width:520px}.cancelDialog label{display:grid;gap:6px;font-weight:600}.cancelDialog label.inline{display:flex;align-items:center;gap:8px}.cancelDialog select,.cancelDialog textarea{font:inherit;padding:9px;border:1px solid #cbd6da;border-radius:8px}.cancelDialog small{color:#6b7b80}
 .planTerms .planActive{display:flex;gap:6px;align-items:center;margin-top:6px;font-size:12px;font-weight:600;white-space:nowrap}
+/* v65: AI help in guest messages */
+.aiAutoBar{display:grid;gap:4px;margin:0 0 14px;padding:12px 14px;border-radius:12px;background:#fff;border:1px solid #e3e9eb}.aiAutoBar label{display:flex;gap:8px;align-items:center}.aiAutoBar small{color:#5a6b70}
+.messageComposer .composerActions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+.bubble .aiTag{margin-left:8px;padding:1px 8px;border-radius:999px;background:#eef2fb;color:#284f99;font-size:11px;font-weight:700}
+.messageComposer{flex-direction:column}.messageComposer .composerActions button{padding:10px 18px}.messageComposer .composerActions .secondaryButton{background:#fff;color:#173e47;border:1px solid #cbd6da}
+.aiPricing{margin-bottom:24px}.aiPricingHead{display:flex;gap:16px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}.aiPricingHead>div{flex:1 1 420px}.aiPricingHead h2{margin:0 0 6px}.aiSummary{background:#f2f8f9;border-left:4px solid #173e47;padding:10px 14px;border-radius:8px;white-space:pre-wrap}.aiPricing td small{display:block;color:#6b7b80}

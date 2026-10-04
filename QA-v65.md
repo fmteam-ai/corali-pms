@@ -1,6 +1,13 @@
-# Hotel Corali PMS v64 — release verification
+# Hotel Corali PMS v65 — release verification
 
 ## Scope in this package
+
+### New in v65
+- **AI in guest messages** (PMS → Μηνύματα επισκεπτών): **✨ Πρόταση απάντησης** writes a draft reply to the guest's last message (hotel facts, policy and this booking), which staff edit and send. Hotel replies are now also emailed to the guest with a link to "My booking".
+- **AI auto-reply** switch: simple questions (check-in time, directions, facilities, area, transfer, booking details) are answered automatically and marked 🤖; money, payments, changes, cancellations, complaints, problems and special requests are never auto-answered (AI classification *and* a 6-language keyword guard) and raise a "needs reception" notification. "My booking" refreshes for ~1 minute after a guest sends a message.
+- **Website assistant widget**: `<script src="https://booking.hotelcorali.gr/assistant-widget.js" defer></script>` before `</body>` of hotelcorali.gr (options `data-language`, `data-color`, `data-position`). CORS allows hotelcorali.gr, www.hotelcorali.gr and the booking origin.
+- **✨ AI price proposals** (Τιμές → Προτάσεις τιμολόγησης): per room category and week for 9 weeks — season, occupancy, booking pace, last year's occupancy and rate-shopper competitor prices; recommendations clamped to ±35%; the selected (editable) lines become season prices named "AI · …". Requires the Anthropic API key (Γενικά → Συνδέσεις).
+- Checks: `booking_messages.ai_generated`, `message_automation_settings.ai_auto_reply` in diagnostics; tests `tests/ai-guards.test.ts`.
 
 ### New in v64
 - **“Partly refundable” is always listed** in Payment policy → per rate plan (added automatically by the database update, inactive, 50% refund until 30 days before arrival, −5%). Each plan has an **“Active in the booking form”** switch next to its name; tick it and Save to offer it to guests.
