@@ -3,3 +3,10 @@ packages:
 
 allowBuilds:
   unrs-resolver: true
+
+# GHSA-vfj7-8cjw-p6xm (braces <=3.0.3, no patched release yet) reaches only the ESLint config
+# (devDependency: eslint-config-next → @next/eslint-plugin-next → fast-glob → micromatch → braces). It is not
+# part of the deployed application; remove this entry once a fixed braces version is published.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-vfj7-8cjw-p6xm

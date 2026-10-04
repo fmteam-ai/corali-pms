@@ -1317,3 +1317,10 @@ ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS combine_offers BIGINT NOT NU
 ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS combine_plan BIGINT NOT NULL DEFAULT 1;
 ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS combine_direct BIGINT NOT NULL DEFAULT 1;
 ALTER TABLE special_prices ADD COLUMN IF NOT EXISTS combine_coupons BIGINT NOT NULL DEFAULT 1;
+-- v61: Stripe "Authorization" payment type — the hold to capture or release from the reservation.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS stripe_authorization_ref TEXT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS stripe_authorized_cents BIGINT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS stripe_authorized_at BIGINT;
+-- v61: free-cancellation days per rate plan (NULL = the general cancellation policy of the period), carried to the booking.
+ALTER TABLE rate_plans ADD COLUMN IF NOT EXISTS cancellation_days BIGINT;
+ALTER TABLE booking_sessions ADD COLUMN IF NOT EXISTS cancellation_days BIGINT;

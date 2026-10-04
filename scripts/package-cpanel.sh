@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project="$(cd "$(dirname "$0")/.." && pwd)"
-output="$project/corali-pms-cpanel-v60-root.tar.gz"
+output="$project/corali-pms-cpanel-v61-root.tar.gz"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 
@@ -26,9 +26,9 @@ cp scripts/init-postgres.mjs scripts/create-admin.mjs scripts/create-admin.sh \
   scripts/load-runtime-env.mjs scripts/admin-recovery-core.mjs scripts/recover-admin.mjs \
   scripts/fix-cpanel-permissions.sh scripts/smoke-runtime.sh \
   scripts/verify-package.sh "$stage/scripts/"
-cp app.js .env.example DEPLOY-CPANEL.md QA-v60.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md INSTALL-CPANEL.sh \
+cp app.js .env.example DEPLOY-CPANEL.md QA-v61.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md INSTALL-CPANEL.sh \
   ROLLBACK-CPANEL.sh package.json "$stage/"
-printf 'v60\n' > "$stage/DEPLOY_VERSION.txt"
+printf 'v61\n' > "$stage/DEPLOY_VERSION.txt"
 
 find "$stage" -type d -exec chmod 755 {} +
 find "$stage" -type f -exec chmod 644 {} +

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { providerFields, type ProviderKey } from "@/lib/provider-fields";
+import { stripeOptions } from "@/lib/stripe-options";
 import { publicProvider } from "@/lib/provider-public";
 export { publicProvider, validateProviderFields } from "@/lib/provider-public";
 import { documentKey, env } from "@/lib/env";
@@ -25,9 +26,9 @@ export async function providerCredentials(ownerId: string, providerKey: Provider
 
 export async function stripeCredentials(ownerId: string) {
   const configured = await providerCredentials(ownerId,"stripe");
-  if (configured) return configured.active ? { secretKey: configured.secrets.secretKey, webhookSecret: configured.secrets.webhookSecret } : null;
+  if (configured) return configured.active ? { secretKey: configured.secrets.secretKey, webhookSecret: configured.secrets.webhookSecret, options: stripeOptions(configured.settings) } : null;
   const legacy = env();
-  return legacy.STRIPE_SECRET_KEY && legacy.STRIPE_WEBHOOK_SECRET ? { secretKey: legacy.STRIPE_SECRET_KEY, webhookSecret: legacy.STRIPE_WEBHOOK_SECRET } : null;
+  return legacy.STRIPE_SECRET_KEY && legacy.STRIPE_WEBHOOK_SECRET ? { secretKey: legacy.STRIPE_SECRET_KEY, webhookSecret: legacy.STRIPE_WEBHOOK_SECRET, options: stripeOptions(null) } : null;
 }
 
 /** API key for the guest AI assistant: PMS → Integrations (Anthropic), else the ANTHROPIC_API_KEY environment variable. */

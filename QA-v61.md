@@ -1,6 +1,16 @@
-# Hotel Corali PMS v60 — release verification
+# Hotel Corali PMS v61 — release verification
 
 ## Scope in this package
+
+### New in v61
+- **Fix: direct bookings were stored with 7 days of free cancellation** whatever the rate plan showed (e.g. 14), so “My booking” cancellations used the wrong deadline. The plan's days are now carried from checkout to the reservation (bookings made before v61 keep 7 — check them if needed).
+- **Free cancellation per rate plan** (Payment policy → per plan): empty = the general cancellation policy of the period; non-refundable = 0. The table shows, per plan, up to how many days before arrival a booking pays the full amount (last-minute < 7 days, or the plan's charge window such as “at the end of free cancellation”), so it is visible why a stay asks for 100%.
+- **Card processing fee (Integrations → Stripe → Charge/Discount):** charge + or discount −, as % (≤20) or fixed €, on the reservation total. Shown in small print under “Reservation total”, included in the amount and the deposit, and posted to the folio as “Card processing fee”.
+- **Promo code above “Charges”** in the booking summary.
+- **Release gate:** advisory GHSA-vfj7-8cjw-p6xm (braces, no patched version) is ignored in `pnpm-workspace.yaml` because it only reaches the ESLint config (devDependency), not the deployed app.
+- **Stripe options like VikBooking (PMS → Integrations → Stripe):** Payment Type (Capture = charge now · Authorization = hold the amount, capture or release it from the reservation · Off Session = €0 now, card saved and charged later from the reservation), Transaction Type (Book / Pay button), automatic payment methods (or cards only), Set up Future Usage (always save the card), Extended authorization (longer holds where supported), Company Name, Image URL and Metadata (key=value, never overriding the PMS's own keys). Auto-redirect is always on; EUR amounts are always in cents. Checkout and the webhook follow the chosen type: held payments and saved cards confirm the booking too (balance stays due), with the authorization recorded on the reservation.
+- **Card payment panel on the reservation (Stripe virtual terminal):** capture (full or partial) or release a hold; charge the saved card up to the balance. Payments post to the folio; declines and 3-D Secure requests are explained.
+- **Note under “Continue to secure payment”** in small print, six languages: “All payments are processed through the {gateway} gateway. Hotel Corali will not store any card information.” (the active gateway, currently Stripe), plus what happens to the card for Authorization / Off Session. Editable per language in Integrations → Stripe. In Off Session mode the “pay now” line is hidden.
 
 ### New in v60
 - **Offers choose what they combine with** (PMS → Offers → section 5): other offers on the same night, a rate plan's own discount (e.g. Non-refundable −10%), the direct-booking discount, discount coupons. Unticked = never both: the guest gets the larger discount (offer alone vs. the others / the plan's discount / the coupon). Surcharges always apply. The list shows “does not combine with: …”.

@@ -811,3 +811,10 @@ table.numeric tr.selected td{background:#fff8e6}
 /* v59: promotion banner above the rates, characteristics under the photos */
 .roomMedia{display:grid;gap:12px;align-content:start;min-width:0}.roomMedia .characteristics{margin:0;gap:6px 12px;font-size:13px}
 .rateList{display:grid;gap:10px;align-content:start}.rateList .promoRibbon{margin:0;display:grid;gap:2px}.rateList .promoRibbon b{font-size:15px}
+/* v61: Stripe virtual terminal on the reservation */
+.stripePanel section{display:grid;gap:8px;padding:10px 0;border-top:1px solid #eef2f3}.stripePanel p{margin:0;display:grid;gap:2px}.stripePanel small{color:#6b7b80}
+.stripeRow{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}.stripeRow label{display:grid;gap:4px;font-weight:600}.stripeRow input{width:140px;padding:8px 10px;border:1px solid #cbd6da;border-radius:8px;font:inherit}
+.guestForm .payNote{margin:-6px 0 0;padding:0 4px;color:#5a6b70;font-size:11.5px;line-height:1.45;text-align:center;white-space:pre-line}
+.stripeOption{display:grid;gap:6px;flex-basis:100%;padding:10px 0;border-bottom:1px solid #eef2f3}.stripeOption select,.stripeOption input,.stripeOption textarea{font:inherit;padding:9px;border:1px solid #cad5df;border-radius:8px;max-width:520px}.stripeOption small{color:#5a6b70;font-style:italic;max-width:620px}
+.stripeNotes{display:grid;gap:6px;max-width:620px}.stripeNotes label{display:grid;grid-template-columns:40px 1fr;gap:8px;align-items:start}.stripeNotes span{padding:5px 0;text-align:center;border-radius:6px;background:#173e47;color:#fff;font-size:12px;font-weight:700}
+.stay .cardFeeNote{margin:6px 0 0;text-align:right;font-size:12px;color:#a9c0c5}

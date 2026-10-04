@@ -1,3 +1,4 @@
+import { stripeOptionsProblem } from "./stripe-options.ts";
 import { documentKey } from "./env.ts";
 import { decryptField } from "./security/encryption.ts";
 import { providerFields, type ProviderKey } from "./provider-fields.ts";
@@ -17,8 +18,9 @@ export function validateProviderFields(key: ProviderKey, settings: Record<string
   const allowedSettings = new Set<string>(fields.settings);
   const allowedSecrets = new Set<string>(fields.secrets);
   if (Object.keys(settings).some(field => !allowedSettings.has(field)) || Object.keys(secrets).some(field => !allowedSecrets.has(field))) throw new Error("INVALID_FIELDS");
-  if (Object.values(settings).some(value => typeof value !== "string" || value.length > 500) || Object.values(secrets).some(value => typeof value !== "string" || value.length > 4000)) throw new Error("INVALID_FIELDS");
+  if (Object.entries(settings).some(([field, value]) => typeof value !== "string" || value.length > (field === "checkoutNote" ? 4500 : 500)) || Object.values(secrets).some(value => typeof value !== "string" || value.length > 4000)) throw new Error("INVALID_FIELDS");
   if (key === "stripe" && ((secrets.secretKey && !/^sk_(test|live)_/.test(secrets.secretKey)) || (secrets.webhookSecret && !secrets.webhookSecret.startsWith("whsec_")))) throw new Error("INVALID_FIELDS");
+  if (key === "stripe" && stripeOptionsProblem(settings)) throw new Error("INVALID_FIELDS");
   if (key === "smtp" && settings.port && (!/^\d+$/.test(settings.port) || Number(settings.port) < 1 || Number(settings.port) > 65535)) throw new Error("INVALID_FIELDS");
   if (key === "viva" && settings.environment && !["demo","live"].includes(settings.environment)) throw new Error("INVALID_FIELDS");
   if (key === "mydata" && ((settings.environment && !["dev","prod"].includes(settings.environment)) || (settings.issuerVat && !/^\d{9}$/.test(settings.issuerVat)) || [settings.branch,settings.accommodationVatCategory,settings.extrasVatCategory,settings.climateTaxCategory].some(value => value && !/^\d{1,3}$/.test(value)) || [settings.receiptSeries,settings.invoiceSeries].some(value => value && !/^[A-Za-z0-9Α-Ωα-ω-]{1,20}$/.test(value)))) throw new Error("INVALID_FIELDS");

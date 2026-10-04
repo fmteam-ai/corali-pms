@@ -1,6 +1,6 @@
 import { z } from "zod";
 export const providerFields = {
-  stripe: { label: "Stripe", settings: ["publishableKey"], secrets: ["secretKey", "webhookSecret"] },
+  stripe: { label: "Stripe", settings: ["publishableKey", "paymentType", "submitType", "automaticMethods", "futureUsage", "extendedAuth", "companyName", "imageUrl", "metadata", "checkoutNote", "feeMode", "feeValue", "feeType"], secrets: ["secretKey", "webhookSecret"] },
   viva: { label: "Viva.com", settings: ["environment", "merchantId", "sourceCode"], secrets: ["clientId", "clientSecret"] },
   whatsapp: { label: "WhatsApp Business", settings: ["apiVersion", "phoneNumberId", "businessAccountId"], secrets: ["accessToken", "verifyToken", "appSecret"] },
   smtp: { label: "Email / SMTP", settings: ["host", "port", "username", "from"], secrets: ["password"] },

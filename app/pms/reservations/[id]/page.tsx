@@ -9,6 +9,7 @@ import { can } from "@/lib/security/permissions";
 import { stayDates } from "@/lib/folio";
 import { ReservationManager } from "./reservation-manager";
 import { FolioPanel } from "./folio-panel";
+import { StripePanel } from "./stripe-panel";
 import { CheckinCard, type Checkin } from "./checkin-card";
 import { ArrivalCard } from "./arrival-card";
 import { UpsellPanel } from "./upsell-panel";
@@ -58,6 +59,7 @@ export default async function ReservationPage({ params }: { params: Promise<{ id
         {(ci?.arrival_mode || transfers.length > 0) && <ArrivalCard lang={lang} bookingId={b.id} mode={ci?.arrival_mode ?? null} hubName={hubName(ci?.arrival_mode ?? null, ci?.arrival_hub ?? null)} initial={transfers} canEdit={can(user.role, "reservations.edit", user.permissions)} />}
       </div>
       <ReservationManager lang={lang} booking={b} canDelete={can(user.role, "reservations.delete", user.permissions)} canEdit={can(user.role, "reservations.edit", user.permissions)} canLinks={can(user.role, "reservations.write", user.permissions)} />
+      {can(user.role, "folios.read", user.permissions) && <StripePanel lang={lang} bookingId={b.id} canWrite={can(user.role, "folios.write", user.permissions)} />}
       {folio ? <FolioPanel lang={lang} bookingId={b.id} reference={b.reference} guestName={b.guest_name} initial={folio} canWrite={can(user.role, "folios.write", user.permissions)} canEditRates={can(user.role, "folios.write", user.permissions) && can(user.role, "reservations.edit", user.permissions)} /> : <article className="wide"><p>{t("folio.noAccess")}</p></article>}
       <article className="wide"><h2>{t("res.history")}</h2><ul>{data.audit.map((a) => <li key={a.id}>{new Date(Number(a.created_at)).toLocaleString(pmsLocale(lang))} · {a.action} · {t("res.byUser", { id: a.actor_id })}</li>)}</ul></article>
     </section>

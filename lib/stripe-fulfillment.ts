@@ -8,10 +8,13 @@ export function stripeCheckoutIsPaid(session:PaidCheckout){
   return session.mode==="payment" && session.payment_status==="paid" && session.currency?.toLowerCase()==="eur";
 }
 
-export function assertStripeCheckoutMatches(session:PaidCheckout,booking:PendingBooking){
+/** `secured` is how the webhook verified the session (paid, held authorization or saved card); default: must be paid. */
+export function assertStripeCheckoutMatches(session:PaidCheckout,booking:PendingBooking,secured:"paid"|"authorized"|"card_saved"="paid"){
   if(booking.status!=="payment_pending"||booking.payment_gateway!=="stripe")throw new Error("INVALID_BOOKING_STATE");
-  if(!stripeCheckoutIsPaid(session))throw new Error("PAYMENT_NOT_CONFIRMED");
+  if(secured==="paid"&&!stripeCheckoutIsPaid(session))throw new Error("PAYMENT_NOT_CONFIRMED");
   if(session.metadata?.owner_id!==booking.owner_id||session.metadata?.booking_session_id!==String(booking.id)||session.metadata?.token!==booking.token)throw new Error("PAYMENT_METADATA_MISMATCH");
+  if(secured==="card_saved")return;
+  if(session.currency?.toLowerCase()!=="eur")throw new Error("PAYMENT_NOT_CONFIRMED");
   if(!Number.isSafeInteger(session.amount_total)||!Number.isSafeInteger(booking.payable_cents)||booking.payable_cents===null||Number(session.amount_total)!==Number(booking.payable_cents)||Number(session.amount_total)<=0)throw new Error("PAYMENT_AMOUNT_MISMATCH");
 }
 
