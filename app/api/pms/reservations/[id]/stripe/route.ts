@@ -13,16 +13,17 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("capture"), amountCents: z.number().int().positive().max(100_000_00).optional() }),
   z.object({ action: z.literal("release") }),
   z.object({ action: z.literal("charge"), amountCents: z.number().int().positive().max(100_000_00) }),
+  z.object({ action: z.literal("clear_deadline") }),
 ]);
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const u = await requireApiUser("folios.read");
   if (u instanceof Response) return u;
   const id = Number((await params).id);
-  const b = (await db().query(`SELECT stripe_authorization_ref,stripe_authorized_cents,stripe_authorized_at,payment_customer_ref,payment_method_ref,balance_cents FROM bookings WHERE owner_id=$1 AND id=$2`, [u.ownerId, id])).rows[0];
+  const b = (await db().query(`SELECT stripe_authorization_ref,stripe_authorized_cents,stripe_authorized_at,payment_customer_ref,payment_method_ref,balance_cents,balance_deadline_at,status FROM bookings WHERE owner_id=$1 AND id=$2`, [u.ownerId, id])).rows[0];
   if (!b) return Response.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
   const credentials = await stripeCredentials(u.ownerId);
-  return Response.json({ ok: true, configured: Boolean(credentials?.secretKey), authorization: b.stripe_authorization_ref ? { cents: Number(b.stripe_authorized_cents), at: Number(b.stripe_authorized_at) } : null, savedCard: Boolean(b.payment_customer_ref && b.payment_method_ref), balanceCents: Number(b.balance_cents) });
+  return Response.json({ ok: true, configured: Boolean(credentials?.secretKey), authorization: b.stripe_authorization_ref ? { cents: Number(b.stripe_authorized_cents), at: Number(b.stripe_authorized_at) } : null, savedCard: Boolean(b.payment_customer_ref && b.payment_method_ref), balanceCents: Number(b.balance_cents), deadline: b.status === "confirmed" && Number(b.balance_cents) > 0 && b.balance_deadline_at ? Number(b.balance_deadline_at) : null });
 }
 
 function stripeError(e: unknown) {
@@ -39,6 +40,11 @@ async function handlePOST(request: Request, { params }: { params: Promise<{ id: 
   try {
     assertTrustedOrigin(request);
     const id = Number((await params).id), x = input.parse(await request.json());
+    if (x.action === "clear_deadline") {
+      // Staff keep the booking despite the unpaid balance: no automatic cancellation (the payment link stays valid until it expires).
+      const r = await db().query(`UPDATE bookings SET balance_deadline_at=NULL,version=version+1 WHERE owner_id=$1 AND id=$2 AND balance_deadline_at IS NOT NULL`, [u.ownerId, id]);
+      return r.rowCount ? Response.json({ ok: true, action: "clear_deadline" }) : Response.json({ ok: false, error: "NO_DEADLINE" }, { status: 409 });
+    }
     const credentials = await stripeCredentials(u.ownerId);
     if (!credentials?.secretKey) return Response.json({ ok: false, error: "PAYMENT_NOT_CONFIGURED" }, { status: 400 });
     const stripe = new Stripe(credentials.secretKey);

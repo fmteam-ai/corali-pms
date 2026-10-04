@@ -1,6 +1,12 @@
-# Hotel Corali PMS v61 — release verification
+# Hotel Corali PMS v62 — release verification
 
 ## Scope in this package
+
+### New in v62
+- **Failed automatic balance charge (or no saved card):** the guest gets an email (6 languages) saying the card could not be charged, with a secure payment link and the deadline — payment within 48 hours or the booking is cancelled automatically. The hotel gets a PMS notification and an email (to the SMTP “From” address) with the readable reason, the link and the deadline; if the guest email fails, a separate alert says so. No more card retries once the link is sent.
+- **Automatic cancellation** of bookings still unpaid after the 48-hour deadline: status cancelled, payment links revoked, channel availability re-sent, emails to guest and hotel, PMS notification. The reservation shows “Automatic cancellation on …” with a “Keep the booking” button.
+- `run-balance-collection.mjs` now needs `PMS_DOCUMENT_KEY` and `BOOKING_ORIGIN` (present in runtime.env) and should run **hourly** (`5 * * * *`).
+- Booking form: the “Pay now / Balance” box is bold and sits right above “Continue to secure payment”.
 
 ### New in v61
 - **Fix: direct bookings were stored with 7 days of free cancellation** whatever the rate plan showed (e.g. 14), so “My booking” cancellations used the wrong deadline. The plan's days are now carried from checkout to the reservation (bookings made before v61 keep 7 — check them if needed).
@@ -106,7 +112,7 @@
 
 ## New cron jobs (PMS instance only)
 
-`run-data-retention.mjs` (daily), `run-balance-collection.mjs` (daily), `run-mydata-queue.mjs` (every 10 minutes), `run-channel-sync.mjs` (every 5 minutes), `run-social-publisher.mjs` (every 5 minutes), `run-rate-shopper.mjs` (daily, optional). See DEPLOY-CPANEL.md.
+`run-data-retention.mjs` (daily), `run-balance-collection.mjs` (hourly), `run-mydata-queue.mjs` (every 10 minutes), `run-channel-sync.mjs` (every 5 minutes), `run-social-publisher.mjs` (every 5 minutes), `run-rate-shopper.mjs` (daily, optional). See DEPLOY-CPANEL.md.
 
 ## Verification gate
 

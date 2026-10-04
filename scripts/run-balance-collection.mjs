@@ -1,14 +1,17 @@
 // Automatic balance collection (PMS instance only). Daily cPanel cron, e.g. 09:05:
 //   cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-balance-collection.mjs
 // Charges the card saved at booking (Stripe, off-session) N days before arrival, as set in PMS → payment policy.
-// Declined cards, cards needing authentication and bookings without a saved card alert reception instead.
+// When the charge fails (declined, authentication needed, no saved card) the guest is emailed a payment link valid for
+// 48 hours and reception is alerted; a booking still unpaid after the deadline is cancelled automatically.
+// Run it hourly so the 48-hour deadline is applied on time, e.g. `5 * * * *`.
 import process from "node:process";
-import { createDecipheriv, createHash } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import nodemailer from "nodemailer";
 import pg from "pg";
 import { databaseSsl } from "./database-config.mjs";
-import { attemptAllowed, balanceChargeForm, collectionDue } from "./balance-collection-core.mjs";
+import { PAYMENT_DEADLINE_MS, attemptAllowed, balanceChargeForm, balanceEmail, collectionDue, deadlineExpired, deadlineLabel } from "./balance-collection-core.mjs";
 
-if (!process.env.DATABASE_URL) throw Error("DATABASE_URL is required");
+if (!process.env.DATABASE_URL || !process.env.PMS_DOCUMENT_KEY || !process.env.BOOKING_ORIGIN) throw Error("DATABASE_URL, PMS_DOCUMENT_KEY and BOOKING_ORIGIN are required");
 const owner = process.env.PMS_OWNER_ID ?? "hotel-corali";
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: databaseSsl() });
 const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -21,6 +24,88 @@ function unseal(value) {
   decipher.setAuthTag(Buffer.from(tag, "base64url"));
   return Buffer.concat([decipher.update(Buffer.from(data, "base64url")), decipher.final()]).toString("utf8");
 }
+function seal(value) {
+  const key = createHash("sha256").update(process.env.PMS_DOCUMENT_KEY ?? "").digest(), iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", key, iv);
+  const data = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return ["v1", iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
+}
+async function smtpSettings() {
+  const r = await pool.query(`SELECT active,settings_json,secrets_encrypted FROM provider_connections WHERE owner_id=$1 AND provider_key='smtp'`, [owner]);
+  if (r.rowCount) {
+    if (!Number(r.rows[0].active)) return null;
+    const settings = JSON.parse(r.rows[0].settings_json), secrets = JSON.parse(unseal(r.rows[0].secrets_encrypted));
+    return settings.host && settings.username && settings.from && secrets.password ? { host: settings.host, port: Number(settings.port || 587), user: settings.username, pass: secrets.password, from: settings.from } : null;
+  }
+  const e = process.env;
+  return e.SMTP_HOST && e.SMTP_USERNAME && e.SMTP_PASSWORD && e.SMTP_FROM ? { host: e.SMTP_HOST, port: Number(e.SMTP_PORT || 587), user: e.SMTP_USERNAME, pass: e.SMTP_PASSWORD, from: e.SMTP_FROM } : null;
+}
+/** Sends one email; returns false (and logs) when SMTP is missing or fails, so payment handling never stops on email. */
+async function sendMail(to, subject, text) {
+  const s = await smtpSettings();
+  if (!s || !to) { console.error(`Email not sent (${s ? "no recipient" : "SMTP not configured"}): ${subject}`); return false; }
+  try {
+    await nodemailer.createTransport({ host: s.host, port: s.port, secure: s.port === 465, auth: { user: s.user, pass: s.pass }, connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000 }).sendMail({ from: s.from, to, subject, text });
+    return true;
+  } catch (error) { console.error(`Email failed: ${subject}`, error); return false; }
+}
+const hotelAddress = async () => (await smtpSettings())?.from ?? null;
+const reasonsEl = { no_card: "δεν υπάρχει αποθηκευμένη κάρτα", card_declined: "η κάρτα απορρίφθηκε", insufficient_funds: "ανεπαρκές υπόλοιπο", expired_card: "η κάρτα έχει λήξει", authentication_required: "η τράπεζα ζήτησε επιβεβαίωση (3D Secure)", requires_action: "η τράπεζα ζήτησε επιβεβαίωση (3D Secure)", do_not_honor: "η τράπεζα αρνήθηκε τη χρέωση", lost_card: "δηλωμένη απώλεια κάρτας", stolen_card: "δηλωμένη κλοπή κάρτας" };
+const reasonEl = (code) => (reasonsEl[code] ? `${reasonsEl[code]} (${code})` : code);
+const langOf = (b) => (["el", "en", "fr", "de", "it", "es"].includes(b.guest_language) ? b.guest_language : "en");
+const money = (cents, lang) => new Intl.NumberFormat(lang === "el" ? "el-GR" : lang, { style: "currency", currency: "EUR" }).format(cents / 100);
+
+/** Charge failed or impossible: payment link valid 48 h to the guest, alert to the hotel, booking marked with the deadline. */
+async function requestPayment(booking, amount, reason) {
+  const deadline = Date.now() + PAYMENT_DEADLINE_MS, token = randomBytes(32).toString("base64url"), lang = langOf(booking);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const locked = (await client.query(`SELECT balance_deadline_at,status,balance_cents FROM bookings WHERE owner_id=$1 AND id=$2 FOR UPDATE`, [owner, booking.id])).rows[0];
+    if (!locked || locked.balance_deadline_at !== null || locked.status !== "confirmed" || !(Number(locked.balance_cents) > 0)) { await client.query("ROLLBACK"); return false; }
+    await client.query(`UPDATE balance_payment_links SET status='revoked' WHERE owner_id=$1 AND booking_id=$2 AND status='active'`, [owner, booking.id]);
+    await client.query(`INSERT INTO balance_payment_links(owner_id,booking_id,token_hash,token_encrypted,status,expires_at,created_at) VALUES($1,$2,$3,$4,'active',$5,$6)`, [owner, booking.id, createHash("sha256").update(token).digest("hex"), seal(token), deadline, Date.now()]);
+    await client.query(`UPDATE bookings SET balance_deadline_at=$1,version=version+1 WHERE owner_id=$2 AND id=$3`, [deadline, owner, booking.id]);
+    await client.query(`INSERT INTO balance_collection_attempts(owner_id,booking_id,amount_cents,status,error,created_at) VALUES($1,$2,$3,'payment_requested',$4,$5)`, [owner, booking.id, amount, reason, Date.now()]);
+    await client.query(`INSERT INTO pms_notifications(owner_id,kind,title_el,title_en,link,created_at) VALUES($1,'payment',$2,$3,$4,$5)`, [owner,
+      `Αποτυχία χρέωσης υπολοίπου €${(amount / 100).toFixed(2)} · ${booking.reference} (${reasonEl(reason)}) · στάλθηκε σύνδεσμος πληρωμής, αυτόματη ακύρωση αν δεν εξοφληθεί έως ${deadlineLabel(deadline, "el")}`,
+      `Balance charge failed €${(amount / 100).toFixed(2)} · ${booking.reference} (${reason}) · payment link sent, automatic cancellation if unpaid by ${deadlineLabel(deadline, "en")}`, `/pms/reservations/${booking.id}`, Date.now()]);
+    await client.query("COMMIT");
+  } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  const link = `${process.env.BOOKING_ORIGIN}/pay-balance?token=${encodeURIComponent(token)}&lang=${lang}`;
+  const values = { name: booking.guest_name, reference: booking.reference, amount: money(amount, lang), checkIn: booking.check_in, checkOut: booking.check_out, link, deadline: deadlineLabel(deadline, lang) };
+  const mail = balanceEmail("failed", lang, values);
+  const guestSent = await sendMail(booking.guest_email, mail.subject, mail.body);
+  const hotel = await hotelAddress();
+  if (hotel) await sendMail(hotel, `[Corali PMS] Αποτυχία χρέωσης υπολοίπου · ${booking.reference}`, `Η αυτόματη χρέωση του υπολοίπου ${money(amount, "el")} για την κράτηση ${booking.reference} (${booking.guest_name}, ${booking.check_in} – ${booking.check_out}) απέτυχε: ${reasonEl(reason)}.\n\n${guestSent ? `Ο επισκέπτης ενημερώθηκε στο ${booking.guest_email} με σύνδεσμο πληρωμής.` : "ΠΡΟΣΟΧΗ: το email προς τον επισκέπτη ΔΕΝ στάλθηκε — επικοινωνήστε μαζί του."}\nΑν δεν εξοφληθεί έως ${deadlineLabel(deadline, "el")}, η κράτηση ακυρώνεται αυτόματα.\n\nΣύνδεσμος πληρωμής: ${link}\nPMS: /pms/reservations/${booking.id}`);
+  if (!guestSent) await notify(`Το email πληρωμής ΔΕΝ στάλθηκε στον επισκέπτη · ${booking.reference}: επικοινωνήστε μαζί του`, `Payment email NOT sent to the guest · ${booking.reference}: contact them`, booking.id);
+  return true;
+}
+
+/** Bookings still unpaid after their 48-hour payment deadline are cancelled automatically. */
+async function cancelExpired() {
+  const due = (await pool.query(`SELECT id,reference,status,guest_name,guest_email,guest_language,check_in,check_out,balance_cents,balance_deadline_at FROM bookings WHERE owner_id=$1 AND status='confirmed' AND balance_cents>0 AND balance_deadline_at IS NOT NULL AND balance_deadline_at<=$2`, [owner, Date.now()])).rows.filter((b) => deadlineExpired(b, Date.now()));
+  let cancelled = 0;
+  for (const booking of due) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const locked = (await client.query(`SELECT status,balance_cents,balance_deadline_at FROM bookings WHERE owner_id=$1 AND id=$2 FOR UPDATE`, [owner, booking.id])).rows[0];
+      if (!locked || !deadlineExpired(locked, Date.now())) { await client.query("ROLLBACK"); continue; }
+      await client.query(`UPDATE bookings SET status='cancelled',cancelled_at=$1,version=version+1 WHERE owner_id=$2 AND id=$3`, [Date.now(), owner, booking.id]);
+      await client.query(`UPDATE balance_payment_links SET status='revoked' WHERE owner_id=$1 AND booking_id=$2 AND status IN ('active','checkout_pending')`, [owner, booking.id]);
+      await client.query(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,status,next_attempt_at,created_at,updated_at) VALUES($1,$2,$3,'unpaid_balance_cancel','pending',0,$4,$4)`, [owner, booking.check_in, booking.check_out, Date.now()]);
+      await client.query(`INSERT INTO pms_notifications(owner_id,kind,title_el,title_en,link,created_at) VALUES($1,'payment',$2,$3,$4,$5)`, [owner, `Αυτόματη ακύρωση: ${booking.reference} · ${booking.guest_name} — το υπόλοιπο δεν εξοφλήθηκε σε 48 ώρες`, `Cancelled automatically: ${booking.reference} · ${booking.guest_name} — balance not paid within 48 hours`, `/pms/reservations/${booking.id}`, Date.now()]);
+      await client.query("COMMIT");
+      cancelled++;
+    } catch (error) { await client.query("ROLLBACK"); console.error(`Could not cancel booking ${booking.id}`, error); continue; } finally { client.release(); }
+    const lang = langOf(booking), mail = balanceEmail("cancelled", lang, { name: booking.guest_name, reference: booking.reference, amount: money(Number(booking.balance_cents), lang), checkIn: booking.check_in, checkOut: booking.check_out });
+    await sendMail(booking.guest_email, mail.subject, mail.body);
+    const hotel = await hotelAddress();
+    if (hotel) await sendMail(hotel, `[Corali PMS] Αυτόματη ακύρωση · ${booking.reference}`, `Η κράτηση ${booking.reference} (${booking.guest_name}, ${booking.check_in} – ${booking.check_out}) ακυρώθηκε αυτόματα: το υπόλοιπο ${money(Number(booking.balance_cents), "el")} δεν εξοφλήθηκε μέσα σε 48 ώρες.\nPMS: /pms/reservations/${booking.id}`);
+  }
+  return cancelled;
+}
+
 async function stripeKey() {
   const r = await pool.query(`SELECT active,secrets_encrypted FROM provider_connections WHERE owner_id=$1 AND provider_key='stripe'`, [owner]);
   if (r.rowCount) return Number(r.rows[0].active) ? JSON.parse(unseal(r.rows[0].secrets_encrypted)).secretKey : null;
@@ -39,8 +124,8 @@ try {
   const key = await stripeKey();
   const candidates = (await pool.query(
     // Each booking carries its rate plan's charge day (-1 = balance paid at the hotel); older bookings use the general policy.
-    `SELECT id,reference,status,check_in,balance_cents,payment_provider,payment_customer_ref,payment_method_ref,balance_charge_days FROM bookings
-      WHERE owner_id=$1 AND status='confirmed' AND balance_cents>0 AND check_in>=$2 AND COALESCE(balance_charge_days,0)>=0
+    `SELECT id,reference,status,check_in,check_out,guest_name,guest_email,guest_language,balance_cents,payment_provider,payment_customer_ref,payment_method_ref,balance_charge_days FROM bookings
+      WHERE owner_id=$1 AND status='confirmed' AND balance_cents>0 AND balance_deadline_at IS NULL AND check_in>=$2 AND COALESCE(balance_charge_days,0)>=0
         AND check_in<=($2::date+COALESCE(balance_charge_days,$3)::int)::text`,
     [owner, today, policy.days],
   )).rows.filter((b) => collectionDue(b, b.balance_charge_days === null || b.balance_charge_days === undefined ? policy : { active: true, days: Number(b.balance_charge_days) }, today));
@@ -49,11 +134,8 @@ try {
     const attempts = (await pool.query(`SELECT status,created_at FROM balance_collection_attempts WHERE owner_id=$1 AND booking_id=$2 ORDER BY created_at DESC`, [owner, booking.id])).rows;
     const amount = Number(booking.balance_cents);
     if (!(booking.payment_provider === "stripe" && booking.payment_customer_ref && booking.payment_method_ref && key)) {
-      if (!attempts.some((a) => a.status === "no_card")) {
-        await attempt(booking.id, amount, "no_card", null, null);
-        await notify(`Υπόλοιπο €${(amount / 100).toFixed(2)} πληρωτέο · ${booking.reference} · χωρίς αποθηκευμένη κάρτα: στείλτε σύνδεσμο πληρωμής`, `Balance €${(amount / 100).toFixed(2)} due · ${booking.reference} · no card on file: send a payment link`, booking.id);
-        noCard++;
-      }
+      await attempt(booking.id, amount, "no_card", null, null);
+      if (await requestPayment(booking, amount, "no_card")) noCard++;
       continue;
     }
     if (!attemptAllowed(attempts, Date.now())) continue;
@@ -85,11 +167,12 @@ try {
     } else {
       const reason = String(intent.error?.decline_code ?? intent.error?.code ?? intent.status ?? response.status).slice(0, 120);
       await attempt(booking.id, amount, "failed", intent.error?.payment_intent?.id ?? intent.id ?? null, reason);
-      await notify(`Αποτυχία αυτόματης χρέωσης υπολοίπου · ${booking.reference} (${reason}): στείλτε σύνδεσμο πληρωμής`, `Automatic balance charge failed · ${booking.reference} (${reason}): send a payment link`, booking.id);
+      await requestPayment(booking, amount, reason);
       failed++;
     }
   }
-  console.log(`Balance collection ${today}: ${candidates.length} due, ${charged} charged, ${failed} failed, ${noCard} without card.`);
+  const cancelled = await cancelExpired();
+  console.log(`Balance collection ${today}: ${candidates.length} due, ${charged} charged, ${failed} failed (payment link sent), ${noCard} without card (payment link sent), ${cancelled} cancelled after the 48-hour deadline.`);
 } finally {
   await pool.end();
 }

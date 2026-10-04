@@ -8,10 +8,10 @@
 
 Χρειάζονται τέσσερα αρχεία:
 
-1. `corali-pms-cpanel-v61-root.tar.gz`
-2. `corali-pms-cpanel-v61-root.tar.gz.sha256`
-3. `corali-web-installer-v61.php`
-4. `corali-web-installer-v61-access.txt`
+1. `corali-pms-cpanel-v62-root.tar.gz`
+2. `corali-pms-cpanel-v62-root.tar.gz.sha256`
+3. `corali-web-installer-v62.php`
+4. `corali-web-installer-v62-access.txt`
 
 Το τέταρτο αρχείο περιέχει την προσωπική διεύθυνση μίας χρήσης. **Δεν ανεβαίνει στον server και δεν αποστέλλεται σε τρίτους.**
 
@@ -19,14 +19,14 @@
 
 Με το cPanel File Manager ανεβάστε στον φάκελο `/home/corali/`:
 
-- `corali-pms-cpanel-v61-root.tar.gz`
-- `corali-pms-cpanel-v61-root.tar.gz.sha256`
+- `corali-pms-cpanel-v62-root.tar.gz`
+- `corali-pms-cpanel-v62-root.tar.gz.sha256`
 
 Μην τα αποσυμπιέσετε.
 
 ## Βήμα 2 — Ανέβασμα web installer
 
-Ανεβάστε μόνο το `corali-web-installer-v61.php` στον:
+Ανεβάστε μόνο το `corali-web-installer-v62.php` στον:
 
 ```text
 /home/corali/public_html/
@@ -40,7 +40,7 @@ corali-installer.php
 
 ## Βήμα 3 — Άνοιγμα ιδιωτικής διεύθυνσης
 
-Ανοίξτε τοπικά το `corali-web-installer-v61-access.txt` και αντιγράψτε ολόκληρη την ιδιωτική διεύθυνση HTTPS στον browser. Αν το cPanel ή ο browser αφαιρέσει το query parameter, ανοίξτε απευθείας το `https://www.hotelcorali.gr/corali-installer.php` και επικολλήστε στη φόρμα τον κωδικό του βήματος 4. Μην τον φωτογραφίσετε και μην τον μοιραστείτε.
+Ανοίξτε τοπικά το `corali-web-installer-v62-access.txt` και αντιγράψτε ολόκληρη την ιδιωτική διεύθυνση HTTPS στον browser. Αν το cPanel ή ο browser αφαιρέσει το query parameter, ανοίξτε απευθείας το `https://www.hotelcorali.gr/corali-installer.php` και επικολλήστε στη φόρμα τον κωδικό του βήματος 4. Μην τον φωτογραφίσετε και μην τον μοιραστείτε.
 
 Ο installer θα αφαιρέσει αμέσως τον κωδικό από τη γραμμή διεύθυνσης και θα εμφανίσει τον προέλεγχο.
 
@@ -102,7 +102,7 @@ corali-installer.php
 - `https://booking.hotelcorali.gr/api/health`
 
 ```json
-{"ok":true,"version":"v61"}
+{"ok":true,"version":"v62"}
 ```
 
 Τέλος, πατήστε **Κλείδωμα και διαγραφή installer**. Επιβεβαιώστε στο File Manager ότι δεν υπάρχει πλέον:

@@ -5,16 +5,16 @@ import { fileURLToPath } from "node:url";
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const templatePath = path.join(project, "web-installer", "corali-installer.php.template");
-const outputPath = path.join(project, "corali-web-installer-v61.php");
-const accessPath = path.join(project, "corali-web-installer-v61-access.txt");
-const archivePath = path.join(project, "corali-pms-cpanel-v61-root.tar.gz");
+const outputPath = path.join(project, "corali-web-installer-v62.php");
+const accessPath = path.join(project, "corali-web-installer-v62-access.txt");
+const archivePath = path.join(project, "corali-pms-cpanel-v62-root.tar.gz");
 const token = randomBytes(32).toString("base64url");
 const tokenHash = createHash("sha256").update(token).digest("hex");
 const template = await readFile(templatePath, "utf8");
 const regularFont=(await readFile(path.join(project,"web-installer","corali-greek-regular.ttf"))).toString("base64");
 const boldFont=(await readFile(path.join(project,"web-installer","corali-greek-bold.ttf"))).toString("base64");
 const archiveHash=createHash("sha256").update(await readFile(archivePath)).digest("hex");
-const stateId=`v61-${archiveHash.slice(0,20)}`;
+const stateId=`v62-${archiveHash.slice(0,20)}`;
 
 if (!["__INSTALL_TOKEN_HASH__","__INSTALL_STATE_ID__","__FONT_REGULAR_BASE64__","__FONT_BOLD_BASE64__"].every(key=>template.includes(key))) {
   throw new Error("Web installer placeholders are missing");
@@ -27,7 +27,7 @@ await writeFile(
   [
     "Hotel Corali web installer — one-time access",
     "",
-    "1. Upload corali-web-installer-v61.php to:",
+    "1. Upload corali-web-installer-v62.php to:",
     "   /home/corali/public_html/corali-installer.php",
     "",
     "2. Upload the release archive and its SHA-256 file to /home/corali/.",

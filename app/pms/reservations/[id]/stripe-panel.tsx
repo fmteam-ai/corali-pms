@@ -3,7 +3,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 
-type State = { configured: boolean; authorization: { cents: number; at: number } | null; savedCard: boolean; balanceCents: number; heldDays?: number };
+type State = { configured: boolean; authorization: { cents: number; at: number } | null; savedCard: boolean; balanceCents: number; heldDays?: number; deadline: number | null };
 
 // Stripe virtual terminal: capture / release a held amount, or charge the card saved at booking.
 export function StripePanel({ lang, bookingId, canWrite }: { lang: PmsLang; bookingId: number; canWrite: boolean }) {
@@ -35,11 +35,17 @@ export function StripePanel({ lang, bookingId, canWrite }: { lang: PmsLang; book
       if (d.ok) { await load(); router.refresh(); }
     } finally { setBusy(false); }
   }
-  if (!state?.configured || (!state.authorization && !state.savedCard)) return null;
+  if (!state || (!state.deadline && (!state.configured || (!state.authorization && !state.savedCard)))) return null;
   const cents = (v: string) => Math.round(Number(v.replace(",", ".")) * 100);
   return (
     <article className="card stripePanel">
       <h2>💳 {t("stp.title")}</h2>
+      {state.deadline && (
+        <section className="deadlineWarn">
+          <p><b>⚠️ {t("stp.deadline", { when: new Date(state.deadline).toLocaleString(pmsLocale(lang), { timeZone: "Europe/Athens", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) })}</b><small>{t("stp.deadlineHelp")}</small></p>
+          {canWrite && <div className="stripeRow"><button type="button" className="secondaryButton" disabled={busy} onClick={() => act({ action: "clear_deadline" }, t("stp.confirmKeep"))}>{t("stp.keep")}</button></div>}
+        </section>
+      )}
       {state.authorization && (
         <section>
           <p><b>{t("stp.held", { amount: euro(state.authorization.cents) })}</b><small>{t("stp.heldAgo", { days: state.heldDays ?? 0 })}</small></p>

@@ -1324,3 +1324,5 @@ ALTER TABLE bookings ADD COLUMN IF NOT EXISTS stripe_authorized_at BIGINT;
 -- v61: free-cancellation days per rate plan (NULL = the general cancellation policy of the period), carried to the booking.
 ALTER TABLE rate_plans ADD COLUMN IF NOT EXISTS cancellation_days BIGINT;
 ALTER TABLE booking_sessions ADD COLUMN IF NOT EXISTS cancellation_days BIGINT;
+-- v62: after a failed automatic balance charge the guest gets a payment link with a 48-hour deadline; unpaid → cancelled.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS balance_deadline_at BIGINT;

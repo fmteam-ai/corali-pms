@@ -1272,6 +1272,11 @@ const el = {
   "pp.fullWithin": "Όλο το ποσό με την κράτηση",
   "pp.fullWithinDays": "για κρατήσεις έως {days} ημέρες πριν την άφιξη",
   "pp.fullAlways": "πάντα",
+  "stp.deadline": "Αυτόματη ακύρωση στις {when} αν δεν εξοφληθεί το υπόλοιπο",
+  "stp.deadlineHelp": "Η αυτόματη χρέωση της κάρτας απέτυχε· ο επισκέπτης έλαβε σύνδεσμο πληρωμής με προθεσμία 48 ωρών.",
+  "stp.keep": "Διατήρηση κράτησης (χωρίς αυτόματη ακύρωση)",
+  "stp.confirmKeep": "Να μην ακυρωθεί αυτόματα η κράτηση; Το υπόλοιπο παραμένει χρεωστικό.",
+  "stp.done.clear_deadline": "Η αυτόματη ακύρωση καταργήθηκε για αυτή την κράτηση.",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -2540,6 +2545,11 @@ const en: Record<PmsKey, string> = {
   "pp.fullWithin": "Full amount at booking",
   "pp.fullWithinDays": "for bookings up to {days} days before arrival",
   "pp.fullAlways": "always",
+  "stp.deadline": "Automatic cancellation on {when} if the balance is not paid",
+  "stp.deadlineHelp": "The automatic card charge failed; the guest received a payment link with a 48-hour deadline.",
+  "stp.keep": "Keep the booking (no automatic cancellation)",
+  "stp.confirmKeep": "Do not cancel this booking automatically? The balance stays due.",
+  "stp.done.clear_deadline": "Automatic cancellation removed for this booking.",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };
