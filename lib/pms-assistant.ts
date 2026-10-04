@@ -4,7 +4,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/lib/db";
 import { builtInAnswer, snapshotText, type PmsSnapshot, type StayRow } from "@/lib/pms-assistant-core";
+import { monthlyRows } from "@/lib/pricing-ai-core";
+import { loadDays } from "@/lib/pricing-ai";
 import { anthropicApiKey } from "@/lib/provider-connections";
+import { withWebSearch } from "@/lib/web-research";
 import { hotelToday } from "@/lib/tape-chart";
 
 export const PMS_ASSISTANT_MODEL = "claude-opus-5-5";
@@ -42,18 +45,36 @@ const RULES = `You are the AI assistant inside the PMS (property management syst
 - Answer in the language the staff member writes in (usually Greek or English). Be concise and practical; short lists are fine.
 - Use only the data snapshot below; it is live data for today. If something isn't in it, say so and suggest where in the PMS to look (Reservations, Room plan, Reports, Payments, Housekeeping).
 - You cannot change bookings, prices or any data; tell staff which PMS screen does it.
+- Pricing questions: use the PRICES & OCCUPANCY BY MONTH data (our current nightly rates per room category, occupancy on the books, last year's occupancy, rate-shopper competitor medians). For what other properties charge (e.g. similar hotels, studios and apartments in Piso Livadi, Logaras, Marpissa on Paros) use web search: Booking.com, Google Hotels, hotel websites. Give concrete € per night with the property names and where you found them; never invent prices; if dates that far ahead aren't published yet, use the same period of the current/last season as reference and say so. You may then propose prices per room category with short reasons, and point to Τιμές → Προτάσεις τιμολόγησης → «Πρόταση τιμών με AI» to apply them, or Τιμές → Τιμές περιόδου.
+- Don't search the web for anything about guests or bookings; web search is only for market, area and general information.
 - When asked, draft messages or emails to guests (warm, professional, in the guest's language); staff send them themselves.
 - Don't reveal amounts the snapshot marks as not visible to this user.`;
 
-export async function staffAssistantReply(ownerId: string, financial: boolean, lang: "el" | "en", turns: StaffTurn[]): Promise<{ reply: string; source: "ai" | "builtin" }> {
+/** Our rates, occupancy and competitor medians per month and room category, for ~15 months (pricing questions). */
+async function pricingContext(ownerId: string, today: string): Promise<string> {
+  const from = `${today.slice(0, 7)}-01`;
+  const until = addDays(`${String(Number(from.slice(0, 4)) + 1)}-${from.slice(5, 7)}-01`, 92);
+  const { days, compByDate } = await loadDays(ownerId, from, until);
+  const rows = monthlyRows(days, compByDate);
+  return `PRICES & OCCUPANCY BY MONTH (room category: our average nightly rate now set | occupancy on the books | same month last year | rate-shopper competitor median)\n${rows.map((r) => `${r.month} ${r.roomType}: €${r.rateEur} | ${r.occupancy}% | ${r.lastYearOccupancy ?? "-"}% | ${r.compMedianEur === null ? "no rate-shopper data" : `€${r.compMedianEur} (${r.compNights} nights)`}`).join("\n") || "- no rooms"}`;
+}
+
+export async function staffAssistantReply(ownerId: string, financial: boolean, lang: "el" | "en", turns: StaffTurn[], pricing = true): Promise<{ reply: string; source: "ai" | "builtin" }> {
   const snapshot = await loadSnapshot(ownerId, financial);
   const question = turns.filter((t) => t.role === "user").at(-1)?.content ?? "";
   const builtin = () => ({ reply: builtInAnswer(question, snapshot, lang), source: "builtin" as const });
   const apiKey = await anthropicApiKey(ownerId);
   if (!apiKey) return builtin();
+  // A key is set but Claude didn't answer: say so instead of the "no AI key" help text.
+  const failed = () => {
+    const note = lang === "el" ? "⚠️ Ο AI δεν απάντησε αυτή τη στιγμή (ελέγξτε το κλειδί Anthropic στο ⚙️ Γενικά → Συνδέσεις ή δοκιμάστε ξανά σε λίγο)." : "⚠️ The AI did not answer right now (check the Anthropic key in General → Connections or try again shortly).";
+    const basic = builtInAnswer(question, snapshot, lang);
+    return { reply: basic === builtInAnswer("", snapshot, lang) ? note : `${note}\n\n${basic}`, source: "builtin" as const };
+  };
   try {
-    const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 60_000 });
-    const response = await client.beta.messages.create({
+    const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 120_000 });
+    const prices = pricing ? await pricingContext(ownerId, snapshot.today).catch((e) => { console.error("PMS assistant pricing data failed", e); return ""; }) : "";
+    const answer = await withWebSearch(client, {
       model: PMS_ASSISTANT_MODEL,
       max_tokens: 8000,
       betas: ["server-side-fallback-2026-07-01"],
@@ -61,18 +82,19 @@ export async function staffAssistantReply(ownerId: string, financial: boolean, l
       output_config: { effort: "low" },
       system: [
         { type: "text", text: RULES, cache_control: { type: "ephemeral" } },
-        { type: "text", text: `DATA SNAPSHOT\n${snapshotText(snapshot)}` },
+        { type: "text", text: `DATA SNAPSHOT\n${snapshotText(snapshot)}${prices ? `\n\n${prices}` : ""}` },
       ],
       messages: turns.map((t) => ({ role: t.role, content: t.content })),
-    });
-    if (response.stop_reason === "refusal") return builtin();
-    const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n").trim();
-    return text ? { reply: text, source: "ai" } : builtin();
+    }, 5);
+    if (!answer) return failed();
+    const sources = answer.sources.length ? `\n\n${lang === "el" ? "Πηγές" : "Sources"}:\n${answer.sources.slice(0, 6).map((x) => `• ${x.title || x.url} – ${x.url}`).join("\n")}` : "";
+    const text = answer.text ? answer.text + sources : "";
+    return text ? { reply: text, source: "ai" } : failed();
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError) console.error("PMS assistant: invalid Anthropic API key");
     else if (error instanceof Anthropic.RateLimitError) console.error("PMS assistant: rate limited by the API");
     else if (error instanceof Anthropic.APIError) console.error(`PMS assistant: API error ${error.status}`, error.message);
     else console.error("PMS assistant failed", error);
-    return builtin();
+    return failed();
   }
 }

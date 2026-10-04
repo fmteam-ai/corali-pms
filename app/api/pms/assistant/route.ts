@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     if (!(await allowAttempt(`pms-assistant:${u.ownerId}:${u.id}`, 60, 10 * 60_000, 5 * 60_000))) return Response.json({ ok: false, error: "TOO_MANY_REQUESTS" }, { status: 429 });
     let turns = x.messages.slice(-16);
     while (turns.length && turns[0].role !== "user") turns = turns.slice(1);
-    const result = await staffAssistantReply(u.ownerId, can(u.role, "folios.read", u.permissions), x.lang, turns);
+    const result = await staffAssistantReply(u.ownerId, can(u.role, "folios.read", u.permissions), x.lang, turns, can(u.role, "pricing.read", u.permissions));
     return Response.json({ ok: true, ...result }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     if (e instanceof z.ZodError) return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });

@@ -9,7 +9,7 @@ import { can } from "@/lib/security/permissions";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 
 const input = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("analyze") }),
+  z.object({ action: z.literal("analyze"), startsOn: z.iso.date().optional(), weeks: z.number().int().min(1).max(13).optional(), webSearch: z.boolean().default(false) }),
   z.object({ action: z.literal("apply"), items: z.array(z.object({ roomType: z.string().trim().min(1).max(60), startsOn: z.iso.date(), endsOn: z.iso.date(), priceCents: z.number().int().min(1000).max(5_000_00), note: z.string().max(300).default("") })).min(1).max(40) }),
 ]);
 
@@ -22,7 +22,7 @@ async function handlePOST(request: Request) {
     if (x.action === "analyze") {
       if (!(await anthropicApiKey(u.ownerId))) return Response.json({ ok: false, error: "AI_NOT_CONFIGURED" }, { status: 409 });
       if (!(await allowAttempt(`pricing-ai:${u.ownerId}`, 10, 60 * 60_000, 30 * 60_000))) return Response.json({ ok: false, error: "TOO_MANY_REQUESTS" }, { status: 429 });
-      const analysis = await analysePricing(u.ownerId);
+      const analysis = await analysePricing(u.ownerId, { startsOn: x.startsOn, weeks: x.weeks, webSearch: x.webSearch });
       return analysis ? Response.json({ ok: true, ...analysis }) : Response.json({ ok: false, error: "AI_UNAVAILABLE" }, { status: 409 });
     }
     if (!can(u.role, "pricing.create", u.permissions)) return forbidden(u, "pricing.create");

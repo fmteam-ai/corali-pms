@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { autoReplyBlocked } from "../lib/guest-message-rules.ts";
-import { clampRecommendation, weeklyRows, type DayRow } from "../lib/pricing-ai-core.ts";
+import { clampRecommendation, monthlyRows, pricingPeriod, weeklyRows, type DayRow } from "../lib/pricing-ai-core.ts";
 
 test("auto-reply guard sends money, changes, cancellations and complaints to reception", () => {
   for (const t of ["Can I get a refund?", "Θέλω να ακυρώσω την κράτηση", "I feel ill", "We lost a bag", "Μπορούμε να αλλάξουμε ημερομηνίες;", "The room was dirty", "Je voudrais annuler", "Wann wird meine Karte belastet?", "Quanto costa il prezzo?", "¿Puedo pagar en efectivo? quiero un descuento", "", "   "]) assert.equal(autoReplyBlocked(t), true, t);
@@ -29,4 +29,17 @@ test("AI price recommendations are clamped to ±35% and dropped for unknown cate
   assert.equal(clampRecommendation({ ...base, room_type: "Suite", recommended_rate_eur: 120 }, weeks), null);
   assert.equal(clampRecommendation({ ...base, ends_on: "2026-06-30", recommended_rate_eur: 120 }, weeks), null);
   assert.equal(clampRecommendation({ ...base, starts_on: "July", recommended_rate_eur: 120 }, weeks), null);
+});
+
+test("pricing period starts today or later, at most ~18 months ahead, 1–13 weeks", () => {
+  assert.deepEqual(pricingPeriod("2026-10-04"), { startsOn: "2026-10-04", weeks: 9, endsOn: "2026-12-05" });
+  assert.deepEqual(pricingPeriod("2026-10-04", { startsOn: "2027-05-01", weeks: 5 }), { startsOn: "2027-05-01", weeks: 5, endsOn: "2027-06-04" });
+  assert.equal(pricingPeriod("2026-10-04", { startsOn: "2026-01-01" }).startsOn, "2026-10-04");
+  assert.equal(pricingPeriod("2026-10-04", { startsOn: "2030-01-01" }).startsOn, "2028-04-06");
+  assert.equal(pricingPeriod("2026-10-04", { weeks: 40 }).weeks, 13);
+});
+
+test("monthly rows summarise rates, occupancy and competitors per month and category", () => {
+  const rows = monthlyRows([day("2027-05-30", "Double", 2), day("2027-05-31", "Double", 4, { rateCents: 12000, lastYear: 2 }), day("2027-06-01", "Double", 0), day("2027-05-30", "Studio", 0, { total: 0 })], new Map([["2027-05-31", [13000]]]));
+  assert.deepEqual(rows.map((r) => [r.month, r.roomType, r.rateEur, r.occupancy, r.lastYearOccupancy, r.compMedianEur, r.compNights]), [["2027-05", "Double", 110, 75, 50, 130, 1], ["2027-06", "Double", 100, 0, null, null, 0]]);
 });

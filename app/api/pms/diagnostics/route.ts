@@ -55,7 +55,7 @@ const dashboardQueries=[
  {name:"dashboard_13",sql:`SELECT id,name_el,name,price_cents,pricing_mode FROM extras WHERE owner_id=$1 AND active=1 ORDER BY sort_order,id LIMIT 30`},
  {name:"dashboard_14",sql:`SELECT t.id,r.code room_code,t.status,t.task_type,t.assigned_to FROM housekeeping_tasks t JOIN rooms r ON r.id=t.room_id AND r.owner_id=t.owner_id WHERE t.owner_id=$1 AND t.status NOT IN ('ready','completed') ORDER BY t.id DESC LIMIT 30`},
  {name:"dashboard_15",sql:`SELECT count(*)::int AS total FROM booking_sessions WHERE owner_id=$1 AND status='payment_pending' AND recovery_due_at>(extract(epoch from now())*1000)::bigint`},
- {name:"dashboard_16",sql:`SELECT COALESCE(sum(CASE WHEN entry_type IN ('payment','refund') THEN -amount_cents ELSE 0 END),0)::bigint AS net_cents FROM folio_entries WHERE owner_id=$1 AND created_at>=(extract(epoch from ((now() AT TIME ZONE 'Europe/Athens')::date AT TIME ZONE 'Europe/Athens'))*1000)::bigint AND created_at<(extract(epoch from (((now() AT TIME ZONE 'Europe/Athens')::date+1) AT TIME ZONE 'Europe/Athens'))*1000)::bigint`}
+ {name:"dashboard_16",sql:`SELECT COALESCE(sum(CASE WHEN entry_type IN ('payment','refund') THEN -amount_cents ELSE 0 END),0)::bigint AS net_cents FROM folio_entries WHERE owner_id=$1 AND created_at>=(extract(epoch from ((now() AT TIME ZONE 'Europe/Athens')::date::timestamp AT TIME ZONE 'Europe/Athens'))*1000)::bigint AND created_at<(extract(epoch from (((now() AT TIME ZONE 'Europe/Athens')::date+1) AT TIME ZONE 'Europe/Athens'))*1000)::bigint`}
 ] as const;
 
 const availabilityQueries=[
@@ -91,6 +91,6 @@ export async function GET(){
   catch(error){const code=typeof error==="object"&&error!==null&&"code" in error?String(error.code):error instanceof Error&&["INVALID_ROOM_PRICE","INVALID_DATES"].includes(error.message)?error.message:error instanceof TypeError?"DATA_PROCESSING_TYPE_ERROR":"AVAILABILITY_FAILED";failed.push({area:"availability",code});console.error("PMS diagnostic availability failed",error)}
   // Active rooms without a base price: the booking engine falls back to the category price (or hides the category).
   const unpricedRooms=(await db().query("SELECT code,room_type FROM rooms WHERE owner_id=$1 AND active=1 AND COALESCE(base_rate_cents,0)<=0 ORDER BY code",[user.ownerId])).rows.map(r=>`${r.code} (${r.room_type})`);
-  return Response.json({ok:missing.length===0&&failed.length===0,unpricedRooms,version:"v65",area:"pms_and_booking",missing,failed,activeRooms:Number((await db().query("SELECT count(*)::int AS total FROM rooms WHERE owner_id=$1 AND active=1",[user.ownerId])).rows[0]?.total??0)},{status:missing.length||failed.length?503:200,headers:{"Cache-Control":"private, no-store"}});
+  return Response.json({ok:missing.length===0&&failed.length===0,unpricedRooms,version:"v66",area:"pms_and_booking",missing,failed,activeRooms:Number((await db().query("SELECT count(*)::int AS total FROM rooms WHERE owner_id=$1 AND active=1",[user.ownerId])).rows[0]?.total??0)},{status:missing.length||failed.length?503:200,headers:{"Cache-Control":"private, no-store"}});
  }catch(e){console.error("PMS dashboard diagnostic failed",e);return Response.json({ok:false,area:"pms_dashboard",error:"DATABASE_CHECK_FAILED"},{status:503,headers:{"Cache-Control":"private, no-store"}})}
 }

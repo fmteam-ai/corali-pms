@@ -1,6 +1,12 @@
-# Hotel Corali PMS v65 — release verification
+# Hotel Corali PMS v66 — release verification
 
 ## Scope in this package
+
+### New in v66
+- **PMS AI assistant (dashboard) answers pricing questions**: it now sees our nightly rates, occupancy on the books, last year's occupancy and rate-shopper competitor medians per month and room category for ~15 months, and uses **web search** (Claude server tool) for what similar properties in Piso Livadi / Logaras / Marpissa ask — with property names and sources listed under the answer. New chip "Τιμές ανταγωνισμού στο Πίσω Λιβάδι για Μάιο". Web search is used only for market/area information, never for guests. When a key is set but the AI fails, the reply says so instead of "no AI key".
+- **✨ AI price proposals**: choose the period (start date up to ~18 months ahead, 1–13 weeks) and "Τιμές ανταγωνισμού από το διαδίκτυο" (web research step whose findings and sources are shown, then the structured recommendations).
+- Fix: dashboard "today's receipts" started at 03:00 Athens time instead of midnight (date cast to timestamptz); also in diagnostics.
+- Tests: `tests/web-research.test.ts` (pause_turn resume, sources), period and monthly aggregation in `tests/ai-guards.test.ts`.
 
 ### New in v65
 - **AI in guest messages** (PMS → Μηνύματα επισκεπτών): **✨ Πρόταση απάντησης** writes a draft reply to the guest's last message (hotel facts, policy and this booking), which staff edit and send. Hotel replies are now also emailed to the guest with a link to "My booking".

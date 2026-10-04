@@ -69,7 +69,7 @@ health_file="$sandbox/health.json"
 health_status="$(curl -sS -o "$health_file" -w '%{http_code}' "http://127.0.0.1:$port/api/health")"
 [[ "$health_status" == 503 ]]
 grep -Eq '"ok"[[:space:]]*:[[:space:]]*false' "$health_file"
-grep -Eq '"version"[[:space:]]*:[[:space:]]*"v65"' "$health_file"
+grep -Eq '"version"[[:space:]]*:[[:space:]]*"v66"' "$health_file"
 grep -Eq '"reason"[[:space:]]*:[[:space:]]*"database_unavailable"' "$health_file"
 
 csrf_url="http://127.0.0.1:$port/api/auth/login"
@@ -107,5 +107,5 @@ grep -qi '/book' < <(curl -sSI "http://127.0.0.1:$port/login")
 booking_health="$sandbox/booking-health.json"
 [[ "$(curl -sS -o "$booking_health" -w '%{http_code}' "http://127.0.0.1:$port/api/health")" == 503 ]]
 grep -Eq '"service"[[:space:]]*:[[:space:]]*"corali-booking"' "$booking_health"
-grep -Eq '"version"[[:space:]]*:[[:space:]]*"v65"' "$booking_health"
+grep -Eq '"version"[[:space:]]*:[[:space:]]*"v66"' "$booking_health"
 echo "Production archive role isolation, routes, headers, health version and CSRF behavior: OK"

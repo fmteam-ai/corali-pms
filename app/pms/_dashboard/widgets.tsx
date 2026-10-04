@@ -300,7 +300,7 @@ export function AiAssistant({ t, lang }: { t: T; lang: PmsLang }) {
   const [turns, setTurns] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const suggestions = [t("ai.s.arrivals"), t("ai.s.occupancy"), t("ai.s.balances"), t("ai.s.reply")];
+  const suggestions = [t("ai.s.arrivals"), t("ai.s.occupancy"), t("ai.s.balances"), t("ai.s.reply"), t("ai.s.prices")];
   async function ask(question: string) {
     const q = question.trim();
     if (!q || busy) return;

@@ -1058,7 +1058,7 @@ const el = {
   "ax.cardsHelp": "Τα δωμάτια πωλούνται ανά «Τύπο δωματίου». Η κάρτα παίρνει το όνομα της κατηγορίας του πρώτου δωματίου, τις φωτογραφίες του πρώτου δωματίου που έχει φωτογραφίες και τα χαρακτηριστικά όλων. Για να εμφανίζεται ένα δωμάτιο σε άλλη κάρτα, αλλάξτε τον «Τύπο δωματίου» του στα Δωμάτια → Διαχείριση.",
   "ax.noCategory": "χωρίς κατηγορία",
   "w.title.ai_assistant": "AI βοηθός",
-  "ai.empty": "Δεν υπάρχουν μηνύματα ακόμα. Ρωτήστε για αφίξεις, πληρότητα, υπόλοιπα ή ζητήστε απάντηση προς επισκέπτη.",
+  "ai.empty": "Δεν υπάρχουν μηνύματα ακόμα. Ρωτήστε για αφίξεις, πληρότητα, υπόλοιπα, τιμές και ανταγωνισμό ή ζητήστε απάντηση προς επισκέπτη.",
   "ai.placeholder": "Γράψτε κάτι και πατήστε Enter",
   "ai.error": "Ο βοηθός δεν μπόρεσε να απαντήσει. Δοκιμάστε ξανά.",
   "ai.clear": "Νέα συζήτηση",
@@ -1308,6 +1308,7 @@ const el = {
   "msg.aiAuto": "Αυτόματη απάντηση AI σε απλές ερωτήσεις",
   "msg.aiAutoHelp": "Απαντά μόνο σε ερωτήσεις πληροφοριών (ώρες, πρόσβαση, άφιξη, εγκαταστάσεις, περιοχή, transfer, στοιχεία κράτησης). Πληρωμές, αλλαγές, ακυρώσεις, παράπονα και ειδικά αιτήματα μένουν πάντα για τη ρεσεψιόν. Λαμβάνετε ειδοποίηση για κάθε αυτόματη απάντηση.",
   "msg.aiTag": "αυτόματη απάντηση AI",
+  "ai.s.prices": "Τιμές ανταγωνισμού στο Πίσω Λιβάδι για Μάιο",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -2362,7 +2363,7 @@ const en: Record<PmsKey, string> = {
   "ax.cardsHelp": "Rooms are sold per room type. A card takes the category name of its first room, the photos of the first room that has photos and the characteristics of all rooms. To show a room in another card, change its room type in Rooms → Manage.",
   "ax.noCategory": "no category",
   "w.title.ai_assistant": "AI assistant",
-  "ai.empty": "No messages yet. Ask about arrivals, occupancy, balances or ask for a reply to a guest.",
+  "ai.empty": "No messages yet. Ask about arrivals, occupancy, balances, prices and competitors, or ask for a reply to a guest.",
   "ai.placeholder": "Type something and press Enter",
   "ai.error": "The assistant could not answer. Please try again.",
   "ai.clear": "New conversation",
@@ -2612,6 +2613,7 @@ const en: Record<PmsKey, string> = {
   "msg.aiAuto": "AI automatic replies to simple questions",
   "msg.aiAutoHelp": "Answers only information questions (times, access, arrival, facilities, area, transfers, booking details). Payments, changes, cancellations, complaints and special requests always stay with reception. You are notified of every automatic reply.",
   "msg.aiTag": "AI automatic reply",
+  "ai.s.prices": "Competitor prices in Piso Livadi for May",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

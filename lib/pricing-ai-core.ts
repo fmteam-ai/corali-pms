@@ -2,7 +2,9 @@
 // guard rails applied to what it proposes. Unit tested.
 import { addDays } from "./tape-chart.ts";
 
-export const PRICING_HORIZON_DAYS = 63; // nine weeks
+export const PRICING_HORIZON_DAYS = 63; // nine weeks by default
+export const MAX_WEEKS = 13; // longest period analysed at once
+export const MAX_AHEAD_DAYS = 550; // periods may start up to ~18 months ahead
 export const MAX_CHANGE = 0.35; // recommendations are kept within ±35% of the current price
 
 export type RawRecommendation = { room_type: string; starts_on: string; ends_on: string; recommended_rate_eur: number; confidence: "low" | "medium" | "high"; reasoning: string };
@@ -12,13 +14,13 @@ export type DayRow = { date: string; roomType: string; total: number; occupied: 
 
 const median = (v: number[]) => { const s = [...v].sort((a, b) => a - b); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : null; };
 
-/** Weekly figures per room category for the next nine weeks, from daily rows and competitor rates per date (cents). */
-export function weeklyRows(today: string, days: DayRow[], comp: Map<string, number[]>): WeekRow[] {
+/** Weekly figures per room category from `start` for `weeks` weeks, from daily rows and competitor rates per date (cents). */
+export function weeklyRows(start0: string, days: DayRow[], comp: Map<string, number[]>, weeks = PRICING_HORIZON_DAYS / 7): WeekRow[] {
   const out: WeekRow[] = [];
   const types = [...new Set(days.map((d) => d.roomType))].sort();
   for (const type of types) {
-    for (let w = 0; w * 7 < PRICING_HORIZON_DAYS; w++) {
-      const start = addDays(today, w * 7), end = addDays(today, w * 7 + 6);
+    for (let w = 0; w < weeks; w++) {
+      const start = addDays(start0, w * 7), end = addDays(start0, w * 7 + 6);
       const week = days.filter((d) => d.roomType === type && d.date >= start && d.date <= end && d.total > 0);
       if (!week.length) continue;
       const compRates = week.flatMap((d) => comp.get(d.date) ?? []);
@@ -50,4 +52,37 @@ export function clampRecommendation(r: RawRecommendation, weeks: WeekRow[]): Pri
   const asked = Number(r.recommended_rate_eur);
   const rate = Math.round(Math.min(current * (1 + MAX_CHANGE), Math.max(current * (1 - MAX_CHANGE), Number.isFinite(asked) && asked > 0 ? asked : current)));
   return { ...r, recommended_rate_eur: rate, current_rate_eur: current, change_percent: Math.round(((rate - current) / current) * 100) };
+}
+
+export type MonthRow = { month: string; roomType: string; rateEur: number; occupancy: number; lastYearOccupancy: number | null; compMedianEur: number | null; compNights: number };
+
+/** Monthly figures per room category (for the staff assistant's pricing questions). */
+export function monthlyRows(days: DayRow[], comp: Map<string, number[]>): MonthRow[] {
+  const groups = new Map<string, DayRow[]>();
+  for (const d of days) if (d.total > 0) groups.set(`${d.date.slice(0, 7)}|${d.roomType}`, [...(groups.get(`${d.date.slice(0, 7)}|${d.roomType}`) ?? []), d]);
+  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, list]) => {
+    const [month, roomType] = key.split("|");
+    const compRates = list.flatMap((d) => comp.get(d.date) ?? []);
+    const ly = list.filter((d) => d.lastYear !== null);
+    const total = list.reduce((a, d) => a + d.total, 0);
+    return {
+      month, roomType,
+      rateEur: Math.round(list.reduce((a, d) => a + d.rateCents, 0) / list.length / 100),
+      occupancy: Math.round((list.reduce((a, d) => a + d.occupied, 0) / total) * 100),
+      lastYearOccupancy: ly.length ? Math.round((ly.reduce((a, d) => a + (d.lastYear ?? 0), 0) / ly.reduce((a, d) => a + d.total, 0)) * 100) : null,
+      compMedianEur: compRates.length ? Math.round(median(compRates)! / 100) : null,
+      compNights: compRates.length,
+    };
+  });
+}
+
+export type PeriodOptions = { startsOn?: string; weeks?: number };
+
+/** The period to analyse: from today or a chosen date (not in the past, at most ~18 months ahead), 1–13 weeks. */
+export function pricingPeriod(today: string, options: PeriodOptions = {}) {
+  const max = addDays(today, MAX_AHEAD_DAYS);
+  const asked = options.startsOn && /^\d{4}-\d{2}-\d{2}$/.test(options.startsOn) ? options.startsOn : today;
+  const startsOn = asked < today ? today : asked > max ? max : asked;
+  const weeks = Math.min(MAX_WEEKS, Math.max(1, Math.round(Number(options.weeks) || PRICING_HORIZON_DAYS / 7)));
+  return { startsOn, weeks, endsOn: addDays(startsOn, weeks * 7 - 1) };
 }

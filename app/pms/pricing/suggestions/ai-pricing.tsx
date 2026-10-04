@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { PricingRecommendation } from "@/lib/pricing-ai-core";
+import type { WebAnswer } from "@/lib/web-research";
 
 type Line = PricingRecommendation & { key: string; on: boolean; rate: number };
 const confidence = { low: "χαμηλή", medium: "μέτρια", high: "υψηλή" } as const;
@@ -16,14 +17,19 @@ export function AiPricing({ aiConfigured, canApply }: { aiConfigured: boolean; c
   const [summary, setSummary] = useState("");
   const [lines, setLines] = useState<Line[] | null>(null);
   const [compNights, setCompNights] = useState(0);
+  const [startsOn, setStartsOn] = useState("");
+  const [weeks, setWeeks] = useState(9);
+  const [webSearch, setWebSearch] = useState(true);
+  const [web, setWeb] = useState<WebAnswer | null>(null);
+  const [period, setPeriod] = useState("");
 
   async function analyze() {
-    setBusy(true); setMsg("Ο AI αναλύει περίοδο, διαθεσιμότητα και ανταγωνισμό… (έως 1–2 λεπτά)");
+    setBusy(true); setMsg(webSearch ? "Ο AI ψάχνει τιμές ανταγωνισμού στο διαδίκτυο και αναλύει περίοδο και διαθεσιμότητα… (έως 3–4 λεπτά)" : "Ο AI αναλύει περίοδο, διαθεσιμότητα και ανταγωνισμό… (έως 1–2 λεπτά)");
     try {
-      const r = await fetch("/api/pms/pricing-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "analyze" }) });
+      const r = await fetch("/api/pms/pricing-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "analyze", weeks, webSearch, ...(startsOn ? { startsOn } : {}) }) });
       const d = await r.json().catch(() => ({}));
       if (!d.ok) { setMsg(errors[d.error] ?? errors.AI_UNAVAILABLE); return; }
-      setSummary(d.summary); setCompNights(Number(d.competitorNights) || 0);
+      setSummary(d.summary); setCompNights(Number(d.competitorNights) || 0); setWeb(d.web ?? null); setPeriod(`${d.startsOn} → ${d.endsOn}`);
       setLines((d.recommendations as PricingRecommendation[]).map((x, i) => ({ ...x, key: `${i}`, on: x.change_percent !== 0, rate: x.recommended_rate_eur })));
       setMsg(d.recommendations.length ? "" : "Ο AI δεν προτείνει αλλαγές: οι τρέχουσες τιμές φαίνονται σωστές.");
     } catch { setMsg(errors.AI_UNAVAILABLE); } finally { setBusy(false); }
@@ -43,18 +49,32 @@ export function AiPricing({ aiConfigured, canApply }: { aiConfigured: boolean; c
   const set = (key: string, patch: Partial<Line>) => setLines((v) => (v ?? []).map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
   return (
-    <div className="hubCard aiPricing">
+    <div className="aiPricing">
       <div className="aiPricingHead">
         <div>
           <h2>✨ Πρόταση τιμών με AI</h2>
-          <p>Ο Claude εξετάζει για τις επόμενες 9 εβδομάδες, ανά κατηγορία δωματίου: την εποχή στην Πάρο, την πληρότητα και τον ρυθμό κρατήσεων, την πληρότητα της ίδιας περιόδου πέρσι και τις τιμές παρόμοιων καταλυμάτων της περιοχής (από τον Rate shopper). Καμία τιμή δεν αλλάζει χωρίς την έγκρισή σας και καμία πρόταση δεν απέχει πάνω από ±35% από την τρέχουσα τιμή.</p>
+          <p>Ο Claude εξετάζει για την περίοδο που διαλέγετε, ανά κατηγορία δωματίου: την εποχή στην Πάρο, την πληρότητα και τον ρυθμό κρατήσεων, την πληρότητα της ίδιας περιόδου πέρσι και τις τιμές παρόμοιων καταλυμάτων της περιοχής (από τον Rate shopper και, αν το επιλέξετε, από αναζήτηση στο διαδίκτυο). Καμία τιμή δεν αλλάζει χωρίς την έγκρισή σας και καμία πρόταση δεν απέχει πάνω από ±35% από την τρέχουσα τιμή.</p>
         </div>
-        <button type="button" disabled={busy || !aiConfigured} onClick={analyze}>{busy && !lines ? "Ανάλυση…" : lines ? "Νέα ανάλυση" : "Ανάλυση τιμών"}</button>
+        <div className="aiPricingForm">
+          <label>Από<input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} /></label>
+          <label>Εβδομάδες<select value={weeks} onChange={(e) => setWeeks(Number(e.target.value))}>{Array.from({ length: 13 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}</select></label>
+          <label className="inline"><input type="checkbox" checked={webSearch} onChange={(e) => setWebSearch(e.target.checked)} /> Τιμές ανταγωνισμού από το διαδίκτυο</label>
+          <button type="button" disabled={busy || !aiConfigured} onClick={analyze}>{busy ? "Ανάλυση…" : lines ? "Νέα ανάλυση" : "Ανάλυση τιμών"}</button>
+        </div>
       </div>
+      <small>Κενό «Από» = από σήμερα. Μπορείτε να διαλέξετε περίοδο έως ~18 μήνες μπροστά (π.χ. Μάιος 2027).</small>
       {!aiConfigured && <p className="notice">{errors.AI_NOT_CONFIGURED}</p>}
-      {summary && <p className="aiSummary">{summary}</p>}
+      {summary && <p className="aiSummary">{period && <b>{period}<br /></b>}{summary}</p>}
+      {web && web.text && (
+        <details className="aiResearch">
+          <summary>🌐 Τιμές ανταγωνισμού από το διαδίκτυο ({web.sources.length} πηγές)</summary>
+          <p>{web.text}</p>
+          {web.sources.length > 0 && <ul>{web.sources.map((x) => <li key={x.url}><a href={x.url} target="_blank" rel="noopener noreferrer">{x.title || x.url}</a></li>)}</ul>}
+          <small>Ενδεικτικές τιμές όπως εμφανίζονται δημόσια· αλλάζουν συχνά.</small>
+        </details>
+      )}
       {lines && (
-        <p><small>{compNights ? `Δεδομένα ανταγωνισμού: ${compNights} τιμές-νύχτες.` : "Δεν υπάρχουν τιμές ανταγωνισμού για αυτές τις ημερομηνίες· ο AI βασίστηκε μόνο σε εποχή και διαθεσιμότητα. Προσθέστε τιμές στο Revenue analytics → Rate shopper."}</small></p>
+        <p><small>{compNights ? `Rate shopper: ${compNights} τιμές-νύχτες ανταγωνισμού.` : web?.text ? "Rate shopper: χωρίς τιμές για αυτές τις ημερομηνίες· χρησιμοποιήθηκε η αναζήτηση στο διαδίκτυο." : "Δεν βρέθηκαν τιμές ανταγωνισμού· ο AI βασίστηκε σε εποχή και διαθεσιμότητα. Ενεργοποιήστε την αναζήτηση στο διαδίκτυο ή προσθέστε τιμές στο Revenue analytics → Rate shopper."}</small></p>
       )}
       {lines && lines.length > 0 && (
         <>
