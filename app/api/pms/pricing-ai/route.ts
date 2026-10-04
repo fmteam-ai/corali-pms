@@ -23,7 +23,8 @@ async function handlePOST(request: Request) {
       if (!(await anthropicApiKey(u.ownerId))) return Response.json({ ok: false, error: "AI_NOT_CONFIGURED" }, { status: 409 });
       if (!(await allowAttempt(`pricing-ai:${u.ownerId}`, 10, 60 * 60_000, 30 * 60_000))) return Response.json({ ok: false, error: "TOO_MANY_REQUESTS" }, { status: 429 });
       const analysis = await analysePricing(u.ownerId, { startsOn: x.startsOn, weeks: x.weeks, webSearch: x.webSearch });
-      return analysis ? Response.json({ ok: true, ...analysis }) : Response.json({ ok: false, error: "AI_UNAVAILABLE" }, { status: 409 });
+      if (!analysis || "failure" in analysis) return Response.json({ ok: false, error: "AI_UNAVAILABLE", detail: analysis?.failure ?? "" }, { status: 409 });
+      return Response.json({ ok: true, ...analysis });
     }
     if (!can(u.role, "pricing.create", u.permissions)) return forbidden(u, "pricing.create");
     // Applying a recommendation creates a season price (per night, for the category) that can be edited or deleted later.

@@ -9,7 +9,7 @@ import { ASSISTANT_MODEL } from "@/lib/guest-assistant";
 import { anthropicApiKey } from "@/lib/provider-connections";
 import { hotelToday } from "@/lib/tape-chart";
 import { clampRecommendation, pricingPeriod, weeklyRows, type DayRow, type PeriodOptions, type PricingRecommendation, type WeekRow } from "@/lib/pricing-ai-core";
-import { withWebSearch, type WebAnswer } from "@/lib/web-research";
+import { apiErrorText, withWebSearch, type WebAnswer } from "@/lib/web-research";
 
 export type { PricingRecommendation, WeekRow };
 
@@ -79,7 +79,7 @@ function logError(scope: string, error: unknown) {
 }
 
 /** Ask Claude for price recommendations for a period. null when no API key is set or the AI is unavailable. */
-export async function analysePricing(ownerId: string, options: PricingOptions = {}): Promise<PricingAnalysis | null> {
+export async function analysePricing(ownerId: string, options: PricingOptions = {}): Promise<PricingAnalysis | { failure: string } | null> {
   const apiKey = await anthropicApiKey(ownerId);
   if (!apiKey) return null;
   const today = hotelToday();
@@ -98,7 +98,7 @@ export async function analysePricing(ownerId: string, options: PricingOptions = 
         system: researchInstructions,
         messages: [{ role: "user", content: `Today is ${today}. Dates: ${startsOn} to ${endsOn}. Our room categories: ${types}.` }],
       }, 8);
-    } catch (error) { logError("Pricing research", error); }
+    } catch (error) { logError("Pricing research", error); web = { text: "", sources: [], searches: 0, error: apiErrorText(error) }; }
   }
   const table = ["room_type | week | rooms | current €/night | occupancy % | last year % | booked last 14 days | rate shopper median/min/max €", ...weeks.map((w) => `${w.roomType} | ${w.startsOn}→${w.endsOn} | ${w.rooms} | ${w.rateEur} | ${w.occupancy} | ${w.lastYearOccupancy ?? "-"} | ${w.recentBookings} | ${w.compMedianEur === null ? "no data" : `${w.compMedianEur}/${w.compMinEur}/${w.compMaxEur}`}`)].join("\n");
   try {
@@ -116,6 +116,6 @@ export async function analysePricing(ownerId: string, options: PricingOptions = 
     return { summary: response.parsed_output.summary, recommendations, weeks, competitorNights, startsOn, endsOn, web };
   } catch (error) {
     logError("Pricing AI", error);
-    return null;
+    return { failure: apiErrorText(error) };
   }
 }

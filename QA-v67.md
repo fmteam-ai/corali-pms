@@ -1,6 +1,10 @@
-# Hotel Corali PMS v66 — release verification
+# Hotel Corali PMS v67 — release verification
 
 ## Scope in this package
+
+### New in v67
+- AI assistant and AI price proposals no longer fail as a whole when web search is rejected by the Anthropic API: the assistant answers without web search and adds "ℹ️ Χωρίς αναζήτηση στο διαδίκτυο: <Anthropic message>"; pricing runs without the research step and shows the reason.
+- When the AI call itself fails, the assistant / pricing screen shows the Anthropic error message (status + message, e.g. invalid key, credit balance too low) instead of a generic text. Verified against a mock API that rejects the web search tool.
 
 ### New in v66
 - **PMS AI assistant (dashboard) answers pricing questions**: it now sees our nightly rates, occupancy on the books, last year's occupancy and rate-shopper competitor medians per month and room category for ~15 months, and uses **web search** (Claude server tool) for what similar properties in Piso Livadi / Logaras / Marpissa ask — with property names and sources listed under the answer. New chip "Τιμές ανταγωνισμού στο Πίσω Λιβάδι για Μάιο". Web search is used only for market/area information, never for guests. When a key is set but the AI fails, the reply says so instead of "no AI key".

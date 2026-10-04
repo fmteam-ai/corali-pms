@@ -7,7 +7,7 @@ import { builtInAnswer, snapshotText, type PmsSnapshot, type StayRow } from "@/l
 import { monthlyRows } from "@/lib/pricing-ai-core";
 import { loadDays } from "@/lib/pricing-ai";
 import { anthropicApiKey } from "@/lib/provider-connections";
-import { withWebSearch } from "@/lib/web-research";
+import { apiErrorText, responseText, withWebSearch } from "@/lib/web-research";
 import { hotelToday } from "@/lib/tape-chart";
 
 export const PMS_ASSISTANT_MODEL = "claude-opus-5-5";
@@ -66,15 +66,15 @@ export async function staffAssistantReply(ownerId: string, financial: boolean, l
   const apiKey = await anthropicApiKey(ownerId);
   if (!apiKey) return builtin();
   // A key is set but Claude didn't answer: say so instead of the "no AI key" help text.
-  const failed = () => {
-    const note = lang === "el" ? "⚠️ Ο AI δεν απάντησε αυτή τη στιγμή (ελέγξτε το κλειδί Anthropic στο ⚙️ Γενικά → Συνδέσεις ή δοκιμάστε ξανά σε λίγο)." : "⚠️ The AI did not answer right now (check the Anthropic key in General → Connections or try again shortly).";
+  const failed = (reason = "") => {
+    const note = (lang === "el" ? "⚠️ Ο AI δεν απάντησε αυτή τη στιγμή (ελέγξτε το κλειδί και το υπόλοιπο λογαριασμού Anthropic ή δοκιμάστε ξανά σε λίγο)." : "⚠️ The AI did not answer right now (check the Anthropic key and account credit, or try again shortly).") + (reason ? `\n${lang === "el" ? "Μήνυμα Anthropic" : "Anthropic says"}: ${reason}` : "");
     const basic = builtInAnswer(question, snapshot, lang);
     return { reply: basic === builtInAnswer("", snapshot, lang) ? note : `${note}\n\n${basic}`, source: "builtin" as const };
   };
   try {
     const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 120_000 });
     const prices = pricing ? await pricingContext(ownerId, snapshot.today).catch((e) => { console.error("PMS assistant pricing data failed", e); return ""; }) : "";
-    const answer = await withWebSearch(client, {
+    const params: Anthropic.Beta.MessageCreateParamsNonStreaming = {
       model: PMS_ASSISTANT_MODEL,
       max_tokens: 8000,
       betas: ["server-side-fallback-2026-07-01"],
@@ -85,7 +85,20 @@ export async function staffAssistantReply(ownerId: string, financial: boolean, l
         { type: "text", text: `DATA SNAPSHOT\n${snapshotText(snapshot)}${prices ? `\n\n${prices}` : ""}` },
       ],
       messages: turns.map((t) => ({ role: t.role, content: t.content })),
-    }, 5);
+    };
+    let answer: Awaited<ReturnType<typeof withWebSearch>> = null;
+    try {
+      answer = await withWebSearch(client, params, 5);
+    } catch (error) {
+      // Web search unavailable (not enabled, unsupported, …): answer without it and say why.
+      const reason = apiErrorText(error);
+      console.error("PMS assistant web search failed:", reason);
+      if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.RateLimitError) throw error;
+      const plain = await client.beta.messages.create(params);
+      if (plain.stop_reason === "refusal") return failed();
+      const text = responseText(plain);
+      return text ? { reply: `${text}\n\n${lang === "el" ? "ℹ️ Χωρίς αναζήτηση στο διαδίκτυο" : "ℹ️ Without web search"}: ${reason}`, source: "ai" } : failed(reason);
+    }
     if (!answer) return failed();
     const sources = answer.sources.length ? `\n\n${lang === "el" ? "Πηγές" : "Sources"}:\n${answer.sources.slice(0, 6).map((x) => `• ${x.title || x.url} – ${x.url}`).join("\n")}` : "";
     const text = answer.text ? answer.text + sources : "";
@@ -95,6 +108,6 @@ export async function staffAssistantReply(ownerId: string, financial: boolean, l
     else if (error instanceof Anthropic.RateLimitError) console.error("PMS assistant: rate limited by the API");
     else if (error instanceof Anthropic.APIError) console.error(`PMS assistant: API error ${error.status}`, error.message);
     else console.error("PMS assistant failed", error);
-    return failed();
+    return failed(apiErrorText(error));
   }
 }

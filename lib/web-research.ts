@@ -3,7 +3,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 export type WebSource = { title: string; url: string };
-export type WebAnswer = { text: string; sources: WebSource[]; searches: number };
+export type WebAnswer = { text: string; sources: WebSource[]; searches: number; error?: string };
 
 export const webSearchTool = (maxUses: number): Anthropic.Beta.BetaWebSearchTool20260209 => ({
   type: "web_search_20260209",
@@ -30,4 +30,19 @@ export async function withWebSearch(client: Anthropic, params: Omit<Anthropic.Be
     messages.push({ role: "assistant", content: response.content });
   }
   return { text: text.trim(), sources: [...sources.values()].slice(0, 15), searches };
+}
+
+/** A short, staff-readable reason from an Anthropic API error (status + the API's own message; no secrets). */
+export function apiErrorText(error: unknown): string {
+  if (error instanceof Anthropic.APIError) {
+    const body = error.error as { error?: { message?: string } } | undefined;
+    const message = body?.error?.message || error.message || "";
+    return `${error.status ?? ""} ${message}`.replace(/\s+/g, " ").trim().slice(0, 240);
+  }
+  return error instanceof Error ? error.message.slice(0, 240) : "unknown error";
+}
+
+/** Text of a plain response (no tools). */
+export function responseText(response: Anthropic.Beta.BetaMessage): string {
+  return response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n").trim();
 }

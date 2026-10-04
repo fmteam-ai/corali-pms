@@ -28,7 +28,7 @@ export function AiPricing({ aiConfigured, canApply }: { aiConfigured: boolean; c
     try {
       const r = await fetch("/api/pms/pricing-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "analyze", weeks, webSearch, ...(startsOn ? { startsOn } : {}) }) });
       const d = await r.json().catch(() => ({}));
-      if (!d.ok) { setMsg(errors[d.error] ?? errors.AI_UNAVAILABLE); return; }
+      if (!d.ok) { setMsg(`${errors[d.error] ?? errors.AI_UNAVAILABLE}${d.detail ? ` Μήνυμα Anthropic: ${d.detail}` : ""}`); return; }
       setSummary(d.summary); setCompNights(Number(d.competitorNights) || 0); setWeb(d.web ?? null); setPeriod(`${d.startsOn} → ${d.endsOn}`);
       setLines((d.recommendations as PricingRecommendation[]).map((x, i) => ({ ...x, key: `${i}`, on: x.change_percent !== 0, rate: x.recommended_rate_eur })));
       setMsg(d.recommendations.length ? "" : "Ο AI δεν προτείνει αλλαγές: οι τρέχουσες τιμές φαίνονται σωστές.");
@@ -65,6 +65,7 @@ export function AiPricing({ aiConfigured, canApply }: { aiConfigured: boolean; c
       <small>Κενό «Από» = από σήμερα. Μπορείτε να διαλέξετε περίοδο έως ~18 μήνες μπροστά (π.χ. Μάιος 2027).</small>
       {!aiConfigured && <p className="notice">{errors.AI_NOT_CONFIGURED}</p>}
       {summary && <p className="aiSummary">{period && <b>{period}<br /></b>}{summary}</p>}
+      {web?.error && <p className="notice">ℹ️ Η αναζήτηση στο διαδίκτυο δεν έγινε (η ανάλυση έγινε χωρίς αυτήν). Μήνυμα Anthropic: {web.error}</p>}
       {web && web.text && (
         <details className="aiResearch">
           <summary>🌐 Τιμές ανταγωνισμού από το διαδίκτυο ({web.sources.length} πηγές)</summary>
