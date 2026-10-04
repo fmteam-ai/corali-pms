@@ -1,6 +1,9 @@
-# Hotel Corali PMS v63 — release verification
+# Hotel Corali PMS v64 — release verification
 
 ## Scope in this package
+
+### New in v64
+- **“Partly refundable” is always listed** in Payment policy → per rate plan (added automatically by the database update, inactive, 50% refund until 30 days before arrival, −5%). Each plan has an **“Active in the booking form”** switch next to its name; tick it and Save to offer it to guests.
 
 ### New in v63
 - **Two new automated messages (email + WhatsApp)** in PMS → Automated messages, editable per language with their own WhatsApp template name: “Balance charge failed · 48-hour payment link” ({{name}}, {{amount}}, {{link}}, {{deadline}}) and “Booking cancellation” ({{reference}}, {{checkIn}}, {{checkOut}}, {{reason}}, {{refund}}). They are transactional: sent even when scheduled automations are off (email always; WhatsApp when enabled, the guest opted in and a template is set), never for OTA bookings, and they appear in the delivery history.

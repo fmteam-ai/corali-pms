@@ -36,7 +36,7 @@ export function PlanTermsEditor({ lang, plans: initial, general, cancellationDay
     return terms.fullPrepayment ? t("pp.exFull") : t("pp.exDeposit", { now: (pay.payableNowCents / 100).toFixed(0), rest: (pay.balanceCents / 100).toFixed(0), when });
   };
   async function save() {
-    const r = await fetch("/api/pms/payment-policy/plans", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plans: plans.map(({ planKey, depositPercent, balanceMode, balanceDaysBefore, fullPrepayment, cancellationDays, refundPercent }) => ({ planKey, depositPercent, balanceMode, balanceDaysBefore, fullPrepayment, cancellationDays, refundPercent })) }) });
+    const r = await fetch("/api/pms/payment-policy/plans", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plans: plans.map(({ planKey, active, depositPercent, balanceMode, balanceDaysBefore, fullPrepayment, cancellationDays, refundPercent }) => ({ planKey, active, depositPercent, balanceMode, balanceDaysBefore, fullPrepayment, cancellationDays, refundPercent })) }) });
     setMsg(r.ok ? t("pp.saved") : t("pp.failed"));
   }
   return (
@@ -49,7 +49,7 @@ export function PlanTermsEditor({ lang, plans: initial, general, cancellationDay
           <tbody>
             {plans.map((p, i) => (
               <tr key={p.planKey} className={p.active ? undefined : "inactive"}>
-                <td><b>{p.name}</b><small>{p.planKey}</small></td>
+                <td><b>{p.name}</b><small>{p.planKey}</small><label className="inline planActive"><input type="checkbox" checked={p.active} disabled={!canEdit} onChange={(e) => set(i, { active: e.target.checked })} /> {t("pp.planActive")}</label></td>
                 <td><input type="number" min={0} max={365} placeholder={`${cancellationDays}`} aria-label={t("pp.cancelDays")} value={p.fullPrepayment ? "" : p.cancellationDays ?? ""} disabled={!canEdit || p.fullPrepayment} onChange={(e) => set(i, { cancellationDays: e.target.value === "" ? null : Math.max(0, Math.min(365, Math.trunc(Number(e.target.value)))) })} /><small>{p.fullPrepayment ? t("pp.noRefund") : p.cancellationDays === null ? t("pp.cancelGeneral", { days: cancellationDays }) : ""}</small></td>
                 <td><input type="number" min={0} max={100} placeholder="100" aria-label={t("pp.refundPct")} value={p.fullPrepayment || p.planKey === "non_refundable" ? "" : p.refundPercent ?? ""} disabled={!canEdit || p.fullPrepayment || p.planKey === "non_refundable"} onChange={(e) => set(i, { refundPercent: e.target.value === "" ? null : Math.max(0, Math.min(100, Math.trunc(Number(e.target.value)))) })} /><small>{refundLabel(p)}</small></td>
                 <td><input type="checkbox" aria-label={t("pp.fullPrepayment")} checked={p.fullPrepayment} disabled={!canEdit} onChange={(e) => set(i, { fullPrepayment: e.target.checked })} /></td>

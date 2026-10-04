@@ -821,3 +821,4 @@ table.numeric tr.selected td{background:#fff8e6}
 .guestForm .balanceNote.payNow{font-weight:700;color:#173e47;margin:4px 0 0}
 .stripePanel .deadlineWarn{background:#fff4e5;border-radius:10px;padding:10px 12px;border-top:0}
 .cancelDialog{display:grid;gap:10px;max-width:520px}.cancelDialog label{display:grid;gap:6px;font-weight:600}.cancelDialog label.inline{display:flex;align-items:center;gap:8px}.cancelDialog select,.cancelDialog textarea{font:inherit;padding:9px;border:1px solid #cbd6da;border-radius:8px}.cancelDialog small{color:#6b7b80}
+.planTerms .planActive{display:flex;gap:6px;align-items:center;margin-top:6px;font-size:12px;font-weight:600;white-space:nowrap}

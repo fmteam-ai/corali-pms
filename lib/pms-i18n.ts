@@ -1297,6 +1297,7 @@ const el = {
   "res.notifyGuestHint": "Το μήνυμα περιέχει τα στοιχεία της κράτησης, τον λόγο και αν επιστρέφεται η προκαταβολή σύμφωνα με την πολιτική του τύπου τιμής. Δεν στέλνεται για κρατήσεις OTA.",
   "res.cancelConfirm": "Ακύρωση κράτησης",
   "res.cancelBack": "Πίσω",
+  "pp.planActive": "Ενεργή στη φόρμα κράτησης",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -2590,6 +2591,7 @@ const en: Record<PmsKey, string> = {
   "res.notifyGuestHint": "The message includes the booking details, the reason and whether the prepayment is refunded under the rate plan's policy. Not sent for OTA bookings.",
   "res.cancelConfirm": "Cancel the reservation",
   "res.cancelBack": "Back",
+  "pp.planActive": "Active in the booking form",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

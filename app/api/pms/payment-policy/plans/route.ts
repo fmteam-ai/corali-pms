@@ -13,11 +13,12 @@ const input = z.object({
     fullPrepayment: z.boolean(),
     cancellationDays: z.number().int().min(0).max(365).nullable().default(null),
     refundPercent: z.number().int().min(0).max(100).nullable().default(null),
+    active: z.boolean().optional(),
   })).max(30),
 });
 
 async function snapshot(ownerId: string) {
-  return (await db().query(`SELECT plan_key,deposit_percent,balance_mode,balance_days_before,full_prepayment,cancellation_days,refund_percent FROM rate_plans WHERE owner_id=$1 ORDER BY plan_key`, [ownerId])).rows;
+  return (await db().query(`SELECT plan_key,deposit_percent,balance_mode,balance_days_before,full_prepayment,cancellation_days,refund_percent,active FROM rate_plans WHERE owner_id=$1 ORDER BY plan_key`, [ownerId])).rows;
 }
 
 async function handlePUT(request: Request) {
@@ -29,8 +30,8 @@ async function handlePUT(request: Request) {
     await withTransaction(async (c) => {
       for (const p of x.plans) {
         await c.query(
-          `UPDATE rate_plans SET deposit_percent=$3,balance_mode=$4,balance_days_before=$5,full_prepayment=$6,updated_at=$7,cancellation_days=$8,refund_percent=$9 WHERE owner_id=$1 AND plan_key=$2`,
-          [u.ownerId, p.planKey, p.fullPrepayment ? null : p.depositPercent, p.balanceMode, p.balanceMode === "days_before" ? (p.balanceDaysBefore ?? 7) : null, p.fullPrepayment ? 1 : 0, Date.now(), p.fullPrepayment ? null : p.cancellationDays, p.planKey === "non_refundable" || p.fullPrepayment ? null : p.refundPercent],
+          `UPDATE rate_plans SET deposit_percent=$3,balance_mode=$4,balance_days_before=$5,full_prepayment=$6,updated_at=$7,cancellation_days=$8,refund_percent=$9,active=COALESCE($10,active) WHERE owner_id=$1 AND plan_key=$2`,
+          [u.ownerId, p.planKey, p.fullPrepayment ? null : p.depositPercent, p.balanceMode, p.balanceMode === "days_before" ? (p.balanceDaysBefore ?? 7) : null, p.fullPrepayment ? 1 : 0, Date.now(), p.fullPrepayment ? null : p.cancellationDays, p.planKey === "non_refundable" || p.fullPrepayment ? null : p.refundPercent, p.active === undefined ? null : p.active ? 1 : 0],
         );
       }
     });

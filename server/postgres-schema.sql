@@ -1332,3 +1332,7 @@ ALTER TABLE message_deliveries ADD COLUMN IF NOT EXISTS payload_json TEXT NOT NU
 ALTER TABLE rate_plans ADD COLUMN IF NOT EXISTS refund_percent BIGINT;
 ALTER TABLE booking_sessions ADD COLUMN IF NOT EXISTS refund_percent BIGINT;
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS refund_percent BIGINT;
+-- v64: the "Partly refundable" rate plan is always listed in Payment policy (inactive until switched on there).
+INSERT INTO rate_plans(owner_id,plan_key,name,adjustment_percent,payment_policy,active,deposit_percent,balance_mode,full_prepayment,cancellation_days,refund_percent,updated_at)
+SELECT DISTINCT owner_id,'partly_refundable','Partly refundable',-5,'flexible',0,50,'general',0,30,50,0 FROM rate_plans
+ON CONFLICT (owner_id,plan_key) DO NOTHING;
