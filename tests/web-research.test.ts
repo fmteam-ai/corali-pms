@@ -19,6 +19,7 @@ test("web search resumes paused turns, joins the text and collects unique source
   assert.deepEqual(second.messages.map((m) => m.role), ["user", "assistant"]);
   assert.equal(second.tools[0].type, "web_search_20260209");
   assert.equal(second.tools[0].max_uses, 3);
+  assert.equal("user_location" in second.tools[0], false); // the API rejects country GR
 });
 
 test("web search returns null on refusal", async () => {

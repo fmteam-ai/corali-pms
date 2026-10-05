@@ -9,7 +9,7 @@ export const webSearchTool = (maxUses: number): Anthropic.Beta.BetaWebSearchTool
   type: "web_search_20260209",
   name: "web_search",
   max_uses: maxUses,
-  user_location: { type: "approximate", city: "Paros", region: "South Aegean", country: "GR", timezone: "Europe/Athens" },
+  // No user_location: the API rejects country GR ("Country code GR is not supported"); the prompts name Paros instead.
 });
 
 /** Run one request with web search until Claude finishes (resuming paused server-tool turns a few times). */

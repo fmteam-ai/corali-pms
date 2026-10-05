@@ -1,6 +1,10 @@
-# Hotel Corali PMS v67 — release verification
+# Hotel Corali PMS v68 — release verification
 
 ## Scope in this package
+
+### New in v68
+- Fix: web search was rejected by the Anthropic API with "Country code GR is not supported" (the tool's `user_location`); the location is no longer sent — the prompts name Paros / Piso Livadi instead.
+- AI replies render **bold**, headings and links (dashboard assistant and AI pricing summary/research); the "without web search" note is shown at the top of the reply.
 
 ### New in v67
 - AI assistant and AI price proposals no longer fail as a whole when web search is rejected by the Anthropic API: the assistant answers without web search and adds "ℹ️ Χωρίς αναζήτηση στο διαδίκτυο: <Anthropic message>"; pricing runs without the research step and shows the reason.

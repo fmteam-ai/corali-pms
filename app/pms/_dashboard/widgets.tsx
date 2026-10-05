@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { pmsLocale, pmsStatus, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
+import { AiText } from "../ai-text";
 
 export type Stay = { id: number; reference: string; guest_name: string; room_code: string | null; check_in: string; check_out: string; status: string; balance_cents: number; version: number; adults: number; children: number };
 export type Note = { id: number; body: string; color: string };
@@ -316,7 +317,7 @@ export function AiAssistant({ t, lang }: { t: T; lang: PmsLang }) {
     <div className="aiWidget">
       <div className="aiLog" aria-live="polite">
         {turns.length === 0 && <div className="aiEmpty"><span aria-hidden="true">💬</span><p>{t("ai.empty")}</p><div className="aiChips">{suggestions.map((s) => <button key={s} type="button" onClick={() => ask(s)}>{s}</button>)}</div></div>}
-        {turns.map((m, i) => <p key={i} className={`aiMsg ${m.role}`}>{m.content}</p>)}
+        {turns.map((m, i) => <p key={i} className={`aiMsg ${m.role}`}>{m.role === "assistant" ? <AiText text={m.content} /> : m.content}</p>)}
         {busy && <p className="aiMsg assistant aiTyping"><span /><span /><span /></p>}
       </div>
       <form onSubmit={(e) => { e.preventDefault(); void ask(text); }}>

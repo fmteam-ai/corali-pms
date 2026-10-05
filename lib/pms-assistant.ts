@@ -42,7 +42,7 @@ export async function loadSnapshot(ownerId: string, financial: boolean): Promise
 }
 
 const RULES = `You are the AI assistant inside the PMS (property management system) of Hotel Corali, a small family hotel in Piso Livadi, Paros, Greece. You help the owner and the front desk.
-- Answer in the language the staff member writes in (usually Greek or English). Be concise and practical; short lists are fine.
+- Answer in the language the staff member writes in (usually Greek or English). Be concise and practical; short lists are fine. Formatting: plain text with **bold** and "- " lists only (no tables).
 - Use only the data snapshot below; it is live data for today. If something isn't in it, say so and suggest where in the PMS to look (Reservations, Room plan, Reports, Payments, Housekeeping).
 - You cannot change bookings, prices or any data; tell staff which PMS screen does it.
 - Pricing questions: use the PRICES & OCCUPANCY BY MONTH data (our current nightly rates per room category, occupancy on the books, last year's occupancy, rate-shopper competitor medians). For what other properties charge (e.g. similar hotels, studios and apartments in Piso Livadi, Logaras, Marpissa on Paros) use web search: Booking.com, Google Hotels, hotel websites. Give concrete € per night with the property names and where you found them; never invent prices; if dates that far ahead aren't published yet, use the same period of the current/last season as reference and say so. You may then propose prices per room category with short reasons, and point to Τιμές → Προτάσεις τιμολόγησης → «Πρόταση τιμών με AI» to apply them, or Τιμές → Τιμές περιόδου.
@@ -97,7 +97,7 @@ export async function staffAssistantReply(ownerId: string, financial: boolean, l
       const plain = await client.beta.messages.create(params);
       if (plain.stop_reason === "refusal") return failed();
       const text = responseText(plain);
-      return text ? { reply: `${text}\n\n${lang === "el" ? "ℹ️ Χωρίς αναζήτηση στο διαδίκτυο" : "ℹ️ Without web search"}: ${reason}`, source: "ai" } : failed(reason);
+      return text ? { reply: `${lang === "el" ? "ℹ️ Χωρίς αναζήτηση στο διαδίκτυο" : "ℹ️ Without web search"}: ${reason}\n\n${text}`, source: "ai" } : failed(reason);
     }
     if (!answer) return failed();
     const sources = answer.sources.length ? `\n\n${lang === "el" ? "Πηγές" : "Sources"}:\n${answer.sources.slice(0, 6).map((x) => `• ${x.title || x.url} – ${x.url}`).join("\n")}` : "";

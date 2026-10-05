@@ -2,6 +2,7 @@
 import { useState } from "react";
 import type { PricingRecommendation } from "@/lib/pricing-ai-core";
 import type { WebAnswer } from "@/lib/web-research";
+import { AiText } from "../../ai-text";
 
 type Line = PricingRecommendation & { key: string; on: boolean; rate: number };
 const confidence = { low: "χαμηλή", medium: "μέτρια", high: "υψηλή" } as const;
@@ -64,12 +65,12 @@ export function AiPricing({ aiConfigured, canApply }: { aiConfigured: boolean; c
       </div>
       <small>Κενό «Από» = από σήμερα. Μπορείτε να διαλέξετε περίοδο έως ~18 μήνες μπροστά (π.χ. Μάιος 2027).</small>
       {!aiConfigured && <p className="notice">{errors.AI_NOT_CONFIGURED}</p>}
-      {summary && <p className="aiSummary">{period && <b>{period}<br /></b>}{summary}</p>}
+      {summary && <p className="aiSummary">{period && <b>{period}<br /></b>}<AiText text={summary} /></p>}
       {web?.error && <p className="notice">ℹ️ Η αναζήτηση στο διαδίκτυο δεν έγινε (η ανάλυση έγινε χωρίς αυτήν). Μήνυμα Anthropic: {web.error}</p>}
       {web && web.text && (
         <details className="aiResearch">
           <summary>🌐 Τιμές ανταγωνισμού από το διαδίκτυο ({web.sources.length} πηγές)</summary>
-          <p>{web.text}</p>
+          <p><AiText text={web.text} /></p>
           {web.sources.length > 0 && <ul>{web.sources.map((x) => <li key={x.url}><a href={x.url} target="_blank" rel="noopener noreferrer">{x.title || x.url}</a></li>)}</ul>}
           <small>Ενδεικτικές τιμές όπως εμφανίζονται δημόσια· αλλάζουν συχνά.</small>
         </details>
