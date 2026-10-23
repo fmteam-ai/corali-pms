@@ -1,6 +1,10 @@
-# Hotel Corali PMS v72 — release verification
+# Hotel Corali PMS v73 — release verification
 
 ## Scope in this package
+
+### New in v73
+- Web installer: an old system Node.js on the PHP PATH (e.g. `/usr/bin/node` v10) no longer hides cPanel's Node.js 22+ (`/opt/cpanel/ea-nodejs22|24|26`, `/opt/alt/alt-nodejs22|24|26`); the installer picks the first Node.js ≥ 22 and runs the install with it. If none exists, the check still shows the old version in red.
+- Web installer: the one-time access code box is a visible text field (some browsers showed nothing while typing in the password box).
 
 ### New in v72
 - **Check-in from 13:00** (welcome letter) everywhere: booking policy text and pop-up (6 languages), pre-arrival email/WhatsApp template (6 languages), guest and booking-form AI assistant facts, Corali TV default check-in time, test message sample (reception 07:30–21:00).

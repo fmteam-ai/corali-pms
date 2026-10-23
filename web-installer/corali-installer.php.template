@@ -5,14 +5,14 @@ const CORALI_INSTALL_TOKEN_HASH = '__INSTALL_TOKEN_HASH__';
 const CORALI_FONT_REGULAR = '__FONT_REGULAR_BASE64__';
 const CORALI_FONT_BOLD = '__FONT_BOLD_BASE64__';
 const CORALI_HOME = '/home/corali';
-const CORALI_ARCHIVE = 'corali-pms-cpanel-v72-root.tar.gz';
-const CORALI_CHECKSUM = 'corali-pms-cpanel-v72-root.tar.gz.sha256';
+const CORALI_ARCHIVE = 'corali-pms-cpanel-v73-root.tar.gz';
+const CORALI_CHECKSUM = 'corali-pms-cpanel-v73-root.tar.gz.sha256';
 const CORALI_PMS_ROOT = '/home/corali/apps/corali-pms';
 const CORALI_BOOKING_ROOT = '/home/corali/apps/corali-booking';
 const CORALI_APP_USER = 'corali';
 const CORALI_PMS_URL = 'https://pms.hotelcorali.gr';
 const CORALI_BOOKING_URL = 'https://booking.hotelcorali.gr';
-const CORALI_INSTALLER_RELEASE = 'v72';
+const CORALI_INSTALLER_RELEASE = 'v73';
 
 $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
     || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
@@ -169,10 +169,22 @@ function commandPath(string $command): string
     return $status === 0 ? trim((string) ($output[0] ?? '')) : '';
 }
 
+function nodeMajorVersion(string $path): int
+{
+    if ($path === '' || !availableFunction('exec')) {
+        return 0;
+    }
+    $output = [];
+    $status = 1;
+    exec(escapeshellarg($path) . ' --version 2>/dev/null', $output, $status);
+    return $status === 0 && preg_match('/^v(\d+)/', trim((string) ($output[0] ?? '')), $match) === 1 ? (int) $match[1] : 0;
+}
+
 function resolvedCommandPath(string $command): string
 {
     $fromPath = commandPath($command);
-    if ($fromPath !== '') {
+    // A system Node.js older than 22 on the PATH (e.g. /usr/bin/node v10) must not hide cPanel's own Node.js 22+.
+    if ($fromPath !== '' && ($command !== 'node' || nodeMajorVersion($fromPath) >= 22)) {
         return $fromPath;
     }
 
@@ -192,11 +204,12 @@ function resolvedCommandPath(string $command): string
         '/opt/alt/alt-nodejs22/root/usr/bin/node',
     ];
     foreach ($candidates as $candidate) {
-        if (is_file($candidate) && is_executable($candidate)) {
+        if (is_file($candidate) && is_executable($candidate) && nodeMajorVersion($candidate) >= 22) {
             return $candidate;
         }
     }
-    return '';
+    // Nothing suitable: report the PATH one so the check shows which old version was found.
+    return $fromPath;
 }
 
 function directoryCanBeUsed(string $directory): bool
@@ -479,7 +492,7 @@ function startInstallation(array $checks): void
     }
 
     $suffix = gmdate('Ymd\THis\Z') . '-' . bin2hex(random_bytes(3));
-    $release = $releaseRoot . '/corali-v72-web-' . $suffix;
+    $release = $releaseRoot . '/corali-v73-web-' . $suffix;
     $archive = CORALI_HOME . '/' . CORALI_ARCHIVE;
     $log = $stateDir . '/install.log';
     $status = $stateDir . '/exit.status';
