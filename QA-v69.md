@@ -1,6 +1,15 @@
-# Hotel Corali PMS v68 — release verification
+# Hotel Corali PMS v69 — release verification
 
 ## Scope in this package
+
+### New in v69
+- **Corali TV** (PMS → ⚙️ Γενικά → Corali TV): a welcome screen per room at `https://<booking domain>/tv/<secret>`, for a Google TV stick (Fully Kiosk Browser start URL) and for guests' phones (printable QR cards, `/pms/tv/cards`).
+  - Shows the in-house guest's **first name only**, room, stay dates and check-out time in the guest's language (6 languages); on the departure day a "check-out by 11:00" banner until check-out time, then the arriving guest; otherwise a generic welcome.
+  - Wi-Fi name/password with a join-by-QR code (hotel-wide, or per room), Paros weather now + 5-day forecast (Open-Meteo, cached 30 min; hidden if unreachable), area tips, active extras with prices, QR to "My booking", reception phone.
+  - Polls every 60 s, survives short network drops, reloads every 6 h. Unknown or disabled links show only the logo.
+  - Per room: open/copy link, last seen ("online" within 10 min), active switch, "new link" (old link and QR card stop working).
+- **Security:** Next.js upgraded 16.3.6 → 16.4.3 (critical GHSA-2464-fhr4-w9xw / GHSA-673q-mjm6-r5xr unauthenticated RCE, plus DoS/SSRF advisories); `source-map-js` forced to ≥1.2.2 (GHSA-68fv-2mgg-jv7q). `pnpm audit`: no known vulnerabilities.
+- Checks: `tests/tv-core.test.ts`, `/tv` routing in `tests/app-role.test.ts`; diagnostics for `tv_settings`, `tv_screens`.
 
 ### New in v68
 - Fix: web search was rejected by the Anthropic API with "Country code GR is not supported" (the tool's `user_location`); the location is no longer sent — the prompts name Paros / Piso Livadi instead.

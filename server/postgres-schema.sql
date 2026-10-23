@@ -1339,3 +1339,23 @@ ON CONFLICT (owner_id,plan_key) DO NOTHING;
 -- v65: AI help for guest messages — automatic replies are marked, and the switch lives with the automation settings.
 ALTER TABLE booking_messages ADD COLUMN IF NOT EXISTS ai_generated BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE message_automation_settings ADD COLUMN IF NOT EXISTS ai_auto_reply BIGINT NOT NULL DEFAULT 0;
+-- v69: Corali TV — a welcome screen per room (TV stick + kiosk browser, or a guest's phone via QR). The secret link is
+-- the token; the screen shows only the current guest's first name, never other booking data.
+CREATE TABLE IF NOT EXISTS tv_settings (
+ owner_id TEXT PRIMARY KEY,
+ settings_json TEXT NOT NULL DEFAULT '{}',
+ updated_by BIGINT,
+ updated_at BIGINT NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS tv_screens (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ room_id BIGINT NOT NULL,
+ token TEXT NOT NULL UNIQUE,
+ wifi_ssid TEXT NOT NULL DEFAULT '',
+ wifi_password TEXT NOT NULL DEFAULT '',
+ active BIGINT NOT NULL DEFAULT 1,
+ last_seen_at BIGINT,
+ created_at BIGINT NOT NULL,
+ UNIQUE(owner_id, room_id)
+);
