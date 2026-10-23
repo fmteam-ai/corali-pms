@@ -140,7 +140,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
           <h2>🛎️ {t.extras}</h2>
           {data.extras.length > 0 && <ul>{data.extras.map((e) => <li key={e.name}><span>{e.name}</span><b>{euro(e.priceCents)} {e.perNight ? t.perNight : e.perPerson ? t.perPerson : ""}</b></li>)}</ul>}
           <div className="tvQrPair">
-            <figure><img src={data.manage.qr} alt="" /><figcaption><b>{t.booking}</b>{t.scanBooking}</figcaption></figure>
+            <figure><img src={data.manage.qr} alt="" /><figcaption><b>{t.booking}</b>{t.scanBooking}<em className="tvDirectOnly">{t.directOnly}</em></figcaption></figure>
             {data.whatsapp && <figure><img src={data.whatsapp.qr} alt="" /><figcaption><b>💬 {t.whatsapp}</b>{t.scanWhatsapp}</figcaption></figure>}
           </div>
           {data.receptionPhone && <p className="tvPhone">{t.reception}: <b>{data.receptionPhone}</b></p>}

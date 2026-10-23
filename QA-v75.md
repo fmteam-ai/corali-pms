@@ -1,6 +1,10 @@
-# Hotel Corali PMS v74 — release verification
+# Hotel Corali PMS v75 — release verification
 
 ## Scope in this package
+
+### New in v75
+- Corali TV: under "My booking" a notice "Only for bookings made through our website" (6 languages).
+- Rooms → Categories & extras: "+ New service" form to add extras; price entered in euros (was cents); field placeholders; "per room / night" pricing mode; note that extras appear in the booking form, My booking and Corali TV.
 
 ### New in v74
 - Corali TV greeting starts with the guest's first name: "Maria, welcome to Hotel Corali!" / "Μαρία, καλώς ήρθατε στο Hotel Corali!" (all 6 languages); test added.
