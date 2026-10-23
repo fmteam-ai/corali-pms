@@ -5,7 +5,7 @@ import { env } from "@/lib/env";
 import { translatedText } from "@/lib/public-rate";
 import { newOpaqueToken } from "@/lib/security/tokens";
 import { hotelToday } from "@/lib/tape-chart";
-import { beaufort, currentStay, firstName, normalizeTvSettings, pickText, tvLanguage, tvTexts, weatherIcon, wifiQrPayload, type TvLanguage, type TvSettings, type TvStay } from "@/lib/tv-core";
+import { beaufort, currentStay, whatsappLink, firstName, normalizeTvSettings, pickText, tvLanguage, tvTexts, weatherIcon, wifiQrPayload, type TvLanguage, type TvSettings, type TvStay } from "@/lib/tv-core";
 
 export async function loadTvSettings(ownerId: string): Promise<TvSettings> {
   const r = await db().query(`SELECT settings_json FROM tv_settings WHERE owner_id=$1`, [ownerId]);
@@ -83,6 +83,8 @@ export async function tvScreenData(token: string, langOverride?: string | null) 
     extras: extras.rows.map((e) => ({ name: translatedText(e.name_translations_json, lang, e.name_el, e.name_en, e.name), priceCents: Number(e.price_cents), perNight: String(e.pricing_mode).includes("night"), perPerson: e.pricing_mode === "per_person" })),
     weather: wx,
     manage: { url: manageUrl, qr: await qr(manageUrl) },
+    whatsapp: settings.whatsappNumber ? { qr: await qr(whatsappLink(settings.whatsappNumber, tvTexts[lang].waHello.replace("{room}", String(s.room_code)))) } : null,
+    guide: settings.travelGuideUrl ? { qr: await qr(settings.travelGuideUrl) } : null,
   };
 }
 export type TvScreenData = NonNullable<Awaited<ReturnType<typeof tvScreenData>>>;

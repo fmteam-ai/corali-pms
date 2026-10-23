@@ -72,16 +72,18 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
             <ul>{data.weather.days.map((d, i) => <li key={d.date}><span>{i === 0 ? t.today : i === 1 ? t.tomorrow : new Date(`${d.date}T12:00:00Z`).toLocaleDateString(locale, { weekday: "long", timeZone: "UTC" })}</span><span>{d.icon}</span><span>{d.max}° / {d.min}°</span></li>)}</ul>
           </div>
         )}
-        {data.tips.length > 0 && (
+        {(data.tips.length > 0 || data.guide) && (
           <div className="tvCard tvTips">
             <h2>☀️ {t.tips}</h2>
             <ul>{data.tips.map((tip) => <li key={tip}>{tip}</li>)}</ul>
+            {data.guide && <div className="tvBookingQr tvQrRow"><img src={data.guide.qr} alt="" /><p><b>🗺️ {t.guide}</b><br />{t.scanGuide}</p></div>}
           </div>
         )}
         <div className="tvCard tvBooking">
           <h2>🛎️ {t.extras}</h2>
           {data.extras.length > 0 && <ul>{data.extras.map((e) => <li key={e.name}><span>{e.name}</span><b>{euro(e.priceCents)} {e.perNight ? t.perNight : e.perPerson ? t.perPerson : ""}</b></li>)}</ul>}
-          <div className="tvBookingQr"><img src={data.manage.qr} alt="" /><p><b>{t.booking}</b><br />{t.scanBooking}{data.receptionPhone && <><br />{t.reception}: <b>{data.receptionPhone}</b></>}</p></div>
+          <div className="tvBookingQr tvQrRow"><img src={data.manage.qr} alt="" /><p><b>{t.booking}</b><br />{t.scanBooking}{data.receptionPhone && <><br />{t.reception}: <b>{data.receptionPhone}</b></>}</p></div>
+          {data.whatsapp && <div className="tvBookingQr tvQrRow"><img className="tvWa" src={data.whatsapp.qr} alt="" /><p><b>💬 {t.whatsapp}</b><br />{t.scanWhatsapp}</p></div>}
         </div>
       </section>
     </main>

@@ -11,6 +11,8 @@ export type TvSettings = {
   checkInTime: string;
   checkOutTime: string;
   receptionPhone: string;
+  whatsappNumber: string;
+  travelGuideUrl: string;
   welcome: Localized;
   tips: Localized;
   showWeather: boolean;
@@ -23,6 +25,8 @@ export const defaultTvSettings: TvSettings = {
   checkInTime: "15:00",
   checkOutTime: "11:00",
   receptionPhone: "",
+  whatsappNumber: "",
+  travelGuideUrl: "",
   welcome: {
     el: "Χαιρόμαστε πολύ που είστε μαζί μας! Για οτιδήποτε χρειαστείτε, η ρεσεψιόν είναι στη διάθεσή σας.",
     en: "We are delighted to have you with us! Reception is happy to help with anything you need.",
@@ -52,6 +56,23 @@ const localized = (v: unknown, max: number, fallback: Localized): Localized => {
   return out;
 };
 
+/** WhatsApp number as international digits (e.g. "+30 694 123 4567" → "306941234567"); "" when not a phone number. */
+export function whatsappDigits(v: unknown): string {
+  const d = typeof v === "string" ? v.replace(/[\s().-]/g, "").replace(/^\+/, "").replace(/^00/, "") : "";
+  return /^\d{8,15}$/.test(d) ? d : "";
+}
+
+/** Only absolute http(s) links are accepted for QR codes. */
+export function httpsUrl(v: unknown): string {
+  const t = typeof v === "string" ? v.trim().slice(0, 500) : "";
+  try { const u = new URL(t); return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : ""; } catch { return ""; }
+}
+
+/** wa.me chat link with a first message saying which room the guest is in. */
+export function whatsappLink(digits: string, message: string): string {
+  return `https://wa.me/${digits}${message ? `?text=${encodeURIComponent(message)}` : ""}`;
+}
+
 /** Settings from storage or the PMS form, with safe defaults and limits. */
 export function normalizeTvSettings(raw: unknown): TvSettings {
   const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
@@ -62,6 +83,8 @@ export function normalizeTvSettings(raw: unknown): TvSettings {
     checkInTime: time(r.checkInTime, defaultTvSettings.checkInTime),
     checkOutTime: time(r.checkOutTime, defaultTvSettings.checkOutTime),
     receptionPhone: text(r.receptionPhone, 40),
+    whatsappNumber: whatsappDigits(r.whatsappNumber),
+    travelGuideUrl: httpsUrl(r.travelGuideUrl),
     welcome: localized(r.welcome, 600, defaultTvSettings.welcome),
     tips: localized(r.tips, 1500, defaultTvSettings.tips),
     showWeather: r.showWeather !== false,
@@ -123,10 +146,10 @@ export function beaufort(kmh: number): number {
 }
 
 export const tvTexts: Record<TvLanguage, Record<string, string>> = {
-  el: { perNight: "/ νύχτα", perPerson: "/ άτομο", welcome: "Καλώς ήρθατε", hello: "Καλώς ήρθατε, {name}!", hotel: "Καλώς ήρθατε στο Hotel Corali", stay: "Η διαμονή σας", checkout: "Check-out", checkoutToday: "Σήμερα είναι η αναχώρησή σας · check-out έως τις {time}. Καλό ταξίδι!", until: "έως τις", wifi: "Wi-Fi", network: "Δίκτυο", password: "Κωδικός", scanWifi: "Σκανάρετε για σύνδεση", weather: "Καιρός στην Πάρο", wind: "Άνεμος {b} Μποφόρ", tips: "Προτάσεις", extras: "Υπηρεσίες για εσάς", booking: "Η κράτησή μου", scanBooking: "Σκανάρετε για την κράτησή σας, υπηρεσίες ή ερωτήσεις", reception: "Ρεσεψιόν", room: "Δωμάτιο", nights: "νύχτες", today: "Σήμερα", tomorrow: "Αύριο" },
-  en: { perNight: "/ night", perPerson: "/ person", welcome: "Welcome", hello: "Welcome, {name}!", hotel: "Welcome to Hotel Corali", stay: "Your stay", checkout: "Check-out", checkoutToday: "Today is your departure · check-out by {time}. Have a safe trip!", until: "by", wifi: "Wi-Fi", network: "Network", password: "Password", scanWifi: "Scan to connect", weather: "Weather in Paros", wind: "Wind {b} Beaufort", tips: "Tips", extras: "Services for you", booking: "My booking", scanBooking: "Scan for your booking, services or questions", reception: "Reception", room: "Room", nights: "nights", today: "Today", tomorrow: "Tomorrow" },
-  fr: { perNight: "/ nuit", perPerson: "/ personne", welcome: "Bienvenue", hello: "Bienvenue, {name} !", hotel: "Bienvenue à l'Hotel Corali", stay: "Votre séjour", checkout: "Départ", checkoutToday: "C'est votre jour de départ · libérez la chambre avant {time}. Bon voyage !", until: "avant", wifi: "Wi-Fi", network: "Réseau", password: "Mot de passe", scanWifi: "Scannez pour vous connecter", weather: "Météo à Paros", wind: "Vent {b} Beaufort", tips: "Nos conseils", extras: "Services pour vous", booking: "Ma réservation", scanBooking: "Scannez pour votre réservation, nos services ou vos questions", reception: "Réception", room: "Chambre", nights: "nuits", today: "Aujourd'hui", tomorrow: "Demain" },
-  de: { perNight: "/ Nacht", perPerson: "/ Person", welcome: "Willkommen", hello: "Willkommen, {name}!", hotel: "Willkommen im Hotel Corali", stay: "Ihr Aufenthalt", checkout: "Check-out", checkoutToday: "Heute ist Ihr Abreisetag · Check-out bis {time} Uhr. Gute Reise!", until: "bis", wifi: "WLAN", network: "Netzwerk", password: "Passwort", scanWifi: "Zum Verbinden scannen", weather: "Wetter auf Paros", wind: "Wind {b} Beaufort", tips: "Tipps", extras: "Services für Sie", booking: "Meine Buchung", scanBooking: "Scannen für Ihre Buchung, Services oder Fragen", reception: "Rezeption", room: "Zimmer", nights: "Nächte", today: "Heute", tomorrow: "Morgen" },
-  it: { perNight: "/ notte", perPerson: "/ persona", welcome: "Benvenuti", hello: "Benvenuti, {name}!", hotel: "Benvenuti all'Hotel Corali", stay: "Il vostro soggiorno", checkout: "Check-out", checkoutToday: "Oggi è il giorno della partenza · check-out entro le {time}. Buon viaggio!", until: "entro le", wifi: "Wi-Fi", network: "Rete", password: "Password", scanWifi: "Scansiona per connetterti", weather: "Meteo a Paros", wind: "Vento {b} Beaufort", tips: "Consigli", extras: "Servizi per voi", booking: "La mia prenotazione", scanBooking: "Scansiona per la prenotazione, i servizi o le domande", reception: "Reception", room: "Camera", nights: "notti", today: "Oggi", tomorrow: "Domani" },
-  es: { perNight: "/ noche", perPerson: "/ persona", welcome: "Bienvenidos", hello: "¡Bienvenido/a, {name}!", hotel: "Bienvenidos al Hotel Corali", stay: "Su estancia", checkout: "Salida", checkoutToday: "Hoy es su día de salida · check-out hasta las {time}. ¡Buen viaje!", until: "hasta las", wifi: "Wi-Fi", network: "Red", password: "Contraseña", scanWifi: "Escanee para conectarse", weather: "El tiempo en Paros", wind: "Viento {b} Beaufort", tips: "Recomendaciones", extras: "Servicios para usted", booking: "Mi reserva", scanBooking: "Escanee para su reserva, servicios o preguntas", reception: "Recepción", room: "Habitación", nights: "noches", today: "Hoy", tomorrow: "Mañana" },
+  el: { guide: "Ταξιδιωτικός οδηγός Πάρου", scanGuide: "Σκανάρετε για παραλίες, φαγητό και δραστηριότητες", whatsapp: "WhatsApp", scanWhatsapp: "Σκανάρετε για να μας γράψετε στο WhatsApp", waHello: "Γεια σας! Είμαι στο δωμάτιο {room}.", perNight: "/ νύχτα", perPerson: "/ άτομο", welcome: "Καλώς ήρθατε", hello: "Καλώς ήρθατε, {name}!", hotel: "Καλώς ήρθατε στο Hotel Corali", stay: "Η διαμονή σας", checkout: "Check-out", checkoutToday: "Σήμερα είναι η αναχώρησή σας · check-out έως τις {time}. Καλό ταξίδι!", until: "έως τις", wifi: "Wi-Fi", network: "Δίκτυο", password: "Κωδικός", scanWifi: "Σκανάρετε για σύνδεση", weather: "Καιρός στην Πάρο", wind: "Άνεμος {b} Μποφόρ", tips: "Προτάσεις", extras: "Υπηρεσίες για εσάς", booking: "Η κράτησή μου", scanBooking: "Σκανάρετε για την κράτησή σας, υπηρεσίες ή ερωτήσεις", reception: "Ρεσεψιόν", room: "Δωμάτιο", nights: "νύχτες", today: "Σήμερα", tomorrow: "Αύριο" },
+  en: { guide: "Paros travel guide", scanGuide: "Scan for beaches, restaurants and activities", whatsapp: "WhatsApp", scanWhatsapp: "Scan to message us on WhatsApp", waHello: "Hello! I am in room {room}.", perNight: "/ night", perPerson: "/ person", welcome: "Welcome", hello: "Welcome, {name}!", hotel: "Welcome to Hotel Corali", stay: "Your stay", checkout: "Check-out", checkoutToday: "Today is your departure · check-out by {time}. Have a safe trip!", until: "by", wifi: "Wi-Fi", network: "Network", password: "Password", scanWifi: "Scan to connect", weather: "Weather in Paros", wind: "Wind {b} Beaufort", tips: "Tips", extras: "Services for you", booking: "My booking", scanBooking: "Scan for your booking, services or questions", reception: "Reception", room: "Room", nights: "nights", today: "Today", tomorrow: "Tomorrow" },
+  fr: { guide: "Guide de Paros", scanGuide: "Scannez pour les plages, restaurants et activités", whatsapp: "WhatsApp", scanWhatsapp: "Scannez pour nous écrire sur WhatsApp", waHello: "Bonjour ! Je suis dans la chambre {room}.", perNight: "/ nuit", perPerson: "/ personne", welcome: "Bienvenue", hello: "Bienvenue, {name} !", hotel: "Bienvenue à l'Hotel Corali", stay: "Votre séjour", checkout: "Départ", checkoutToday: "C'est votre jour de départ · libérez la chambre avant {time}. Bon voyage !", until: "avant", wifi: "Wi-Fi", network: "Réseau", password: "Mot de passe", scanWifi: "Scannez pour vous connecter", weather: "Météo à Paros", wind: "Vent {b} Beaufort", tips: "Nos conseils", extras: "Services pour vous", booking: "Ma réservation", scanBooking: "Scannez pour votre réservation, nos services ou vos questions", reception: "Réception", room: "Chambre", nights: "nuits", today: "Aujourd'hui", tomorrow: "Demain" },
+  de: { guide: "Reiseführer Paros", scanGuide: "Scannen für Strände, Restaurants und Aktivitäten", whatsapp: "WhatsApp", scanWhatsapp: "Scannen, um uns auf WhatsApp zu schreiben", waHello: "Hallo! Ich bin in Zimmer {room}.", perNight: "/ Nacht", perPerson: "/ Person", welcome: "Willkommen", hello: "Willkommen, {name}!", hotel: "Willkommen im Hotel Corali", stay: "Ihr Aufenthalt", checkout: "Check-out", checkoutToday: "Heute ist Ihr Abreisetag · Check-out bis {time} Uhr. Gute Reise!", until: "bis", wifi: "WLAN", network: "Netzwerk", password: "Passwort", scanWifi: "Zum Verbinden scannen", weather: "Wetter auf Paros", wind: "Wind {b} Beaufort", tips: "Tipps", extras: "Services für Sie", booking: "Meine Buchung", scanBooking: "Scannen für Ihre Buchung, Services oder Fragen", reception: "Rezeption", room: "Zimmer", nights: "Nächte", today: "Heute", tomorrow: "Morgen" },
+  it: { guide: "Guida di Paros", scanGuide: "Scansiona per spiagge, ristoranti e attività", whatsapp: "WhatsApp", scanWhatsapp: "Scansiona per scriverci su WhatsApp", waHello: "Ciao! Sono nella camera {room}.", perNight: "/ notte", perPerson: "/ persona", welcome: "Benvenuti", hello: "Benvenuti, {name}!", hotel: "Benvenuti all'Hotel Corali", stay: "Il vostro soggiorno", checkout: "Check-out", checkoutToday: "Oggi è il giorno della partenza · check-out entro le {time}. Buon viaggio!", until: "entro le", wifi: "Wi-Fi", network: "Rete", password: "Password", scanWifi: "Scansiona per connetterti", weather: "Meteo a Paros", wind: "Vento {b} Beaufort", tips: "Consigli", extras: "Servizi per voi", booking: "La mia prenotazione", scanBooking: "Scansiona per la prenotazione, i servizi o le domande", reception: "Reception", room: "Camera", nights: "notti", today: "Oggi", tomorrow: "Domani" },
+  es: { guide: "Guía de viaje de Paros", scanGuide: "Escanee para playas, restaurantes y actividades", whatsapp: "WhatsApp", scanWhatsapp: "Escanee para escribirnos por WhatsApp", waHello: "¡Hola! Estoy en la habitación {room}.", perNight: "/ noche", perPerson: "/ persona", welcome: "Bienvenidos", hello: "¡Bienvenido/a, {name}!", hotel: "Bienvenidos al Hotel Corali", stay: "Su estancia", checkout: "Salida", checkoutToday: "Hoy es su día de salida · check-out hasta las {time}. ¡Buen viaje!", until: "hasta las", wifi: "Wi-Fi", network: "Red", password: "Contraseña", scanWifi: "Escanee para conectarse", weather: "El tiempo en Paros", wind: "Viento {b} Beaufort", tips: "Recomendaciones", extras: "Servicios para usted", booking: "Mi reserva", scanBooking: "Escanee para su reserva, servicios o preguntas", reception: "Recepción", room: "Habitación", nights: "noches", today: "Hoy", tomorrow: "Mañana" },
 };

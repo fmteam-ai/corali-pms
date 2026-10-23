@@ -1351,6 +1351,9 @@ const el = {
   "tv.setup4": "Settings → Device Management → Launch on Boot: ON και Keep Screen On: ON· προαιρετικά Kiosk Mode για να μην αλλάζουν οι ρυθμίσεις.",
   "tv.setup5": "Στην τηλεόραση Horizon: ενεργοποιήστε το HDMI-CEC ώστε να ανοίγει και να αλλάζει είσοδο μαζί με το τηλεχειριστήριο του stick.",
   "tv.setup6": "Οι επισκέπτες βλέπουν Netflix κ.λπ. από το κουμπί Home του stick. Μετά το check-out, αποσυνδέστε τους λογαριασμούς τους στο καθάρισμα του δωματίου.",
+  "tv.whatsapp": "WhatsApp ξενοδοχείου (αριθμός)",
+  "tv.guideUrl": "Σύνδεσμος ταξιδιωτικού οδηγού Πάρου (για QR στην οθόνη)",
+  "tv.qrHelp": "Ο αριθμός WhatsApp και ο σύνδεσμος οδηγού γίνονται αυτόματα QR στην οθόνη. Το WhatsApp ανοίγει με έτοιμο μήνυμα «Είμαι στο δωμάτιο …».",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -2698,6 +2701,9 @@ const en: Record<PmsKey, string> = {
   "tv.setup4": "Settings → Device Management → Launch on Boot: ON and Keep Screen On: ON; optionally Kiosk Mode so settings can't be changed.",
   "tv.setup5": "On the Horizon TV: turn on HDMI-CEC so it switches on and changes input together with the stick's remote.",
   "tv.setup6": "Guests watch Netflix etc. from the stick's Home button. After check-out, sign their accounts out when the room is cleaned.",
+  "tv.whatsapp": "Hotel WhatsApp (number)",
+  "tv.guideUrl": "Paros travel guide link (QR on the screen)",
+  "tv.qrHelp": "The WhatsApp number and guide link become QR codes on the screen automatically. WhatsApp opens with a ready message “I am in room …”.",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

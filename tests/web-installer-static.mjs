@@ -5,10 +5,10 @@ import path from "node:path";
 
 const project = process.cwd();
 const template = await readFile(path.join(project, "web-installer", "corali-installer.php.template"), "utf8");
-const installer = await readFile(path.join(project, "corali-web-installer-v69.php"), "utf8");
-const access = await readFile(path.join(project, "corali-web-installer-v69-access.txt"), "utf8");
-const archive=await readFile(path.join(project,"corali-pms-cpanel-v69-root.tar.gz"));
-const stateId=`v69-${createHash("sha256").update(archive).digest("hex").slice(0,20)}`;
+const installer = await readFile(path.join(project, "corali-web-installer-v70.php"), "utf8");
+const access = await readFile(path.join(project, "corali-web-installer-v70-access.txt"), "utf8");
+const archive=await readFile(path.join(project,"corali-pms-cpanel-v70-root.tar.gz"));
+const stateId=`v70-${createHash("sha256").update(archive).digest("hex").slice(0,20)}`;
 assert.ok(installer.includes(`/.corali-web-installer-${stateId}`),"installer lock must belong to this exact archive");
 assert.ok(!installer.includes("__INSTALL_STATE_ID__"));
 
@@ -70,7 +70,7 @@ for (const required of [
   "INSTALL-CPANEL.sh --yes",
   "αυτόματο rollback",
   "@unlink(__FILE__)",
-  "corali-pms-cpanel-v69-root.tar.gz",
+  "corali-pms-cpanel-v70-root.tar.gz",
   "access_action",
   "access_csrf",
   "authorizeAccessKey",

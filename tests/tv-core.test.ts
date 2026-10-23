@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { beaufort, currentStay, defaultTvSettings, firstName, normalizeTvSettings, pickText, tvLanguage, tvTexts, weatherIcon, wifiQrPayload, type TvStay } from "../lib/tv-core.ts";
+import { beaufort, currentStay, defaultTvSettings, firstName, httpsUrl, normalizeTvSettings, pickText, tvLanguage, tvTexts, weatherIcon, whatsappDigits, whatsappLink, wifiQrPayload, type TvStay } from "../lib/tv-core.ts";
 
 const stay = (ref: string, checkIn: string, checkOut: string, status = "confirmed"): TvStay => ({ reference: ref, guest_name: `Maria ${ref} Papadopoulou`, guest_language: "el", check_in: checkIn, check_out: checkOut, status, adults: 2, children: 0 });
 
@@ -52,4 +52,17 @@ test("weather icons and Beaufort scale", () => {
   assert.equal(beaufort(25), 4);
   assert.equal(beaufort(45), 6);
   assert.equal(beaufort(130), 12);
+});
+
+test("WhatsApp number and travel guide link for the screen QR codes", () => {
+  assert.equal(whatsappDigits("+30 694 123 4567"), "306941234567");
+  assert.equal(whatsappDigits("0030 (694) 123-4567"), "306941234567");
+  assert.equal(whatsappDigits("call us"), "");
+  assert.equal(whatsappDigits("123"), "");
+  assert.equal(whatsappLink("306941234567", "Γεια σας! Είμαι στο δωμάτιο 101."), "https://wa.me/306941234567?text=%CE%93%CE%B5%CE%B9%CE%B1%20%CF%83%CE%B1%CF%82!%20%CE%95%CE%AF%CE%BC%CE%B1%CE%B9%20%CF%83%CF%84%CE%BF%20%CE%B4%CF%89%CE%BC%CE%AC%CF%84%CE%B9%CE%BF%20101.");
+  assert.equal(httpsUrl(" https://hotelcorali.gr/paros-guide "), "https://hotelcorali.gr/paros-guide");
+  assert.equal(httpsUrl("javascript:alert(1)"), "");
+  assert.equal(httpsUrl("not a url"), "");
+  const s = normalizeTvSettings({ whatsappNumber: "+30 694 123 4567", travelGuideUrl: "ftp://x" });
+  assert.deepEqual([s.whatsappNumber, s.travelGuideUrl], ["306941234567", ""]);
 });

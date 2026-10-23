@@ -869,3 +869,4 @@ table.numeric tr.selected td{background:#fff8e6}
 @media (max-width:900px),(orientation:portrait){.tvGrid{grid-template-columns:1fr}}
 .tvWeather ul{gap:.45vw}.tvWeather li{font-size:1.05vw}
 @media (max-width:900px),(orientation:portrait){.tvWeather li{font-size:16px}}
+.tvQrRow{margin-top:1vw}.tvAdminGrid .tvWide{grid-column:1/-1}

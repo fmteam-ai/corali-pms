@@ -41,7 +41,10 @@ export function TvManager({ lang, initialSettings, initialScreens, canEdit }: { 
           <label>{t("tv.checkIn")}<input type="time" value={settings.checkInTime} disabled={!canEdit} onChange={(e) => set({ checkInTime: e.target.value })} /></label>
           <label>{t("tv.checkOut")}<input type="time" value={settings.checkOutTime} disabled={!canEdit} onChange={(e) => set({ checkOutTime: e.target.value })} /></label>
           <label>{t("tv.phone")}<input value={settings.receptionPhone} maxLength={40} disabled={!canEdit} onChange={(e) => set({ receptionPhone: e.target.value })} /></label>
+          <label>{t("tv.whatsapp")}<input value={settings.whatsappNumber} maxLength={20} inputMode="tel" placeholder="+30 69…" disabled={!canEdit} onChange={(e) => set({ whatsappNumber: e.target.value })} /></label>
+          <label className="tvWide">{t("tv.guideUrl")}<input type="url" value={settings.travelGuideUrl} maxLength={500} placeholder="https://…" disabled={!canEdit} onChange={(e) => set({ travelGuideUrl: e.target.value })} /></label>
         </div>
+        <small>{t("tv.qrHelp")}</small>
         <div className="tvAdminChecks">
           <label className="inline"><input type="checkbox" checked={settings.showWeather} disabled={!canEdit} onChange={(e) => set({ showWeather: e.target.checked })} /> {t("tv.showWeather")}</label>
           <label className="inline"><input type="checkbox" checked={settings.showExtras} disabled={!canEdit} onChange={(e) => set({ showExtras: e.target.checked })} /> {t("tv.showExtras")}</label>

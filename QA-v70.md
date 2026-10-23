@@ -1,6 +1,9 @@
-# Hotel Corali PMS v69 — release verification
+# Hotel Corali PMS v70 — release verification
 
 ## Scope in this package
+
+### New in v70
+- Corali TV: **WhatsApp** and **Paros travel guide** QR codes on the room screen. PMS → Corali TV → "WhatsApp ξενοδοχείου" (number, any format → international digits) and "Σύνδεσμος ταξιδιωτικού οδηγού" (http/https only). WhatsApp opens with a first message in the guest's language: "Hello! I am in room 101." Verified by decoding the generated QR codes.
 
 ### New in v69
 - **Corali TV** (PMS → ⚙️ Γενικά → Corali TV): a welcome screen per room at `https://<booking domain>/tv/<secret>`, for a Google TV stick (Fully Kiosk Browser start URL) and for guests' phones (printable QR cards, `/pms/tv/cards`).
