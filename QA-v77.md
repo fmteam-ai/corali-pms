@@ -1,6 +1,9 @@
-# Hotel Corali PMS v76 — release verification
+# Hotel Corali PMS v77 — release verification
 
 ## Scope in this package
+
+### New in v77
+- Corali TV shows the full-colour Hotel Corali logo on a white rounded panel (was a white silhouette); also on the standby screen and the phone view.
 
 ### New in v76
 - Corali TV redesign: self-hosted Noto Serif (headings) and Open Sans (text) with Greek support; line icons on tabs and cards; weather icons for now and the 5-day forecast; cleaner glass cards and gold accents.

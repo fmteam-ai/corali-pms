@@ -91,7 +91,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
     return () => { live = false; clearInterval(poll); clearInterval(clock); clearTimeout(reload); };
   }, [token, lang]);
 
-  if (missing || !data) return <main className="tvScreen tvEmpty"><img src="/hotel-corali-logo.png" alt="Hotel Corali" /></main>;
+  if (missing || !data) return <main className="tvScreen tvEmpty"><span className="tvLogo"><img src="/hotel-corali-logo.png" alt="Hotel Corali" /></span></main>;
 
   const t = data.texts, locale = locales[data.lang];
   const day = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
@@ -101,7 +101,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   return (
     <main className="tvScreen">
       <header className="tvTop">
-        <img src="/hotel-corali-logo.png" alt="Hotel Corali" />
+        <span className="tvLogo"><img src="/hotel-corali-logo.png" alt="Hotel Corali" /></span>
         <div className="tvClock">
           {now && <b>{now.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" })}</b>}
           {now && <span>{now.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Athens" })}</span>}
