@@ -16,6 +16,7 @@ export function TvManager({ lang, initialSettings, initialScreens, canEdit }: { 
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [checkedAt] = useState(() => Date.now());
+  const [appCode, setAppCode] = useState<{ roomId: number; room: string; code: string; expiresAt: number } | null>(null);
   const set = (patch: Partial<TvSettings>) => setSettings((s) => ({ ...s, ...patch }));
   const setInfo = (info: TvInfoSection[]) => set({ info });
   const editInfo = (i: number, patch: Partial<TvInfoSection>) => setInfo(settings.info.map((x, j) => (j === i ? { ...x, ...patch } : x)));
@@ -30,6 +31,14 @@ export function TvManager({ lang, initialSettings, initialScreens, canEdit }: { 
       if (d.settings) setSettings(d.settings);
       if (d.screens) setScreens(d.screens);
       setMsg(done);
+    } finally { setBusy(false); }
+  }
+  async function makeAppCode(s: TvScreenRow) {
+    setBusy(true); setMsg(""); setAppCode(null);
+    try {
+      const r = await fetch("/api/pms/tv", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "setupCode", roomId: s.room_id }) });
+      const d = await r.json().catch(() => ({}));
+      if (d.ok) setAppCode({ roomId: s.room_id, room: s.room_code, code: d.code, expiresAt: d.expiresAt }); else setMsg(t("tv.failed"));
     } finally { setBusy(false); }
   }
   const saveScreen = (s: TvScreenRow, patch: Partial<TvScreenRow>) => { const n = { ...s, ...patch }; return post({ action: "screen", roomId: s.room_id, wifiSsid: n.wifi_ssid, wifiPassword: n.wifi_password, active: n.active === 1 }, t("tv.saved")); };
@@ -89,11 +98,23 @@ export function TvManager({ lang, initialSettings, initialScreens, canEdit }: { 
               <td>{online ? <span className="credit">● {t("tv.online")}</span> : s.last_seen_at ? <small>{t("tv.lastSeen")} {new Date(s.last_seen_at).toLocaleString(pmsLocale(lang))}</small> : <small>{t("tv.never")}</small>}</td>
               <td className="tvRoomWifi"><input placeholder={t("tv.useGeneral")} value={s.wifi_ssid} maxLength={64} disabled={!canEdit} onChange={(e) => editRow(s.room_id, { wifi_ssid: e.target.value })} /><input placeholder={t("tv.wifiPassword")} value={s.wifi_password} maxLength={64} disabled={!canEdit || !s.wifi_ssid} onChange={(e) => editRow(s.room_id, { wifi_password: e.target.value })} /></td>
               <td><input type="checkbox" aria-label={t("tv.active")} checked={s.active === 1} disabled={!canEdit} onChange={(e) => void saveScreen(s, { active: e.target.checked ? 1 : 0 })} /></td>
-              <td className="rowActions">{canEdit && <><button type="button" disabled={busy} onClick={() => saveScreen(s, {})}>{t("tv.save")}</button><button type="button" className="secondaryButton" disabled={busy} onClick={() => confirm(t("tv.regenerateConfirm")) && post({ action: "regenerate", roomId: s.room_id }, t("tv.regenerated"))}>{t("tv.regenerate")}</button></>}</td>
+              <td className="rowActions">{canEdit && <><button type="button" disabled={busy} onClick={() => saveScreen(s, {})}>{t("tv.save")}</button><button type="button" className="secondaryButton" disabled={busy} onClick={() => confirm(t("tv.regenerateConfirm")) && post({ action: "regenerate", roomId: s.room_id }, t("tv.regenerated"))}>{t("tv.regenerate")}</button><button type="button" className="secondaryButton" disabled={busy || s.active !== 1} onClick={() => void makeAppCode(s)}>{t("tv.appCode")}</button></>}
+                {appCode?.roomId === s.room_id && (
+                  <div className="tvAppCode" role="status">
+                    <span>{t("tv.appCodeFor").replace("{room}", appCode.room)}</span>
+                    <b>{appCode.code.slice(0, 3)} {appCode.code.slice(3)}</b>
+                    <small>{t("tv.appCodeValid").replace("{time}", new Date(appCode.expiresAt).toLocaleTimeString(pmsLocale(lang), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }))}</small>
+                  </div>
+                )}</td>
             </tr>
           );
         })}</tbody></table></div>
       <p className="notice" role="status">{msg}</p>
+
+      <details className="hubCard tvSetup">
+        <summary><b>{t("tv.appTitle")}</b></summary>
+        <ol>{["tv.app1", "tv.app2", "tv.app3", "tv.app4", "tv.app5", "tv.app6"].map((k) => <li key={k}>{t(k as Parameters<typeof t>[0])}</li>)}</ol>
+      </details>
 
       <details className="hubCard tvSetup">
         <summary><b>{t("tv.setupTitle")}</b></summary>

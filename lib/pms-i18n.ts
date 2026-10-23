@@ -1328,7 +1328,7 @@ const el = {
   "tv.saved": "Αποθηκεύτηκε.",
   "tv.failed": "Η αποθήκευση απέτυχε.",
   "tv.screens": "Οθόνες δωματίων",
-  "tv.screensHelp": "Ανοίξτε τον σύνδεσμο κάθε δωματίου στο stick της τηλεόρασης (Fully Kiosk Browser → Start URL). Wi-Fi δωματίου: μόνο αν το δωμάτιο έχει δικό του δίκτυο· αλλιώς μένει κενό.",
+  "tv.screensHelp": "Στις τηλεοράσεις Google TV / Android TV εγκαταστήστε την εφαρμογή Corali TV και συνδέστε τη με τον «Κωδικό εφαρμογής» του δωματίου· ή ανοίξτε τον σύνδεσμο του δωματίου σε browser (π.χ. Fully Kiosk → Start URL). Wi-Fi δωματίου: μόνο αν το δωμάτιο έχει δικό του δίκτυο· αλλιώς μένει κενό.",
   "tv.room": "Δωμάτιο",
   "tv.link": "Σύνδεσμος",
   "tv.status": "Κατάσταση",
@@ -1361,6 +1361,16 @@ const el = {
   "tv.infoReset": "Επαναφορά από επιστολή καλωσορίσματος",
   "tv.infoResetConfirm": "Οι καρτέλες θα αντικατασταθούν με τα κείμενα της επιστολής καλωσορίσματος (μετά πατήστε Αποθήκευση). Συνέχεια;",
   "tv.infoRemoveConfirm": "Διαγραφή αυτής της καρτέλας; (μετά πατήστε Αποθήκευση)",
+  "tv.appCode": "Κωδικός εφαρμογής",
+  "tv.appCodeFor": "Κωδικός για την εφαρμογή Corali TV — δωμάτιο {room}",
+  "tv.appCodeValid": "Πληκτρολογήστε τον στην τηλεόραση. Ισχύει μία φορά, έως τις {time}.",
+  "tv.appTitle": "Εφαρμογή Corali TV για Google TV / Android TV",
+  "tv.app1": "Στην τηλεόραση εγκαταστήστε από το Google Play την εφαρμογή «Downloader» (AFTVnews) και επιτρέψτε της «Εγκατάσταση άγνωστων εφαρμογών» (Ρυθμίσεις → Εφαρμογές → Ασφάλεια).",
+  "tv.app2": "Στο Downloader πληκτρολογήστε booking.hotelcorali.gr/tvapp, κατεβάστε και εγκαταστήστε το Corali TV.",
+  "tv.app3": "Ανοίξτε το Corali TV. Εδώ πατήστε «Κωδικός εφαρμογής» στο δωμάτιο και πληκτρολογήστε τους 6 αριθμούς στην τηλεόραση.",
+  "tv.app4": "Στην οθόνη ρυθμίσεων της εφαρμογής πατήστε «Άδεια αυτόματης εκκίνησης» και ενεργοποιήστε το «Εμφάνιση πάνω από άλλες εφαρμογές» για το Corali TV, ώστε να ανοίγει μόνο του όταν ανάβει η τηλεόραση.",
+  "tv.app5": "Αν η τηλεόραση δεν δείχνει αυτή τη ρύθμιση, χρησιμοποιήστε το Projectivy Launcher με «άνοιγμα εφαρμογής στην εκκίνηση» = Corali TV.",
+  "tv.app6": "Για να ξαναμπείτε στις ρυθμίσεις της εφαρμογής, κρατήστε πατημένο το κουμπί «Πίσω» για 3 δευτερόλεπτα.",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -2685,7 +2695,7 @@ const en: Record<PmsKey, string> = {
   "tv.saved": "Saved.",
   "tv.failed": "Saving failed.",
   "tv.screens": "Room screens",
-  "tv.screensHelp": "Open each room's link on its TV stick (Fully Kiosk Browser → Start URL). Room Wi-Fi: only if the room has its own network; otherwise leave empty.",
+  "tv.screensHelp": "On Google TV / Android TV install the Corali TV app and connect it with the room's “App code”; or open the room's link in a browser (e.g. Fully Kiosk → Start URL). Room Wi-Fi: only if the room has its own network; otherwise leave empty.",
   "tv.room": "Room",
   "tv.link": "Link",
   "tv.status": "Status",
@@ -2718,6 +2728,16 @@ const en: Record<PmsKey, string> = {
   "tv.infoReset": "Reset to welcome letter",
   "tv.infoResetConfirm": "The tabs will be replaced with the welcome letter texts (then press Save). Continue?",
   "tv.infoRemoveConfirm": "Remove this tab? (then press Save)",
+  "tv.appCode": "App code",
+  "tv.appCodeFor": "Corali TV app code — room {room}",
+  "tv.appCodeValid": "Enter it on the TV. Valid once, until {time}.",
+  "tv.appTitle": "Corali TV app for Google TV / Android TV",
+  "tv.app1": "On the TV install “Downloader” (AFTVnews) from Google Play and allow it to “Install unknown apps” (Settings → Apps → Security).",
+  "tv.app2": "In Downloader type booking.hotelcorali.gr/tvapp, then download and install Corali TV.",
+  "tv.app3": "Open Corali TV. Here press “App code” for the room and type the 6 digits on the TV.",
+  "tv.app4": "On the app's setup screen press “Allow auto-start” and turn on “Display over other apps” for Corali TV so it opens by itself when the TV turns on.",
+  "tv.app5": "If the TV does not offer that setting, use Projectivy Launcher with “launch app on start-up” = Corali TV.",
+  "tv.app6": "To open the app's settings again, hold the Back button for 3 seconds.",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

@@ -1,6 +1,11 @@
-# Hotel Corali PMS v78 — release verification
+# Hotel Corali PMS v79 — release verification
 
 ## Scope in this package
+
+### New in v79
+- Corali TV app for Google TV / Android TV (`android-tv/`, built to `public/downloads/corali-tv.apk`, short link `/tvapp`): full-screen welcome screen, opens at start-up (key card power) and when the TV wakes from standby, offline retry, set-up screen with Back held 3 s. Built with aapt2/javac/dx/zipalign/apksigner (`scripts/build-tv-app.sh`); signed v2+v3, minSdk 24, targetSdk 30. Not yet tested on a real TV.
+- PMS → Corali TV → "App code" per room: 6-digit code, one use, 30 minutes, only its SHA-256 stored (schema: tv_screens.setup_code_hash/setup_expires_at); `POST /api/public/tv/setup` exchanges it for the room's link, rate limited to 10 tries / 15 min per address.
+- Verified on the dev database: code shown in the room's row; wrong, reused and malformed codes refused; 429 after 10 tries; `/tvapp` redirects to the APK (application/vnd.android.package-archive).
 
 ### New in v78
 - Security: zod updated to 4.6.7 (GHSA-mrhx-c7xc-m3w5, memory exhaustion on oversized constrained collections), also forced for transitive copies via pnpm overrides.

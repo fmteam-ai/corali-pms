@@ -841,3 +841,4 @@ table.numeric tr.selected td{background:#fff8e6}
 .tvCardsPage .pageTitle button{border:0;border-radius:10px;padding:10px 16px;background:#173e47;color:#fff;font-weight:800;cursor:pointer}
 .tvAdminGrid .tvWide{grid-column:1/-1}
 .tvInfoEdit{display:grid;gap:6px;padding:10px;border:1px solid #e7e1d7;border-radius:10px;background:#fff}.tvInfoEditHead{display:flex;gap:6px;align-items:center}.tvInfoEditHead input:not(.tvIcon){flex:1}.tvAdmin .hubCard input.tvIcon{width:56px;text-align:center;font-size:18px}.tvInfoActions{display:flex;gap:4px}.tvInfoActions button{padding:6px 10px}.tvInfoAdd{display:flex;gap:8px;flex-wrap:wrap}.tvAdmin h3{margin:8px 0 0}
+.tvAppCode{display:grid;gap:4px;justify-items:start;margin-top:8px;padding:12px 16px;flex-basis:100%;border-radius:12px;background:#fff7e6;border:1px solid #f2c46d}.tvAppCode b{font-size:34px;letter-spacing:.12em;font-variant-numeric:tabular-nums;color:#173e47}.tvAppCode small{color:#5b6b70}

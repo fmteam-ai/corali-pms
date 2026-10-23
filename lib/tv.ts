@@ -1,4 +1,5 @@
 // Corali TV data: per-room screen links, settings, the current guest of a room and the Paros weather.
+import { createHash } from "node:crypto";
 import QRCode from "qrcode";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -29,6 +30,23 @@ export async function listScreens(ownerId: string): Promise<TvScreenRow[]> {
   await ensureScreens(ownerId);
   const r = await db().query(`SELECT s.room_id,r.code AS room_code,r.room_type,s.token,s.wifi_ssid,s.wifi_password,s.active,s.last_seen_at FROM tv_screens s JOIN rooms r ON r.id=s.room_id AND r.owner_id=s.owner_id WHERE s.owner_id=$1 AND r.active=1 ORDER BY r.code`, [ownerId]);
   return r.rows.map((x) => ({ ...x, room_id: Number(x.room_id), active: Number(x.active), last_seen_at: x.last_seen_at === null ? null : Number(x.last_seen_at), url: tvUrl(String(x.token)) })) as TvScreenRow[];
+}
+
+/** TV app setup codes (PMS → Corali TV → "App code"): 6 digits, one use, valid 30 minutes; only the hash is stored. */
+export const SETUP_CODE_MS = 30 * 60_000;
+export const setupCodeHash = (code: string) => createHash("sha256").update(`corali-tv-setup:${code}`).digest("hex");
+
+/** Exchange a setup code for the room's screen link (and use the code up). Null when unknown, expired or inactive. */
+export async function redeemSetupCode(code: string): Promise<{ url: string; roomCode: string } | null> {
+  if (!/^\d{6}$/.test(code)) return null;
+  const r = await db().query(
+    `UPDATE tv_screens s SET setup_code_hash=NULL,setup_expires_at=NULL FROM rooms r
+     WHERE s.setup_code_hash=$1 AND s.setup_expires_at>$2 AND s.active=1 AND r.id=s.room_id AND r.owner_id=s.owner_id AND r.active=1
+     RETURNING s.token,r.code AS room_code`,
+    [setupCodeHash(code), Date.now()],
+  );
+  const row = r.rows[0];
+  return row ? { url: tvUrl(String(row.token)), roomCode: String(row.room_code) } : null;
 }
 
 export const tvUrl = (token: string) => `${env().BOOKING_ORIGIN}/tv/${token}`;
