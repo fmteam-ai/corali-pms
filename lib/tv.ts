@@ -37,7 +37,7 @@ const hotelTime = (now = new Date()) => new Intl.DateTimeFormat("en-GB", { timeZ
 
 // Weather for Piso Livadi from Open-Meteo (free, no key), cached for 30 minutes; null when unreachable.
 let weatherCache: { at: number; value: TvWeather | null } | null = null;
-export type TvWeather = { temp: number; icon: string; wind: number; days: { date: string; icon: string; max: number; min: number }[] };
+export type TvWeather = { temp: number; code: number; icon: string; wind: number; days: { date: string; code: number; icon: string; max: number; min: number }[] };
 async function weather(): Promise<TvWeather | null> {
   if (weatherCache && Date.now() - weatherCache.at < 30 * 60_000) return weatherCache.value;
   let value: TvWeather | null = null;
@@ -46,8 +46,8 @@ async function weather(): Promise<TvWeather | null> {
     if (r.ok) {
       const d = await r.json();
       value = {
-        temp: Math.round(Number(d.current.temperature_2m)), icon: weatherIcon(Number(d.current.weather_code)), wind: beaufort(Number(d.current.wind_speed_10m)),
-        days: (d.daily.time as string[]).map((date, i) => ({ date, icon: weatherIcon(Number(d.daily.weather_code[i])), max: Math.round(Number(d.daily.temperature_2m_max[i])), min: Math.round(Number(d.daily.temperature_2m_min[i])) })),
+        temp: Math.round(Number(d.current.temperature_2m)), code: Number(d.current.weather_code), icon: weatherIcon(Number(d.current.weather_code)), wind: beaufort(Number(d.current.wind_speed_10m)),
+        days: (d.daily.time as string[]).map((date, i) => ({ date, code: Number(d.daily.weather_code[i]), icon: weatherIcon(Number(d.daily.weather_code[i])), max: Math.round(Number(d.daily.temperature_2m_max[i])), min: Math.round(Number(d.daily.temperature_2m_min[i])) })),
       };
     }
   } catch { value = null; }

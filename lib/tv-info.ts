@@ -20,8 +20,8 @@ export const defaultInfoSections: TvInfoSection[] = [
     key: "rates", icon: "💶",
     title: { en: "Room rates & fees", el: "Τιμές & τέλη" },
     body: {
-      en: "Room rates include VAT and applicable municipal taxes.\nThe **Climate Crisis Resilience Fee** is not included in the room rate and is payable separately, as required by Greek legislation, unless it has already been paid in accordance with the terms and conditions of your reservation.\n- April – October: **€2.00 per room / per night**",
-      el: "Οι τιμές των δωματίων περιλαμβάνουν ΦΠΑ και τους δημοτικούς φόρους.\nΤο **Τέλος Ανθεκτικότητας στην Κλιματική Κρίση** δεν περιλαμβάνεται στην τιμή και καταβάλλεται χωριστά, όπως ορίζει η ελληνική νομοθεσία, εκτός αν έχει ήδη πληρωθεί σύμφωνα με τους όρους της κράτησής σας.\n- Απρίλιος – Οκτώβριος: **€2,00 ανά δωμάτιο / ανά νύχτα**",
+      en: "Room rates include VAT and applicable municipal taxes.\n**Accepted cards:** Visa, Mastercard, Maestro\nThe **Climate Crisis Resilience Fee** is not included in the room rate and is payable separately, as required by Greek legislation, unless it has already been paid in accordance with the terms and conditions of your reservation.\n- April – October: **€2.00 per room / per night**",
+      el: "Οι τιμές των δωματίων περιλαμβάνουν ΦΠΑ και τους δημοτικούς φόρους.\n**Δεκτές κάρτες:** Visa, Mastercard, Maestro\nΤο **Τέλος Ανθεκτικότητας στην Κλιματική Κρίση** δεν περιλαμβάνεται στην τιμή και καταβάλλεται χωριστά, όπως ορίζει η ελληνική νομοθεσία, εκτός αν έχει ήδη πληρωθεί σύμφωνα με τους όρους της κράτησής σας.\n- Απρίλιος – Οκτώβριος: **€2,00 ανά δωμάτιο / ανά νύχτα**",
     },
   },
   {
@@ -52,8 +52,8 @@ export const defaultInfoSections: TvInfoSection[] = [
     key: "important", icon: "❗",
     title: { en: "Important information", el: "Σημαντικές πληροφορίες" },
     body: {
-      en: "**Smoking:** all rooms are non-smoking. Thank you for smoking only in permitted outdoor areas.\n**Pets:** pets are not permitted at the hotel.\n**Drinking water:** we recommend using bottled water for drinking.\n**Air conditioning:**\n- Please keep the doors and windows closed\n- Insert the room key fob into the energy-saving socket below the switches near the entrance\n**Accepted cards:** Visa, Mastercard, Maestro",
-      el: "**Κάπνισμα:** όλα τα δωμάτια είναι μη καπνιζόντων. Σας ευχαριστούμε που καπνίζετε μόνο στους επιτρεπόμενους εξωτερικούς χώρους.\n**Κατοικίδια:** δεν επιτρέπονται κατοικίδια στο ξενοδοχείο.\n**Πόσιμο νερό:** προτείνουμε εμφιαλωμένο νερό για πόσιμο.\n**Κλιματισμός:**\n- Παρακαλούμε κρατάτε πόρτες και παράθυρα κλειστά\n- Τοποθετήστε το μπρελόκ του κλειδιού στην υποδοχή εξοικονόμησης ενέργειας κάτω από τους διακόπτες, δίπλα στην είσοδο\n**Κάρτες:** Visa, Mastercard, Maestro",
+      en: "**Smoking:** all rooms are non-smoking. Thank you for smoking only in permitted outdoor areas.\n**Pets:** pets are not permitted at the hotel.\n**Drinking water:** we recommend using bottled water for drinking.\n**Air conditioning:**\n- Please keep the doors and windows closed\n- Insert the room key fob into the energy-saving socket below the switches near the entrance",
+      el: "**Κάπνισμα:** όλα τα δωμάτια είναι μη καπνιζόντων. Σας ευχαριστούμε που καπνίζετε μόνο στους επιτρεπόμενους εξωτερικούς χώρους.\n**Κατοικίδια:** δεν επιτρέπονται κατοικίδια στο ξενοδοχείο.\n**Πόσιμο νερό:** προτείνουμε εμφιαλωμένο νερό για πόσιμο.\n**Κλιματισμός:**\n- Παρακαλούμε κρατάτε πόρτες και παράθυρα κλειστά\n- Τοποθετήστε το μπρελόκ του κλειδιού στην υποδοχή εξοικονόμησης ενέργειας κάτω από τους διακόπτες, δίπλα στην είσοδο",
     },
   },
   {
@@ -74,6 +74,32 @@ const loc = (v: unknown, max: number): Localized => {
   return out;
 };
 
+// v76: "Accepted cards" moved from Important information to Room rates & fees. Saved copies of the untouched default
+// texts follow automatically; texts the hotel edited stay as they are.
+const movedCards: Record<string, Partial<Record<TvLanguage, [string, string]>>> = {
+  rates: {
+    en: ["\n**Accepted cards:** Visa, Mastercard, Maestro", "insert"],
+    el: ["\n**Δεκτές κάρτες:** Visa, Mastercard, Maestro", "insert"],
+  },
+  important: {
+    en: ["\n**Accepted cards:** Visa, Mastercard, Maestro", "remove"],
+    el: ["\n**Κάρτες:** Visa, Mastercard, Maestro", "remove"],
+  },
+};
+function upgradeDefaults(section: TvInfoSection): TvInfoSection {
+  const rules = movedCards[section.key];
+  const current = defaultInfoSections.find((d) => d.key === section.key);
+  if (!rules || !current) return section;
+  const body = { ...section.body };
+  for (const [lang, [line, how]] of Object.entries(rules) as [TvLanguage, [string, string]][]) {
+    const now = current.body[lang] ?? "";
+    // The text as it was before the move: rates without the line, important with it at the end.
+    const before = how === "insert" ? now.replace(line, "") : now + line;
+    if (body[lang] === before) body[lang] = now;
+  }
+  return { ...section, body };
+}
+
 /** Sections from storage or the PMS form (defaults when never saved; an empty list stays empty). */
 export function normalizeInfoSections(raw: unknown): TvInfoSection[] {
   if (!Array.isArray(raw)) return defaultInfoSections.map((s) => ({ ...s, title: { ...s.title }, body: { ...s.body } }));
@@ -84,7 +110,7 @@ export function normalizeInfoSections(raw: unknown): TvInfoSection[] {
     let key = clip(x.key, 30).replace(/[^a-z0-9_-]/gi, "") || `s${i + 1}`;
     while (seen.has(key)) key = `${key}_`;
     seen.add(key);
-    return [{ key, icon: clip(x.icon, 8) || "ℹ️", title: loc(x.title, 60), body: loc(x.body, 2500) }];
+    return [upgradeDefaults({ key, icon: clip(x.icon, 8) || "ℹ️", title: loc(x.title, 60), body: loc(x.body, 2500) })];
   });
 }
 

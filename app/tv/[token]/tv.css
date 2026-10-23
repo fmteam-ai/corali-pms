@@ -1,0 +1,118 @@
+/* Corali TV — room welcome screen. Sized in vw so it fills a 16:9 TV exactly; one column on phones.
+   Fonts are self-hosted (Latin + Greek subsets of Noto Serif and Open Sans, SIL OFL — see /fonts/tv/). */
+@font-face{font-family:"Corali TV Serif";src:url(/fonts/tv/NotoSerif.woff2) format("woff2");font-weight:100 900;font-display:swap}
+@font-face{font-family:"Corali TV Sans";src:url(/fonts/tv/OpenSans.woff2) format("woff2");font-weight:300 800;font-display:swap}
+@font-face{font-family:"Corali TV Sans";src:url(/fonts/tv/OpenSans-Italic.woff2) format("woff2");font-weight:300 800;font-style:italic;font-display:swap}
+
+.tvScreen{
+  --gold:#f2c46d;--ink:#0f2f37;--muted:rgba(255,255,255,.72);--line:rgba(255,255,255,.16);--glass:rgba(10,38,46,.42);
+  min-height:100vh;box-sizing:border-box;padding:1.7vw 3vw 1.6vw;color:#fff;
+  font-family:"Corali TV Sans","Open Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased;
+  background:linear-gradient(160deg,rgba(9,33,41,.94) 0%,rgba(15,52,62,.86) 55%,rgba(20,64,74,.78) 100%),url(/images/corali-harbour.jpg) center/cover fixed;
+  display:flex;flex-direction:column;gap:1.15vw
+}
+.tvScreen *{box-sizing:border-box}
+.tvEmpty{align-items:center;justify-content:center}.tvEmpty img{width:22vw;opacity:.9;filter:brightness(0) invert(1)}
+
+/* Header */
+.tvTop{display:flex;justify-content:space-between;align-items:center}
+.tvTop img{height:3.4vw;filter:brightness(0) invert(1)}
+.tvClock{text-align:right;display:grid;gap:.15vw}
+.tvClock b{font-size:2.9vw;font-weight:600;line-height:1;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.tvClock span{font-size:1.05vw;color:var(--muted);text-transform:capitalize}
+
+/* Welcome */
+.tvHero h1{font-family:"Corali TV Serif",Georgia,serif;font-weight:600;font-size:3.3vw;line-height:1.12;margin:0 0 .5vw;letter-spacing:-.005em}
+.tvHero p{font-size:1.28vw;line-height:1.55;margin:0;max-width:64vw;color:rgba(255,255,255,.88);font-weight:400}
+.tvHero .tvNotice{display:inline-block;background:var(--gold);color:var(--ink);padding:.55vw 1.1vw;border-radius:.6vw;font-weight:700}
+.tvStay{display:flex;gap:.6vw;margin-top:.8vw;flex-wrap:wrap}
+.tvStay span{display:inline-flex;gap:.45vw;align-items:baseline;font-size:1.02vw;padding:.38vw .9vw;border:1px solid var(--line);border-radius:999px;background:var(--glass);color:var(--muted)}
+.tvStay b{color:#fff;font-weight:600}
+
+/* Tabs */
+.tvTabs{display:flex;gap:.45vw;flex-wrap:wrap}
+.tvTabs button{font:inherit;font-size:.92vw;font-weight:600;letter-spacing:.01em;color:#fff;background:var(--glass);border:1px solid var(--line);border-radius:999px;padding:.42vw .95vw;cursor:pointer;display:inline-flex;align-items:center;gap:.45vw;transition:background .2s,color .2s}
+.tvTabs button svg,.tvTabs .tvEmoji{font-size:.95vw;opacity:.9}
+.tvTabs button.active{background:var(--gold);color:var(--ink);border-color:var(--gold)}
+.tvTabs button.active svg{opacity:1}
+.tvTabs button:focus-visible{outline:.2vw solid #fff;outline-offset:.15vw}
+
+/* Cards */
+.tvGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(20vw,1fr));gap:1.1vw;flex:1;align-items:stretch}
+.tvCard{background:rgba(255,255,255,.08);border:1px solid var(--line);border-radius:1.1vw;padding:1.25vw 1.35vw;backdrop-filter:blur(8px);display:flex;flex-direction:column}
+.tvCardHead{display:flex;align-items:center;gap:.7vw;margin:0 0 1vw}
+.tvIcon{flex:none;display:inline-grid;place-items:center;width:2.3vw;height:2.3vw;border-radius:50%;background:rgba(242,196,109,.16);color:var(--gold);font-size:1.15vw}
+.tvCardHead h2{margin:0;font-size:.95vw;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.92)}
+.tvList{margin:0;padding:0;list-style:none;display:grid;gap:.6vw;font-size:1.02vw;line-height:1.45}
+.tvTips li{position:relative;padding-left:1vw}.tvTips li::before{content:"";position:absolute;left:0;top:.62em;width:.38vw;height:.38vw;border-radius:50%;background:var(--gold)}
+
+/* Wi-Fi */
+.tvWifi dl{margin:0 0 1vw;display:grid;gap:.15vw}
+.tvWifi dt{font-size:.82vw;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tvWifi dd{margin:0 0 .6vw;font-size:1.5vw;font-weight:700;word-break:break-all}
+
+/* QR codes */
+.tvQr{margin:0;display:flex;gap:.9vw;align-items:center}
+.tvQr img{width:6.6vw;height:6.6vw;border-radius:.5vw;background:#fff;padding:.25vw;flex:none}
+.tvQr figcaption{font-size:.88vw;line-height:1.4;color:var(--muted);display:grid;gap:.15vw}
+.tvQr figcaption b{color:#fff;font-weight:600;font-size:.95vw;display:inline-flex;gap:.35vw;align-items:center}
+.tvQr figcaption b svg{color:var(--gold)}
+.tvQrStack{display:grid;gap:.8vw;margin-top:auto;padding-top:.9vw}
+.tvDirectOnly{font-style:italic;color:var(--gold);font-size:.8vw}
+.tvPhone{margin:.6vw 0 0;font-size:.9vw;color:var(--muted)}.tvPhone b{color:#fff}
+
+/* Weather */
+.tvNow{display:flex;align-items:center;gap:.9vw;margin-bottom:.9vw}
+.tvNow svg{font-size:3.6vw;color:var(--gold)}
+.tvNow b{font-size:3vw;font-weight:600;line-height:1}
+.tvNow small{font-size:.9vw;color:var(--muted)}
+.tvDays{margin:0;padding:0;list-style:none;display:grid;gap:.35vw;font-size:.98vw}
+.tvDays li{display:grid;grid-template-columns:1fr 1.6vw auto;gap:.6vw;align-items:center;padding:.3vw 0;border-top:1px solid var(--line)}
+.tvDays li:first-child{border-top:0}
+.tvDays li span:first-child{text-transform:capitalize}
+.tvDays svg{font-size:1.3vw;color:var(--gold)}
+.tvDays li span:last-child{text-align:right;font-variant-numeric:tabular-nums}.tvDays em{font-style:normal;color:var(--muted)}
+
+/* Services */
+.tvServices li{display:flex;justify-content:space-between;gap:.8vw;padding-bottom:.45vw;border-bottom:1px solid var(--line)}
+.tvServices li b{white-space:nowrap;color:var(--gold);font-weight:600}
+
+/* Information tab */
+.tvInfo{flex:1;display:grid}
+.tvInfoCard{display:grid;grid-template-columns:15vw 1fr;gap:2.5vw;padding:2vw 2.4vw;align-content:start}
+.tvInfoSide{display:grid;align-content:start;gap:1vw}
+.tvInfoSide .tvIcon{width:4.4vw;height:4.4vw;font-size:2vw}
+.tvInfoSide h2{margin:0;font-family:"Corali TV Serif",Georgia,serif;font-weight:600;font-size:2vw;line-height:1.2}
+.tvInfoBody{max-width:62vw;font-size:1.32vw;line-height:1.62;color:rgba(255,255,255,.92)}
+.tvInfoBody p{margin:0 0 .9vw}
+.tvInfoBody ul{margin:-.3vw 0 .9vw;padding:0;list-style:none;display:grid;gap:.35vw}
+.tvInfoBody li{position:relative;padding-left:1.4vw}
+.tvInfoBody li::before{content:"";position:absolute;left:.25vw;top:.68em;width:.42vw;height:.42vw;border-radius:50%;background:var(--gold)}
+.tvInfoBody b{color:var(--gold);font-weight:600}
+
+/* Phones (QR card page) */
+@media (max-width:900px),(orientation:portrait){
+  .tvScreen{padding:20px 16px 24px;gap:16px;background-attachment:scroll}
+  .tvTop img{height:38px}.tvClock b{font-size:26px}.tvClock span{font-size:13px}
+  .tvHero h1{font-size:28px}.tvHero p{font-size:16px;max-width:none}
+  .tvStay span{font-size:13px;padding:5px 10px}
+  .tvTabs{flex-wrap:nowrap;overflow-x:auto;gap:8px;padding-bottom:4px;scrollbar-width:none}
+  .tvTabs button{font-size:14px;padding:8px 13px;white-space:nowrap;gap:6px}.tvTabs button svg,.tvTabs .tvEmoji{font-size:14px}
+  .tvGrid{grid-template-columns:1fr;gap:14px}
+  .tvCard{border-radius:16px;padding:16px}
+  .tvCardHead{gap:10px;margin-bottom:12px}.tvIcon{width:34px;height:34px;font-size:16px}.tvCardHead h2{font-size:14px}
+  .tvList{font-size:15px;gap:8px}.tvTips li{padding-left:14px}.tvTips li::before{width:6px;height:6px}
+  .tvWifi dt{font-size:12px}.tvWifi dd{font-size:20px}
+  .tvQr img{width:110px;height:110px;padding:4px;border-radius:8px}.tvQr figcaption{font-size:13px}.tvQr figcaption b{font-size:14px}
+  .tvDirectOnly{font-size:12px}.tvPhone{font-size:14px}
+  .tvNow svg{font-size:46px}.tvNow b{font-size:38px}.tvNow small{font-size:13px}
+  .tvDays{font-size:15px}.tvDays li{grid-template-columns:1fr 24px auto;gap:8px;padding:6px 0}.tvDays svg{font-size:20px}
+  .tvInfoCard{grid-template-columns:1fr;gap:14px;padding:18px}
+  .tvInfoSide{grid-template-columns:auto 1fr;align-items:center;gap:12px}.tvInfoSide .tvIcon{width:44px;height:44px;font-size:20px}.tvInfoSide h2{font-size:22px}
+  .tvInfoBody{font-size:16px;max-width:none}.tvInfoBody p{margin-bottom:12px}.tvInfoBody ul{gap:6px;margin:-4px 0 12px}.tvInfoBody li{padding-left:18px}.tvInfoBody li::before{width:6px;height:6px;left:3px}
+  .tvEmpty img{width:60vw}.tvHero .tvNotice{border-radius:10px;padding:8px 12px}
+}
+
+/* The site's general <dl> styling must not reach the Wi-Fi block. */
+.tvScreen .tvWifi dl{display:grid;border:0;padding:0;background:none;grid-template-columns:none}
+.tvScreen .tvWifi dl dt,.tvScreen .tvWifi dl dd{display:block;border:0;padding:0;background:none;width:auto;text-align:left}

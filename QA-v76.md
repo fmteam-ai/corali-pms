@@ -1,6 +1,11 @@
-# Hotel Corali PMS v75 — release verification
+# Hotel Corali PMS v76 — release verification
 
 ## Scope in this package
+
+### New in v76
+- Corali TV redesign: self-hosted Noto Serif (headings) and Open Sans (text) with Greek support; line icons on tabs and cards; weather icons for now and the 5-day forecast; cleaner glass cards and gold accents.
+- Information tabs: one column with a large icon and title; bullets keep their order (fixes "Before your check-out" key instructions shown out of order).
+- "Accepted cards: Visa, Mastercard, Maestro" moved from Important information to Room rates & fees (under the VAT line). Saved, unedited default texts are updated automatically; texts edited by the hotel are left as they are. Test added.
 
 ### New in v75
 - Corali TV: under "My booking" a notice "Only for bookings made through our website" (6 languages).
