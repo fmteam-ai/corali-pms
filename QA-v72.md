@@ -1,6 +1,10 @@
-# Hotel Corali PMS v71 — release verification
+# Hotel Corali PMS v72 — release verification
 
 ## Scope in this package
+
+### New in v72
+- **Check-in from 13:00** (welcome letter) everywhere: booking policy text and pop-up (6 languages), pre-arrival email/WhatsApp template (6 languages), guest and booking-form AI assistant facts, Corali TV default check-in time, test message sample (reception 07:30–21:00).
+- Database update rewrites the same phrases in saved copies of the policy texts and message templates (`booking_policy_texts`, `message_automation_settings.templates_json`). A Corali TV check-in time already saved in the PMS is kept as saved.
 
 ### New in v71
 - Corali TV **hotel information tabs** from the welcome letter: Check-in & check-out, Room rates & fees, Housekeeping, Wi-Fi & facilities, Reception, Important information, Before your check-out (English + Greek; other languages fall back to English until filled in).

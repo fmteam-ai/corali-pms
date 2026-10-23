@@ -21,7 +21,7 @@ export function scheduleFor(event, booking, settings) {
   const sendHour = num(settings.send_hour, 10);
   switch (event) {
     case "confirmation": return Number(booking.created_at);
-    // 72 hours before a 15:00 check-in by default.
+    // 3 days before arrival, at 15:00 by default.
     case "pre_arrival": return greekTime(booking.check_in, -num(settings.pre_arrival_days_before, 3), num(settings.pre_arrival_hour, 15));
     case "checkin": return greekTime(booking.check_in, -num(settings.checkin_days_before, 3), sendHour);
     case "welcome": return greekTime(booking.check_in, 0, num(settings.welcome_hour, 16));

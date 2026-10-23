@@ -24,7 +24,7 @@ export type TvSettings = {
 export const defaultTvSettings: TvSettings = {
   wifiSsid: "",
   wifiPassword: "",
-  checkInTime: "15:00",
+  checkInTime: "13:00",
   checkOutTime: "11:00",
   receptionPhone: "",
   whatsappNumber: "",

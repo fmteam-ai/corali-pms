@@ -10,7 +10,7 @@ export const defaultPolicyTexts: Record<BookingLanguage, string> = {
 Δωρεάν ακύρωση έως {cancellationDays} ημέρες πριν την άφιξη. Για ακυρώσεις μετά από αυτή την προθεσμία ή σε περίπτωση μη εμφάνισης χρεώνεται το σύνολο της κράτησης. Τα μη επιστρεπτέα πλάνα δεν επιστρέφονται.
 
 Άφιξη & αναχώρηση
-Check-in από τις 15:00, check-out έως τις 11:00.
+Check-in από τις 13:00, check-out έως τις 11:00.
 
 Τέλος ανθεκτικότητας στην κλιματική κρίση
 Χρεώνεται ανά δωμάτιο και ανά διανυκτέρευση σύμφωνα με τη νομοθεσία.
@@ -24,7 +24,7 @@ Cancellations ("{plan}" rate)
 Free cancellation until {cancellationDays} days before arrival. Cancellations after this deadline and no-shows are charged the full amount. Non-refundable rates are not refunded.
 
 Arrival & departure
-Check-in from 15:00, check-out by 11:00.
+Check-in from 13:00, check-out by 11:00.
 
 Climate Crisis Resilience Fee
 Charged per room per night as required by Greek law.
@@ -38,7 +38,7 @@ Annulations (tarif « {plan} »)
 Annulation gratuite jusqu’à {cancellationDays} jours avant l’arrivée. Après ce délai et en cas de non-présentation, le montant total est facturé. Les tarifs non remboursables ne sont pas remboursés.
 
 Arrivée et départ
-Arrivée à partir de 15h00, départ avant 11h00.
+Arrivée à partir de 13h00, départ avant 11h00.
 
 Taxe de résilience à la crise climatique
 Facturée par chambre et par nuit conformément à la loi grecque.
@@ -52,7 +52,7 @@ Stornierung (Tarif „{plan}“)
 Kostenlose Stornierung bis {cancellationDays} Tage vor Anreise. Bei späterer Stornierung oder Nichterscheinen wird der Gesamtbetrag berechnet. Nicht erstattbare Tarife werden nicht erstattet.
 
 Anreise & Abreise
-Check-in ab 15:00 Uhr, Check-out bis 11:00 Uhr.
+Check-in ab 13:00 Uhr, Check-out bis 11:00 Uhr.
 
 Klimaresilienzgebühr
 Wird gemäß griechischem Recht pro Zimmer und Nacht berechnet.
@@ -66,7 +66,7 @@ Cancellazioni (tariffa «{plan}»)
 Cancellazione gratuita fino a {cancellationDays} giorni prima dell’arrivo. Dopo tale termine e in caso di mancata presentazione viene addebitato l’intero importo. Le tariffe non rimborsabili non sono rimborsate.
 
 Arrivo e partenza
-Check-in dalle 15:00, check-out entro le 11:00.
+Check-in dalle 13:00, check-out entro le 11:00.
 
 Tassa di resilienza alla crisi climatica
 Addebitata per camera e per notte secondo la legge greca.
@@ -80,7 +80,7 @@ Cancelaciones (tarifa «{plan}»)
 Cancelación gratuita hasta {cancellationDays} días antes de la llegada. Las cancelaciones posteriores y las no presentaciones se cobran en su totalidad. Las tarifas no reembolsables no se reembolsan.
 
 Llegada y salida
-Entrada a partir de las 15:00, salida hasta las 11:00.
+Entrada a partir de las 13:00, salida hasta las 11:00.
 
 Tasa de resiliencia a la crisis climática
 Se cobra por habitación y noche según la ley griega.

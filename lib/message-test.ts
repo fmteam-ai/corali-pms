@@ -2,7 +2,7 @@
 
 /** Placeholder booking used to fill templates in a test message. */
 export function sampleValues(origin: string): Record<string, string> {
-  return { name: "Maria Papadopoulou", reference: "CRL-TEST01", checkIn: "2026-06-12", checkOut: "2026-06-15", amount: "€240.00", link: `${origin.replace(/\/$/, "")}/book`, arrival: "Check-in from 15:00 · reception open 08:00–22:00" };
+  return { name: "Maria Papadopoulou", reference: "CRL-TEST01", checkIn: "2026-06-12", checkOut: "2026-06-15", amount: "€240.00", link: `${origin.replace(/\/$/, "")}/book`, arrival: "Check-in from 13:00 · reception open 07:30–21:00" };
 }
 
 /** Phone number as WhatsApp expects it: digits only with country code, or null when it cannot be one. */

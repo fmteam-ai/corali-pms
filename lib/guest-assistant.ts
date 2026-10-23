@@ -53,7 +53,7 @@ How to answer:
 HOTEL FACTS
 - Location: Piso Livadi, Paros, Cyclades, Greece, by the harbour and beach.
 - Access: about 50 steps from the main road and no lift (mention this to guests with heavy luggage or reduced mobility).
-- Check-in from 15:00, check-out by 11:00 (see policy).
+- Check-in from 13:00, check-out by 11:00 (see policy).
 - Transfers from the port or airport can be requested during online check-in.
 - The Climate Crisis Resilience Fee is charged per room per night by Greek law.`;
 }

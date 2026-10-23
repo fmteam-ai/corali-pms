@@ -16,7 +16,7 @@ test("answers from the policy paragraph in the guest's language", () => {
   const el = faqAnswer("Μέχρι πότε μπορώ να ακυρώσω;", defaultPolicyTexts.el, text);
   assert.match(el, /Ακυρώσεις/);
   const en = faqAnswer("What time is check-in?", defaultPolicyTexts.en, text);
-  assert.match(en, /15:00/);
+  assert.match(en, /13:00/);
   assert.match(faqAnswer("Is there a lift? I have heavy luggage", defaultPolicyTexts.en, text), /50 steps/);
   assert.equal(faqAnswer("Do you have a transfer from the port?", defaultPolicyTexts.en, text), "TRANSFER");
   assert.equal(faqAnswer("Tell me a joke", defaultPolicyTexts.en, text), "FALLBACK");
