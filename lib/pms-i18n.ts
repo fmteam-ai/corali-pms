@@ -1354,6 +1354,13 @@ const el = {
   "tv.whatsapp": "WhatsApp ξενοδοχείου (αριθμός)",
   "tv.guideUrl": "Σύνδεσμος ταξιδιωτικού οδηγού Πάρου (για QR στην οθόνη)",
   "tv.qrHelp": "Ο αριθμός WhatsApp και ο σύνδεσμος οδηγού γίνονται αυτόματα QR στην οθόνη. Το WhatsApp ανοίγει με έτοιμο μήνυμα «Είμαι στο δωμάτιο …».",
+  "tv.infoTitle": "Πληροφορίες ξενοδοχείου (καρτέλες στην οθόνη)",
+  "tv.infoHelp": "Από την επιστολή καλωσορίσματος. Μία παράγραφος ανά γραμμή, «- » για κουκκίδα, **έντονα**. Αυτόματα: {checkIn} {checkOut} {wifi} {password}. Επιλέξτε γλώσσα από τις καρτέλες πάνω· αν λείπει μια γλώσσα, εμφανίζονται τα αγγλικά.",
+  "tv.infoName": "Τίτλος καρτέλας",
+  "tv.infoAdd": "Προσθήκη καρτέλας",
+  "tv.infoReset": "Επαναφορά από επιστολή καλωσορίσματος",
+  "tv.infoResetConfirm": "Οι καρτέλες θα αντικατασταθούν με τα κείμενα της επιστολής καλωσορίσματος (μετά πατήστε Αποθήκευση). Συνέχεια;",
+  "tv.infoRemoveConfirm": "Διαγραφή αυτής της καρτέλας; (μετά πατήστε Αποθήκευση)",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -2704,6 +2711,13 @@ const en: Record<PmsKey, string> = {
   "tv.whatsapp": "Hotel WhatsApp (number)",
   "tv.guideUrl": "Paros travel guide link (QR on the screen)",
   "tv.qrHelp": "The WhatsApp number and guide link become QR codes on the screen automatically. WhatsApp opens with a ready message “I am in room …”.",
+  "tv.infoTitle": "Hotel information (tabs on the screen)",
+  "tv.infoHelp": "From the welcome letter. One paragraph per line, “- ” for a bullet, **bold**. Filled in automatically: {checkIn} {checkOut} {wifi} {password}. Pick the language with the tabs above; a missing language shows English.",
+  "tv.infoName": "Tab title",
+  "tv.infoAdd": "Add tab",
+  "tv.infoReset": "Reset to welcome letter",
+  "tv.infoResetConfirm": "The tabs will be replaced with the welcome letter texts (then press Save). Continue?",
+  "tv.infoRemoveConfirm": "Remove this tab? (then press Save)",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

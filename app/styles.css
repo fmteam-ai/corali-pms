@@ -870,3 +870,16 @@ table.numeric tr.selected td{background:#fff8e6}
 .tvWeather ul{gap:.45vw}.tvWeather li{font-size:1.05vw}
 @media (max-width:900px),(orientation:portrait){.tvWeather li{font-size:16px}}
 .tvQrRow{margin-top:1vw}.tvAdminGrid .tvWide{grid-column:1/-1}
+.tvTabs{display:flex;gap:.6vw;flex-wrap:wrap}.tvTabs button{font:inherit;font-size:1.05vw;font-weight:700;color:#fff;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);border-radius:999px;padding:.45vw 1vw;cursor:pointer}
+.tvTabs button.active{background:#ffd77a;color:#173e47;border-color:#ffd77a}.tvTabs button:focus-visible{outline:.25vw solid #fff;outline-offset:.15vw}
+.tvInfo{flex:1;display:grid}.tvInfoCard h2{font-size:2.2vw;display:flex;align-items:center;gap:.8vw}.tvInfoBody{font-size:1.55vw;line-height:1.5;columns:2;column-gap:3vw}.tvInfoBody p{margin:0 0 .8vw;break-inside:avoid}.tvInfoBody ul{margin:0 0 .8vw;padding-left:1.6vw;list-style:disc;display:block;font-size:inherit}.tvInfoBody li{margin-bottom:.3vw}.tvInfoBody b{color:#ffd77a}
+@media (max-width:900px),(orientation:portrait){.tvTabs{flex-wrap:nowrap;overflow-x:auto;gap:8px;padding-bottom:4px}.tvTabs button{font-size:14px;padding:8px 12px;white-space:nowrap}.tvInfoCard h2{font-size:22px;gap:8px}.tvInfoBody{font-size:16px;columns:1}.tvInfoBody p,.tvInfoBody ul{margin-bottom:10px}.tvInfoBody ul{padding-left:20px}}
+.tvInfoEdit{display:grid;gap:6px;padding:10px;border:1px solid #e7e1d7;border-radius:10px;background:#fff}.tvInfoEditHead{display:flex;gap:6px;align-items:center}.tvInfoEditHead input:not(.tvIcon){flex:1}.tvAdmin .hubCard input.tvIcon{width:56px;text-align:center;font-size:18px}.tvInfoActions{display:flex;gap:4px}.tvInfoActions button{padding:6px 10px}.tvInfoAdd{display:flex;gap:8px;flex-wrap:wrap}.tvAdmin h3{margin:8px 0 0}
+/* v71: room for the info tabs on the home view */
+.tvScreen{padding:1.6vw 3vw;gap:1.1vw}.tvTop img{height:3.6vw}.tvClock b{font-size:3vw}
+.tvHero h1{font-size:3.5vw;margin-bottom:.4vw}.tvHero p{font-size:1.4vw}.tvStay{margin-top:.6vw;font-size:1.2vw}
+.tvTabs button{font-size:.95vw;padding:.35vw .85vw}
+.tvCard{padding:1.1vw 1.3vw}.tvCard h2{font-size:1.35vw;margin-bottom:.7vw}.tvCard ul{font-size:1.05vw;gap:.5vw}
+.tvWifi figure img,.tvBookingQr img{width:7vw;height:7vw}.tvWifi dd{font-size:1.45vw}.tvNow span{font-size:3.2vw}.tvNow b{font-size:3vw}.tvNow{margin-bottom:.6vw}
+.tvQrPair{display:grid;grid-template-columns:1fr 1fr;gap:.8vw;margin-top:.8vw}.tvQrPair figure{margin:0;display:grid;justify-items:center;gap:.4vw;text-align:center}.tvQrPair img{width:6.6vw;height:6.6vw;border-radius:.5vw;background:#fff;padding:.25vw}.tvQrPair figcaption{font-size:.85vw;line-height:1.3;display:grid}.tvPhone{margin:.6vw 0 0;font-size:1vw}
+@media (max-width:900px),(orientation:portrait){.tvScreen{padding:20px 16px;gap:16px}.tvTop img{height:40px}.tvClock b{font-size:28px}.tvHero h1{font-size:30px}.tvHero p,.tvStay{font-size:16px}.tvTabs button{font-size:14px;padding:8px 12px}.tvCard{padding:16px}.tvCard h2{font-size:19px}.tvCard ul{font-size:16px}.tvWifi figure img,.tvBookingQr img{width:120px;height:120px}.tvWifi dd{font-size:20px}.tvNow span{font-size:44px}.tvNow b{font-size:40px}.tvQrPair{gap:12px}.tvQrPair img{width:120px;height:120px;padding:4px;border-radius:8px}.tvQrPair figcaption{font-size:13px}.tvPhone{font-size:15px}}

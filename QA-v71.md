@@ -1,6 +1,13 @@
-# Hotel Corali PMS v70 — release verification
+# Hotel Corali PMS v71 — release verification
 
 ## Scope in this package
+
+### New in v71
+- Corali TV **hotel information tabs** from the welcome letter: Check-in & check-out, Room rates & fees, Housekeeping, Wi-Fi & facilities, Reception, Important information, Before your check-out (English + Greek; other languages fall back to English until filled in).
+  - TV: tab bar under the welcome; the remote's ←/→ keys move between tabs; after 90 s without use the screen returns to Home. Phones: scrollable tab bar.
+  - PMS → Corali TV: edit icon/title/text per language, add (max 10), remove, reorder, "Reset to welcome letter". Text: one paragraph per line, "- " bullets, **bold**; {checkIn} {checkOut} {wifi} {password} filled from the settings.
+- Home view tightened so tabs, weather (now + 5 days) and the booking/WhatsApp/guide QR codes fit on a 16:9 TV.
+- Tests: `tests/tv-info.test.ts`.
 
 ### New in v70
 - Corali TV: **WhatsApp** and **Paros travel guide** QR codes on the room screen. PMS → Corali TV → "WhatsApp ξενοδοχείου" (number, any format → international digits) and "Σύνδεσμος ταξιδιωτικού οδηγού" (http/https only). WhatsApp opens with a first message in the guest's language: "Hello! I am in room 101." Verified by decoding the generated QR codes.

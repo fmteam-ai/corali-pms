@@ -1,14 +1,59 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { TvScreenData } from "@/lib/tv";
 
 const locales = { el: "el-GR", en: "en-GB", fr: "fr-FR", de: "de-DE", it: "it-IT", es: "es-ES" } as const;
 const REFRESH_MS = 60_000;
+const HOME_AFTER_MS = 90_000;
+
+/** **bold** inside a line. */
+const strong = (line: string): ReactNode[] => line.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((p, i) => (/^\*\*[^*]+\*\*$/.test(p) ? <b key={i}>{p.slice(2, -2)}</b> : <Fragment key={i}>{p}</Fragment>));
+
+/** Info text: one paragraph per line, consecutive "- " lines become a list. */
+function InfoBody({ text }: { text: string }) {
+  const blocks: ReactNode[] = [];
+  let bullets: string[] = [];
+  const flush = () => { if (bullets.length) { blocks.push(<ul key={`u${blocks.length}`}>{bullets.map((b, i) => <li key={i}>{strong(b)}</li>)}</ul>); bullets = []; } };
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) { flush(); continue; }
+    if (line.startsWith("- ")) bullets.push(line.slice(2));
+    else { flush(); blocks.push(<p key={`p${blocks.length}`}>{strong(line)}</p>); }
+  }
+  flush();
+  return <>{blocks}</>;
+}
 
 export function TvScreen({ token, lang }: { token: string; lang: string }) {
   const [data, setData] = useState<TvScreenData | null>(null);
   const [missing, setMissing] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
+  const [tab, setTab] = useState("home");
+  const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tabsRef = useRef<HTMLElement | null>(null);
+
+  // Any remote/keyboard/touch use keeps the chosen tab; after 90 s without it the screen goes back home.
+  const choose = (key: string) => {
+    setTab(key);
+    if (idle.current) clearTimeout(idle.current);
+    if (key !== "home") idle.current = setTimeout(() => setTab("home"), HOME_AFTER_MS);
+  };
+  useEffect(() => () => { if (idle.current) clearTimeout(idle.current); }, []);
+  // TV remotes send arrow keys: left/right move between tabs.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      const buttons = Array.from(tabsRef.current?.querySelectorAll("button") ?? []);
+      if (!buttons.length) return;
+      const at = Math.max(0, buttons.indexOf(document.activeElement as HTMLButtonElement));
+      const next = buttons[(at + (e.key === "ArrowRight" ? 1 : buttons.length - 1)) % buttons.length];
+      next.focus();
+      choose(next.dataset.key ?? "home");
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   useEffect(() => {
     let live = true;
@@ -55,6 +100,18 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         )}
       </section>
 
+      {data.info.length > 0 && (
+        <nav className="tvTabs" ref={tabsRef} aria-label="Hotel information">
+          <button type="button" data-key="home" className={tab === "home" ? "active" : ""} onClick={() => choose("home")}>🏠 {t.home}</button>
+          {data.info.map((x) => <button type="button" key={x.key} data-key={x.key} className={tab === x.key ? "active" : ""} onClick={() => choose(x.key)}>{x.icon} {x.title}</button>)}
+        </nav>
+      )}
+
+      {tab !== "home" && data.info.some((x) => x.key === tab) ? (
+        <section className="tvInfo">{data.info.filter((x) => x.key === tab).map((x) => (
+          <div className="tvCard tvInfoCard" key={x.key}><h2><span>{x.icon}</span> {x.title}</h2><div className="tvInfoBody"><InfoBody text={x.body} /></div></div>
+        ))}</section>
+      ) : (
       <section className="tvGrid">
         {data.wifi && (
           <div className="tvCard tvWifi">
@@ -82,10 +139,14 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         <div className="tvCard tvBooking">
           <h2>🛎️ {t.extras}</h2>
           {data.extras.length > 0 && <ul>{data.extras.map((e) => <li key={e.name}><span>{e.name}</span><b>{euro(e.priceCents)} {e.perNight ? t.perNight : e.perPerson ? t.perPerson : ""}</b></li>)}</ul>}
-          <div className="tvBookingQr tvQrRow"><img src={data.manage.qr} alt="" /><p><b>{t.booking}</b><br />{t.scanBooking}{data.receptionPhone && <><br />{t.reception}: <b>{data.receptionPhone}</b></>}</p></div>
-          {data.whatsapp && <div className="tvBookingQr tvQrRow"><img className="tvWa" src={data.whatsapp.qr} alt="" /><p><b>💬 {t.whatsapp}</b><br />{t.scanWhatsapp}</p></div>}
+          <div className="tvQrPair">
+            <figure><img src={data.manage.qr} alt="" /><figcaption><b>{t.booking}</b>{t.scanBooking}</figcaption></figure>
+            {data.whatsapp && <figure><img src={data.whatsapp.qr} alt="" /><figcaption><b>💬 {t.whatsapp}</b>{t.scanWhatsapp}</figcaption></figure>}
+          </div>
+          {data.receptionPhone && <p className="tvPhone">{t.reception}: <b>{data.receptionPhone}</b></p>}
         </div>
       </section>
+      )}
     </main>
   );
 }
