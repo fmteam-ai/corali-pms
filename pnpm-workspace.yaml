@@ -30,3 +30,5 @@ minimumReleaseAgeExclude:
 # GHSA-68fv-2mgg-jv7q: source-map-js <1.2.2 (via next → postcss).
 overrides:
   source-map-js: ">=1.2.2"
+# GHSA-mrhx-c7xc-m3w5: zod <4.6.6 can exhaust memory on oversized constrained collections (also via @anthropic-ai/sdk).
+  zod: ">=4.6.6"

@@ -3,9 +3,8 @@
 ## Scope in this package
 
 ### New in v78
-- Corali TV works on older TV browsers (e.g. Samsung 2020 Tizen, which showed only the logo): the screen is rendered on the server, tabs are real links (?tab=…), a plain ES5 fallback reloads every minute and returns home after 90 s when the app's JavaScript cannot run. Flex gap replaced with margins (unsupported before Chromium 84).
-- Unknown/disabled TV link shows "Screen link not found" under the logo.
-- Verified with JavaScript disabled (home + tab navigation) and enabled (hydration without errors, in-page tab switching).
+- Security: zod updated to 4.6.7 (GHSA-mrhx-c7xc-m3w5, memory exhaustion on oversized constrained collections), also forced for transitive copies via pnpm overrides.
+- Corali TV page unchanged from v77 (an older-TV-browser rewrite was reverted at the hotel's request).
 
 ### New in v77
 - Corali TV shows the full-colour Hotel Corali logo on a white rounded panel (was a white silhouette); also on the standby screen and the phone view.
