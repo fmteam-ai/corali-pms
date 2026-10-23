@@ -1,6 +1,11 @@
-# Hotel Corali PMS v77 — release verification
+# Hotel Corali PMS v78 — release verification
 
 ## Scope in this package
+
+### New in v78
+- Corali TV works on older TV browsers (e.g. Samsung 2020 Tizen, which showed only the logo): the screen is rendered on the server, tabs are real links (?tab=…), a plain ES5 fallback reloads every minute and returns home after 90 s when the app's JavaScript cannot run. Flex gap replaced with margins (unsupported before Chromium 84).
+- Unknown/disabled TV link shows "Screen link not found" under the logo.
+- Verified with JavaScript disabled (home + tab navigation) and enabled (hydration without errors, in-page tab switching).
 
 ### New in v77
 - Corali TV shows the full-colour Hotel Corali logo on a white rounded panel (was a white silhouette); also on the standby screen and the phone view.

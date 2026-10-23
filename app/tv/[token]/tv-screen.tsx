@@ -40,11 +40,11 @@ function InfoBody({ text }: { text: string }) {
 
 const CardHead = ({ icon: I, title }: { icon: IconType; title: string }) => <div className="tvCardHead"><span className="tvIcon"><I aria-hidden /></span><h2>{title}</h2></div>;
 
-export function TvScreen({ token, lang }: { token: string; lang: string }) {
-  const [data, setData] = useState<TvScreenData | null>(null);
-  const [missing, setMissing] = useState(false);
-  const [now, setNow] = useState<Date | null>(null);
-  const [tab, setTab] = useState("home");
+export function TvScreen({ token, lang, initial, initialTab, serverNow }: { token: string; lang: string; initial?: TvScreenData | null; initialTab: string; serverNow: number }) {
+  const [data, setData] = useState<TvScreenData | null>(initial ?? null);
+  const [missing, setMissing] = useState(initial === null);
+  const [now, setNow] = useState<Date>(() => new Date(serverNow));
+  const [tab, setTab] = useState(initial?.info.some((x) => x.key === initialTab) ? initialTab : "home");
   const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tabsRef = useRef<HTMLElement | null>(null);
 
@@ -54,14 +54,20 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
     if (idle.current) clearTimeout(idle.current);
     if (key !== "home") idle.current = setTimeout(() => setTab("home"), HOME_AFTER_MS);
   };
-  useEffect(() => () => { if (idle.current) clearTimeout(idle.current); }, []);
+  useEffect(() => {
+    // Tells the plain fallback script in page.tsx that the app is running.
+    (window as { __tvLive?: boolean }).__tvLive = true;
+    if (tab !== "home") idle.current = setTimeout(() => setTab("home"), HOME_AFTER_MS);
+    return () => { if (idle.current) clearTimeout(idle.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // TV remotes send arrow keys: left/right move between tabs.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-      const buttons = Array.from(tabsRef.current?.querySelectorAll("button") ?? []);
+      const buttons = Array.from(tabsRef.current?.querySelectorAll("a") ?? []);
       if (!buttons.length) return;
-      const at = Math.max(0, buttons.indexOf(document.activeElement as HTMLButtonElement));
+      const at = Math.max(0, buttons.indexOf(document.activeElement as HTMLAnchorElement));
       const next = buttons[(at + (e.key === "ArrowRight" ? 1 : buttons.length - 1)) % buttons.length];
       next.focus();
       choose(next.dataset.key ?? "home");
@@ -85,26 +91,27 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
     void load();
     const poll = setInterval(load, REFRESH_MS);
     const clock = setInterval(() => setNow(new Date()), 15_000);
-    queueMicrotask(() => live && setNow(new Date()));
     // Reload the whole page every 6 hours so the screen picks up new versions of the PMS.
     const reload = setTimeout(() => location.reload(), 6 * 3_600_000);
     return () => { live = false; clearInterval(poll); clearInterval(clock); clearTimeout(reload); };
   }, [token, lang]);
 
-  if (missing || !data) return <main className="tvScreen tvEmpty"><span className="tvLogo"><img src="/hotel-corali-logo.png" alt="Hotel Corali" /></span></main>;
+  if (missing || !data) return <main className="tvScreen tvEmpty"><span className="tvLogo"><img src="/hotel-corali-logo.png" alt="Hotel Corali" /></span>{missing && <p className="tvMissing">Screen link not found / Ο σύνδεσμος της οθόνης δεν βρέθηκε</p>}</main>;
 
   const t = data.texts, locale = locales[data.lang];
   const day = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
   const euro = (c: number) => `€${(c / 100).toFixed(c % 100 ? 2 : 0)}`;
   const g = data.guest;
+  // Real links, so the tabs also work on TV browsers that cannot run the app (the page is server-rendered per tab).
+  const tabHref = (key: string) => `?${new URLSearchParams({ ...(lang ? { lang } : {}), ...(key !== "home" ? { tab: key } : {}) })}`;
   const current = tab !== "home" ? data.info.find((x) => x.key === tab) : undefined;
   return (
     <main className="tvScreen">
       <header className="tvTop">
         <span className="tvLogo"><img src="/hotel-corali-logo.png" alt="Hotel Corali" /></span>
         <div className="tvClock">
-          {now && <b>{now.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" })}</b>}
-          {now && <span>{now.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Athens" })}</span>}
+          <b suppressHydrationWarning>{now.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" })}</b>
+          <span suppressHydrationWarning>{now.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Athens" })}</span>
         </div>
       </header>
 
@@ -118,8 +125,8 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
 
       {data.info.length > 0 && (
         <nav className="tvTabs" ref={tabsRef} aria-label="Hotel information">
-          <button type="button" data-key="home" className={tab === "home" ? "active" : ""} onClick={() => choose("home")}><TabIcon k="home" />{t.home}</button>
-          {data.info.map((x) => <button type="button" key={x.key} data-key={x.key} className={tab === x.key ? "active" : ""} onClick={() => choose(x.key)}><TabIcon k={x.key} emoji={x.icon} />{x.title}</button>)}
+          <a href={tabHref("home")} data-key="home" className={tab === "home" ? "active" : ""} onClick={(e) => { e.preventDefault(); choose("home"); }}><TabIcon k="home" />{t.home}</a>
+          {data.info.map((x) => <a href={tabHref(x.key)} key={x.key} data-key={x.key} className={tab === x.key ? "active" : ""} onClick={(e) => { e.preventDefault(); choose(x.key); }}><TabIcon k={x.key} emoji={x.icon} />{x.title}</a>)}
         </nav>
       )}
 
