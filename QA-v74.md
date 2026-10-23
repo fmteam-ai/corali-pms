@@ -1,6 +1,9 @@
-# Hotel Corali PMS v73 — release verification
+# Hotel Corali PMS v74 — release verification
 
 ## Scope in this package
+
+### New in v74
+- Corali TV greeting starts with the guest's first name: "Maria, welcome to Hotel Corali!" / "Μαρία, καλώς ήρθατε στο Hotel Corali!" (all 6 languages); test added.
 
 ### New in v73
 - Web installer: an old system Node.js on the PHP PATH (e.g. `/usr/bin/node` v10) no longer hides cPanel's Node.js 22+ (`/opt/cpanel/ea-nodejs22|24|26`, `/opt/alt/alt-nodejs22|24|26`); the installer picks the first Node.js ≥ 22 and runs the install with it. If none exists, the check still shows the old version in red.

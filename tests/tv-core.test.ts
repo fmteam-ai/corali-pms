@@ -66,3 +66,11 @@ test("WhatsApp number and travel guide link for the screen QR codes", () => {
   const s = normalizeTvSettings({ whatsappNumber: "+30 694 123 4567", travelGuideUrl: "ftp://x" });
   assert.deepEqual([s.whatsappNumber, s.travelGuideUrl], ["306941234567", ""]);
 });
+
+test("the greeting starts with the guest's first name in every language", () => {
+  for (const lang of Object.keys(tvTexts) as (keyof typeof tvTexts)[]) {
+    assert.ok(tvTexts[lang].hello.startsWith("{name}, "), lang);
+    assert.ok(tvTexts[lang].hello.includes("Hotel Corali"), lang);
+  }
+  assert.equal(tvTexts.el.hello.replace("{name}", "Μαρία"), "Μαρία, καλώς ήρθατε στο Hotel Corali!");
+});
