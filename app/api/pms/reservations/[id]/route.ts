@@ -10,6 +10,7 @@ import { validReservationTransition } from "@/lib/reservation-transition";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 import { cancellationPayload, queueGuestMessage } from "@/lib/guest-messages";
 import { hotelToday } from "@/lib/tape-chart";
+import { syncRoomPower } from "@/lib/tv-power";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -71,6 +72,8 @@ async function handlePATCH(request: Request, context: { params: Promise<{ id: st
       }
       return saved;
     });
+    // Corali TV power (Shelly plug): on at check-in, off at check-out. Never delays or fails the reservation change.
+    if((input.action==="check_in"||input.action==="check_out")&&updated?.room_id)void syncRoomPower(user.ownerId,Number(updated.room_id)).catch((e)=>console.error("TV power sync failed",e));
     return Response.json({ok:true,booking:updated});
   } catch(error){
     if(error instanceof z.ZodError || (error instanceof Error && error.message==="INVALID_DATES")) return Response.json({ok:false,error:"INVALID_INPUT"},{status:400});

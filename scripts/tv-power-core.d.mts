@@ -1,0 +1,10 @@
+export type PowerStay = { status: string; check_in: string; check_out: string };
+export type PowerSettings = { enabled: boolean; server: string; onTime: string; autoOn: boolean; autoOff: boolean };
+export declare function desiredPower(stays: PowerStay[], today: string, time: string, onTime: string): boolean;
+export declare function shellyServer(input: unknown): string;
+export declare function validDeviceId(id: unknown): boolean;
+export declare function normalizePowerSettings(raw: unknown): PowerSettings;
+export declare function switchRequest(server: string, authKey: string, id: string, channel: number, on: boolean): { url: string; body: string };
+export declare function statusRequest(server: string, authKey: string, ids: string[]): { url: string; body: string };
+export declare function switchError(status: number, body: unknown, id: string): string;
+export declare function deviceState(device: unknown, channel?: number): { online: boolean; on: boolean | null };

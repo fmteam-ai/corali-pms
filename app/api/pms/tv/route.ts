@@ -7,18 +7,24 @@ import { assertTrustedOrigin } from "@/lib/security/origin";
 import { newOpaqueToken } from "@/lib/security/tokens";
 import { listScreens, loadTvSettings, setupCodeHash, SETUP_CODE_MS } from "@/lib/tv";
 import { normalizeTvSettings } from "@/lib/tv-core";
+import { loadPowerSettings, roomPowerStates, savePowerSettings, setRoomPower, syncRoomPower } from "@/lib/tv-power";
+import { validDeviceId } from "../../../../scripts/tv-power-core.mjs";
 
 const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("settings"), settings: z.record(z.string(), z.unknown()) }),
   z.object({ action: z.literal("screen"), roomId: z.number().int().positive(), wifiSsid: z.string().trim().max(64).default(""), wifiPassword: z.string().trim().max(64).default(""), active: z.boolean() }),
   z.object({ action: z.literal("regenerate"), roomId: z.number().int().positive() }),
   z.object({ action: z.literal("setupCode"), roomId: z.number().int().positive() }),
+  z.object({ action: z.literal("powerSettings"), settings: z.record(z.string(), z.unknown()), authKey: z.string().trim().max(400).default("") }),
+  z.object({ action: z.literal("powerDevice"), roomId: z.number().int().positive(), deviceId: z.string().trim().max(64).refine((v) => v === "" || validDeviceId(v)), channel: z.number().int().min(0).max(3).default(0) }),
+  z.object({ action: z.literal("power"), roomId: z.number().int().positive(), on: z.boolean() }),
+  z.object({ action: z.literal("powerStatus") }),
 ]);
 
 export async function GET() {
   const u = await requireApiUser("integrations.read");
   if (u instanceof Response) return u;
-  return Response.json({ ok: true, settings: await loadTvSettings(u.ownerId), screens: await listScreens(u.ownerId) });
+  return Response.json({ ok: true, settings: await loadTvSettings(u.ownerId), screens: await listScreens(u.ownerId), power: await loadPowerSettings(u.ownerId) });
 }
 
 async function handlePOST(request: Request) {
@@ -32,6 +38,21 @@ async function handlePOST(request: Request) {
       await db().query(`INSERT INTO tv_settings(owner_id,settings_json,updated_by,updated_at) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id) DO UPDATE SET settings_json=$2,updated_by=$3,updated_at=$4`, [u.ownerId, JSON.stringify(settings), u.id, Date.now()]);
       return Response.json({ ok: true, settings });
     }
+    if (x.action === "powerSettings") {
+      const power = await savePowerSettings(u.ownerId, u.id, x.settings, x.authKey);
+      return Response.json({ ok: true, power });
+    }
+    if (x.action === "powerDevice") {
+      const r = await db().query(`UPDATE tv_screens SET power_device_id=$1,power_channel=$2,power_auto_state=NULL,power_error='' WHERE owner_id=$3 AND room_id=$4`, [x.deviceId, x.channel, u.ownerId, x.roomId]);
+      if (!r.rowCount) return Response.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+      if (x.deviceId) await syncRoomPower(u.ownerId, x.roomId);
+      return Response.json({ ok: true, screens: await listScreens(u.ownerId) });
+    }
+    if (x.action === "power") {
+      const error = await setRoomPower(u.ownerId, x.roomId, x.on);
+      return Response.json({ ok: !error, error: error || undefined, screens: await listScreens(u.ownerId) }, { status: error ? 502 : 200 });
+    }
+    if (x.action === "powerStatus") return Response.json({ ok: true, states: await roomPowerStates(u.ownerId) });
     if (x.action === "setupCode") {
       // One code per room at a time; a new one replaces the previous. Codes still active in other rooms are avoided.
       for (let i = 0; i < 20; i++) {

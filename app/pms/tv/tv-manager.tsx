@@ -4,11 +4,12 @@ import { pmsLocale, pmsT, type PmsLang } from "@/lib/pms-i18n";
 import type { TvScreenRow } from "@/lib/tv";
 import { tvLanguages, type TvLanguage, type TvSettings } from "@/lib/tv-core";
 import { defaultInfoSections, MAX_INFO_SECTIONS, type TvInfoSection } from "@/lib/tv-info";
+import type { PowerSettings, RoomPowerState } from "@/lib/tv-power";
 
 const langNames: Record<TvLanguage, string> = { el: "Ελληνικά", en: "English", fr: "Français", de: "Deutsch", it: "Italiano", es: "Español" };
 const ONLINE_MS = 10 * 60_000;
 
-export function TvManager({ lang, initialSettings, initialScreens, canEdit }: { lang: PmsLang; initialSettings: TvSettings; initialScreens: TvScreenRow[]; canEdit: boolean }) {
+export function TvManager({ lang, initialSettings, initialScreens, initialPower, canEdit }: { lang: PmsLang; initialSettings: TvSettings; initialScreens: TvScreenRow[]; initialPower: { settings: PowerSettings; hasKey: boolean }; canEdit: boolean }) {
   const t = pmsT(lang);
   const [settings, setSettings] = useState(initialSettings);
   const [screens, setScreens] = useState(initialScreens);
@@ -16,6 +17,11 @@ export function TvManager({ lang, initialSettings, initialScreens, canEdit }: { 
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [checkedAt] = useState(() => Date.now());
+  const [power, setPower] = useState(initialPower.settings);
+  const [hasKey, setHasKey] = useState(initialPower.hasKey);
+  const [authKey, setAuthKey] = useState("");
+  const [plugStates, setPlugStates] = useState<Record<number, RoomPowerState>>({});
+  const powerReady = power.enabled && Boolean(power.server) && hasKey;
   const [appCode, setAppCode] = useState<{ roomId: number; room: string; code: string; expiresAt: number } | null>(null);
   const set = (patch: Partial<TvSettings>) => setSettings((s) => ({ ...s, ...patch }));
   const setInfo = (info: TvInfoSection[]) => set({ info });
@@ -32,6 +38,29 @@ export function TvManager({ lang, initialSettings, initialScreens, canEdit }: { 
       if (d.screens) setScreens(d.screens);
       setMsg(done);
     } finally { setBusy(false); }
+  }
+  async function call(body: Record<string, unknown>) {
+    setBusy(true); setMsg("");
+    try {
+      const r = await fetch("/api/pms/tv", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const d = await r.json().catch(() => ({}));
+      if (d.screens) setScreens(d.screens);
+      return d;
+    } finally { setBusy(false); }
+  }
+  async function savePower() {
+    const d = await call({ action: "powerSettings", settings: power, authKey });
+    if (!d.ok) { setMsg(t("tv.failed")); return; }
+    setPower(d.power.settings); setHasKey(d.power.hasKey); setAuthKey(""); setMsg(t("tv.saved"));
+  }
+  async function switchPower(s: TvScreenRow, on: boolean) {
+    const d = await call({ action: "power", roomId: s.room_id, on });
+    setMsg(d.ok ? t(on ? "tv.powerOnDone" : "tv.powerOffDone").replace("{room}", s.room_code) : `${t("tv.powerFailed")} (${d.error ?? "?"})`);
+  }
+  async function checkPlugs() {
+    const d = await call({ action: "powerStatus" });
+    if (!d.ok) { setMsg(t("tv.failed")); return; }
+    setPlugStates(Object.fromEntries((d.states as RoomPowerState[]).map((x) => [x.roomId, x])));
   }
   async function makeAppCode(s: TvScreenRow) {
     setBusy(true); setMsg(""); setAppCode(null);
@@ -88,7 +117,7 @@ export function TvManager({ lang, initialSettings, initialScreens, canEdit }: { 
 
       <h2>{t("tv.screens")}</h2>
       <p className="muted">{t("tv.screensHelp")}</p>
-      <div className="tableWrap"><table><thead><tr><th>{t("tv.room")}</th><th>{t("tv.link")}</th><th>{t("tv.status")}</th><th>{t("tv.roomWifi")}</th><th>{t("tv.active")}</th><th /></tr></thead>
+      <div className="tableWrap"><table><thead><tr><th>{t("tv.room")}</th><th>{t("tv.link")}</th><th>{t("tv.status")}</th><th>{t("tv.roomWifi")}</th><th>{t("tv.plug")}</th><th>{t("tv.active")}</th><th /></tr></thead>
         <tbody>{screens.map((s) => {
           const online = s.last_seen_at !== null && checkedAt - s.last_seen_at < ONLINE_MS;
           return (
@@ -97,6 +126,17 @@ export function TvManager({ lang, initialSettings, initialScreens, canEdit }: { 
               <td className="tvLinkCell"><a href={s.url} target="_blank" rel="noopener noreferrer">{t("tv.open")}</a> · <button type="button" className="linkButton" onClick={() => { void navigator.clipboard?.writeText(s.url); setMsg(t("tv.copied")); }}>{t("tv.copy")}</button></td>
               <td>{online ? <span className="credit">● {t("tv.online")}</span> : s.last_seen_at ? <small>{t("tv.lastSeen")} {new Date(s.last_seen_at).toLocaleString(pmsLocale(lang))}</small> : <small>{t("tv.never")}</small>}</td>
               <td className="tvRoomWifi"><input placeholder={t("tv.useGeneral")} value={s.wifi_ssid} maxLength={64} disabled={!canEdit} onChange={(e) => editRow(s.room_id, { wifi_ssid: e.target.value })} /><input placeholder={t("tv.wifiPassword")} value={s.wifi_password} maxLength={64} disabled={!canEdit || !s.wifi_ssid} onChange={(e) => editRow(s.room_id, { wifi_password: e.target.value })} /></td>
+              <td><div className="tvPlug">
+                <input placeholder={t("tv.plugId")} value={s.power_device_id} maxLength={64} disabled={!canEdit} onChange={(e) => editRow(s.room_id, { power_device_id: e.target.value.trim() })} />
+                {canEdit && <button type="button" className="linkButton" disabled={busy} onClick={() => void call({ action: "powerDevice", roomId: s.room_id, deviceId: s.power_device_id, channel: s.power_channel }).then((d) => setMsg(d.ok ? t("tv.saved") : t("tv.plugInvalid")))}>{t("tv.save")}</button>}
+                {s.power_device_id && (
+                  <span className="tvPlugState">
+                    {plugStates[s.room_id] ? (plugStates[s.room_id].online ? (plugStates[s.room_id].on ? <b className="credit">● {t("tv.plugOn")}</b> : <b>○ {t("tv.plugOff")}</b>) : <b className="debit">{t("tv.plugOffline")}</b>) : s.power_state !== null && <small>{s.power_state ? t("tv.plugOn") : t("tv.plugOff")}{s.power_changed_at ? ` · ${new Date(s.power_changed_at).toLocaleString(pmsLocale(lang), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}` : ""}</small>}
+                    {s.power_error && <small className="debit">{t("tv.powerFailed")}: {s.power_error}</small>}
+                    {canEdit && powerReady && <span><button type="button" className="secondaryButton" disabled={busy} onClick={() => void switchPower(s, true)}>{t("tv.powerOn")}</button><button type="button" className="secondaryButton" disabled={busy} onClick={() => void switchPower(s, false)}>{t("tv.powerOff")}</button></span>}
+                  </span>
+                )}
+              </div></td>
               <td><input type="checkbox" aria-label={t("tv.active")} checked={s.active === 1} disabled={!canEdit} onChange={(e) => void saveScreen(s, { active: e.target.checked ? 1 : 0 })} /></td>
               <td className="rowActions">{canEdit && <><button type="button" disabled={busy} onClick={() => saveScreen(s, {})}>{t("tv.save")}</button><button type="button" className="secondaryButton" disabled={busy} onClick={() => confirm(t("tv.regenerateConfirm")) && post({ action: "regenerate", roomId: s.room_id }, t("tv.regenerated"))}>{t("tv.regenerate")}</button><button type="button" className="secondaryButton" disabled={busy || s.active !== 1} onClick={() => void makeAppCode(s)}>{t("tv.appCode")}</button></>}
                 {appCode?.roomId === s.room_id && (
@@ -110,6 +150,26 @@ export function TvManager({ lang, initialSettings, initialScreens, canEdit }: { 
           );
         })}</tbody></table></div>
       <p className="notice" role="status">{msg}</p>
+
+      <div className="hubCard">
+        <h2>{t("tv.powerTitle")}</h2>
+        <small>{t("tv.powerHelp")}</small>
+        <div className="tvAdminChecks"><label className="inline"><input type="checkbox" checked={power.enabled} disabled={!canEdit} onChange={(e) => setPower({ ...power, enabled: e.target.checked })} /> <b>{t("tv.powerEnabled")}</b></label></div>
+        <div className="tvAdminGrid">
+          <label>{t("tv.shellyServer")}<input value={power.server.replace(/^https:\/\//, "")} placeholder="shelly-123-eu.shelly.cloud" maxLength={120} disabled={!canEdit} onChange={(e) => setPower({ ...power, server: e.target.value })} /></label>
+          <label>{t("tv.shellyKey")}<input type="password" autoComplete="off" value={authKey} placeholder={hasKey ? t("tv.shellyKeySaved") : ""} maxLength={400} disabled={!canEdit} onChange={(e) => setAuthKey(e.target.value)} /></label>
+          <label>{t("tv.powerOnTime")}<input type="time" value={power.onTime} disabled={!canEdit} onChange={(e) => setPower({ ...power, onTime: e.target.value })} /></label>
+        </div>
+        <div className="tvAdminChecks">
+          <label className="inline"><input type="checkbox" checked={power.autoOn} disabled={!canEdit} onChange={(e) => setPower({ ...power, autoOn: e.target.checked })} /> {t("tv.powerAutoOn")}</label>
+          <label className="inline"><input type="checkbox" checked={power.autoOff} disabled={!canEdit} onChange={(e) => setPower({ ...power, autoOff: e.target.checked })} /> {t("tv.powerAutoOff")}</label>
+        </div>
+        <small>{t("tv.shellyWhere")}</small>
+        <div className="tvInfoAdd">
+          {canEdit && <button type="button" disabled={busy} onClick={() => void savePower()}>{t("tv.save")}</button>}
+          <button type="button" className="secondaryButton" disabled={busy || !powerReady} onClick={() => void checkPlugs()}>{t("tv.plugCheck")}</button>
+        </div>
+      </div>
 
       <details className="hubCard tvSetup">
         <summary><b>{t("tv.appTitle")}</b></summary>

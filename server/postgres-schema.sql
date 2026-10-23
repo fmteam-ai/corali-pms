@@ -1368,3 +1368,20 @@ UPDATE message_automation_settings SET templates_json=replace(replace(replace(re
 -- the room's screen link. Only a SHA-256 of the code is stored; it expires after 30 minutes.
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS setup_code_hash TEXT;
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS setup_expires_at BIGINT;
+
+-- v80: Corali TV power through Shelly Cloud smart plugs. The cloud key is stored encrypted (PMS_DOCUMENT_KEY).
+-- power_auto_state is the last state the automation decided (it only acts when that decision changes, so a manual
+-- switch from PMS stays until the next arrival/departure); power_state is the last command actually sent.
+CREATE TABLE IF NOT EXISTS tv_power_settings (
+ owner_id TEXT PRIMARY KEY,
+ settings_json TEXT NOT NULL DEFAULT '{}',
+ auth_key_encrypted TEXT NOT NULL DEFAULT '',
+ updated_by BIGINT,
+ updated_at BIGINT NOT NULL DEFAULT 0
+);
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS power_device_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS power_channel BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS power_auto_state BIGINT;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS power_state BIGINT;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS power_changed_at BIGINT;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS power_error TEXT NOT NULL DEFAULT '';

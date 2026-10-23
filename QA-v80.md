@@ -1,6 +1,13 @@
-# Hotel Corali PMS v79 — release verification
+# Hotel Corali PMS v80 — release verification
 
 ## Scope in this package
+
+### New in v80
+- Corali TV power through Shelly smart plugs (Shelly Cloud Control API v2): PMS → Corali TV → "Automatic TV power" (server, auth key stored encrypted, switch-on time, auto on/off) and a Device ID per room with On/Off buttons and "Check plugs" (online/output).
+- Rule (scripts/tv-power-core.mjs, unit tested): on while checked in, and for a confirmed stay from the switch-on time of the arrival day; off after check-out. Acts only when the decision changes, so a manual switch from PMS is kept until the next arrival/departure. Check-in / check-out in PMS apply it at once (never delaying the reservation change); `scripts/run-tv-power.mjs` (cron every 5 minutes, one PMS instance) does the rest, about 1 Shelly request per second.
+- Only *.shelly.cloud servers are accepted. Schema: tv_power_settings; tv_screens.power_* columns.
+- Verified on the dev database with a mocked Shelly Cloud: the worker switched room 101 (stay in progress) on and the empty room 102 off, and a second run sent nothing. A PMS check-out tried to switch off, recorded SHELLY_UNREACHABLE (no internet to Shelly here) and kept the decision pending for the worker. Not yet tested with a real Shelly plug.
+- Tests: 188 pass (one earlier run had a single failure while the dev server was being stopped; three later runs passed).
 
 ### New in v79
 - Corali TV app for Google TV / Android TV (`android-tv/`, built to `public/downloads/corali-tv.apk`, short link `/tvapp`): full-screen welcome screen, opens at start-up (key card power) and when the TV wakes from standby, offline retry, set-up screen with Back held 3 s. Built with aapt2/javac/dx/zipalign/apksigner (`scripts/build-tv-app.sh`); signed v2+v3, minSdk 24, targetSdk 30. Not yet tested on a real TV.
