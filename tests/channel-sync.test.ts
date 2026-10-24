@@ -24,3 +24,23 @@ test("Channex revisions become PMS reservations", () => {
   assert.equal(normalizeRevision({ id: "x", attributes: { status: "cancelled", ota_name: "Expedia", rooms: [] } }, {}).channel, "expedia");
   assert.equal(normalizeRevision({ id: "x", attributes: { status: "modified", ota_name: "Airbnb", rooms: [{ room_type_id: "unknown" }] } }, {}).rooms[0].roomType, null);
 });
+
+test("a modified OTA reservation updates the imported bookings in place", async () => {
+  const { planRevision, feedHasMore } = await import("../scripts/channel-core.mjs");
+  const a = { id: 5, status: "confirmed" }, b = { id: 9, status: "confirmed" }, gone = { id: 3, status: "cancelled" };
+  // Same number of rooms: both updated, nothing cancelled or re-created (keeps room, folio, payments).
+  let p = planRevision([b, gone, a], ["r1", "r2"]);
+  assert.deepEqual(p.updates.map((x) => [x.booking.id, x.room]), [[5, "r1"], [9, "r2"]]);
+  assert.deepEqual([p.inserts, p.cancels], [[], []]);
+  // Guest added a room → insert; guest dropped a room → cancel the confirmed one, never a checked-in stay.
+  p = planRevision([a], ["r1", "r2"]);
+  assert.deepEqual([p.updates.length, p.inserts], [1, ["r2"]]);
+  p = planRevision([{ id: 1, status: "checked_in" }, { id: 2, status: "confirmed" }, { id: 4, status: "checked_in" }], ["r1"]);
+  assert.deepEqual(p.cancels.map((x) => x.id), [2]);
+  // First import: everything is inserted.
+  assert.deepEqual(planRevision([], ["r1"]).inserts, ["r1"]);
+  // Feed: read the next page only when this one was full and something was acknowledged.
+  assert.equal(feedHasMore({ total: 25 }, 10, true), true);
+  assert.equal(feedHasMore({ total: 25 }, 10, false), false);
+  assert.equal(feedHasMore({ total: 4 }, 4, true), false);
+});

@@ -1434,3 +1434,14 @@ CREATE TABLE IF NOT EXISTS tv_requests (
 );
 CREATE INDEX IF NOT EXISTS idx_tv_requests_owner_status ON tv_requests(owner_id, status, created_at);
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS dnd_since BIGINT;
+
+-- v88: Channex review. OTA bookings that could not be given a room keep their room type, so they still reduce the
+-- availability sent to the OTAs (no second sale of the same room).
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS external_room_type TEXT;
+-- Last channel-sync run (shown in PMS → Integrations; a run older than a few minutes means the cron stopped).
+CREATE TABLE IF NOT EXISTS channel_sync_state (
+ owner_id TEXT PRIMARY KEY,
+ last_run_at BIGINT,
+ last_ok_at BIGINT,
+ last_error TEXT
+);

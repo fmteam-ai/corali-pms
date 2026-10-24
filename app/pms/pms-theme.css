@@ -326,3 +326,9 @@ body:has(.pms){background:#f2f4f6}
 .tvrWDnd{margin:0 0 8px;padding:6px 10px;border-radius:8px;background:#fdecea;color:#8e2a20;font-size:13px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .tvrWDnd b{background:#c0392b;color:#fff;border-radius:999px;padding:0 8px}
 .tvrWMore{display:inline-block;margin-top:10px;font-weight:600;font-size:13px;color:#173e47}
+/* Channex connection check */
+.pms .channelCheck{display:grid;gap:8px;margin:12px 0 16px;justify-items:start}
+.pms .channelCheck small{color:#64748b}
+.pms .channelCheck ul{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:6px;width:100%}
+.pms .channelCheck li{display:flex;gap:8px;align-items:flex-start;padding:8px 12px;border-radius:8px;border:1px solid #e3e8ea;background:#fff;font-size:14px}
+.pms .channelCheck li.ok{border-color:#bfe3cc;background:#f3fbf6}.pms .channelCheck li.bad{border-color:#f1b8b1;background:#fdf1ef}.pms .channelCheck li.warn{border-color:#f1dfb8;background:#fffaf0}

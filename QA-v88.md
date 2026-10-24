@@ -1,6 +1,16 @@
-# Hotel Corali PMS v87 — release verification
+# Hotel Corali PMS v88 — release verification
 
 ## Scope in this package
+
+### New in v88 — Channex review (against the channex-pms-integration guidance)
+- OTA modifications are applied in place (scripts/channel-core.mjs planRevision): dates, price, guests updated on the same PMS booking; the room is kept when still free (else reassigned); added rooms inserted, dropped rooms cancelled, checked-in stays never cancelled. Before, a modification cancelled and re-created the booking (lost room/folio links and could hit the unique external-booking index, leaving the revision unacknowledged until it expired from the feed).
+- Never sell a room twice: OTA bookings imported without a free room keep their room type (bookings.external_room_type) and still reduce the availability sent to Channex (AVAILABILITY_SQL, shared by the job and the PMS check).
+- Feed drained page by page (10 per page) instead of one page per run; a failing revision does not block the others and raises a PMS alert at once (unacknowledged revisions drop out of the Channex feed after ~30 min). Cancellations set cancelled_at.
+- Run order: import first, then push availability in the same run. Hourly full 500-day push as drift correction. Runs never overlap (advisory lock), so the cron can run every minute (docs updated: `* * * * *`). Last run / error stored in channel_sync_state.
+- PMS → Integrations → "Έλεγχος σύνδεσης Channex" (read-only): key/property reachable, every room type mapped to a Channex room type of the property, Channex room counts vs PMS, availability read-back for 14 days vs what the PMS would send, OTA revisions waiting, last successful run. After a check, the mapping field becomes a list of the Channex room types.
+- Verified with a stateful Channex simulator (paginated feed + ack, availability store/read-back): new booking; modification (dates + price) updated the same booking and room; 12 revisions at once drained in one run; 7th apartment imported without room and apartment availability sent as 0; cancellation; check showed unmapped type, room-count mismatch and an injected availability difference. Not yet tested against a real Channex account. Production host stays https://secure.channex.io (override with CHANNEX_BASE_URL); the check shows if it is unreachable.
+- Not covered yet: rates and restrictions are not pushed (set them in Channex), and there is no webhook (feed polling only).
+- Tests: 197 pass.
 
 ### New in v87
 - Sound for requests from a room TV: every open PMS page (the notification bell) plays public/sounds/pms-request.wav (synthesised by scripts/generate-tv-sounds.mjs, distinct from the TV sounds) when a new tv_request notification arrives, together with the 5-second pop-up. Browsers allow sound only after the PMS page has been clicked once. The Requests from TV page no longer plays its own chime (no double sound).

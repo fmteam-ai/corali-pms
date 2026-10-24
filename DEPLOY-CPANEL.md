@@ -1,4 +1,4 @@
-# Hotel Corali PMS v87 — αυτόματη ασφαλής εγκατάσταση cPanel
+# Hotel Corali PMS v88 — αυτόματη ασφαλής εγκατάσταση cPanel
 
 ## Προτεινόμενη εγκατάσταση για τον συγκεκριμένο server
 
@@ -8,16 +8,16 @@
 
 Η διορθωμένη έκδοση περιλαμβάνει προσωρινό web installer τύπου WordPress. Ανεβάστε:
 
-- `corali-pms-cpanel-v87-root.tar.gz` και το `.sha256` στον `/home/corali/`
-- μόνο το `corali-web-installer-v87.php` ως `/home/corali/public_html/corali-installer.php`
+- `corali-pms-cpanel-v88-root.tar.gz` και το `.sha256` στον `/home/corali/`
+- μόνο το `corali-web-installer-v88.php` ως `/home/corali/public_html/corali-installer.php`
 
-Μην ανεβάσετε το `corali-web-installer-v87-access.txt`. Ανοίξτε το τοπικά και επισκεφθείτε την ιδιωτική διεύθυνση μίας χρήσης που περιέχει. Εναλλακτικά, ανοίξτε απευθείας τον installer και επικολλήστε τον προσωπικό κωδικό στη φόρμα. Επιλέξτε **Ελληνικά** ή **English** πριν την έναρξη. Ο web installer εντοπίζει το EA/CloudLinux Node.js του cPanel, εκτελεί προέλεγχο, checksum, backup PostgreSQL, migrations, δύο runtime tests, atomic swap και rollback. Μετά την εγκατάσταση προσφέρει ασφαλή δημιουργία/ανάκτηση του κύριου owner και επαναφορά 2FA χωρίς terminal. Αν οι παλιοί `/home/corali/releases` ή `/home/corali/backups` έχουν λάθος ιδιοκτησία, χρησιμοποιεί ιδιωτικούς εναλλακτικούς φακέλους μέσα στο εγγράψιμο `/home/corali/apps`. Μετά τον έλεγχο σύνδεσης πατήστε «Κλείδωμα και διαγραφή installer» και απενεργοποιήστε ξανά την PHP `exec`.
+Μην ανεβάσετε το `corali-web-installer-v88-access.txt`. Ανοίξτε το τοπικά και επισκεφθείτε την ιδιωτική διεύθυνση μίας χρήσης που περιέχει. Εναλλακτικά, ανοίξτε απευθείας τον installer και επικολλήστε τον προσωπικό κωδικό στη φόρμα. Επιλέξτε **Ελληνικά** ή **English** πριν την έναρξη. Ο web installer εντοπίζει το EA/CloudLinux Node.js του cPanel, εκτελεί προέλεγχο, checksum, backup PostgreSQL, migrations, δύο runtime tests, atomic swap και rollback. Μετά την εγκατάσταση προσφέρει ασφαλή δημιουργία/ανάκτηση του κύριου owner και επαναφορά 2FA χωρίς terminal. Αν οι παλιοί `/home/corali/releases` ή `/home/corali/backups` έχουν λάθος ιδιοκτησία, χρησιμοποιεί ιδιωτικούς εναλλακτικούς φακέλους μέσα στο εγγράψιμο `/home/corali/apps`. Μετά τον έλεγχο σύνδεσης πατήστε «Κλείδωμα και διαγραφή installer» και απενεργοποιήστε ξανά την PHP `exec`.
 
 Αν εμφανιστεί «Ο installer είναι κλειδωμένος», έχει οριστικοποιηθεί παλαιότερη εγκατάσταση. Κάθε νέο πακέτο αποκτά δικό του κλείδωμα με βάση το checksum του αρχείου. Ανεβάστε **μαζί** τον νέο installer, το νέο αρχείο πρόσβασης (μόνο τοπικά, ποτέ στον server), το νέο archive και το νέο checksum. Μην διαγράψετε το ιδιωτικό `locked` του παλιού installer για να παρακάμψετε το μήνυμα.
 
 Αν ο προέλεγχος δείξει ότι η PHP `exec` είναι απενεργοποιημένη ή ότι ο ενεργός φάκελος `/home/corali/apps` δεν είναι εγγράψιμος, δεν γίνεται καμία αλλαγή.
 
-Η v87 ενημερώνει μαζί τις δύο ενεργές εφαρμογές:
+Η v88 ενημερώνει μαζί τις δύο ενεργές εφαρμογές:
 
 - `/home/corali/apps/corali-pms`
 - `/home/corali/apps/corali-booking`
@@ -28,14 +28,14 @@
 
 Ανεβάστε τα παρακάτω στο `/home/corali/`:
 
-- `corali-pms-cpanel-v87-root.tar.gz`
-- `corali-pms-cpanel-v87-root.tar.gz.sha256`
+- `corali-pms-cpanel-v88-root.tar.gz`
+- `corali-pms-cpanel-v88-root.tar.gz.sha256`
 
 Στο Terminal:
 
 ```bash
 cd /home/corali
-sha256sum -c corali-pms-cpanel-v87-root.tar.gz.sha256
+sha256sum -c corali-pms-cpanel-v88-root.tar.gz.sha256
 ```
 
 Πρέπει να εμφανιστεί `OK`. Αν αποτύχει, μη συνεχίσετε.
@@ -43,9 +43,9 @@ sha256sum -c corali-pms-cpanel-v87-root.tar.gz.sha256
 ## 2. Καθαρή εξαγωγή
 
 ```bash
-mkdir -p /home/corali/releases/corali-v87
-tar -xzf /home/corali/corali-pms-cpanel-v87-root.tar.gz \
-  -C /home/corali/releases/corali-v87
+mkdir -p /home/corali/releases/corali-v88
+tar -xzf /home/corali/corali-pms-cpanel-v88-root.tar.gz \
+  -C /home/corali/releases/corali-v88
 ```
 
 Μην αντιγράψετε `runtime.env` στον release φάκελο. Ο installer το παίρνει αυτόματα από κάθε ενεργή εφαρμογή.
@@ -55,7 +55,7 @@ tar -xzf /home/corali/corali-pms-cpanel-v87-root.tar.gz \
 Ως `root`:
 
 ```bash
-cd /home/corali/releases/corali-v87
+cd /home/corali/releases/corali-v88
 bash INSTALL-CPANEL.sh
 ```
 
@@ -88,16 +88,16 @@ bash INSTALL-CPANEL.sh --yes
 
 ## 4. Τελικός έλεγχος
 
-Μετά το `INSTALLATION COMPLETE — v87`, ανοίξτε από browser:
+Μετά το `INSTALLATION COMPLETE — v88`, ανοίξτε από browser:
 
 ```text
 https://pms.hotelcorali.gr/api/health
 https://booking.hotelcorali.gr/api/health
 ```
 
-Και τα δύο πρέπει να επιστρέφουν `"ok":true` και `"version":"v87"`. Ο έλεγχος γίνεται από browser επειδή το ModSecurity/Cloudflare μπορεί να επιστρέψει 406 σε server-side `curl`.
+Και τα δύο πρέπει να επιστρέφουν `"ok":true` και `"version":"v88"`. Ο έλεγχος γίνεται από browser επειδή το ModSecurity/Cloudflare μπορεί να επιστρέψει 406 σε server-side `curl`.
 
-Ελέγξτε επίσης login/2FA/profile, σημειώσεις και ειδοποιήσεις, μία δοκιμαστική κράτηση, folio/check-in/out, room grid, housekeeping, `/book` στα Ελληνικά και Αγγλικά και πληρωμή μόνο σε Stripe test mode. Η v87 δεν προσφέρει Viva ως μέθοδο πληρωμής επισκέπτη.
+Ελέγξτε επίσης login/2FA/profile, σημειώσεις και ειδοποιήσεις, μία δοκιμαστική κράτηση, folio/check-in/out, room grid, housekeeping, `/book` στα Ελληνικά και Αγγλικά και πληρωμή μόνο σε Stripe test mode. Η v88 δεν προσφέρει Viva ως μέθοδο πληρωμής επισκέπτη.
 
 Η δρομολόγηση πρέπει να είναι:
 
@@ -111,7 +111,7 @@ https://booking.hotelcorali.gr/api/health
 
 ```bash
 bash /home/corali/apps/corali-pms/ROLLBACK-CPANEL.sh \
-  /home/corali/backups/corali-deployment-v87-TIMESTAMP.manifest
+  /home/corali/backups/corali-deployment-v88-TIMESTAMP.manifest
 ```
 
 Το rollback επαναφέρει και τις δύο εφαρμογές. Δεν επαναφέρει αυτόματα τη βάση, επειδή οι migrations είναι additive και η επαναφορά παλιού dump θα μπορούσε να διαγράψει νεότερες κρατήσεις.
@@ -190,13 +190,13 @@ cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/
 
 ### Channel Manager (Booking.com, Expedia, Airbnb)
 
-Ο συγχρονισμός γίνεται μέσω Channex (λογαριασμός και σύνδεση των OTA εκεί). Στο PMS → Συνδέσεις → Channel Manager συμπληρώστε property id, environment (production ή staging) και API key, και αντιστοιχίστε κάθε τύπο δωματίου με το room type id του Channex. Cron ανά 5 λεπτά, **σε ένα μόνο PMS instance**:
+Ο συγχρονισμός γίνεται μέσω Channex (λογαριασμός και σύνδεση των OTA εκεί). Στο PMS → Συνδέσεις → Channel Manager συμπληρώστε property id, environment (production ή staging) και API key, και αντιστοιχίστε κάθε τύπο δωματίου με το room type id του Channex (μετά τον «Έλεγχο σύνδεσης Channex» εμφανίζεται λίστα). Cron **κάθε λεπτό** (`* * * * *`), **σε ένα μόνο PMS instance** — οι εκτελέσεις δεν επικαλύπτονται. Το Channex κρατά μια κράτηση OTA στη ροή μόνο ~30 λεπτά· αν το cron σταματήσει, ο έλεγχος σύνδεσης το δείχνει:
 
 ```bash
 cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-channel-sync.mjs >> /home/corali/logs/corali-channels.log 2>&1
 ```
 
-Μετά την πρώτη ρύθμιση πατήστε «Πλήρης συγχρονισμός διαθεσιμότητας». Αν χρησιμοποιείτε άλλον Channel Manager, αλλάζει μόνο ο adapter (scripts/run-channel-sync.mjs).
+Μετά την πρώτη ρύθμιση πατήστε «Πλήρης συγχρονισμός διαθεσιμότητας» και μετά «Έλεγχος σύνδεσης Channex» (όλα πρέπει να είναι ✅). Ο συγχρονισμός στέλνει μόνος του πλήρη διαθεσιμότητα κάθε ώρα. Οι τιμές και οι περιορισμοί (min stay κ.λπ.) ορίζονται προς το παρόν στο Channex. Δοκιμή εισερχόμενων: Channex → Applications → «Booking CRS» → δημιουργία κράτησης· εμφανίζεται στο PMS μέσα σε ένα λεπτό. Αν χρησιμοποιείτε άλλον Channel Manager, αλλάζει μόνο ο adapter (scripts/run-channel-sync.mjs).
 
 ### Τιμές ανταγωνιστών (rate shopper)
 

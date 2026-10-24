@@ -3,3 +3,7 @@ export declare function availabilityRanges(days: { date: string; available: numb
 export declare function sellable(free: number): number;
 export type NormalizedRevision = { revisionId: string; bookingId: string; status: "new" | "modified" | "cancelled"; channel: string; reference: string; currency: string; paymentCollect: "ota" | "property"; guestName: string; guestEmail: string | null; guestPhone: string; guestCountry: string; guestLanguage: string; notes: string; rooms: { roomType: string | null; externalRoomTypeId: string | null; checkIn: string; checkOut: string; adults: number; children: number; totalCents: number }[] };
 export declare function normalizeRevision(revision: unknown, roomTypeByExternalId: Record<string, string>): NormalizedRevision;
+export declare const AVAILABILITY_SQL: string;
+type ExistingBooking = { id: number | string; status: string };
+export declare function planRevision<B extends ExistingBooking, R>(existing: B[], rooms: R[]): { updates: { booking: B; room: R }[]; inserts: R[]; cancels: B[] };
+export declare function feedHasMore(meta: { total?: number } | undefined, pageSize: number, progressed: boolean): boolean;
