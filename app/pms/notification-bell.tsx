@@ -27,6 +27,12 @@ export function NotificationBell({ lang }: { lang: PmsLang }) {
     const fresh = list.filter((x) => !known.has(x.key)).slice(0, 3);
     if (!fresh.length) return;
     window.dispatchEvent(new Event("corali:notifications"));
+    // A request from a room TV also plays a chime (once the browser allows sound, i.e. after any click in the PMS).
+    if (fresh.some((x) => x.kind === "tv_request")) {
+      const audio = new Audio("/sounds/pms-request.wav");
+      audio.volume = 0.8;
+      void audio.play().catch(() => { /* sound blocked until the page has been clicked */ });
+    }
     setToasts((v) => [...fresh, ...v].slice(0, 4));
     for (const x of fresh) window.setTimeout(() => setToasts((v) => v.filter((y) => y.key !== x.key)), 5_000);
   }, []);

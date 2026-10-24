@@ -1,6 +1,10 @@
-# Hotel Corali PMS v86 — release verification
+# Hotel Corali PMS v87 — release verification
 
 ## Scope in this package
+
+### New in v87
+- Sound for requests from a room TV: every open PMS page (the notification bell) plays public/sounds/pms-request.wav (synthesised by scripts/generate-tv-sounds.mjs, distinct from the TV sounds) when a new tv_request notification arrives, together with the 5-second pop-up. Browsers allow sound only after the PMS page has been clicked once. The Requests from TV page no longer plays its own chime (no double sound).
+- Verified: dashboard open and clicked, notification inserted → pop-up and pms-request.wav played (206 audio). Tests: 196 pass.
 
 ### New in v86
 - New PMS notifications pop up bottom right for 5 seconds (all kinds; requests from TV with a red edge), then stay in the bell; click opens the link, × closes early.

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { pmsLocale, pmsT, type PmsLang } from "@/lib/pms-i18n";
 import type { TvRequestRow } from "@/lib/tv-requests";
 import { tvRequestLabels } from "@/lib/tv-requests-core";
@@ -15,13 +15,12 @@ export function TvRequests({ lang, initialRequests, initialDnd, canHandle }: { l
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [now, setNow] = useState(() => Date.now());
-  const seen = useRef(new Set(initialRequests.filter((r) => r.status === "open").map((r) => r.id)));
   const label = (k: TvRequestRow["kind"]) => { const l = tvRequestLabels[k]; return { icon: l.icon, text: lang === "el" ? l.el : l.en }; };
   const time = (ms: number) => new Date(ms).toLocaleTimeString(pmsLocale(lang), { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" });
   const when = (ms: number) => new Date(ms).toLocaleString(pmsLocale(lang), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" });
   const ago = (ms: number) => { const n = Math.max(0, Math.round((now - ms) / 60_000)); return n < 60 ? t("tvr.ago").replace("{n}", String(n)) : time(ms); };
 
-  // New requests arrive every 30 s; a new one plays a short chime (if the browser allows sound).
+  // New requests arrive every 30 s (the notification bell plays the chime).
   useEffect(() => {
     let live = true;
     const load = async () => {
@@ -29,9 +28,6 @@ export function TvRequests({ lang, initialRequests, initialDnd, canHandle }: { l
         const r = await fetch(`/api/pms/tv-requests${all ? "?all=1" : ""}`, { cache: "no-store" });
         const d = await r.json();
         if (!live || !d.ok) return;
-        const fresh = (d.requests as TvRequestRow[]).filter((x) => x.status === "open" && !seen.current.has(x.id));
-        fresh.forEach((x) => seen.current.add(x.id));
-        if (fresh.length) void new Audio("/sounds/tv-standard.wav").play().catch(() => {});
         setRequests(d.requests); setDnd(d.dnd); setNow(Date.now());
       } catch { /* offline: keep the list */ }
     };

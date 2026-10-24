@@ -63,3 +63,6 @@ wav("tv-celebration.wav", 3.0, (b) => {
   ["G4", "C5", "E5", "G5", "C6"].forEach((n, i) => tone(b, i * 0.12, NOTE[n], { ...musicBox, dur: 1.4 }));
   for (const n of ["C5", "E5", "G5"]) tone(b, 0.75, NOTE[n], { dur: 2.0, decay: 2.2, gain: 0.35 });
 });
+
+// PMS: a guest request from a room TV — two bright "ding-ding" pairs, clearly different from the TV message sounds.
+wav("pms-request.wav", 2.2, (b) => { for (const t of [0, 0.7]) { tone(b, t, NOTE.E6 / 2 * 2, { dur: 0.8, decay: 5, gain: 0.5 }); tone(b, t + 0.16, NOTE.G5 * 2, { dur: 1.0, decay: 4.5, gain: 0.45 }); } });
