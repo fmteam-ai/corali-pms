@@ -5,7 +5,7 @@ import { LuBell } from "react-icons/lu";
 import { pmsT, type PmsLang } from "@/lib/pms-i18n";
 
 type Notification = { key: string; kind: string; title: string; link: string; created_at: number };
-const kindIcons: Record<string, string> = { message: "✉", guest_message: "✉", arrival: "🛎", direct_booking: "★", manual_booking: "✎", ota_change: "⇄", housekeeping: "🧹", payment: "€", system: "ⓘ" };
+const kindIcons: Record<string, string> = { message: "✉", guest_message: "✉", tv_request: "📺", arrival: "🛎", direct_booking: "★", manual_booking: "✎", ota_change: "⇄", housekeeping: "🧹", payment: "€", system: "ⓘ" };
 
 export function NotificationBell({ lang }: { lang: PmsLang }) {
   const t = pmsT(lang);

@@ -9,7 +9,7 @@ import { housekeepingColors, housekeepingState } from "@/lib/tape-chart";
 import { pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 
 type Task = { id: number; room_id: number; room_code: string; room_type: string; task_type: string; status: string; assigned_to: string | null; assigned_name: string | null; cleaned_by_staff_id: number | null; notes: string | null; inspection_notes: string | null; checklist_json: string };
-type Room = { id: number; code: string; operational_status: string; open_task_status: string | null; open_notices?: number; top_notice?: { severity: string } | null };
+type Room = { id: number; code: string; operational_status: string; open_task_status: string | null; dnd_since?: number | string | null; open_notices?: number; top_notice?: { severity: string } | null };
 type Filter = "mine" | "all" | "review" | "ooo";
 type Pending = { taskId: number; action: "report_issue" | "reject" | "repair_done" } | null;
 
@@ -44,13 +44,15 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite,
     }
   }
 
+  // Guests can switch on "Do not disturb" from the room TV (Corali TV → Requests).
+  const dndRooms = new Set(rooms.filter((r) => r.dnd_since != null).map((r) => Number(r.id)));
   const shown = tasks.filter((x) => filter === "all" ? true : filter === "mine" ? x.assigned_to === String(userId) : filter === "review" ? (x.status === "cleaned" || x.status === "repaired") && x.cleaned_by_staff_id !== userId : x.status === "out_of_order");
   const counts: Record<Filter, number> = { mine: tasks.filter((x) => x.assigned_to === String(userId) && x.status !== "ready").length, all: tasks.filter((x) => x.status !== "ready").length, review: tasks.filter((x) => (x.status === "cleaned" || x.status === "repaired") && x.cleaned_by_staff_id !== userId).length, ooo: tasks.filter((x) => x.status === "out_of_order").length };
 
   return (
     <>
       <div className="hkRooms" aria-label={t("hkb.rooms")}>
-        {rooms.map((r) => { const state = housekeepingState(r.operational_status, r.open_task_status); return <button type="button" key={r.id} title={t(`hk.${state}` as PmsKey)} onClick={() => setNoticeRoom({ id: r.id, code: r.code })}><i style={{ background: housekeepingColors[state] }} />{r.code}{r.top_notice && <span className={`defectBadge sev-${r.top_notice.severity}`} aria-label={t("mnt.badge", { n: r.open_notices ?? 1, severity: t(`mnt.sev.${r.top_notice.severity}` as PmsKey) })}>{r.top_notice.severity === "minor" ? "🛠️" : "⚠️"}</span>}</button>; })}
+        {rooms.map((r) => { const state = housekeepingState(r.operational_status, r.open_task_status); return <button type="button" key={r.id} title={t(`hk.${state}` as PmsKey)} onClick={() => setNoticeRoom({ id: r.id, code: r.code })}><i style={{ background: housekeepingColors[state] }} />{r.code}{r.dnd_since != null && <span className="dndBadge" title={t("hk.dnd")}>DND</span>}{r.top_notice && <span className={`defectBadge sev-${r.top_notice.severity}`} aria-label={t("mnt.badge", { n: r.open_notices ?? 1, severity: t(`mnt.sev.${r.top_notice.severity}` as PmsKey) })}>{r.top_notice.severity === "minor" ? "🛠️" : "⚠️"}</span>}</button>; })}
       </div>
       <div className="segmented hkFilters" role="group">
         {(["mine", "all", "review", "ooo"] as const).map((f) => <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)}>{t(f === "mine" ? "hkb.mine" : f === "all" ? "hkb.all" : f === "review" ? "hkb.review" : "hkb.ooo")} · {counts[f]}</button>)}
@@ -65,7 +67,7 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite,
           return (
             <article key={task.id} className={`hkCard st-${task.status}`}>
               <header>
-                <div><h2>{t("hkb.room", { code: task.room_code })}</h2><small>{task.room_type} · {label("hkb.type", task.task_type)}</small></div>
+                <div><h2>{t("hkb.room", { code: task.room_code })}{dndRooms.has(task.room_id) && <span className="dndBadge">🚫 {t("hk.dnd")}</span>}</h2><small>{task.room_type} · {label("hkb.type", task.task_type)}</small></div>
                 <span className={`hkStatus st-${task.status}`}>{label("hkb.st", task.status)}</span>
               </header>
               <p className="hkAssigned">{t("hkb.assigned")}: {task.assigned_name ?? t("hkb.unassigned")}</p>

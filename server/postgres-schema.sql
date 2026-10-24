@@ -1418,3 +1418,19 @@ ALTER TABLE tv_messages ADD COLUMN IF NOT EXISTS sound BIGINT NOT NULL DEFAULT 1
 
 -- v84: urgent messages can turn the TV on (Corali TV app wakes the screen; a Shelly plug powers / power-cycles a TV in standby).
 ALTER TABLE tv_messages ADD COLUMN IF NOT EXISTS wake BIGINT NOT NULL DEFAULT 0;
+
+-- v85: requests from the guest's TV to reception (Corali TV → "Requests"): do not disturb, cleaning, towels, call me…
+-- Do not disturb is also a room state (tv_screens.dnd_since), shown in Housekeeping and cleared at check-out.
+CREATE TABLE IF NOT EXISTS tv_requests (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ room_id BIGINT NOT NULL,
+ booking_id BIGINT,
+ kind TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'open',
+ created_at BIGINT NOT NULL,
+ handled_at BIGINT,
+ handled_by BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_tv_requests_owner_status ON tv_requests(owner_id, status, created_at);
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS dnd_since BIGINT;

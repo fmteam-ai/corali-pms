@@ -66,6 +66,8 @@ async function handlePATCH(request: Request, context: { params: Promise<{ id: st
       if(input.action==="check_out" && next.roomId){
         // Departure: the room becomes dirty and is auto-assigned to its default housekeeper (manager-defined room blocks).
         await client.query(`UPDATE rooms SET operational_status='dirty' WHERE owner_id=$1 AND id=$2 AND operational_status<>'out_of_order'`,[user.ownerId,next.roomId]);
+        // The guest has left: their "Do not disturb" from the room TV no longer applies.
+        await client.query(`UPDATE tv_screens SET dnd_since=NULL WHERE owner_id=$1 AND room_id=$2`,[user.ownerId,next.roomId]);
         await client.query(`INSERT INTO housekeeping_tasks(owner_id,room_id,task_type,status,assigned_to,due_at,checklist_json,inspection_status)
           SELECT $1,$2,'departure_clean','todo',(SELECT staff_user_id::text FROM housekeeping_staff_room_defaults WHERE owner_id=$1 AND room_id=$2 ORDER BY staff_user_id LIMIT 1),$3,'{}','pending'
            WHERE NOT EXISTS (SELECT 1 FROM housekeeping_tasks WHERE owner_id=$1 AND room_id=$2 AND status IN ('todo','in_progress','cleaned'))`,[user.ownerId,next.roomId,now]);

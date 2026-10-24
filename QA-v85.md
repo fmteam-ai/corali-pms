@@ -1,6 +1,14 @@
-# Hotel Corali PMS v84 — release verification
+# Hotel Corali PMS v85 — release verification
 
 ## Scope in this package
+
+### New in v85
+- Requests from the room TV to the PMS (two-way): Corali TV gets a "Requests" tab (only while a guest is staying; 6 languages) with Do not disturb (switch) and Clean my room now, Extra towels, Toiletries, Please contact me, Technical problem, Late check-out, I need a taxi. Remote: right arrow to the tab, down into the buttons, arrows move to the nearest button, OK sends; the button shows "Sent to reception ✓". POST /api/public/tv/<token>/request (12 per 15 min per screen, the same open request is not repeated within 10 min).
+- PMS: each request is a notification (bell, kind tv_request, link) and appears on PMS → PMS → Requests from TV (/pms/tv-requests, housekeeping.read; "Done" and turning Do not disturb off need housekeeping.write): waiting / Do not disturb / done today, Do not disturb rooms, request cards with room and guest, 24 h or full history, refresh every 30 s with a chime for new requests.
+- Do not disturb: tv_screens.dnd_since; red "Do not disturb" chip on the TV, DND badge on the Housekeeping room chips and task cards; cleared automatically at check-out. Schema: tv_requests.
+- Categories & amenities (/pms/rooms/catalog) redesigned with tabs: category cards (Greek/English side by side + new-category card), amenities table with icon picker, extras table with expandable descriptions, and a rooms × amenities grid (category per room, click a column icon to give/remove an amenity for all shown rooms, room-type filter, one save for the changed rooms). Fixes: saving an amenity no longer resets its icon to the default or wipes its other-language translations.
+- Verified: on the TV (1920×1080, remote keys) towels request sent, repeated request answered "already sent", Do not disturb on → PMS notifications, list, DND badge in Housekeeping; PMS "Done" and "Turn off" saved; check-out of the stay cleared Do not disturb; room without a guest answered 404; unknown kind 400; PMS API without a session 401. Catalog: amenity save kept icon and translations; grid bulk save stored and was reverted. Test data restored.
+- Tests: 196 pass.
 
 ### New in v84
 - Prices & rules (/pms/pricing) redesigned: sub-navigation across all pricing pages; direct-booking discount and birthday code side by side; base rates as room tiles grouped by room type with "same price for all" per type, changed tiles highlighted and one "Save prices" (only changed rooms, then refresh); rate plans, cancellation periods and mandatory charges as editable tables with an add row (plans show an example price). Same /api/pms/pricing calls as before.

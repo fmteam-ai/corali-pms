@@ -20,7 +20,7 @@ export default async function HousekeepingPage() {
       [u.ownerId, u.role, String(u.id), u.id],
     ),
     db().query(
-      `SELECT r.id,r.code,r.operational_status,(SELECT t.status FROM housekeeping_tasks t WHERE t.owner_id=r.owner_id AND t.room_id=r.id AND t.status<>'ready' ORDER BY t.id DESC LIMIT 1) AS open_task_status,${roomNoticeSql}
+      `SELECT r.id,r.code,r.operational_status,(SELECT t.status FROM housekeeping_tasks t WHERE t.owner_id=r.owner_id AND t.room_id=r.id AND t.status<>'ready' ORDER BY t.id DESC LIMIT 1) AS open_task_status,(SELECT s.dnd_since FROM tv_screens s WHERE s.owner_id=r.owner_id AND s.room_id=r.id) AS dnd_since,${roomNoticeSql}
          FROM rooms r WHERE r.owner_id=$1 AND r.active=1 ORDER BY r.code`,
       [u.ownerId],
     ),

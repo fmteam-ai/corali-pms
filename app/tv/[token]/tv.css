@@ -193,3 +193,34 @@
   .tvMsgDeco i{width:8px;height:14px}.tvMsgDeco.hearts svg{font-size:22px}
 }
 @media (prefers-reduced-motion:reduce){.tvMsgDeco i,.tvMsgDeco.hearts svg,.tvMsgCard{animation:none}.tvMsgDeco{display:none}}
+
+/* Requests to reception (TV → PMS) */
+.tvTabs .tvReqTab{border-color:rgba(242,196,109,.55)}
+/* With the Requests tab the row is long: slightly smaller tabs keep it on one line. */
+.tvTabs.withReq button{font-size:.84vw;padding:.4vw .78vw;gap:.38vw}
+.tvDndChip{display:inline-flex !important;align-items:center;gap:.5vw;margin:.5vw 0 0 !important;background:#c0392b;color:#fff !important;font-weight:700;padding:.4vw 1vw;border-radius:999px;font-size:1vw !important}
+.tvReq{align-content:start;gap:1vw}
+.tvReqIntro{margin:0;font-size:1.15vw;color:var(--muted)}
+.tvReqGrid{display:grid;grid-template-columns:1.2fr repeat(4,1fr);gap:.9vw}
+.tvReqBtn{font:inherit;color:#fff;text-align:left;cursor:pointer;background:var(--glass);border:1px solid var(--line);border-radius:1vw;padding:1.1vw 1.2vw;min-height:8vw;display:grid;align-content:start;gap:.7vw;transition:transform .15s,background .2s,border-color .2s;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.tvReqBtn b{font-size:1.2vw;font-weight:700;line-height:1.25}
+.tvReqBtn small{font-size:.92vw;color:var(--muted);line-height:1.35}
+.tvReqIcon{width:3.2vw;height:3.2vw;border-radius:50%;display:grid;place-items:center;background:rgba(242,196,109,.16);color:var(--gold);font-size:1.45vw}
+.tvReqBtn:focus-visible,.tvReqBtn:hover{outline:none;border-color:var(--gold);background:rgba(242,196,109,.14);transform:translateY(-.2vw)}
+.tvReqBtn:focus-visible{box-shadow:0 0 0 .22vw var(--gold)}
+.tvReqBtn.is-sent,.tvReqBtn.is-already{border-color:#5fd39a;background:rgba(46,160,103,.22)}
+.tvReqBtn.is-sent .tvReqIcon,.tvReqBtn.is-already .tvReqIcon{background:#2ea067;color:#fff}
+.tvReqBtn.is-failed{border-color:#e57373}
+.tvReqBtn.is-sending{opacity:.7}
+.tvReqDnd{grid-row:span 2;background:linear-gradient(160deg,rgba(10,38,46,.6),rgba(10,38,46,.35))}
+.tvReqDnd .tvReqIcon{background:rgba(255,255,255,.12);color:#fff;width:4vw;height:4vw;font-size:1.9vw}
+.tvReqDnd b{font-size:1.6vw}
+.tvReqDnd.on{background:linear-gradient(160deg,#a93226,#7b241c);border-color:#e74c3c}
+.tvReqDnd.on .tvReqIcon{background:#fff;color:#c0392b}
+.tvReqDnd.on small{color:rgba(255,255,255,.85)}
+.tvSwitch{display:inline-flex;align-items:center;gap:.6vw;font-size:1vw;font-weight:700;margin-top:.4vw}
+.tvSwitch i{position:relative;width:3vw;height:1.6vw;border-radius:999px;background:rgba(255,255,255,.25);transition:background .2s}
+.tvSwitch i::after{content:"";position:absolute;top:.2vw;left:.2vw;width:1.2vw;height:1.2vw;border-radius:50%;background:#fff;transition:left .2s}
+.tvReqDnd.on .tvSwitch i{background:rgba(255,255,255,.45)}
+.tvReqDnd.on .tvSwitch i::after{left:1.6vw}
+@media (max-width:800px){.tvReqGrid{grid-template-columns:1fr 1fr}.tvReqBtn{min-height:0;padding:14px}.tvReqBtn b{font-size:16px}.tvReqBtn small,.tvReqIntro,.tvSwitch{font-size:13px}.tvReqIcon{width:36px;height:36px;font-size:18px}.tvReqDnd{grid-column:span 2;grid-row:auto}.tvSwitch i{width:36px;height:20px}.tvSwitch i::after{width:14px;height:14px;top:3px;left:3px}.tvReqDnd.on .tvSwitch i::after{left:19px}.tvDndChip{font-size:13px !important;padding:4px 12px}}

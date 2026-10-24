@@ -1,10 +1,11 @@
 "use client";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { IconType } from "react-icons";
-import { FaBirthdayCake, FaGlassCheers, FaHeart, FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
+import { FaBan, FaBath, FaBirthdayCake, FaCheck, FaClock, FaGlassCheers, FaPhoneAlt, FaPumpSoap, FaTaxi, FaTools, FaHeart, FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
 import { WiCloud, WiCloudy, WiDayCloudy, WiDaySunny, WiFog, WiRain, WiShowers, WiSnow, WiThunderstorm } from "react-icons/wi";
 import type { TvScreenData } from "@/lib/tv";
 import { messageSound } from "@/lib/tv-messages-core";
+import { tvRequestKinds, type TvRequestKind } from "@/lib/tv-requests-core";
 import "./tv.css";
 
 const locales = { el: "el-GR", en: "en-GB", fr: "fr-FR", de: "de-DE", it: "it-IT", es: "es-ES" } as const;
@@ -44,6 +45,10 @@ const msgIcons = { standard: FaRegEnvelope, birthday: FaBirthdayCake, anniversar
 const Confetti = () => <div className="tvMsgDeco" aria-hidden>{Array.from({ length: 18 }, (_, i) => <i key={i} />)}</div>;
 const Hearts = () => <div className="tvMsgDeco hearts" aria-hidden>{Array.from({ length: 10 }, (_, i) => <FaHeart key={i} />)}</div>;
 
+// Requests to reception (Requests tab).
+const reqIcons: Record<TvRequestKind, IconType> = { cleaning: FaBroom, towels: FaBath, toiletries: FaPumpSoap, call_me: FaPhoneAlt, problem: FaTools, late_checkout: FaClock, taxi: FaTaxi };
+type ReqState = "sending" | "sent" | "already" | "failed";
+
 const CardHead = ({ icon: I, title }: { icon: IconType; title: string }) => <div className="tvCardHead"><span className="tvIcon"><I aria-hidden /></span><h2>{title}</h2></div>;
 
 export function TvScreen({ token, lang }: { token: string; lang: string }) {
@@ -54,6 +59,9 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   const [closed, setClosed] = useState<number[]>([]);
   const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tabsRef = useRef<HTMLElement | null>(null);
+  const reqRef = useRef<HTMLDivElement | null>(null);
+  const [reqState, setReqState] = useState<Partial<Record<TvRequestKind | "dnd", ReqState>>>({});
+  const [dnd, setDnd] = useState<boolean | null>(null);
 
   // Any remote/keyboard/touch use keeps the chosen tab; after 90 s without it the screen goes back home.
   const choose = (key: string) => {
@@ -79,7 +87,21 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
     setClosed((c) => [...c, id]);
     void fetch(`/api/public/tv/${encodeURIComponent(token)}/seen`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => {});
   };
-  // TV remotes send arrow keys: left/right move between tabs.
+  // A request to reception; do not disturb is a switch. The answer shows on the button for a few seconds.
+  const sendRequest = async (kind: TvRequestKind | "dnd", on?: boolean) => {
+    if (reqState[kind] === "sending") return;
+    choose("requests");
+    setReqState((s) => ({ ...s, [kind]: "sending" }));
+    let result: ReqState = "failed";
+    try {
+      const r = await fetch(`/api/public/tv/${encodeURIComponent(token)}/request`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(kind === "dnd" ? { kind, on } : { kind }) });
+      const d = await r.json();
+      if (d.ok) { result = d.recorded ? "sent" : "already"; setDnd(Boolean(d.dnd)); }
+    } catch { /* offline: show "not sent" */ }
+    setReqState((s) => ({ ...s, [kind]: result }));
+    setTimeout(() => setReqState((s) => (s[kind] === result ? { ...s, [kind]: undefined } : s)), 6_000);
+  };
+  // TV remotes send arrow keys: left/right move between tabs; down enters the request buttons, which move in a grid.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (message) {
@@ -87,6 +109,26 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         else if (e.key.startsWith("Arrow")) e.preventDefault();
         return;
       }
+      const grid = Array.from(reqRef.current?.querySelectorAll("button") ?? []);
+      const inGrid = grid.indexOf(document.activeElement as HTMLButtonElement);
+      if (inGrid >= 0 && e.key.startsWith("Arrow")) {
+        // Move to the nearest button in the arrow's direction (the do-not-disturb tile is two rows high).
+        const box = (b: Element) => { const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+        const from = box(grid[inGrid]), dx = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0, dy = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+        let best: HTMLButtonElement | null = null, bestScore = Infinity;
+        for (const b of grid) {
+          const c = box(b), along = (c.x - from.x) * dx + (c.y - from.y) * dy, across = Math.abs((c.x - from.x) * dy) + Math.abs((c.y - from.y) * dx);
+          if (b === grid[inGrid] || along <= 1) continue;
+          const score = along + across * 2;
+          if (score < bestScore) { bestScore = score; best = b; }
+        }
+        if (best) best.focus();
+        else if (dy < 0) (tabsRef.current?.querySelector<HTMLButtonElement>('[data-key="requests"]'))?.focus();
+        if (idle.current) choose("requests");
+        e.preventDefault();
+        return;
+      }
+      if (e.key === "ArrowDown" && tab === "requests" && grid.length) { grid[0].focus(); e.preventDefault(); return; }
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
       const buttons = Array.from(tabsRef.current?.querySelectorAll("button") ?? []);
       if (!buttons.length) return;
@@ -127,6 +169,8 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   const euro = (c: number) => `€${(c / 100).toFixed(c % 100 ? 2 : 0)}`;
   const g = data.guest;
   const current = tab !== "home" ? data.info.find((x) => x.key === tab) : undefined;
+  const rq = data.requests, dndOn = rq ? (dnd ?? rq.dnd) : false;
+  const reqLabel = (k: TvRequestKind | "dnd", label: string) => { const st = reqState[k]; return st === "sent" ? rq!.texts.sent : st === "already" ? rq!.texts.already : st === "failed" ? rq!.texts.failed : label; };
   return (
     <main className="tvScreen">
       <header className="tvTop">
@@ -140,19 +184,39 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
       <section className="tvHero">
         <h1>{g ? t.hello.replace("{name}", g.firstName) : t.hotel}</h1>
         {g?.departureToday ? <p className="tvNotice">{t.checkoutToday.replace("{time}", data.checkOutTime)}</p> : <p>{data.welcome}</p>}
+        {rq && dndOn && <p className="tvDndChip"><FaBan aria-hidden />{rq.texts.dnd}</p>}
         {g && !g.departureToday && (
           <div className="tvStay"><span>{t.room} <b>{data.roomCode}</b></span><span>{t.stay} <b>{day(g.checkIn)} → {day(g.checkOut)}</b></span><span>{t.checkout} <b>{t.until} {data.checkOutTime}</b></span></div>
         )}
       </section>
 
-      {data.info.length > 0 && (
-        <nav className="tvTabs" ref={tabsRef} aria-label="Hotel information">
+      {(data.info.length > 0 || rq) && (
+        <nav className={`tvTabs${rq ? " withReq" : ""}`} ref={tabsRef} aria-label="Hotel information">
           <button type="button" data-key="home" className={tab === "home" ? "active" : ""} onClick={() => choose("home")}><TabIcon k="home" />{t.home}</button>
           {data.info.map((x) => <button type="button" key={x.key} data-key={x.key} className={tab === x.key ? "active" : ""} onClick={() => choose(x.key)}><TabIcon k={x.key} emoji={x.icon} />{x.title}</button>)}
+          {rq && <button type="button" data-key="requests" className={`tvReqTab${tab === "requests" ? " active" : ""}`} onClick={() => choose("requests")}><FaConciergeBell aria-hidden />{rq.texts.tab}</button>}
         </nav>
       )}
 
-      {current ? (
+      {tab === "requests" && rq ? (
+        <section className="tvInfo tvReq">
+          <p className="tvReqIntro">{rq.texts.intro}</p>
+          <div className="tvReqGrid" ref={reqRef}>
+            <button type="button" className={`tvReqBtn tvReqDnd${dndOn ? " on" : ""}${reqState.dnd ? ` is-${reqState.dnd}` : ""}`} aria-pressed={dndOn} onClick={() => sendRequest("dnd", !dndOn)}>
+              <span className="tvReqIcon"><FaBan aria-hidden /></span>
+              <b>{reqLabel("dnd", rq.texts.dnd)}</b>
+              <small>{rq.texts.dndHint}</small>
+              <span className="tvSwitch" aria-hidden><i />{dndOn ? rq.texts.dndOn : rq.texts.dndOff}</span>
+            </button>
+            {tvRequestKinds.map((k) => { const I = reqIcons[k]; const st = reqState[k]; return (
+              <button type="button" key={k} className={`tvReqBtn${st ? ` is-${st}` : ""}`} onClick={() => sendRequest(k)}>
+                <span className="tvReqIcon">{st === "sent" || st === "already" ? <FaCheck aria-hidden /> : <I aria-hidden />}</span>
+                <b>{reqLabel(k, rq.texts[k])}</b>
+              </button>
+            ); })}
+          </div>
+        </section>
+      ) : current ? (
         <section className="tvInfo">
           <div className="tvCard tvInfoCard">
             <div className="tvInfoSide"><span className="tvIcon"><TabIcon k={current.key} emoji={current.icon} /></span><h2>{current.title}</h2></div>
