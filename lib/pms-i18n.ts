@@ -1450,6 +1450,8 @@ const el = {
   "tvm.sound": "Ηχητική ειδοποίηση",
   "tvm.soundPreview": "Ακούστε τον ήχο",
   "tvm.soundHelp": "Ο ήχος ταιριάζει στο θέμα (γενέθλια: μελωδία «Happy Birthday», επέτειος: άρπα, επείγον: πιο έντονος) και παίζει μία φορά, στην ένταση της τηλεόρασης.",
+  "tvm.wake": "Άναμμα τηλεόρασης αν είναι κλειστή",
+  "tvm.wakeHelp": "Η εφαρμογή Corali TV (1.2) ξυπνά την οθόνη από την αναμονή. Σε δωμάτια με πρίζα Shelly: αν η πρίζα είναι σβηστή ανάβει, κι αν η τηλεόραση είναι σε αναμονή (<8 W) η πρίζα κλείνει και ανοίγει για να ξεκινήσει η τηλεόραση (χρειάζεται «Power on mode» στην τηλεόραση). Αν η τηλεόραση ήδη παίζει, δεν γίνεται τίποτα.",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -2896,6 +2898,8 @@ const en: Record<PmsKey, string> = {
   "tvm.sound": "Sound notification",
   "tvm.soundPreview": "Play the sound",
   "tvm.soundHelp": "The sound matches the theme (birthday: “Happy Birthday” tune, anniversary: harp, urgent: stronger) and plays once, at the TV's volume.",
+  "tvm.wake": "Turn the TV on if it is off",
+  "tvm.wakeHelp": "The Corali TV app (1.2) wakes the screen from standby. In rooms with a Shelly plug: a plug that is off is switched on, and a TV in standby (<8 W) gets a short power cycle so it starts (needs the TV's power-on mode). A TV that is already on is left alone.",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

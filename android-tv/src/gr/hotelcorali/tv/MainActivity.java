@@ -40,10 +40,11 @@ public class MainActivity extends Activity {
     };
 
     /** Open (or return to) the welcome screen from the background: start-up, wake, urgent message (reload at once). */
-    static void bringToFront(Context c, boolean reload) {
+    static void bringToFront(Context c, boolean reload, boolean wake) {
         Intent i = new Intent(c, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                .putExtra("reload", reload);
+                .putExtra("reload", reload)
+                .putExtra("wake", wake);
         try {
             c.startActivity(i);
         } catch (RuntimeException ignored) {
@@ -55,6 +56,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (getIntent().getBooleanExtra("wake", false)) turnScreenOn();
 
         web = new WebView(this);
         web.setBackgroundColor(Color.rgb(15, 52, 62));
@@ -62,7 +64,7 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.1");
+        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.2");
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -100,6 +102,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (intent.getBooleanExtra("wake", false)) turnScreenOn();
         // Urgent message: show it now instead of waiting for the screen's next refresh.
         if (intent.getBooleanExtra("reload", false) && !loadedUrl.isEmpty()) web.reload();
     }
@@ -136,6 +139,17 @@ public class MainActivity extends Activity {
         handler.removeCallbacks(retry);
         web.destroy();
         super.onDestroy();
+    }
+
+    /** Light the screen when an urgent message asks to turn the TV on (the window also shows over the lock screen). */
+    @SuppressWarnings("deprecation")
+    private void turnScreenOn() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true);
+            setTurnScreenOn(true);
+        } else {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+        }
     }
 
     private void showOffline() {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { desiredPower, deviceState, normalizePowerSettings, shellyServer, statusRequest, switchError, switchRequest, validDeviceId } from "../scripts/tv-power-core.mjs";
+import { desiredPower, deviceState, normalizePowerSettings, shellyServer, statusRequest, switchError, switchRequest, validDeviceId, wakeAction } from "../scripts/tv-power-core.mjs";
 
 const stay = (status: string, check_in: string, check_out: string) => ({ status, check_in, check_out });
 
@@ -37,7 +37,15 @@ test("Shelly requests and replies", () => {
   assert.equal(switchError(401, null, "abc123"), "SHELLY_AUTH");
   assert.equal(switchError(429, null, "abc123"), "SHELLY_RATE_LIMIT");
   assert.equal(switchError(200, { abc123: "DEVICE_OFFLINE" }, "abc123"), "DEVICE_OFFLINE");
-  assert.deepEqual(deviceState({ id: "a", online: 1, status: { "switch:0": { output: true } } }), { online: true, on: true });
-  assert.deepEqual(deviceState({ id: "a", online: 0, status: { relays: [{ ison: false }] } }), { online: false, on: false });
-  assert.deepEqual(deviceState(undefined), { online: false, on: null });
+  assert.deepEqual(deviceState({ id: "a", online: 1, status: { "switch:0": { output: true, apower: 63.2 } } }), { online: true, on: true, power: 63.2 });
+  assert.deepEqual(deviceState({ id: "a", online: 0, status: { relays: [{ ison: false }], meters: [{ power: 0 }] } }), { online: false, on: false, power: 0 });
+  assert.deepEqual(deviceState(undefined), { online: false, on: null, power: null });
+});
+
+test("Urgent wake through the plug: on when off, power-cycle a TV in standby, leave a running TV alone", () => {
+  assert.equal(wakeAction({ online: true, on: false, power: 0 }), "on");
+  assert.equal(wakeAction({ online: true, on: true, power: 0.6 }), "cycle");
+  assert.equal(wakeAction({ online: true, on: true, power: 72 }), "none");
+  assert.equal(wakeAction({ online: true, on: true, power: null }), "none", "no power meter: do not cut the power");
+  assert.equal(wakeAction({ online: false, on: false, power: null }), "none");
 });

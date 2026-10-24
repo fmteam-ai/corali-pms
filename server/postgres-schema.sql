@@ -1415,3 +1415,6 @@ ALTER TABLE tv_messages ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'st
 
 -- v83: optional sound when a message appears on the TV (on by default).
 ALTER TABLE tv_messages ADD COLUMN IF NOT EXISTS sound BIGINT NOT NULL DEFAULT 1;
+
+-- v84: urgent messages can turn the TV on (Corali TV app wakes the screen; a Shelly plug powers / power-cycles a TV in standby).
+ALTER TABLE tv_messages ADD COLUMN IF NOT EXISTS wake BIGINT NOT NULL DEFAULT 0;

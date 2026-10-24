@@ -48,6 +48,7 @@ export function TvMessages({ lang, rooms, initialMessages, canSend }: { lang: Pm
   const [photo, setPhoto] = useState<string | null>(null);
   const [theme, setTheme] = useState<TvMessageTheme>("standard");
   const [sound, setSound] = useState(true);
+  const [wake, setWake] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const when = (ms: number) => new Date(ms).toLocaleString(pmsLocale(lang), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" });
@@ -65,7 +66,7 @@ export function TvMessages({ lang, rooms, initialMessages, canSend }: { lang: Pm
   async function send() {
     if (!el.trim() && !en.trim() && !photo) { setMsg(t("tvm.needText")); return; }
     if (!all && !picked.length) { setMsg(t("tvm.needRooms")); return; }
-    if (await post({ action: "send", el, en, rooms: all ? "all" : picked, duration, urgent, photo, theme, sound }, t("tvm.sent"))) { setEl(""); setEn(""); setPicked([]); setAll(false); setUrgent(false); setPhoto(null); setTheme("standard"); }
+    if (await post({ action: "send", el, en, rooms: all ? "all" : picked, duration, urgent, photo, theme, sound, wake: urgent && wake }, t("tvm.sent"))) { setEl(""); setEn(""); setPicked([]); setAll(false); setUrgent(false); setPhoto(null); setTheme("standard"); setWake(false); }
   }
 
   return (
@@ -113,7 +114,9 @@ export function TvMessages({ lang, rooms, initialMessages, canSend }: { lang: Pm
             <label className="inline"><input type="checkbox" checked={sound} onChange={(e) => setSound(e.target.checked)} /> <b>🔔 {t("tvm.sound")}</b></label>
             <button type="button" className="secondaryButton" onClick={() => void new Audio(messageSound(theme, urgent)).play().catch(() => {})}>▶ {t("tvm.soundPreview")}</button>
             <label className="inline"><input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> <b>{t("tvm.urgent")}</b></label>
+            {urgent && <label className="inline"><input type="checkbox" checked={wake} onChange={(e) => setWake(e.target.checked)} /> <b>⏻ {t("tvm.wake")}</b></label>}
           </div>
+          {urgent && wake && <small className="tvmWakeHelp">{t("tvm.wakeHelp")}</small>}
           <small>{t("tvm.soundHelp")}</small>
           <small>{t("tvm.urgentHelp")}</small>
           <button type="button" disabled={busy} onClick={() => void send()}>{t("tvm.send")}</button>
@@ -129,7 +132,7 @@ export function TvMessages({ lang, rooms, initialMessages, canSend }: { lang: Pm
             return (
               <tr key={m.id}>
                 <td className="tvmWhen">{when(m.createdAt)}{m.createdBy && <small>{m.createdBy}</small>}</td>
-                <td className="tvmText">{m.hasImage && <img className="tvmThumb" src={`/api/pms/tv-messages/${m.id}/image`} alt="" />}{m.urgent && <b className="debit">{t("tvm.urgentTag")} </b>}{m.sound && <span title={t("tvm.sound")} aria-label={t("tvm.sound")}>🔔 </span>}{m.body.el ?? m.body.en}{m.body.el && m.body.en && <small>{m.body.en}</small>}</td>
+                <td className="tvmText">{m.hasImage && <img className="tvmThumb" src={`/api/pms/tv-messages/${m.id}/image`} alt="" />}{m.urgent && <b className="debit">{t("tvm.urgentTag")} </b>}{m.sound && <span title={t("tvm.sound")} aria-label={t("tvm.sound")}>🔔 </span>}{m.wake && <span title={t("tvm.wake")} aria-label={t("tvm.wake")}>⏻ </span>}{m.body.el ?? m.body.en}{m.body.el && m.body.en && <small>{m.body.en}</small>}</td>
                 <td><div className="tvmSeen">{m.rooms.map((r) => (
                   <span key={r.roomId} className={r.seenAt ? "credit" : ""} title={r.seenAt ? `${t("tvm.seen")} ${when(r.seenAt)}` : `${t("tvm.until")} ${when(r.expiresAt)}`}>
                     {r.roomCode} {r.seenAt ? `✓ ${when(r.seenAt)}` : m.cancelledAt ? "✕" : r.expiresAt > Date.now() ? "…" : "—"}

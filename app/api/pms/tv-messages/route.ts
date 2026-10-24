@@ -1,9 +1,11 @@
+import { after } from "next/server";
 import { z } from "zod";
 import { audited } from "@/lib/audit";
 import { requireApiUser } from "@/lib/auth";
 import { parsePhoto } from "@/lib/maintenance";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 import { cancelTvMessage, listTvMessages, sendTvMessage } from "@/lib/tv-messages";
+import { wakeRoomTvs } from "@/lib/tv-power";
 import { tvMessageDurations, tvMessageThemes } from "@/lib/tv-messages-core";
 
 const input = z.discriminatedUnion("action", [
@@ -17,6 +19,7 @@ const input = z.discriminatedUnion("action", [
     photo: z.string().max(3_500_000).nullable().default(null),
     theme: z.enum(tvMessageThemes as [string, ...string[]]).default("standard"),
     sound: z.boolean().default(true),
+    wake: z.boolean().default(false),
   }).refine((x) => x.el || x.en || x.photo),
   z.object({ action: z.literal("cancel"), id: z.number().int().positive() }),
 ]);
@@ -36,7 +39,9 @@ async function handlePOST(request: Request) {
     if (x.action === "send") {
       const photo = x.photo ? parsePhoto(x.photo) : null;
       if (x.photo && !photo) return Response.json({ ok: false, error: "INVALID_PHOTO" }, { status: 400 });
-      await sendTvMessage(u.ownerId, u.id, { el: x.el || undefined, en: x.en || undefined }, x.rooms, x.duration as (typeof tvMessageDurations)[number], x.urgent, photo && { mime: photo.mime, base64: photo.base64 }, x.theme as (typeof tvMessageThemes)[number], x.sound);
+      const sent = await sendTvMessage(u.ownerId, u.id, { el: x.el || undefined, en: x.en || undefined }, x.rooms, x.duration as (typeof tvMessageDurations)[number], x.urgent, photo && { mime: photo.mime, base64: photo.base64 }, x.theme as (typeof tvMessageThemes)[number], x.sound, x.wake);
+      // Plugs for "turn the TV on" are switched after the reply (a power cycle takes ~15 s per room).
+      if (x.urgent && x.wake) after(() => wakeRoomTvs(u.ownerId, sent.roomIds).catch((e) => console.error("TV wake failed", e)));
     } else if (!(await cancelTvMessage(u.ownerId, x.id))) {
       return Response.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
     }

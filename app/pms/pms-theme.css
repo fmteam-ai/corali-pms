@@ -175,3 +175,58 @@ body:has(.pms){background:#f2f4f6}
 .pms :is(.policyForm,.adminForm,.profileGrid>section,.profileGrid>article){border-radius:var(--radius)}
 .pms .pageTitle:only-child,.pms .pageTitle:not(:has(p)){padding-bottom:16px}
 .pms main .policyForm > button,.pms main .profileGrid button{justify-self:start;width:auto;min-width:150px}
+
+/* Prices & rules (/pms/pricing): sub-navigation, discount cards side by side, rooms as tiles, editable tables. */
+.prcNav{display:flex;flex-wrap:wrap;gap:4px;margin:-6px 0 20px;padding:4px;background:#fff;border:1px solid var(--border);border-radius:10px;width:fit-content;max-width:100%}
+.prcNav a{padding:8px 14px;border-radius:7px;color:var(--text);font-size:14px;font-weight:600;text-decoration:none;white-space:nowrap}
+.prcNav a:hover{background:var(--surface-2)}
+.prcNav a.current{background:var(--primary);color:#fff}
+.pricingPage .prcTop{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:18px;margin-bottom:18px;align-items:start}
+.pricingPage .prcTop>article{margin:0;padding:20px 22px;background:#fff;border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+.pricingPage .prcTop>article h2{font-size:16px}
+.pricingPage .prcTop>article>p{font-size:13px;color:var(--muted);line-height:1.55}
+.pricingPage .prcTop .actions{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}
+.pricingPage .prcTop .actions button{min-height:38px;padding:0 18px}
+.pricingPage .prcTop fieldset{border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin:10px 0}
+.pricingPage .prcTop legend{font-size:13px;font-weight:600;padding:0 6px}
+.prc{display:grid;gap:18px}
+.prcMsg{margin:0;padding:10px 14px;border-radius:10px;font-weight:600}
+.prcMsg.ok{background:var(--success-soft);color:var(--success)}.prcMsg.bad{background:var(--danger-soft);color:var(--danger)}
+.prcCard{background:#fff;border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:20px 22px;min-width:0}
+.prcHead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px}
+.prcHead h2{margin:0 0 4px;font-size:17px}
+.prcHead p{margin:0;font-size:13px;color:var(--muted)}
+.prcSave{display:flex;align-items:center;gap:10px;flex:none}
+.prcSave span{font-size:13px;font-weight:600;color:var(--gold)}
+.prcSave button:not(.secondaryButton){min-height:38px;padding:0 18px;border:0;border-radius:8px;background:var(--primary);color:#fff;font-weight:600;cursor:pointer}
+.prcTypes{display:grid;gap:14px}
+.prcType{border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.prcTypeHead{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface-2);border-bottom:1px solid var(--border)}
+.prcTypeHead b{font-size:15px}.prcTypeHead small{color:var(--muted)}
+.prcAll{display:flex;gap:6px;margin-left:auto}
+.prcAll input{width:140px;min-height:34px!important}
+.prcAll .secondaryButton{min-height:34px}
+.prcRooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:14px}
+.pms main label.prcRoom{display:grid;gap:6px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#fff;font-weight:700;font-size:15px;transition:border-color .15s,background .15s}
+.pms main label.prcRoom.dirty{border-color:var(--gold);background:var(--gold-soft)}
+.prcEuro,.prcPct{position:relative;display:block}
+.prcEuro input,.prcPct input{width:100%;padding-right:34px!important;font-variant-numeric:tabular-nums;font-weight:600}
+.prcEuro i,.prcPct i{position:absolute;right:11px;top:50%;transform:translateY(-50%);font-style:normal;color:var(--muted);font-size:13px;pointer-events:none}
+.prcCols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
+.prc .tableWrap{box-shadow:none}
+.prc .tableWrap td{padding:8px 10px}
+.prc .tableWrap th{padding:10px}
+.prc .tableWrap td input:not([type=checkbox]),.prc .tableWrap td select{width:100%;min-width:90px}
+.prc .tableWrap td .secondaryButton,.prc .tableWrap td button{min-height:34px;padding:0 12px;font-size:13px;white-space:nowrap}
+.prc .tableWrap tfoot td{background:var(--surface-2);border-top:1px solid var(--border)}
+.prc code{font-size:12px;background:var(--surface-2);padding:2px 6px;border-radius:5px}
+@media (max-width:1100px){.prcCols,.pricingPage .prcTop{grid-template-columns:1fr}}
+@media (max-width:640px){.prcHead{flex-direction:column}.prcAll{margin-left:0}.prcTypeHead{flex-wrap:wrap}}
+.prc :is(input:not([type=checkbox]),select){padding-left:10px;padding-right:10px}
+.prc .prcEuro input,.prc .prcPct input{padding-right:34px}
+.prc .prcPlan{min-width:220px}
+.prc .prcPlan input{display:block;width:100%}
+.prc .prcPlan code{display:inline-block;margin-top:4px}
+.prc .prcPlan input+input{margin-top:6px;min-height:32px!important;font-size:13px}
+.prc .prcPct{max-width:120px}
+.prc td input[type=date]{min-width:136px}.prc .prcPlan{min-width:190px}

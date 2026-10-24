@@ -12,6 +12,6 @@ public class BootReceiver extends BroadcastReceiver {
         if (!prefs.configured()) return;
         WakeService.start(context);
         if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(intent.getAction())) return;
-        MainActivity.bringToFront(context, false);
+        MainActivity.bringToFront(context, false, false);
     }
 }

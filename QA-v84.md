@@ -1,6 +1,12 @@
-# Hotel Corali PMS v83 — release verification
+# Hotel Corali PMS v84 — release verification
 
 ## Scope in this package
+
+### New in v84
+- Prices & rules (/pms/pricing) redesigned: sub-navigation across all pricing pages; direct-booking discount and birthday code side by side; base rates as room tiles grouped by room type with "same price for all" per type, changed tiles highlighted and one "Save prices" (only changed rooms, then refresh); rate plans, cancellation periods and mandatory charges as editable tables with an add row (plans show an example price). Same /api/pms/pricing calls as before.
+- Urgent TV messages can "turn the TV on" (tv_messages.wake, only with urgent): /api/public/tv/<token>/urgent returns wake; Corali TV app 1.2 (versionCode 3, same key, WAKE_LOCK) wakes the screen from standby and shows the message; rooms with a Shelly plug: plug off → on, plug on but TV in standby (< 8 W, apower/meters) → power cycle (off, 12 s, on), TV on → nothing (scripts/tv-power-core.mjs wakeAction, unit tested). Plug actions run after the reply.
+- Verified: pricing page at 1440 px; bulk save of 7 base rates (room 102 + "all apartments") stored in the database and restored; urgent+wake stored only for urgent messages; /urgent returned wake true/false accordingly. Not yet tested on a real TV or Shelly plug.
+- Tests: 193 pass.
 
 ### New in v83
 - TV message sound: synthesised chimes in public/sounds (scripts/generate-tv-sounds.mjs, no third-party audio): standard ding-dong, urgent, birthday ("Happy Birthday to You" first phrase, public domain, music-box), anniversary (harp arpeggio), celebration. "Sound notification" option (default on) with a preview button in PMS → TV messages; tv_messages.sound. The TV plays it once per message (remembered across reloads); if a browser blocks autoplay the card still shows (the Corali TV app allows it).

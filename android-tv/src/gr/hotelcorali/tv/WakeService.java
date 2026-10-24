@@ -37,7 +37,7 @@ public class WakeService extends Service {
         @Override
         public void onReceive(Context context, Intent intent) {
             Prefs prefs = new Prefs(context);
-            if (prefs.configured() && prefs.openOnWake()) MainActivity.bringToFront(context, false);
+            if (prefs.configured() && prefs.openOnWake()) MainActivity.bringToFront(context, false, false);
         }
     };
 
@@ -45,13 +45,22 @@ public class WakeService extends Service {
         @Override
         public void run() {
             try {
-                long id = urgentMessage();
+                long[] urgent = urgentMessage();
+                long id = urgent[0];
+                boolean wake = urgent[1] == 1;
                 Prefs prefs = new Prefs(WakeService.this);
                 PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-                // Only while the screen is on; when it wakes, the welcome screen opens anyway and shows the message.
-                if (id > 0 && id != prefs.lastUrgent() && pm.isInteractive()) {
-                    prefs.setLastUrgent(id);
-                    MainActivity.bringToFront(WakeService.this, true);
+                if (id > 0 && id != prefs.lastUrgent()) {
+                    if (pm.isInteractive()) {
+                        prefs.setLastUrgent(id);
+                        MainActivity.bringToFront(WakeService.this, true, false);
+                    } else if (wake) {
+                        // "Turn the TV on": wake the screen from standby, then show the message.
+                        prefs.setLastUrgent(id);
+                        wakeScreen(pm);
+                        MainActivity.bringToFront(WakeService.this, true, true);
+                    }
+                    // Otherwise it waits: when the TV is turned on, the welcome screen opens with the message.
                 }
             } catch (Exception ignored) {
                 // Offline or server busy: try again next minute.
@@ -69,25 +78,32 @@ public class WakeService extends Service {
         }
     }
 
-    /** Newest unseen urgent message id for this room (0 when none) from /api/public/tv/<token>/urgent. */
-    private long urgentMessage() throws Exception {
+    @SuppressWarnings("deprecation")
+    private void wakeScreen(PowerManager pm) {
+        PowerManager.WakeLock lock = pm.newWakeLock(PowerManager.FULL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE, "CoraliTV:urgent");
+        lock.acquire(10_000);
+    }
+
+    /** {newest unseen urgent message id (0 when none), 1 when it should turn the TV on} from /api/public/tv/<token>/urgent. */
+    private long[] urgentMessage() throws Exception {
+        long[] none = {0, 0};
         Prefs prefs = new Prefs(this);
-        if (!prefs.configured()) return 0;
+        if (!prefs.configured()) return none;
         Uri screen = Uri.parse(prefs.screenUrl());
         String token = screen.getLastPathSegment();
-        if (token == null) return 0;
+        if (token == null) return none;
         URL url = new URL(screen.getScheme() + "://" + screen.getAuthority() + "/api/public/tv/" + Uri.encode(token) + "/urgent");
         HttpURLConnection http = (HttpURLConnection) url.openConnection();
         try {
             http.setConnectTimeout(15_000);
             http.setReadTimeout(15_000);
-            if (http.getResponseCode() != 200) return 0;
+            if (http.getResponseCode() != 200) return none;
             InputStream in = http.getInputStream();
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
             byte[] chunk = new byte[2048];
             for (int n; (n = in.read(chunk)) > 0; ) buf.write(chunk, 0, n);
             JSONObject r = new JSONObject(buf.toString("UTF-8"));
-            return r.optBoolean("ok") ? r.optLong("urgent", 0) : 0;
+            return r.optBoolean("ok") ? new long[]{r.optLong("urgent", 0), r.optBoolean("wake") ? 1 : 0} : none;
         } finally {
             http.disconnect();
         }

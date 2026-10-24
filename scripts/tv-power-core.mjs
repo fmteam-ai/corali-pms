@@ -64,10 +64,25 @@ export function switchError(status, body, id) {
   return "";
 }
 
-/** Online flag and output of one device from a get reply (Gen2/3 "switch:N".output or Gen1 relays[N].ison). */
+/** Online flag, output and power draw (W) of one device from a get reply (Gen2/3 "switch:N", Gen1 relays/meters). */
 export function deviceState(device, channel = 0) {
-  if (!device || typeof device !== "object") return { online: false, on: null };
+  if (!device || typeof device !== "object") return { online: false, on: null, power: null };
   const st = device.status ?? {};
   const out = st[`switch:${channel}`]?.output ?? st.relays?.[channel]?.ison;
-  return { online: Number(device.online) === 1 || device.online === true, on: typeof out === "boolean" ? out : null };
+  const watts = st[`switch:${channel}`]?.apower ?? st.meters?.[channel]?.power;
+  return { online: Number(device.online) === 1 || device.online === true, on: typeof out === "boolean" ? out : null, power: typeof watts === "number" ? watts : null };
+}
+
+/** Below this draw a TV with power is in standby (sets use ~0.5 W in standby and 40–150 W when on). */
+export const STANDBY_WATTS = 8;
+
+/**
+ * How to turn a room's TV on through its plug for an urgent message: "on" when the plug is off, "cycle" (off, wait,
+ * on: TVs set to power on with the mains start up) when it is on but the TV is in standby, "none" when the TV is
+ * already on or the state is unknown.
+ */
+export function wakeAction(state) {
+  if (!state.online || state.on === null) return "none";
+  if (!state.on) return "on";
+  return state.power !== null && state.power < STANDBY_WATTS ? "cycle" : "none";
 }

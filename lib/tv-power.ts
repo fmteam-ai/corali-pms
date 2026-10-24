@@ -5,10 +5,10 @@ import { documentKey } from "@/lib/env";
 import { decryptField, encryptField } from "@/lib/security/encryption";
 import { hotelToday } from "@/lib/tape-chart";
 import { hotelTime } from "@/lib/tv";
-import { desiredPower, deviceState, normalizePowerSettings, statusRequest, switchError, switchRequest, type PowerSettings } from "../scripts/tv-power-core.mjs";
+import { desiredPower, deviceState, normalizePowerSettings, statusRequest, switchError, switchRequest, wakeAction, type PowerSettings } from "../scripts/tv-power-core.mjs";
 
 export type { PowerSettings };
-export type RoomPowerState = { roomId: number; online: boolean; on: boolean | null };
+export type RoomPowerState = { roomId: number; online: boolean; on: boolean | null; power: number | null };
 
 export async function loadPowerSettings(ownerId: string): Promise<{ settings: PowerSettings; hasKey: boolean }> {
   const r = (await db().query(`SELECT settings_json,auth_key_encrypted FROM tv_power_settings WHERE owner_id=$1`, [ownerId])).rows[0];
@@ -96,9 +96,28 @@ export async function roomPowerStates(ownerId: string): Promise<RoomPowerState[]
         out.push({ roomId: Number(r.room_id), ...deviceState(d, Number(r.power_channel)) });
       }
     } catch {
-      for (const r of part) out.push({ roomId: Number(r.room_id), online: false, on: null });
+      for (const r of part) out.push({ roomId: Number(r.room_id), online: false, on: null, power: null });
     }
     if (i + 10 < rows.length) await new Promise((ok) => setTimeout(ok, 1100));
   }
   return out;
+}
+
+/**
+ * Urgent message with "turn the TV on": per room plug, switch on a plug that is off, or power-cycle one whose TV is in
+ * standby (needs the TV's power-on mode). TVs already on are left alone. Rooms without a plug rely on the Corali TV app.
+ */
+export async function wakeRoomTvs(ownerId: string, roomIds: number[]): Promise<void> {
+  const states = new Map((await roomPowerStates(ownerId)).map((s) => [s.roomId, s]));
+  for (const roomId of roomIds) {
+    const state = states.get(roomId);
+    if (!state) continue;
+    const action = wakeAction(state);
+    if (action === "on") await setRoomPower(ownerId, roomId, true);
+    if (action === "cycle" && !(await setRoomPower(ownerId, roomId, false))) {
+      await new Promise((ok) => setTimeout(ok, 12_000));
+      await setRoomPower(ownerId, roomId, true);
+    }
+    if (action !== "none") await new Promise((ok) => setTimeout(ok, 1100)); // Shelly Cloud: ~1 request per second
+  }
 }

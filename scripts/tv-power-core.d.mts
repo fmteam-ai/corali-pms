@@ -7,4 +7,7 @@ export declare function normalizePowerSettings(raw: unknown): PowerSettings;
 export declare function switchRequest(server: string, authKey: string, id: string, channel: number, on: boolean): { url: string; body: string };
 export declare function statusRequest(server: string, authKey: string, ids: string[]): { url: string; body: string };
 export declare function switchError(status: number, body: unknown, id: string): string;
-export declare function deviceState(device: unknown, channel?: number): { online: boolean; on: boolean | null };
+export type PlugState = { online: boolean; on: boolean | null; power: number | null };
+export declare function deviceState(device: unknown, channel?: number): PlugState;
+export declare const STANDBY_WATTS: number;
+export declare function wakeAction(state: PlugState): "on" | "cycle" | "none";
