@@ -4,6 +4,7 @@ import type { IconType } from "react-icons";
 import { FaBirthdayCake, FaGlassCheers, FaHeart, FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
 import { WiCloud, WiCloudy, WiDayCloudy, WiDaySunny, WiFog, WiRain, WiShowers, WiSnow, WiThunderstorm } from "react-icons/wi";
 import type { TvScreenData } from "@/lib/tv";
+import { messageSound } from "@/lib/tv-messages-core";
 import "./tv.css";
 
 const locales = { el: "el-GR", en: "en-GB", fr: "fr-FR", de: "de-DE", it: "it-IT", es: "es-ES" } as const;
@@ -62,6 +63,17 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   };
   useEffect(() => () => { if (idle.current) clearTimeout(idle.current); }, []);
   const message = data?.messages.find((m) => !closed.includes(m.id));
+  // A new message plays its sound once (remembered across page reloads, so a reload does not repeat it).
+  const chimed = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    if (!message?.sound || chimed.current.has(message.id)) return;
+    chimed.current.add(message.id);
+    const key = `corali-tv-chimed-${message.id}`;
+    try { if (localStorage.getItem(key)) return; localStorage.setItem(key, "1"); } catch { /* storage off: play anyway */ }
+    const audio = new Audio(messageSound(message.theme, message.urgent));
+    audio.volume = 0.9;
+    void audio.play().catch(() => { /* autoplay blocked by this browser: the card still shows */ });
+  }, [message]);
   // OK on the remote closes a reception message; the PMS then shows it as seen.
   const dismiss = (id: number) => {
     setClosed((c) => [...c, id]);

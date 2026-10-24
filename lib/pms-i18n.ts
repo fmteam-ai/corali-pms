@@ -1447,6 +1447,9 @@ const el = {
   "dash.heroMorning": "Καλημέρα, {name}",
   "dash.heroEvening": "Καλησπέρα, {name}",
   "dash.heroStats": "Σήμερα: {arrivals} αφίξεις · {departures} αναχωρήσεις · {inHouse} δωμάτια με πελάτες · πληρότητα {occupancy}%",
+  "tvm.sound": "Ηχητική ειδοποίηση",
+  "tvm.soundPreview": "Ακούστε τον ήχο",
+  "tvm.soundHelp": "Ο ήχος ταιριάζει στο θέμα (γενέθλια: μελωδία «Happy Birthday», επέτειος: άρπα, επείγον: πιο έντονος) και παίζει μία φορά, στην ένταση της τηλεόρασης.",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -2890,6 +2893,9 @@ const en: Record<PmsKey, string> = {
   "dash.heroMorning": "Good morning, {name}",
   "dash.heroEvening": "Good evening, {name}",
   "dash.heroStats": "Today: {arrivals} arrivals · {departures} departures · {inHouse} rooms occupied · {occupancy}% occupancy",
+  "tvm.sound": "Sound notification",
+  "tvm.soundPreview": "Play the sound",
+  "tvm.soundHelp": "The sound matches the theme (birthday: “Happy Birthday” tune, anniversary: harp, urgent: stronger) and plays once, at the TV's volume.",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

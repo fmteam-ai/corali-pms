@@ -145,3 +145,33 @@ body:has(.pms){background:#f2f4f6}
 .pms .wIconBox{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:8px;background:var(--primary-soft);color:var(--primary)}
 .pms .wIcon{font-size:16px}
 .pmsTopbar .bell>button{display:inline-grid;place-items:center;font-size:18px;color:var(--primary)}
+
+/* Forms on every page: the label sits above its field and the field fills the column; checkbox / radio labels put the
+   box and its text on one line; save buttons keep their natural width instead of stretching across the card. */
+.pms main label:not(.inline):not(:has(> input[type=checkbox])):not(:has(> input[type=radio])):has(> :is(input,select,textarea)){display:grid;grid-template-columns:minmax(0,1fr);justify-content:stretch;gap:6px;align-content:start;justify-items:stretch;box-sizing:border-box;text-align:left}
+.pms main label:not(.inline) > :is(input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=color]):not([type=range]),select,textarea){width:100%;max-width:100%;box-sizing:border-box;padding-left:12px;padding-right:12px}
+.pms main label:not(.inline) > input[type=number]{max-width:220px}
+.pms main label:not(.inline) > :is(input[type=date],input[type=time],input[type=datetime-local]){max-width:260px}
+.pms main label:has(> input[type=checkbox]),.pms main label:has(> input[type=radio]){display:inline-flex;align-items:center;justify-content:flex-start;gap:8px;text-align:left;font-weight:600;width:auto}
+.pms main label:has(> input[type=checkbox]) > input,.pms main label:has(> input[type=radio]) > input{flex:none;width:16px;height:16px;margin:0}
+.pms main form > button:not(.secondaryButton):not(.linkButton):last-of-type,.pms main .adminForm > button,.pms main .hubCard > button{justify-self:start;width:auto;min-width:150px;padding:0 20px}
+.pms main form button:not(.secondaryButton):not(.linkButton):not([role=tab]):not([role=radio]):not([aria-pressed]){min-height:40px}
+.pms main form > button:only-of-type,.pms main form > button:last-child{width:auto;justify-self:start}
+.pms main textarea{line-height:1.5;padding-top:8px;padding-bottom:8px}
+
+/* Wide tables never push the page sideways: the table scrolls inside its card. */
+.pms main :is(section,article,form,.hubCard,.card){min-width:0}
+.pms .tableWrap{max-width:100%;overflow-x:auto}
+
+/* Settings pages (Connections): providers as selectable cards. */
+.pms .integrationGrid>button{display:grid;gap:2px;justify-items:start;min-height:58px;padding:10px 14px;border:1px solid var(--border);border-radius:10px;background:#fff;color:var(--text);font:inherit;font-weight:700;font-size:14px;text-align:left;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.pms .integrationGrid>button small{font-weight:500;font-size:12px;color:var(--muted)}
+.pms .integrationGrid>button:hover{border-color:#b9c5cb}
+.pms .integrationGrid>button[aria-pressed=true]{border-color:var(--primary);background:var(--primary-soft);box-shadow:0 0 0 3px rgba(23,62,71,.08)}
+.pms .detailGrid>article{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:22px}
+.pms .detailGrid>article h2{margin-bottom:14px}
+
+/* Section cards used by settings forms */
+.pms :is(.policyForm,.adminForm,.profileGrid>section,.profileGrid>article){border-radius:var(--radius)}
+.pms .pageTitle:only-child,.pms .pageTitle:not(:has(p)){padding-bottom:16px}
+.pms main .policyForm > button,.pms main .profileGrid button{justify-self:start;width:auto;min-width:150px}

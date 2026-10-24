@@ -1412,3 +1412,6 @@ CREATE INDEX IF NOT EXISTS idx_tv_message_rooms_room ON tv_message_rooms(owner_i
 ALTER TABLE tv_messages ADD COLUMN IF NOT EXISTS image_mime TEXT;
 ALTER TABLE tv_messages ADD COLUMN IF NOT EXISTS image_base64 TEXT;
 ALTER TABLE tv_messages ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'standard';
+
+-- v83: optional sound when a message appears on the TV (on by default).
+ALTER TABLE tv_messages ADD COLUMN IF NOT EXISTS sound BIGINT NOT NULL DEFAULT 1;

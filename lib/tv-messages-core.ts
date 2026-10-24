@@ -18,6 +18,9 @@ export function personalize(text: string, firstName: string | null): string {
   return out.charAt(0).toUpperCase() + out.slice(1);
 }
 
+/** Sound file played on the TV when a message appears (urgent wins over the theme). */
+export const messageSound = (theme: TvMessageTheme, urgent: boolean) => `/sounds/tv-${urgent ? "urgent" : theme}.wav`;
+
 export type TvMessageDuration = "1h" | "3h" | "tonight" | "checkout";
 export const tvMessageDurations: TvMessageDuration[] = ["1h", "3h", "tonight", "checkout"];
 

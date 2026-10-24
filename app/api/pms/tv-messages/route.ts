@@ -16,6 +16,7 @@ const input = z.discriminatedUnion("action", [
     urgent: z.boolean().default(false),
     photo: z.string().max(3_500_000).nullable().default(null),
     theme: z.enum(tvMessageThemes as [string, ...string[]]).default("standard"),
+    sound: z.boolean().default(true),
   }).refine((x) => x.el || x.en || x.photo),
   z.object({ action: z.literal("cancel"), id: z.number().int().positive() }),
 ]);
@@ -35,7 +36,7 @@ async function handlePOST(request: Request) {
     if (x.action === "send") {
       const photo = x.photo ? parsePhoto(x.photo) : null;
       if (x.photo && !photo) return Response.json({ ok: false, error: "INVALID_PHOTO" }, { status: 400 });
-      await sendTvMessage(u.ownerId, u.id, { el: x.el || undefined, en: x.en || undefined }, x.rooms, x.duration as (typeof tvMessageDurations)[number], x.urgent, photo && { mime: photo.mime, base64: photo.base64 }, x.theme as (typeof tvMessageThemes)[number]);
+      await sendTvMessage(u.ownerId, u.id, { el: x.el || undefined, en: x.en || undefined }, x.rooms, x.duration as (typeof tvMessageDurations)[number], x.urgent, photo && { mime: photo.mime, base64: photo.base64 }, x.theme as (typeof tvMessageThemes)[number], x.sound);
     } else if (!(await cancelTvMessage(u.ownerId, x.id))) {
       return Response.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
     }

@@ -1,6 +1,12 @@
-# Hotel Corali PMS v82 — release verification
+# Hotel Corali PMS v83 — release verification
 
 ## Scope in this package
+
+### New in v83
+- TV message sound: synthesised chimes in public/sounds (scripts/generate-tv-sounds.mjs, no third-party audio): standard ding-dong, urgent, birthday ("Happy Birthday to You" first phrase, public domain, music-box), anniversary (harp arpeggio), celebration. "Sound notification" option (default on) with a preview button in PMS → TV messages; tv_messages.sound. The TV plays it once per message (remembered across reloads); if a browser blocks autoplay the card still shows (the Corali TV app allows it).
+- Remaining pages redesigned through shared form rules in pms-theme.css: labels above full-width fields in form columns (fixes profile, payment policy, new reservation, settings forms), checkbox/radio labels on one line, natural-width save buttons, filter bars stay on one line, wide tables scroll inside their card (payment policy no longer overflows the page), provider cards on Connections.
+- Verified: all 35 PMS pages re-captured at 1440×900 after the change; on the TV a birthday message requested /sounds/tv-birthday.wav once (200 audio/wav) and not again after a reload.
+- Tests: 192 pass.
 
 ### New in v82
 - PMS redesign (app/pms/pms-theme.css, loaded after styles.css by the PMS layout and the login page): Open Sans (Greek) instead of DejaVu, colour tokens around the hotel teal, slimmer full-width menu with Lucide line icons and a gold active marker, 26 px page titles, consistent cards, tables (sticky uppercase headers, hover), buttons, form fields with focus ring, status colours. Dashboard widget headers and the notification bell use line icons instead of emoji.
