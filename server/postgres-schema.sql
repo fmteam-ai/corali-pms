@@ -1445,3 +1445,16 @@ CREATE TABLE IF NOT EXISTS channel_sync_state (
  last_ok_at BIGINT,
  last_error TEXT
 );
+
+-- v89: stop sell. A booking restriction can close a period for sale (booking engine and OTAs). Restrictions (min stay,
+-- stop sell, closed to arrival/departure) are sent to Channex per mapped rate plan; the last values sent are kept so
+-- only changed dates go out.
+ALTER TABLE booking_restrictions ADD COLUMN IF NOT EXISTS stop_sell BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE channel_room_mappings ADD COLUMN IF NOT EXISTS external_rate_plan_id TEXT;
+CREATE TABLE IF NOT EXISTS channel_restriction_state (
+ owner_id TEXT NOT NULL,
+ rate_plan_id TEXT NOT NULL,
+ date TEXT NOT NULL,
+ values_json TEXT NOT NULL,
+ PRIMARY KEY (owner_id, rate_plan_id, date)
+);

@@ -19,7 +19,7 @@ export async function enqueueAvailability(client: Queryable, ownerId: string, fr
 export async function channelStatus(ownerId: string) {
   const [types, mappings, outbox, imports, state] = await Promise.all([
     db().query(`SELECT room_type,count(*)::int AS rooms FROM rooms WHERE owner_id=$1 AND active=1 GROUP BY room_type ORDER BY room_type`, [ownerId]),
-    db().query(`SELECT room_type,external_room_type_id FROM channel_room_mappings WHERE owner_id=$1`, [ownerId]),
+    db().query(`SELECT room_type,external_room_type_id,COALESCE(external_rate_plan_id,'') AS external_rate_plan_id FROM channel_room_mappings WHERE owner_id=$1`, [ownerId]),
     db().query(`SELECT status,count(*)::int AS total,max(updated_at) AS last,max(last_error) FILTER (WHERE status='failed') AS error FROM channel_sync_outbox WHERE owner_id=$1 GROUP BY status`, [ownerId]),
     db().query(`SELECT revision_id,status,booking_ids,error,created_at FROM channel_import_log WHERE owner_id=$1 ORDER BY id DESC LIMIT 20`, [ownerId]),
     db().query(`SELECT last_run_at,last_ok_at,last_error FROM channel_sync_state WHERE owner_id=$1`, [ownerId]),
@@ -36,11 +36,11 @@ export type CheckItem = { key: string; ok: boolean | null; detail: string };
  * to a Channex room type of this property, Channex room counts, the availability Channex holds for the next 14 days
  * compared with what the PMS would send, and how many OTA revisions wait in the feed.
  */
-export async function checkChannelConnection(ownerId: string): Promise<{ items: CheckItem[]; channexRoomTypes: { id: string; title: string; rooms: number }[] }> {
+export async function checkChannelConnection(ownerId: string): Promise<{ items: CheckItem[]; channexRoomTypes: { id: string; title: string; rooms: number }[]; channexRatePlans: { id: string; title: string; roomTypeId: string }[] }> {
   const items: CheckItem[] = [];
   const add = (key: string, ok: boolean | null, detail: string) => items.push({ key, ok, detail });
   const c = await providerCredentials(ownerId, "channelManager").catch(() => null);
-  if (!c || !c.secrets.apiKey || !c.settings.propertyCode) { add("config", false, "Δεν έχουν οριστεί API key και property id (Συνδέσεις → Channel Manager)."); return { items, channexRoomTypes: [] }; }
+  if (!c || !c.secrets.apiKey || !c.settings.propertyCode) { add("config", false, "Δεν έχουν οριστεί API key και property id (Συνδέσεις → Channel Manager)."); return { items, channexRoomTypes: [], channexRatePlans: [] }; }
   add("config", c.active ? true : null, c.active ? "Ρυθμίσεις: ενεργός πάροχος." : "Ρυθμίσεις υπάρχουν, αλλά ο πάροχος είναι ανενεργός (ο συγχρονισμός δεν τρέχει).");
   const host = process.env.CHANNEX_BASE_URL || CHANNEX_HOSTS[c.settings.environment === "staging" ? "staging" : "production"];
   const property = c.settings.propertyCode;
@@ -57,18 +57,31 @@ export async function checkChannelConnection(ownerId: string): Promise<{ items: 
     add("api", true, `Σύνδεση με ${host}: OK · ${remote.length} τύποι δωματίων στο Channex.`);
   } catch (e) {
     add("api", false, `Σύνδεση με ${host} απέτυχε: ${e instanceof Error ? e.message : e} (ελέγξτε API key, property id και environment).`);
-    return { items, channexRoomTypes: [] };
+    return { items, channexRoomTypes: [], channexRatePlans: [] };
   }
   const [types, mappings] = await Promise.all([
     db().query(`SELECT room_type,count(*)::int AS rooms FROM rooms WHERE owner_id=$1 AND active=1 GROUP BY room_type ORDER BY room_type`, [ownerId]),
-    db().query(`SELECT room_type,external_room_type_id FROM channel_room_mappings WHERE owner_id=$1`, [ownerId]),
+    db().query(`SELECT room_type,external_room_type_id,external_rate_plan_id FROM channel_room_mappings WHERE owner_id=$1`, [ownerId]),
   ]);
+  let plans: { id: string; title: string; roomTypeId: string }[] = [];
+  try {
+    const rp = await api(`/rate_plans?filter[property_id]=${encodeURIComponent(property)}`);
+    plans = (rp.data ?? []).map((x: { id: string; attributes?: { title?: string; room_type_id?: string } }) => ({ id: String(x.id), title: String(x.attributes?.title ?? ""), roomTypeId: String(x.attributes?.room_type_id ?? "") }));
+  } catch (e) {
+    add("rate_plans", null, `Δεν διαβάστηκαν τα rate plans: ${e instanceof Error ? e.message : e}`);
+  }
   for (const t of types.rows) {
     const m = mappings.rows.find((x) => x.room_type === t.room_type);
     const r = m && remote.find((x) => x.id === m.external_room_type_id);
     if (!m) add(`map:${t.room_type}`, false, `Ο τύπος «${t.room_type}» δεν έχει αντιστοίχιση — δεν πωλείται στα OTA.`);
     else if (!r) add(`map:${t.room_type}`, false, `Ο τύπος «${t.room_type}» δείχνει σε ID που δεν υπάρχει σε αυτό το property του Channex.`);
     else add(`map:${t.room_type}`, r.rooms === Number(t.rooms) ? true : null, `«${t.room_type}» → «${r.title}»${r.rooms === Number(t.rooms) ? "" : ` · Channex: ${r.rooms} δωμάτια, PMS: ${t.rooms} (ενημερώστε το count of rooms στο Channex)`}`);
+    if (m && r) {
+      const plan = m.external_rate_plan_id && plans.find((p) => p.id === m.external_rate_plan_id);
+      if (!m.external_rate_plan_id) add(`plan:${t.room_type}`, null, `«${t.room_type}»: δεν έχει οριστεί rate plan — min stay / stop sell δεν στέλνονται.`);
+      else if (!plan || plan.roomTypeId !== m.external_room_type_id) add(`plan:${t.room_type}`, false, `«${t.room_type}»: το rate plan δεν ανήκει σε αυτόν τον τύπο δωματίου του Channex.`);
+      else add(`plan:${t.room_type}`, true, `«${t.room_type}»: περιορισμοί → rate plan «${plan.title}».`);
+    }
   }
   // Read-back: what Channex holds now against what the PMS would send (next 14 days).
   const today = hotelToday(), end = addDays(today, 13);
@@ -99,5 +112,5 @@ export async function checkChannelConnection(ownerId: string): Promise<{ items: 
   const st = (await db().query(`SELECT last_run_at,last_ok_at,last_error FROM channel_sync_state WHERE owner_id=$1`, [ownerId])).rows[0];
   const age = st?.last_ok_at ? Math.round((Date.now() - Number(st.last_ok_at)) / 60_000) : null;
   add("cron", age !== null && age <= 10, age === null ? "Ο συγχρονισμός (cron run-channel-sync.mjs) δεν έχει τρέξει ακόμη επιτυχώς." : `Τελευταία επιτυχής εκτέλεση πριν ${age}′${age > 10 ? " — ελέγξτε το cron (πρέπει να τρέχει κάθε λεπτό)" : ""}.${st?.last_error ? ` Τελευταίο σφάλμα: ${String(st.last_error).slice(0, 160)}` : ""}`);
-  return { items, channexRoomTypes: remote };
+  return { items, channexRoomTypes: remote, channexRatePlans: plans };
 }

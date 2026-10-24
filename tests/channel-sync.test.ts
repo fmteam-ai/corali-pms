@@ -44,3 +44,35 @@ test("a modified OTA reservation updates the imported bookings in place", async 
   assert.equal(feedHasMore({ total: 25 }, 10, false), false);
   assert.equal(feedHasMore({ total: 4 }, 4, true), false);
 });
+
+test("restrictions sent to Channex follow the booking-engine rules", async () => {
+  const { computeRestrictions, restrictionRanges } = await import("../scripts/channel-core.mjs");
+  const dates = ["2027-07-01", "2027-07-02", "2027-07-03", "2027-07-04", "2027-07-05"];
+  const days = computeRestrictions({
+    dates, roomType: "double", roomCodes: ["101", "102"],
+    // Min stay 3 on arrival in July for doubles; 5 nights for apartments only.
+    minStayRules: [{ id: 1, room_type: "double", starts_on: "2027-07-01", ends_on: "2027-07-31", min_nights: 3, active: 1 }, { id: 2, room_type: "apartment", starts_on: null, ends_on: null, min_nights: 5, active: 1 }],
+    rateRules: [],
+    restrictions: [
+      // Stop sell on 2–3 July for all rooms.
+      { starts_on: "2027-07-02", ends_on: "2027-07-03", minimum_stay: 1, stop_sell: 1, closed_arrival_weekdays: "[]", closed_departure_weekdays: "[]", room_codes: "[]", rate_plan_keys: "[]", active: 1 },
+      // Only room 101 → not the whole room type: ignored for the OTAs.
+      { starts_on: "2027-07-04", ends_on: "2027-07-05", minimum_stay: 7, stop_sell: 0, closed_arrival_weekdays: "[]", closed_departure_weekdays: "[]", room_codes: "[\"101\"]", rate_plan_keys: "[]", active: 1 },
+      // Web-only plan → ignored. Sunday arrivals closed 4–5 July (2027-07-04 is a Sunday).
+      { starts_on: "2027-07-01", ends_on: "2027-07-05", minimum_stay: 9, stop_sell: 1, closed_arrival_weekdays: "[]", closed_departure_weekdays: "[]", room_codes: "[]", rate_plan_keys: "[\"non_refundable\"]", active: 1 },
+      { starts_on: "2027-07-04", ends_on: "2027-07-05", minimum_stay: 2, stop_sell: 0, closed_arrival_weekdays: "[0]", closed_departure_weekdays: "[]", room_codes: "[]", rate_plan_keys: "[]", active: 1 },
+    ],
+  });
+  assert.deepEqual(days.map((d) => d.min_stay_arrival), [3, 3, 3, 3, 3]);
+  assert.deepEqual(days.map((d) => d.stop_sell), [false, true, true, false, false]);
+  assert.deepEqual(days.map((d) => d.min_stay_through), [1, 1, 1, 2, 2]);
+  assert.deepEqual(days.map((d) => d.closed_to_arrival), [false, false, false, true, false]);
+  assert.equal(restrictionRanges(days).length, 4);
+  assert.deepEqual(restrictionRanges(days)[1], { date_from: "2027-07-02", date_to: "2027-07-03", min_stay_arrival: 3, min_stay_through: 1, stop_sell: true, closed_to_arrival: false, closed_to_departure: false });
+  // A closed rate rule stops sales; a closed-to-departure on the last night closes the next day's departure.
+  const r = computeRestrictions({ dates, roomType: "double", roomCodes: ["101"], minStayRules: [], restrictions: [], rateRules: [
+    { id: 1, room_type: "double", room_codes: "[]", starts_on: "2027-07-01", ends_on: "2027-07-01", minimum_stay: null, maximum_stay: null, closed: 1, closed_to_arrival: 0, closed_to_departure: 0 },
+    { id: 2, room_type: null, room_codes: "[]", starts_on: "2027-07-03", ends_on: "2027-07-03", minimum_stay: 4, maximum_stay: null, closed: 0, closed_to_arrival: 0, closed_to_departure: 1 },
+  ] });
+  assert.deepEqual(r.map((d) => [d.stop_sell, d.min_stay_through, d.closed_to_departure]), [[true, 1, false], [false, 1, false], [false, 4, false], [false, 1, true], [false, 1, false]]);
+});

@@ -93,3 +93,68 @@ export function planRevision(existing, rooms) {
 export function feedHasMore(meta, pageSize, progressed) {
   return progressed && pageSize > 0 && Number(meta?.total ?? 0) > pageSize;
 }
+
+const jsonList = (v) => { if (Array.isArray(v)) return v; try { const x = JSON.parse(v ?? "[]"); return Array.isArray(x) ? x : []; } catch { return []; } };
+const shiftDay = (date, n) => { const d = new Date(`${date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const weekday = (date) => new Date(`${date}T00:00:00Z`).getUTCDay();
+/** A rule limited to some rooms applies to the room type (what the OTAs sell) only when it covers all its rooms. */
+const coversType = (codes, typeCodes) => { const c = jsonList(codes).map(String); return !c.length || typeCodes.every((x) => c.includes(String(x))); };
+
+/** Minimum stay judged on the arrival date (same precedence as lib/min-stay.ts). */
+function minStayOnArrival(rules, date, roomType) {
+  let best = null, bestKey = [];
+  for (const r of rules) {
+    if (r.active !== undefined && r.active !== null && Number(r.active) !== 1) continue;
+    if (r.room_type && r.room_type !== roomType) continue;
+    const period = Boolean(r.starts_on && r.ends_on);
+    if (period && (r.starts_on > date || r.ends_on < date)) continue;
+    const span = period ? (Date.parse(r.ends_on) - Date.parse(r.starts_on)) / 86_400_000 : Number.MAX_SAFE_INTEGER;
+    const key = [period ? 1 : 0, r.room_type ? 1 : 0, -span, Number(r.updated_at ?? 0), Number(r.id) || 0];
+    const greater = !best || key.some((v, i) => key.slice(0, i).every((w, j) => w === bestKey[j]) && v > bestKey[i]);
+    if (greater) { best = r; bestKey = key; }
+  }
+  return best ? Math.max(1, Math.trunc(Number(best.min_nights)) || 1) : 1;
+}
+
+/**
+ * The Channex restrictions of one room type per date, from the same rules the booking engine applies
+ * (lib/public-rate.ts): min-stay rules → min_stay_arrival; rate-rule minimum stay and booking-restriction minimum stay
+ * (any night of the stay) → min_stay_through; closed rate rules and stop-sell restrictions → stop_sell; closed-to-arrival
+ * / departure (rule flags and closed weekdays). Restrictions limited to some rate plans are web-only and skipped.
+ * `dates` are the nights to send; rules must be loaded from the day before the first date (departure closures).
+ */
+export function computeRestrictions({ dates, roomType, roomCodes, rateRules, minStayRules, restrictions }) {
+  const typeRules = rateRules.filter((r) => (jsonList(r.room_codes).length ? coversType(r.room_codes, roomCodes) : !r.room_type || r.room_type === roomType));
+  const shared = restrictions.filter((r) => Number(r.active ?? 1) === 1 && !jsonList(r.rate_plan_keys).length && coversType(r.room_codes, roomCodes));
+  // The rate rule in force on a night: the latest one carrying a restriction (as the booking engine picks it).
+  const ruleOn = (date) => typeRules.filter((r) => r.starts_on <= date && r.ends_on >= date && (r.minimum_stay !== null || r.maximum_stay !== null || Number(r.closed) === 1 || Number(r.closed_to_arrival) === 1 || Number(r.closed_to_departure) === 1)).at(-1);
+  return dates.map((date) => {
+    const rule = ruleOn(date), before = ruleOn(shiftDay(date, -1));
+    const active = shared.filter((r) => r.starts_on <= date && r.ends_on >= date);
+    const through = Math.max(1, Number(rule?.minimum_stay ?? 1) || 1, ...active.map((r) => Number(r.minimum_stay) || 1));
+    const dow = weekday(date);
+    return {
+      date,
+      min_stay_arrival: minStayOnArrival(minStayRules, date, roomType),
+      min_stay_through: through,
+      stop_sell: Number(rule?.closed) === 1 || active.some((r) => Number(r.stop_sell) === 1),
+      closed_to_arrival: Number(rule?.closed_to_arrival) === 1 || active.some((r) => jsonList(r.closed_arrival_weekdays).map(Number).includes(dow)),
+      // The PMS closes departure on the last night; Channex on the departure date (the next day).
+      closed_to_departure: Number(before?.closed_to_departure) === 1 || shared.some((r) => r.starts_on < date && shiftDay(r.ends_on, 1) >= date && jsonList(r.closed_departure_weekdays).map(Number).includes(dow)),
+    };
+  });
+}
+
+const RESTRICTION_FIELDS = ["min_stay_arrival", "min_stay_through", "stop_sell", "closed_to_arrival", "closed_to_departure"];
+export const restrictionKey = (v) => RESTRICTION_FIELDS.map((f) => String(v[f])).join("|");
+
+/** Consecutive dates with identical restrictions become one {date_from,date_to,...} value. */
+export function restrictionRanges(days) {
+  const out = [];
+  for (const d of [...days].sort((a, b) => a.date.localeCompare(b.date))) {
+    const last = out.at(-1);
+    if (last && shiftDay(last.date_to, 1) === d.date && restrictionKey(last) === restrictionKey(d)) last.date_to = d.date;
+    else out.push({ date_from: d.date, date_to: d.date, ...Object.fromEntries(RESTRICTION_FIELDS.map((f) => [f, d[f]])) });
+  }
+  return out;
+}

@@ -14,7 +14,7 @@ export type Reason =
 export type RoomExplanation = { id: number; code: string; roomType: string; category: string; offered: boolean; card: string; reasons: Reason[] };
 
 type RateRule = SeasonRule & { minimum_stay: number | null; maximum_stay: number | null; closed: number; closed_to_arrival: number; closed_to_departure: number };
-type Restriction = { name: string; starts_on: string; ends_on: string; minimum_stay: number; maximum_stay: number | null; closed_arrival_weekdays: string; closed_departure_weekdays: string; room_codes: string; rate_plan_keys: string };
+type Restriction = { name: string; starts_on: string; ends_on: string; minimum_stay: number; maximum_stay: number | null; closed_arrival_weekdays: string; closed_departure_weekdays: string; room_codes: string; rate_plan_keys: string; stop_sell?: number | string };
 
 const list = <T,>(v: unknown): T[] => { if (Array.isArray(v)) return v as T[]; try { const x = JSON.parse(String(v ?? "[]")); return Array.isArray(x) ? x : []; } catch { return []; } };
 const dayMs = 86_400_000;
@@ -63,7 +63,7 @@ export function explainAvailability(input: {
       }
       // A restriction that applies to every rate plan hides the room.
       for (const r of input.restrictions.filter((r) => r.starts_on < input.checkOut && r.ends_on >= input.checkIn && !list<string>(r.rate_plan_keys).length && (!list<string>(r.room_codes).length || list<string>(r.room_codes).includes(g.room.code)))) {
-        if (Number(r.minimum_stay) > nights || (r.maximum_stay && Number(r.maximum_stay) < nights) || list<number>(r.closed_arrival_weekdays).includes(arrivalDow) || list<number>(r.closed_departure_weekdays).includes(departureDow)) {
+        if (Number(r.stop_sell ?? 0) === 1 || Number(r.minimum_stay) > nights || (r.maximum_stay && Number(r.maximum_stay) < nights) || list<number>(r.closed_arrival_weekdays).includes(arrivalDow) || list<number>(r.closed_departure_weekdays).includes(departureDow)) {
           if (!typeReasons.some((x) => x.code === "restriction" && x.name === r.name)) typeReasons.push({ code: "restriction", name: r.name });
         }
       }

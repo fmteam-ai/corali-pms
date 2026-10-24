@@ -8,7 +8,7 @@ import { addDays, hotelToday } from "@/lib/tape-chart";
 import { channelStatus, checkChannelConnection } from "@/lib/channel-sync";
 
 const input = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("map"), roomType: z.string().min(1).max(120), externalId: z.string().trim().max(120) }),
+  z.object({ action: z.literal("map"), roomType: z.string().min(1).max(120), externalId: z.string().trim().max(120), ratePlanId: z.string().trim().max(120).default("") }),
   z.object({ action: z.literal("full_sync") }),
   z.object({ action: z.literal("check") }),
 ]);
@@ -27,7 +27,7 @@ async function handlePOST(request: Request) {
     const x = input.parse(await request.json());
     if (x.action === "check") return Response.json({ ok: true, ...(await channelStatus(u.ownerId)), check: await checkChannelConnection(u.ownerId) });
     if (x.action === "map") {
-      if (x.externalId) await db().query(`INSERT INTO channel_room_mappings(owner_id,room_type,external_room_type_id,updated_at) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id,room_type) DO UPDATE SET external_room_type_id=$3,updated_at=$4`, [u.ownerId, x.roomType, x.externalId, Date.now()]);
+      if (x.externalId) await db().query(`INSERT INTO channel_room_mappings(owner_id,room_type,external_room_type_id,external_rate_plan_id,updated_at) VALUES($1,$2,$3,$5,$4) ON CONFLICT(owner_id,room_type) DO UPDATE SET external_room_type_id=$3,external_rate_plan_id=$5,updated_at=$4`, [u.ownerId, x.roomType, x.externalId, Date.now(), x.ratePlanId || null]);
       else await db().query(`DELETE FROM channel_room_mappings WHERE owner_id=$1 AND room_type=$2`, [u.ownerId, x.roomType]);
     } else {
       const today = hotelToday();

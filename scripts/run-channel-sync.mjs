@@ -4,11 +4,13 @@
 //    Unacknowledged revisions drop out of the feed after ~30 minutes, so a revision that fails raises a PMS alert.
 // 2) Pushes sellable rooms per mapped room type and date for queued ranges (direct and OTA bookings close inventory),
 //    plus an hourly full push as drift correction.
+// 3) Pushes restrictions (min stay, stop sell, closed to arrival/departure) per mapped rate plan: only the dates whose
+//    values changed since the last push, and everything again with the hourly drift push. Rates stay in Channex.
 import process from "node:process";
 import { createDecipheriv, createHash } from "node:crypto";
 import pg from "pg";
 import { databaseSsl } from "./database-config.mjs";
-import { AVAILABILITY_SQL, CHANNEX_HOSTS, availabilityRanges, feedHasMore, normalizeRevision, planRevision, sellable } from "./channel-core.mjs";
+import { AVAILABILITY_SQL, CHANNEX_HOSTS, availabilityRanges, computeRestrictions, feedHasMore, normalizeRevision, planRevision, restrictionKey, restrictionRanges, sellable } from "./channel-core.mjs";
 
 if (!process.env.DATABASE_URL || !process.env.PMS_DOCUMENT_KEY) throw Error("DATABASE_URL and PMS_DOCUMENT_KEY are required");
 const owner = process.env.PMS_OWNER_ID ?? "hotel-corali";
@@ -136,12 +138,14 @@ try {
   const settings = JSON.parse(c.settings_json), key = JSON.parse(unseal(c.secrets_encrypted)).apiKey;
   const host = process.env.CHANNEX_BASE_URL || CHANNEX_HOSTS[settings.environment === "staging" ? "staging" : "production"], propertyId = settings.propertyCode;
   if (!key || !propertyId) throw Error("Channel manager API key and property id are required");
-  const mappings = (await pool.query(`SELECT room_type,external_room_type_id FROM channel_room_mappings WHERE owner_id=$1`, [owner])).rows;
+  const mappings = (await pool.query(`SELECT room_type,external_room_type_id,external_rate_plan_id FROM channel_room_mappings WHERE owner_id=$1`, [owner])).rows;
   const typeByExternal = Object.fromEntries(mappings.map((m) => [m.external_room_type_id, m.room_type]));
 
   // Drift correction: a full 500-day push every hour, so a missed change cannot leave the OTAs wrong for long.
+  let drift = false;
   if (mappings.length && !(await pool.query(`SELECT 1 FROM channel_sync_outbox WHERE owner_id=$1 AND reason IN ('drift','full_sync') AND created_at>$2`, [owner, Date.now() - 3_600_000])).rowCount) {
     await outbox(pool, today, addDays(today, 500), "drift");
+    drift = true;
   }
 
   // 1) Drain the feed first, so the availability of rooms just sold on one OTA goes out in this same run: import,
@@ -182,8 +186,45 @@ try {
     }
   }
 
+  // 3) Restrictions per mapped rate plan, today .. +500 days. Partial updates in Channex: only these fields change,
+  //    rates set in Channex stay as they are.
+  let restrictionDays = 0;
+  const plans = mappings.filter((m) => m.external_rate_plan_id);
+  if (plans.length) {
+    const end = addDays(today, 500), from = addDays(today, -1);
+    const [rateRules, minStayRules, restrictions, rooms] = await Promise.all([
+      pool.query(`SELECT id,room_type,room_codes,starts_on,ends_on,minimum_stay,maximum_stay,closed,closed_to_arrival,closed_to_departure FROM rate_rules WHERE owner_id=$1 AND active=1 AND ends_on>=$2 AND starts_on<=$3 ORDER BY id`, [owner, from, end]),
+      pool.query(`SELECT id,room_type,starts_on,ends_on,min_nights,active,updated_at FROM min_stay_rules WHERE owner_id=$1 AND active=1`, [owner]),
+      pool.query(`SELECT starts_on,ends_on,minimum_stay,closed_arrival_weekdays,closed_departure_weekdays,room_codes,rate_plan_keys,stop_sell,active FROM booking_restrictions WHERE owner_id=$1 AND active=1 AND ends_on>=$2 AND starts_on<=$3`, [owner, from, end]),
+      pool.query(`SELECT code,room_type FROM rooms WHERE owner_id=$1 AND active=1`, [owner]),
+    ]);
+    const dates = []; for (let d = today; d <= end; d = addDays(d, 1)) dates.push(d);
+    for (const m of plans) {
+      const days = computeRestrictions({ dates, roomType: m.room_type, roomCodes: rooms.rows.filter((r) => r.room_type === m.room_type).map((r) => r.code), rateRules: rateRules.rows, minStayRules: minStayRules.rows, restrictions: restrictions.rows });
+      const sent = drift ? new Map() : new Map((await pool.query(`SELECT date,values_json FROM channel_restriction_state WHERE owner_id=$1 AND rate_plan_id=$2 AND date>=$3`, [owner, m.external_rate_plan_id, today])).rows.map((r) => [r.date, r.values_json]));
+      const changed = days.filter((d) => sent.get(d.date) !== restrictionKey(d));
+      if (!changed.length) continue;
+      const values = restrictionRanges(changed).map((r) => ({ property_id: propertyId, rate_plan_id: m.external_rate_plan_id, ...r }));
+      try {
+        for (let i = 0; i < values.length; i += 500) await api(host, key, "/restrictions", { method: "POST", body: JSON.stringify({ values: values.slice(i, i + 500) }) });
+        await pool.query(
+          `INSERT INTO channel_restriction_state(owner_id,rate_plan_id,date,values_json) SELECT $1,$2,x.date,x.v FROM jsonb_to_recordset($3::jsonb) AS x(date text, v text)
+           ON CONFLICT(owner_id,rate_plan_id,date) DO UPDATE SET values_json=EXCLUDED.values_json`,
+          [owner, m.external_rate_plan_id, JSON.stringify(changed.map((d) => ({ date: d.date, v: restrictionKey(d) })))],
+        );
+        await pool.query(`DELETE FROM channel_restriction_state WHERE owner_id=$1 AND rate_plan_id=$2 AND date<$3`, [owner, m.external_rate_plan_id, today]);
+        restrictionDays += changed.length;
+      } catch (error) {
+        // Not stored as sent: the same dates are tried again next run.
+        console.error("restrictions push failed", m.room_type, String(error));
+        await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_error) VALUES($1,$2,$3) ON CONFLICT(owner_id) DO UPDATE SET last_error=$3`, [owner, Date.now(), `restrictions ${m.room_type}: ${String(error).slice(0, 400)}`]);
+        throw error;
+      }
+    }
+  }
+
   await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$2,NULL) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$2,last_error=NULL`, [owner, Date.now()]);
-  console.log(`Channel sync: ${due.length} availability range(s), ${imported} OTA revision(s) imported.`);
+  console.log(`Channel sync: ${due.length} availability range(s), ${restrictionDays} restriction day(s), ${imported} OTA revision(s) imported.`);
 } catch (error) {
   await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_error) VALUES($1,$2,$3) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_error=$3`, [owner, Date.now(), String(error).slice(0, 500)]).catch(() => {});
   throw error;

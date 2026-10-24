@@ -1,8 +1,8 @@
 "use client";
 import { useState } from "react";
 
-type Status = { roomTypes: { room_type: string; rooms: number }[]; mappings: { room_type: string; external_room_type_id: string }[]; outbox: { status: string; total: number; last: number | null; error: string | null }[]; imports: { revision_id: string; status: string; booking_ids: string; error: string | null; created_at: number }[]; lastRun: { at: number | null; okAt: number | null; error: string | null } | null };
-type Check = { items: { key: string; ok: boolean | null; detail: string }[]; channexRoomTypes: { id: string; title: string; rooms: number }[] };
+type Status = { roomTypes: { room_type: string; rooms: number }[]; mappings: { room_type: string; external_room_type_id: string; external_rate_plan_id: string }[]; outbox: { status: string; total: number; last: number | null; error: string | null }[]; imports: { revision_id: string; status: string; booking_ids: string; error: string | null; created_at: number }[]; lastRun: { at: number | null; okAt: number | null; error: string | null } | null };
+type Check = { items: { key: string; ok: boolean | null; detail: string }[]; channexRoomTypes: { id: string; title: string; rooms: number }[]; channexRatePlans: { id: string; title: string; roomTypeId: string }[] };
 
 export function ChannelSyncPanel({ initial, canWrite }: { initial: Status; canWrite: boolean }) {
   const [status, setStatus] = useState(initial);
@@ -18,7 +18,8 @@ export function ChannelSyncPanel({ initial, canWrite }: { initial: Status; canWr
     setChecking(true);
     try { await post({ action: "check" }, ""); } finally { setChecking(false); }
   }
-  const remoteTypes = check?.channexRoomTypes ?? [];
+  const remoteTypes = check?.channexRoomTypes ?? [], remotePlans = check?.channexRatePlans ?? [];
+  const mappedPlan = (type: string) => status.mappings.find((m) => m.room_type === type)?.external_rate_plan_id ?? "";
   const mapped = (type: string) => status.mappings.find((m) => m.room_type === type)?.external_room_type_id ?? "";
   const count = (s: string) => status.outbox.find((o) => o.status === s)?.total ?? 0;
   const failed = status.outbox.find((o) => o.status === "failed");
@@ -33,11 +34,12 @@ export function ChannelSyncPanel({ initial, canWrite }: { initial: Status; canWr
           {check && <ul>{check.items.map((i) => <li key={i.key} className={i.ok === true ? "ok" : i.ok === false ? "bad" : "warn"}><span aria-hidden>{i.ok === true ? "✅" : i.ok === false ? "❌" : "⚠️"}</span>{i.detail}</li>)}</ul>}
         </div>
       )}
-      <div className="tableWrap"><table><thead><tr><th>Τύπος δωματίου / Room type</th><th>Δωμάτια</th><th>ID στον Channel Manager</th><th /></tr></thead>
+      <div className="tableWrap"><table><thead><tr><th>Τύπος δωματίου / Room type</th><th>Δωμάτια</th><th>ID στον Channel Manager</th><th>Rate plan (min stay / stop sell)</th><th /></tr></thead>
         <tbody>{status.roomTypes.map((t) => (
           <tr key={t.room_type}>
             <td>{t.room_type}</td><td>{t.rooms}</td>
-            <td>{canWrite ? <form id={`map-${t.room_type}`} action={(f) => post({ action: "map", roomType: t.room_type, externalId: String(f.get("externalId") ?? "") }, "Η αντιστοίχιση αποθηκεύτηκε.")}>{remoteTypes.length ? <select name="externalId" defaultValue={mapped(t.room_type)}><option value="">— χωρίς αντιστοίχιση —</option>{remoteTypes.map((r) => <option key={r.id} value={r.id}>{r.title} ({r.rooms})</option>)}{mapped(t.room_type) && !remoteTypes.some((r) => r.id === mapped(t.room_type)) && <option value={mapped(t.room_type)}>{mapped(t.room_type)} (δεν βρέθηκε)</option>}</select> : <input name="externalId" defaultValue={mapped(t.room_type)} placeholder="room_type_id" />}</form> : mapped(t.room_type) || "—"}</td>
+            <td>{canWrite ? <form id={`map-${t.room_type}`} action={(f) => post({ action: "map", roomType: t.room_type, externalId: String(f.get("externalId") ?? ""), ratePlanId: String(f.get("ratePlanId") ?? "") }, "Η αντιστοίχιση αποθηκεύτηκε.")}>{remoteTypes.length ? <select name="externalId" defaultValue={mapped(t.room_type)}><option value="">— χωρίς αντιστοίχιση —</option>{remoteTypes.map((r) => <option key={r.id} value={r.id}>{r.title} ({r.rooms})</option>)}{mapped(t.room_type) && !remoteTypes.some((r) => r.id === mapped(t.room_type)) && <option value={mapped(t.room_type)}>{mapped(t.room_type)} (δεν βρέθηκε)</option>}</select> : <input name="externalId" defaultValue={mapped(t.room_type)} placeholder="room_type_id" />}</form> : mapped(t.room_type) || "—"}</td>
+            <td>{canWrite ? (remotePlans.length ? <select form={`map-${t.room_type}`} name="ratePlanId" defaultValue={mappedPlan(t.room_type)}><option value="">— χωρίς —</option>{remotePlans.filter((p) => !mapped(t.room_type) || p.roomTypeId === mapped(t.room_type)).map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select> : <input form={`map-${t.room_type}`} name="ratePlanId" defaultValue={mappedPlan(t.room_type)} placeholder="rate_plan_id" />) : mappedPlan(t.room_type) || "—"}</td>
             <td>{canWrite && <button form={`map-${t.room_type}`}>Αποθήκευση</button>}</td>
           </tr>
         ))}</tbody></table></div>

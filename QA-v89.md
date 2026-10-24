@@ -1,6 +1,13 @@
-# Hotel Corali PMS v88 — release verification
+# Hotel Corali PMS v89 — release verification
 
 ## Scope in this package
+
+### New in v89 — min stay & stop sell to Channex
+- Stop sell in the PMS: Prices → Booking restrictions → "Κλειστό για πωλήσεις (stop sell)" (booking_restrictions.stop_sell). The booking engine hides any stay with a night in the period; the availability explainer names the restriction.
+- Restrictions pushed to Channex (POST /restrictions, partial update: rates in Channex untouched) per room type that has a Channex rate plan selected (channel_room_mappings.external_rate_plan_id; new "Rate plan" column, list filled by the connection check, which also validates the plan belongs to the mapped room type). Values per date (scripts/channel-core.mjs computeRestrictions, same rules as lib/public-rate.ts): min-stay rules → min_stay_arrival; rate-rule / restriction minimum stay → min_stay_through; closed rate rules and stop-sell restrictions → stop_sell; closed to arrival / departure (rule flags, closed weekdays; departure shifted to the departure date). Rules limited to some rooms of a type or to some rate plans are web-only and not sent; maximum stay is not sent.
+- Only changed dates are sent (last values in channel_restriction_state), compressed into ranges; everything again with the hourly drift push. Never past dates.
+- Verified with the Channex simulator: first run 501 days × 2 plans in 5 ranges each; second run 0; stop sell extended by a day → 2 days sent; stop sell switched off in the PMS page → 6 days sent (3 days × 2 plans); min stay 3 on arrival and stop sell landed on the right dates. Unit tests for the rule mapping. Test data restored.
+- Tests: 198 pass.
 
 ### New in v88 — Channex review (against the channex-pms-integration guidance)
 - OTA modifications are applied in place (scripts/channel-core.mjs planRevision): dates, price, guests updated on the same PMS booking; the room is kept when still free (else reassigned); added rooms inserted, dropped rooms cancelled, checked-in stays never cancelled. Before, a modification cancelled and re-created the booking (lost room/folio links and could hit the unique external-booking index, leaving the revision unacknowledged until it expired from the feed).
