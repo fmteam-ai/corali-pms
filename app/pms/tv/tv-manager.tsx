@@ -124,14 +124,14 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
             <tr key={s.room_id}>
               <td><b>{s.room_code}</b><small>{s.room_type}</small></td>
               <td className="tvLinkCell"><a href={s.url} target="_blank" rel="noopener noreferrer">{t("tv.open")}</a> · <button type="button" className="linkButton" onClick={() => { void navigator.clipboard?.writeText(s.url); setMsg(t("tv.copied")); }}>{t("tv.copy")}</button></td>
-              <td>{online ? <span className="credit">● {t("tv.online")}</span> : s.last_seen_at ? <small>{t("tv.lastSeen")} {new Date(s.last_seen_at).toLocaleString(pmsLocale(lang))}</small> : <small>{t("tv.never")}</small>}</td>
+              <td>{online ? <span className="credit">● {t("tv.online")}</span> : s.last_seen_at ? <small>{t("tv.lastSeen")} {new Date(s.last_seen_at).toLocaleString(pmsLocale(lang), { timeZone: "Europe/Athens" })}</small> : <small>{t("tv.never")}</small>}</td>
               <td className="tvRoomWifi"><input placeholder={t("tv.useGeneral")} value={s.wifi_ssid} maxLength={64} disabled={!canEdit} onChange={(e) => editRow(s.room_id, { wifi_ssid: e.target.value })} /><input placeholder={t("tv.wifiPassword")} value={s.wifi_password} maxLength={64} disabled={!canEdit || !s.wifi_ssid} onChange={(e) => editRow(s.room_id, { wifi_password: e.target.value })} /></td>
               <td><div className="tvPlug">
                 <input placeholder={t("tv.plugId")} value={s.power_device_id} maxLength={64} disabled={!canEdit} onChange={(e) => editRow(s.room_id, { power_device_id: e.target.value.trim() })} />
                 {canEdit && <button type="button" className="linkButton" disabled={busy} onClick={() => void call({ action: "powerDevice", roomId: s.room_id, deviceId: s.power_device_id, channel: s.power_channel }).then((d) => setMsg(d.ok ? t("tv.saved") : t("tv.plugInvalid")))}>{t("tv.save")}</button>}
                 {s.power_device_id && (
                   <span className="tvPlugState">
-                    {plugStates[s.room_id] ? (plugStates[s.room_id].online ? (plugStates[s.room_id].on ? <b className="credit">● {t("tv.plugOn")}</b> : <b>○ {t("tv.plugOff")}</b>) : <b className="debit">{t("tv.plugOffline")}</b>) : s.power_state !== null && <small>{s.power_state ? t("tv.plugOn") : t("tv.plugOff")}{s.power_changed_at ? ` · ${new Date(s.power_changed_at).toLocaleString(pmsLocale(lang), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}` : ""}</small>}
+                    {plugStates[s.room_id] ? (plugStates[s.room_id].online ? (plugStates[s.room_id].on ? <b className="credit">● {t("tv.plugOn")}</b> : <b>○ {t("tv.plugOff")}</b>) : <b className="debit">{t("tv.plugOffline")}</b>) : s.power_state !== null && <small>{s.power_state ? t("tv.plugOn") : t("tv.plugOff")}{s.power_changed_at ? ` · ${new Date(s.power_changed_at).toLocaleString(pmsLocale(lang), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" })}` : ""}</small>}
                     {s.power_error && <small className="debit">{t("tv.powerFailed")}: {s.power_error}</small>}
                     {canEdit && powerReady && <span><button type="button" className="secondaryButton" disabled={busy} onClick={() => void switchPower(s, true)}>{t("tv.powerOn")}</button><button type="button" className="secondaryButton" disabled={busy} onClick={() => void switchPower(s, false)}>{t("tv.powerOff")}</button></span>}
                   </span>
@@ -143,7 +143,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
                   <div className="tvAppCode" role="status">
                     <span>{t("tv.appCodeFor").replace("{room}", appCode.room)}</span>
                     <b>{appCode.code.slice(0, 3)} {appCode.code.slice(3)}</b>
-                    <small>{t("tv.appCodeValid").replace("{time}", new Date(appCode.expiresAt).toLocaleTimeString(pmsLocale(lang), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }))}</small>
+                    <small>{t("tv.appCodeValid").replace("{time}", new Date(appCode.expiresAt).toLocaleTimeString(pmsLocale(lang), { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" }))}</small>
                   </div>
                 )}</td>
             </tr>

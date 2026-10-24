@@ -105,7 +105,7 @@ export async function tvScreenData(token: string, langOverride?: string | null) 
     manage: { url: manageUrl, qr: await qr(manageUrl) },
     whatsapp: settings.whatsappNumber ? { qr: await qr(whatsappLink(settings.whatsappNumber, tvTexts[lang].waHello.replace("{room}", String(s.room_code)))) } : null,
     guide: settings.travelGuideUrl ? { qr: await qr(settings.travelGuideUrl) } : null,
-    messages: await screenMessages(ownerId, Number(s.room_id), lang),
+    messages: await screenMessages(ownerId, Number(s.room_id), lang, token, state.mode === "stay" ? firstName(state.stay.guest_name) : null),
     info: settings.info.map((x) => ({ key: x.key, icon: x.icon, title: pickText(x.title, lang), body: fillInfo(pickText(x.body, lang), { checkIn: settings.checkInTime, checkOut: settings.checkOutTime, wifi: ssid, password }) })).filter((x) => x.title && x.body),
   };
 }

@@ -1,6 +1,23 @@
 // Messages to the guest's TV: expiry and language rules (pure; unit tested).
 
 export type TvMessageBody = { el?: string; en?: string };
+/** Look of the card on the TV: everyday notice, birthday, anniversary or a general celebration. */
+export type TvMessageTheme = "standard" | "birthday" | "anniversary" | "celebration";
+export const tvMessageThemes: TvMessageTheme[] = ["standard", "birthday", "anniversary", "celebration"];
+export const tvMessageTheme = (v: unknown): TvMessageTheme => (tvMessageThemes.includes(v as TvMessageTheme) ? (v as TvMessageTheme) : "standard");
+
+/** {name} becomes the guest's first name on the TV (removed cleanly when the room has no guest). */
+export function personalize(text: string, firstName: string | null): string {
+  if (firstName) return text.replace(/\{name\}/g, firstName);
+  const out = text
+    .replace(/^\s*\{name\}\s*[,:]?\s*/, "") // "{name}, happy anniversary!"
+    .replace(/[,\s]*\{name\}(?=\s*[!.?,;:]|\s*$)/g, "") // "Happy birthday, {name}!"
+    .replace(/\s*\{name\}\s*/g, " ") // "Dear {name} and family"
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
 export type TvMessageDuration = "1h" | "3h" | "tonight" | "checkout";
 export const tvMessageDurations: TvMessageDuration[] = ["1h", "3h", "tonight", "checkout"];
 

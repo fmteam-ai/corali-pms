@@ -23,3 +23,14 @@ test("TV message language", () => {
   assert.equal(messageText({ el: "Γεια" }, "fr"), "Γεια");
   assert.equal(messageText({ en: "Hello" }, "el"), "Hello");
 });
+
+test("TV message {name} and theme", async () => {
+  const { personalize, tvMessageTheme } = await import("../lib/tv-messages-core.ts");
+  assert.equal(personalize("Χρόνια πολλά, {name}!", "Μαρία"), "Χρόνια πολλά, Μαρία!");
+  assert.equal(personalize("Happy birthday, {name}!", null), "Happy birthday!");
+  assert.equal(personalize("{name}, happy anniversary!", null), "Happy anniversary!");
+  assert.equal(personalize("{name}, χρόνια πολλά!", "Νίκο"), "Νίκο, χρόνια πολλά!");
+  assert.equal(personalize("Dear {name} and family", null), "Dear and family");
+  assert.equal(tvMessageTheme("birthday"), "birthday");
+  assert.equal(tvMessageTheme("party<script>"), "standard");
+});

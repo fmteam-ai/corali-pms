@@ -119,21 +119,77 @@
 .tvScreen .tvWifi dl{display:grid;border:0;padding:0;background:none;grid-template-columns:none}
 .tvScreen .tvWifi dl dt,.tvScreen .tvWifi dl dd{display:block;border:0;padding:0;background:none;width:auto;text-align:left}
 
-/* Reception message (PMS → TV messages): a card over the screen, closed with OK. Urgent ones dim the screen. */
-.tvMsg{position:fixed;inset:0;display:flex;align-items:flex-start;justify-content:center;padding-top:9vw;background:rgba(5,22,28,.35);z-index:10}
-.tvMsg.urgent{align-items:center;padding-top:0;background:rgba(5,22,28,.72)}
-.tvMsgCard{width:min(56vw,1100px);background:#fffaf0;color:var(--ink);border-radius:1.4vw;border:.25vw solid var(--gold);box-shadow:0 1.5vw 4vw rgba(0,0,0,.45);padding:2vw 2.4vw;display:grid;gap:1vw;justify-items:start}
-.tvMsg.urgent .tvMsgCard{border-color:#e0574b}
-.tvMsgHead{display:inline-flex;align-items:center;font-size:1.05vw;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#a8741a}
-.tvMsgHead svg{margin-right:.6vw;font-size:1.3vw}
+/* Reception message (PMS → TV messages): an elegant card over the screen, closed with OK. Optional photo on the left;
+   urgent ones dim the screen more and use a red accent. */
+@keyframes tvMsgIn{from{opacity:0;transform:translateY(1.5vw) scale(.98)}to{opacity:1;transform:none}}
+.tvMsg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:4vw;background:radial-gradient(ellipse at center,rgba(5,22,28,.45),rgba(5,22,28,.7));backdrop-filter:blur(3px);z-index:10}
+.tvMsg.urgent{background:radial-gradient(ellipse at center,rgba(40,8,6,.55),rgba(5,12,16,.85))}
+.tvMsgCard{--accent:var(--gold);position:relative;display:grid;grid-template-columns:1fr;width:min(52vw,1000px);overflow:hidden;border-radius:1.6vw;background:linear-gradient(160deg,#fffdf8 0%,#fbf3e2 100%);color:var(--ink);box-shadow:0 2vw 6vw rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.4) inset;animation:tvMsgIn .45s ease-out both}
+.tvMsg.withPhoto .tvMsgCard{grid-template-columns:44% 1fr;width:min(72vw,1400px)}
+.tvMsg.urgent .tvMsgCard{--accent:#d9534a}
+.tvMsgCard::before{content:"";position:absolute;inset:0 0 auto 0;height:.45vw;background:linear-gradient(90deg,var(--accent),#f7dca0 60%,var(--accent))}
+.tvMsg.urgent .tvMsgCard::before{background:linear-gradient(90deg,#d9534a,#f19a8f 60%,#d9534a)}
+.tvMsgPhoto{position:relative;min-height:26vw;background:#e9e2d4}
+.tvMsgPhoto img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.tvMsgPhoto::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent 70%,rgba(251,243,226,.55))}
+.tvMsgBody{display:flex;flex-direction:column;padding:3vw 3.2vw 2.4vw}
+.tvMsgHead{display:inline-flex;align-items:center;font-size:1vw;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#a8741a}
 .tvMsg.urgent .tvMsgHead{color:#c2392d}
-.tvMsgCard p{margin:0;font-family:"Corali TV Serif",Georgia,serif;font-size:2vw;line-height:1.4;white-space:pre-line}
-.tvMsgCard button{font:inherit;font-size:1.2vw;font-weight:700;padding:.6vw 2.4vw;border:0;border-radius:999px;background:var(--ink);color:#fff;cursor:pointer}
-.tvMsgCard button:focus{outline:.2vw solid var(--gold);outline-offset:.2vw}
-.tvMsgCard small{font-size:.9vw;color:#5b6b70}
+.tvMsgBadge{display:inline-grid;place-items:center;width:2.6vw;height:2.6vw;margin-right:.9vw;border-radius:50%;background:var(--accent);color:#fff;font-size:1.2vw;box-shadow:0 .4vw 1vw rgba(168,116,26,.35)}
+.tvMsg.urgent .tvMsgBadge{box-shadow:0 .4vw 1vw rgba(194,57,45,.35)}
+.tvMsgBody p{margin:1.6vw 0 0;font-family:"Corali TV Serif",Georgia,serif;font-size:2.15vw;line-height:1.42;white-space:pre-line;color:#14323a}
+.tvMsg.withPhoto .tvMsgBody p{font-size:1.9vw}
+.tvMsgBody footer{display:flex;align-items:flex-end;justify-content:space-between;margin-top:auto;padding-top:2.2vw;border-top:1px solid rgba(23,62,71,.12)}
+.tvMsgSign{font-size:.95vw;color:#5b6b70}.tvMsgSign b{color:var(--ink);font-family:"Corali TV Serif",Georgia,serif;font-size:1.1vw}
+.tvMsgOk{display:grid;justify-items:end}
+.tvMsgOk button{font:inherit;font-size:1.15vw;font-weight:700;letter-spacing:.06em;padding:.65vw 2.8vw;border:0;border-radius:999px;background:var(--ink);color:#fff;cursor:pointer;box-shadow:0 .5vw 1.2vw rgba(15,47,55,.3)}
+.tvMsgOk button:focus{outline:.22vw solid var(--accent);outline-offset:.25vw}
+.tvMsgOk small{margin-top:.5vw;font-size:.8vw;color:#7a8a8f}
 @media (max-width:900px),(orientation:portrait){
-  .tvMsg{padding:80px 16px 0}.tvMsg.urgent{padding:16px}
-  .tvMsgCard{width:100%;border-radius:16px;padding:20px;gap:12px;border-width:3px}
-  .tvMsgHead{font-size:13px}.tvMsgHead svg{font-size:16px;margin-right:8px}
-  .tvMsgCard p{font-size:20px}.tvMsgCard button{font-size:16px;padding:10px 28px}.tvMsgCard small{font-size:12px}
+  .tvMsg{padding:16px;align-items:flex-start;padding-top:72px}
+  .tvMsgCard,.tvMsg.withPhoto .tvMsgCard{grid-template-columns:1fr;width:100%;border-radius:18px}
+  .tvMsgCard::before{height:5px}
+  .tvMsgPhoto{min-height:190px}.tvMsgPhoto::after{background:linear-gradient(180deg,transparent 70%,rgba(251,243,226,.55))}
+  .tvMsgBody{padding:22px 20px 18px}
+  .tvMsgHead{font-size:12px}.tvMsgBadge{width:32px;height:32px;margin-right:10px;font-size:15px}
+  .tvMsgBody p,.tvMsg.withPhoto .tvMsgBody p{font-size:20px;margin-top:14px}
+  .tvMsgBody footer{padding-top:16px;gap:12px}
+  .tvMsgSign{font-size:12px}.tvMsgSign b{font-size:14px}
+  .tvMsgOk button{font-size:15px;padding:9px 26px}.tvMsgOk small{font-size:11px}
 }
+
+/* Festive message themes: birthday / celebration (confetti, gold), anniversary (rose gold, floating hearts). */
+.tvMsg.theme-birthday .tvMsgCard,.tvMsg.theme-celebration .tvMsgCard{--accent:#d99a2b;background:linear-gradient(160deg,#fffdf6 0%,#fdf0d2 100%)}
+.tvMsg.theme-anniversary .tvMsgCard{--accent:#c46a7a;background:linear-gradient(160deg,#fffafa 0%,#f9e4e4 100%)}
+.tvMsg.theme-anniversary .tvMsgCard::before{background:linear-gradient(90deg,#c46a7a,#f3c1b8 50%,#c9a36a)}
+.tvMsg.theme-anniversary .tvMsgHead{color:#a84d5e}
+.tvMsg.theme-birthday .tvMsgHead,.tvMsg.theme-celebration .tvMsgHead{color:#a8741a}
+.tvMsg.theme-birthday .tvMsgHead,.tvMsg.theme-anniversary .tvMsgHead,.tvMsg.theme-celebration .tvMsgHead{font-family:"Corali TV Serif",Georgia,serif;font-size:1.9vw;font-weight:600;letter-spacing:.01em;text-transform:none}
+.tvMsg.theme-birthday .tvMsgBadge,.tvMsg.theme-anniversary .tvMsgBadge,.tvMsg.theme-celebration .tvMsgBadge{width:3.6vw;height:3.6vw;font-size:1.7vw}
+.tvMsgDeco{position:fixed;inset:0;overflow:hidden;pointer-events:none}
+@keyframes tvConfetti{0%{transform:translateY(-10vh) rotate(0)}100%{transform:translateY(110vh) rotate(540deg)}}
+.tvMsgDeco i{position:absolute;top:0;width:.7vw;height:1.2vw;border-radius:.15vw;opacity:.9;animation:tvConfetti linear infinite}
+.tvMsgDeco i:nth-child(6n+1){background:#f2c46d}.tvMsgDeco i:nth-child(6n+2){background:#ffffff}.tvMsgDeco i:nth-child(6n+3){background:#7fc8d6}
+.tvMsgDeco i:nth-child(6n+4){background:#f19a8f}.tvMsgDeco i:nth-child(6n+5){background:#c9a36a}.tvMsgDeco i:nth-child(6n){background:#a9d39e}
+.tvMsgDeco i:nth-child(1){left:3%;animation-duration:9s;animation-delay:-1s}.tvMsgDeco i:nth-child(2){left:9%;animation-duration:12s;animation-delay:-6s}
+.tvMsgDeco i:nth-child(3){left:15%;animation-duration:10s;animation-delay:-3s}.tvMsgDeco i:nth-child(4){left:21%;animation-duration:13s;animation-delay:-8s}
+.tvMsgDeco i:nth-child(5){left:27%;animation-duration:11s;animation-delay:-2s}.tvMsgDeco i:nth-child(6){left:33%;animation-duration:9.5s;animation-delay:-7s}
+.tvMsgDeco i:nth-child(7){left:39%;animation-duration:12.5s;animation-delay:-4s}.tvMsgDeco i:nth-child(8){left:45%;animation-duration:10.5s;animation-delay:-9s}
+.tvMsgDeco i:nth-child(9){left:51%;animation-duration:11.5s;animation-delay:-5s}.tvMsgDeco i:nth-child(10){left:57%;animation-duration:9s;animation-delay:-2.5s}
+.tvMsgDeco i:nth-child(11){left:63%;animation-duration:13s;animation-delay:-10s}.tvMsgDeco i:nth-child(12){left:69%;animation-duration:10s;animation-delay:-6.5s}
+.tvMsgDeco i:nth-child(13){left:75%;animation-duration:12s;animation-delay:-1.5s}.tvMsgDeco i:nth-child(14){left:81%;animation-duration:9.5s;animation-delay:-8.5s}
+.tvMsgDeco i:nth-child(15){left:87%;animation-duration:11s;animation-delay:-3.5s}.tvMsgDeco i:nth-child(16){left:93%;animation-duration:12.5s;animation-delay:-7.5s}
+.tvMsgDeco i:nth-child(17){left:97%;animation-duration:10s;animation-delay:-4.5s}.tvMsgDeco i:nth-child(18){left:48%;animation-duration:14s;animation-delay:-11s}
+@keyframes tvHeart{0%{transform:translateY(0) scale(.8);opacity:0}15%{opacity:.75}100%{transform:translateY(-110vh) scale(1.2);opacity:0}}
+.tvMsgDeco.hearts svg{position:absolute;bottom:-4vw;color:#f3b3b8;font-size:2.4vw;animation:tvHeart linear infinite}
+.tvMsgDeco.hearts svg:nth-child(1){left:6%;animation-duration:11s}.tvMsgDeco.hearts svg:nth-child(2){left:16%;animation-duration:14s;animation-delay:-5s;font-size:1.6vw}
+.tvMsgDeco.hearts svg:nth-child(3){left:26%;animation-duration:12s;animation-delay:-9s}.tvMsgDeco.hearts svg:nth-child(4){left:38%;animation-duration:15s;animation-delay:-2s;font-size:1.4vw}
+.tvMsgDeco.hearts svg:nth-child(5){left:52%;animation-duration:13s;animation-delay:-7s}.tvMsgDeco.hearts svg:nth-child(6){left:63%;animation-duration:11.5s;animation-delay:-4s;font-size:1.8vw}
+.tvMsgDeco.hearts svg:nth-child(7){left:74%;animation-duration:14.5s;animation-delay:-10s}.tvMsgDeco.hearts svg:nth-child(8){left:84%;animation-duration:12.5s;animation-delay:-1s;font-size:1.5vw}
+.tvMsgDeco.hearts svg:nth-child(9){left:92%;animation-duration:13.5s;animation-delay:-6s}.tvMsgDeco.hearts svg:nth-child(10){left:45%;animation-duration:16s;animation-delay:-12s;font-size:2vw}
+@media (max-width:900px),(orientation:portrait){
+  .tvMsg.theme-birthday .tvMsgHead,.tvMsg.theme-anniversary .tvMsgHead,.tvMsg.theme-celebration .tvMsgHead{font-size:20px}
+  .tvMsg.theme-birthday .tvMsgBadge,.tvMsg.theme-anniversary .tvMsgBadge,.tvMsg.theme-celebration .tvMsgBadge{width:40px;height:40px;font-size:18px}
+  .tvMsgDeco i{width:8px;height:14px}.tvMsgDeco.hearts svg{font-size:22px}
+}
+@media (prefers-reduced-motion:reduce){.tvMsgDeco i,.tvMsgDeco.hearts svg,.tvMsgCard{animation:none}.tvMsgDeco{display:none}}

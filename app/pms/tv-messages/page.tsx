@@ -20,7 +20,7 @@ export default async function TvMessagesPage() {
   ]);
   return (
     <section>
-      <div className="pageTitle"><div><h1>💬 {t("tvm.title")}</h1><p>{t("tvm.subtitle")}</p></div></div>
+      <div className="pageTitle"><div><h1>{t("tvm.title")}</h1><p>{t("tvm.subtitle")}</p></div></div>
       <TvMessages lang={lang} rooms={rooms.rows.map((r) => ({ id: Number(r.id), code: String(r.code), guest: r.guest ? String(r.guest) : null }))} initialMessages={messages} canSend={can(u.role, "reservations.write", u.permissions)} />
     </section>
   );

@@ -78,7 +78,7 @@ export function BookingSearch({ t, lang }: { t: T; lang: PmsLang }) {
   }
   return (
     <div className="wBookingSearch">
-      <form onSubmit={search} className="searchRow"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("w.search.placeholder")} aria-label={t("w.search.placeholder")} /><button>🔍 {t("w.search.button")}</button></form>
+      <form onSubmit={search} className="searchRow"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("w.search.placeholder")} aria-label={t("w.search.placeholder")} /><button>{t("w.search.button")}</button></form>
       {results && (results.length ? <ul className="wList">{results.map((r) => <li key={r.id}><Link href={`/pms/reservations/${r.id}`}><b>{r.reference}</b> · {r.guest_name}</Link><small>{shortDate(lang, r.check_in)} → {shortDate(lang, r.check_out)} · {pmsStatus(lang, r.status)}</small></li>)}</ul> : <p className="muted">{t("w.search.none")}</p>)}
     </div>
   );

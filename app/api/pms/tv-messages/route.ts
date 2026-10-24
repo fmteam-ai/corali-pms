@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { audited } from "@/lib/audit";
 import { requireApiUser } from "@/lib/auth";
+import { parsePhoto } from "@/lib/maintenance";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 import { cancelTvMessage, listTvMessages, sendTvMessage } from "@/lib/tv-messages";
-import { tvMessageDurations } from "@/lib/tv-messages-core";
+import { tvMessageDurations, tvMessageThemes } from "@/lib/tv-messages-core";
 
 const input = z.discriminatedUnion("action", [
   z.object({
@@ -13,7 +14,9 @@ const input = z.discriminatedUnion("action", [
     rooms: z.union([z.literal("all"), z.array(z.number().int().positive()).min(1).max(200)]),
     duration: z.enum(tvMessageDurations as [string, ...string[]]),
     urgent: z.boolean().default(false),
-  }).refine((x) => x.el || x.en),
+    photo: z.string().max(3_500_000).nullable().default(null),
+    theme: z.enum(tvMessageThemes as [string, ...string[]]).default("standard"),
+  }).refine((x) => x.el || x.en || x.photo),
   z.object({ action: z.literal("cancel"), id: z.number().int().positive() }),
 ]);
 
@@ -30,7 +33,9 @@ async function handlePOST(request: Request) {
     assertTrustedOrigin(request);
     const x = input.parse(await request.json());
     if (x.action === "send") {
-      await sendTvMessage(u.ownerId, u.id, { el: x.el || undefined, en: x.en || undefined }, x.rooms, x.duration as (typeof tvMessageDurations)[number], x.urgent);
+      const photo = x.photo ? parsePhoto(x.photo) : null;
+      if (x.photo && !photo) return Response.json({ ok: false, error: "INVALID_PHOTO" }, { status: 400 });
+      await sendTvMessage(u.ownerId, u.id, { el: x.el || undefined, en: x.en || undefined }, x.rooms, x.duration as (typeof tvMessageDurations)[number], x.urgent, photo && { mime: photo.mime, base64: photo.base64 }, x.theme as (typeof tvMessageThemes)[number]);
     } else if (!(await cancelTvMessage(u.ownerId, x.id))) {
       return Response.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
     }

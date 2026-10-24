@@ -1,0 +1,147 @@
+/* Corali PMS design system (v82). Loaded after app/styles.css by the PMS layout and the login page, so it refines the
+   older page styles in one place: typography (Open Sans with Greek), colour tokens, header and menu, page titles,
+   cards, tables, buttons, form fields and status chips. Page-specific rules stay in styles.css. */
+@font-face{font-family:"Corali UI";src:url(/fonts/tv/OpenSans.woff2) format("woff2");font-weight:300 800;font-display:swap}
+@font-face{font-family:"Corali UI";src:url(/fonts/tv/OpenSans-Italic.woff2) format("woff2");font-weight:300 800;font-style:italic;font-display:swap}
+@font-face{font-family:"Corali Serif";src:url(/fonts/tv/NotoSerif.woff2) format("woff2");font-weight:100 900;font-display:swap}
+
+.pms,.loginPage{
+  --bg:#f2f4f6;--surface:#fff;--surface-2:#f7f9fa;--border:#e2e7eb;--border-strong:#cdd6db;
+  --text:#18303a;--muted:#62747c;--primary:#173e47;--primary-hover:#0f2e36;--primary-soft:#e7eff1;
+  --gold:#d9982b;--gold-soft:#fdf3e1;--coral:#c8553d;--success:#1d8a5a;--success-soft:#e5f4ec;--danger:#c2392d;--danger-soft:#fbeaea;
+  --radius:12px;--radius-sm:8px;--shadow-sm:0 1px 2px rgba(16,40,48,.05),0 1px 3px rgba(16,40,48,.05);--shadow:0 6px 20px rgba(16,40,48,.08);
+  font-family:"Corali UI","Open Sans",system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);-webkit-font-smoothing:antialiased;
+}
+body:has(.pms){background:#f2f4f6}
+.pms{min-height:100vh;background:var(--bg);font-size:15px;line-height:1.5}
+.pms :is(button,input,select,textarea){font-family:inherit}
+
+/* Typography */
+.pms h1{margin:0;font-size:26px;line-height:1.25;font-weight:700;letter-spacing:-.015em;color:var(--text)}
+.pms h2{font-size:18px;font-weight:700;letter-spacing:-.01em;margin:0 0 12px}
+.pms h3{font-size:15px;font-weight:700;margin:4px 0 8px}
+.pms small,.pms .muted{color:var(--muted)}
+.pms a{color:var(--primary)}
+
+/* Header and menu */
+.pmsTop .pmsTopbar{height:64px;padding:0 24px;gap:16px;background:#fff;border-bottom:1px solid var(--border)}
+.pmsTop .pmsLogoPanel{width:132px;padding:2px 0;background:none}
+.pmsTop .pmsTitle strong{font-size:14px;font-weight:700}
+.pmsTop .pmsTitle small{font-size:12px}
+.pmsTopbar input[type=search],.pmsTopbar .quickSearch input{border-radius:999px;background:var(--surface-2)}
+.pmsTopActions>a{border-radius:var(--radius-sm)!important;font-weight:600!important;box-shadow:0 2px 8px rgba(200,85,61,.25)}
+.pmsNav{position:sticky;top:0;z-index:50;margin:0;padding:0 16px;border-radius:0;background:linear-gradient(180deg,#1b4652,#173e47);box-shadow:0 2px 10px rgba(16,40,48,.18)}
+.pmsNav ul{padding:0;gap:2px}
+.pmsNav li>button{min-height:50px;padding:0 16px;border-radius:0;font-weight:600;font-size:14px;color:rgba(255,255,255,.82);gap:9px}
+.pmsNav li>button svg.navIcon{font-size:17px;opacity:.9}
+.pmsNav li>button:hover,.pmsNav li.open>button{background:rgba(255,255,255,.08);color:#fff}
+.pmsNav li.active>button{background:rgba(255,255,255,.12);color:#fff;box-shadow:inset 0 -3px 0 var(--gold)}
+.pmsNav .caret{display:inline-flex;font-size:14px;opacity:.65}
+.pmsNav .navDrop{top:calc(100% + 6px);min-width:260px;padding:6px;border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 18px 44px rgba(16,40,48,.18)}
+.pmsNav .navDrop a{padding:9px 12px;border-radius:var(--radius-sm);font-weight:500;font-size:14px;color:var(--text)}
+.pmsNav .navDrop a:hover,.pmsNav .navDrop a:focus-visible{background:var(--surface-2)}
+.pmsNav .navDrop a.current{background:var(--primary-soft);color:var(--primary);font-weight:700}
+
+/* Page */
+.pmsTop .pmsBody>main{width:min(1480px,calc(100% - 48px));padding:28px 0 56px}
+.pms .pageTitle{align-items:flex-end;gap:16px;margin:0 0 22px;padding:0 0 18px;border-bottom:1px solid var(--border)}
+.pms .pageTitle h1{font-size:26px}
+.pms .pageTitle p{margin:4px 0 0;font-size:14px;line-height:1.5;color:var(--muted);max-width:820px}
+
+/* Surfaces */
+.pms .hubCard,.pms .dashboardGrid article,.pms .kpiRow>div,.pms .metricGrid>*,.pms .noticeCard{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+.pms .hubCard{padding:20px 22px;gap:12px}
+.pms .card{border-color:var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:24px}
+.pms .kpiRow>div,.pms .metricGrid>*{padding:16px 18px}
+.pms .kpiRow b,.pms .metricGrid b{font-size:26px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+
+/* Tables */
+.pms .tableWrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+.pms .tableWrap table{width:100%;border-collapse:separate;border-spacing:0;font-size:14px}
+.pms .tableWrap th{position:sticky;top:0;z-index:1;background:var(--surface-2);color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;text-align:left;padding:11px 16px;border-bottom:1px solid var(--border);white-space:nowrap}
+.pms .tableWrap th:first-child{border-top-left-radius:var(--radius)}.pms .tableWrap th:last-child{border-top-right-radius:var(--radius)}
+.pms .tableWrap td{padding:12px 16px;border-bottom:1px solid #edf1f3;vertical-align:middle;font-variant-numeric:tabular-nums}
+.pms .tableWrap tbody tr:last-child td{border-bottom:0}
+.pms .tableWrap tbody tr:hover td{background:#f8fbfb}
+.pms .tableWrap td small{display:block;font-size:12px}
+
+/* Buttons */
+.pms .adminForm button,.pms .pricingGrid button,.pms .tableWrap button,.pms .tvAdmin>.hubCard>button,.pms .primaryAction,.pms .hubCard>button:not(.secondaryButton):not(.linkButton){min-height:38px;padding:0 16px;border:0;border-radius:var(--radius-sm);background:var(--primary);color:#fff;font-weight:600;font-size:14px;cursor:pointer;transition:background .15s,box-shadow .15s}
+.pms .adminForm button:hover,.pms .pricingGrid button:hover,.pms .tableWrap button:hover,.pms .tvAdmin>.hubCard>button:hover,.pms .primaryAction:hover{background:var(--primary-hover)}
+.pms .secondaryButton,.pms .tableWrap .secondaryButton{min-height:36px;padding:0 14px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:#fff;color:var(--text);font-weight:600;font-size:14px;cursor:pointer}
+.pms .secondaryButton:hover{background:var(--surface-2);border-color:#b9c5cb}
+.pms .secondaryLink{height:38px;padding:0 16px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:#fff;color:var(--text);font-weight:600;font-size:14px}
+.pms .secondaryLink:hover{background:var(--surface-2)}
+.pms button.danger,.pms .danger>button,.pms .tableWrap button.danger{background:var(--danger);color:#fff;border:0}
+.pms .linkButton{color:var(--primary);font-weight:600}
+.pms :is(button,a):focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.pms button:disabled{opacity:.55;cursor:not-allowed}
+.pms .segmented{border-color:var(--border-strong);border-radius:var(--radius-sm);background:#fff}
+.pms .segmented button{font-weight:600;font-size:13px;padding:7px 14px}
+.pms .segmented button[aria-pressed=true],.pms .segmented button[aria-selected=true]{background:var(--primary)}
+
+/* Form fields */
+.pms :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]),select,textarea){border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:#fff;color:var(--text);font-size:14px;transition:border-color .15s,box-shadow .15s}
+.pms :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]),select){min-height:38px}
+.pms :is(input,select,textarea):focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(23,62,71,.12)}
+.pms ::placeholder{color:#93a3aa}
+.pms input[type=checkbox],.pms input[type=radio]{accent-color:var(--primary)}
+.pms .hubCard label,.pms .adminForm label{font-size:13px;font-weight:600;color:#2b444d}
+
+/* Status text */
+.pms .notice{color:var(--success);font-weight:600}
+.pms .error,.pms .formError{color:var(--danger)}
+.pms .credit{color:var(--success)}.pms .debit{color:var(--danger)}
+
+/* Login: photo of the hotel next to the sign-in form */
+.loginPage{min-height:100vh;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(380px,.85fr);background:#fff}
+.loginPhoto{position:relative;overflow:hidden;margin:0;background:#173e47}
+.loginPhoto img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.loginPhoto::after{content:"";position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,rgba(10,30,36,.15) 0%,rgba(10,30,36,.25) 45%,rgba(10,30,36,.82) 100%)}
+.loginPhoto figcaption{position:absolute;left:48px;right:48px;bottom:44px;z-index:2;color:#fff}
+.loginPhoto figcaption b{display:block;font-family:"Corali Serif",Georgia,serif;font-size:40px;font-weight:600;line-height:1.15}
+.loginPhoto figcaption span{display:block;margin-top:8px;font-size:15px;opacity:.88;letter-spacing:.02em}
+.loginSide{display:flex;align-items:center;justify-content:center;padding:48px 40px}
+.loginPage .loginCard{width:min(420px,100%);padding:0;border:0;box-shadow:none;background:none}
+.loginPage .loginLogo{width:200px;margin:0 0 28px}
+.loginPage .eyebrow{color:var(--coral);font-size:12px;letter-spacing:.16em;font-weight:700}
+.loginPage h1{margin:6px 0 24px;font-size:28px;font-weight:700;letter-spacing:-.015em;color:var(--text)}
+.loginPage .loginForm label{font-size:13px;font-weight:600;color:#2b444d}
+.loginPage .loginForm input{min-height:44px;border:1px solid var(--border-strong);border-radius:var(--radius-sm)}
+.loginPage .loginForm input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(23,62,71,.12)}
+.loginPage .loginForm button{min-height:46px;border-radius:var(--radius-sm);background:var(--primary);font-weight:700}
+.loginPage .loginForm button:hover{background:var(--primary-hover)}
+.loginPage .loginLang{display:flex;justify-content:flex-end;margin-bottom:12px}
+@media (max-width:900px){
+  .loginPage{grid-template-columns:1fr}
+  .loginPhoto{min-height:220px}
+  .loginPhoto figcaption{left:24px;right:24px;bottom:20px}.loginPhoto figcaption b{font-size:26px}
+  .loginSide{padding:28px 20px 40px}
+}
+
+/* Dashboard welcome banner with a photo of the hotel */
+.dashHero{position:relative;overflow:hidden;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;min-height:190px;margin:0 0 22px;padding:28px 32px;border-radius:16px;color:#fff;background:#173e47;box-shadow:var(--shadow)}
+.dashHero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 38%}
+.dashHero::before{content:"";position:absolute;inset:0;z-index:1;background:linear-gradient(90deg,rgba(12,36,43,.9) 0%,rgba(12,36,43,.7) 45%,rgba(12,36,43,.25) 100%)}
+.dashHero>div{position:relative;z-index:2}
+.dashHero .heroDate{font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#f2c46d}
+.dashHero h1{margin:6px 0 4px;color:#fff;font-family:"Corali Serif",Georgia,serif;font-size:32px;font-weight:600;letter-spacing:0}
+.dashHero p{margin:0;color:rgba(255,255,255,.85);font-size:15px}
+.dashHero .heroActions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.dashHero .heroActions a{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);color:#fff;font-weight:600;font-size:14px;text-decoration:none;backdrop-filter:blur(4px)}
+.dashHero .heroActions a:hover{background:rgba(255,255,255,.24)}
+.pms .dashHero .heroActions a.primary{background:#fff;color:var(--primary);border-color:#fff}
+@media (max-width:760px){.dashHero{flex-direction:column;align-items:flex-start;padding:22px}.dashHero h1{font-size:26px}.dashHero .heroActions{justify-content:flex-start}}
+
+@media (max-width:760px){
+  .pmsTop .pmsBody>main{width:calc(100% - 32px);padding-top:20px}
+  .pms h1,.pms .pageTitle h1{font-size:22px}
+  .pmsNav{padding:0}
+}
+.dashTools{display:flex;justify-content:flex-end;margin:-10px 0 10px}
+
+/* Dashboard widgets */
+.pms .dashboardPage section[aria-labelledby] h2,.pms .widget h2{display:flex;align-items:center;gap:10px;font-size:16px}
+.pms .wIconBox{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:8px;background:var(--primary-soft);color:var(--primary)}
+.pms .wIcon{font-size:16px}
+.pmsTopbar .bell>button{display:inline-grid;place-items:center;font-size:18px;color:var(--primary)}

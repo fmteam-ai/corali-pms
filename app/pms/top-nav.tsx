@@ -2,6 +2,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import type { IconType } from "react-icons";
+import { LuCalendarDays, LuChartColumn, LuChevronDown, LuClipboardList, LuEuro, LuBedDouble, LuMenu, LuSettings } from "react-icons/lu";
+
+// Line icons for the menu groups (keyed by group).
+const groupIcons: Record<string, IconType> = { global: LuSettings, rooms: LuBedDouble, pricing: LuEuro, bookings: LuCalendarDays, management: LuChartColumn, pms: LuClipboardList };
 
 export type NavGroup = { key: string; label: string; icon: string; items: { href: string; label: string }[] };
 
@@ -24,12 +29,12 @@ export function TopNav({ groups, menuLabel }: { groups: NavGroup[]; menuLabel: s
   const best = groups.flatMap((g) => g.items.map((i) => ({ g: g.key, href: i.href }))).filter((x) => pathname === x.href || (x.href !== "/pms" && pathname.startsWith(`${x.href}/`)) || pathname === x.href).sort((a, b) => b.href.length - a.href.length)[0];
   return (
     <nav className={`pmsNav${mobile ? " mobileOpen" : ""}`} aria-label={menuLabel} ref={ref}>
-      <button type="button" className="navBurger" aria-expanded={mobile} onClick={() => setMobile((m) => !m)}>☰ {menuLabel}</button>
+      <button type="button" className="navBurger" aria-expanded={mobile} onClick={() => setMobile((m) => !m)}><LuMenu aria-hidden /> {menuLabel}</button>
       <ul>
         {groups.filter((g) => g.items.length).map((g) => (
           <li key={g.key} className={`${best?.g === g.key ? "active" : ""}${open === g.key || pinned === g.key ? " open" : ""}`} onMouseEnter={() => setOpen(g.key)} onMouseLeave={() => setOpen((o) => (o === g.key ? null : o))}>
             <button type="button" aria-expanded={open === g.key || pinned === g.key} aria-haspopup="true" onClick={() => setPinned((o) => (o === g.key ? null : g.key))}>
-              <span aria-hidden="true">{g.icon}</span> {g.label} <span className="caret" aria-hidden="true">▾</span>
+              {(() => { const I = groupIcons[g.icon]; return I ? <I className="navIcon" aria-hidden /> : <span aria-hidden="true">{g.icon}</span>; })()} {g.label} <span className="caret" aria-hidden="true"><LuChevronDown /></span>
             </button>
             <div className="navDrop" role="menu">
               {g.items.map((i) => (

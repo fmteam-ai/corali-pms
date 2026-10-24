@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { IconType } from "react-icons";
-import { FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
+import { FaBirthdayCake, FaGlassCheers, FaHeart, FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
 import { WiCloud, WiCloudy, WiDayCloudy, WiDaySunny, WiFog, WiRain, WiShowers, WiSnow, WiThunderstorm } from "react-icons/wi";
 import type { TvScreenData } from "@/lib/tv";
 import "./tv.css";
@@ -37,6 +37,11 @@ function InfoBody({ text }: { text: string }) {
   flush();
   return <>{blocks}</>;
 }
+
+// Reception message looks: icon and festive decoration per theme (PMS → TV messages).
+const msgIcons = { standard: FaRegEnvelope, birthday: FaBirthdayCake, anniversary: FaHeart, celebration: FaGlassCheers } as const;
+const Confetti = () => <div className="tvMsgDeco" aria-hidden>{Array.from({ length: 18 }, (_, i) => <i key={i} />)}</div>;
+const Hearts = () => <div className="tvMsgDeco hearts" aria-hidden>{Array.from({ length: 10 }, (_, i) => <FaHeart key={i} />)}</div>;
 
 const CardHead = ({ icon: I, title }: { icon: IconType; title: string }) => <div className="tvCardHead"><span className="tvIcon"><I aria-hidden /></span><h2>{title}</h2></div>;
 
@@ -177,13 +182,20 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         </section>
       )}
       {message && (
-        <div className={`tvMsg${message.urgent ? " urgent" : ""}`} role="alertdialog" aria-labelledby="tvMsgHead">
-          <div className="tvMsgCard">
-            <span className="tvMsgHead" id="tvMsgHead"><FaRegEnvelope aria-hidden />{message.urgent ? t.msgUrgent : t.msgFrom}</span>
-            <p>{message.text}</p>
-            <button type="button" autoFocus onClick={() => dismiss(message.id)}>OK</button>
-            <small>{t.msgOk}</small>
-          </div>
+        <div className={`tvMsg theme-${message.theme}${message.urgent ? " urgent" : ""}${message.image ? " withPhoto" : ""}`} role="alertdialog" aria-labelledby="tvMsgHead">
+          {(message.theme === "birthday" || message.theme === "celebration") && <Confetti />}
+          {message.theme === "anniversary" && <Hearts />}
+          <article className="tvMsgCard" key={message.id}>
+            {message.image && <div className="tvMsgPhoto"><img src={message.image} alt="" /></div>}
+            <div className="tvMsgBody">
+              <span className="tvMsgHead" id="tvMsgHead"><span className="tvMsgBadge">{(() => { const I = msgIcons[message.theme] ?? FaRegEnvelope; return <I aria-hidden />; })()}</span>{message.urgent ? t.msgUrgent : message.theme === "birthday" ? t.msgBirthday : message.theme === "anniversary" ? t.msgAnniversary : message.theme === "celebration" ? t.msgCelebration : t.msgFrom}</span>
+              {message.text && <p>{message.text}</p>}
+              <footer>
+                <span className="tvMsgSign"><b>Hotel Corali</b> · {t.reception} · {new Date(message.createdAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" })}</span>
+                <span className="tvMsgOk"><button type="button" autoFocus onClick={() => dismiss(message.id)}>OK</button><small>{t.msgOk}</small></span>
+              </footer>
+            </div>
+          </article>
         </div>
       )}
     </main>

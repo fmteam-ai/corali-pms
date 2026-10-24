@@ -1407,3 +1407,8 @@ CREATE TABLE IF NOT EXISTS tv_message_rooms (
  PRIMARY KEY(message_id, room_id)
 );
 CREATE INDEX IF NOT EXISTS idx_tv_message_rooms_room ON tv_message_rooms(owner_id, room_id, expires_at);
+
+-- v82: optional photo on a TV message (JPEG/PNG/WebP resized in the browser; served only to the screens it was sent to).
+ALTER TABLE tv_messages ADD COLUMN IF NOT EXISTS image_mime TEXT;
+ALTER TABLE tv_messages ADD COLUMN IF NOT EXISTS image_base64 TEXT;
+ALTER TABLE tv_messages ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'standard';

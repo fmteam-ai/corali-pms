@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { LuBell } from "react-icons/lu";
 import { pmsT, type PmsLang } from "@/lib/pms-i18n";
 
 type Notification = { key: string; kind: string; title: string; link: string; created_at: number };
@@ -50,7 +51,7 @@ export function NotificationBell({ lang }: { lang: PmsLang }) {
   return (
     <div className="bell">
       <button type="button" aria-label={`${t("bell.title")} (${items.length})`} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        🔔{items.length > 0 && <span>{items.length > 99 ? "99+" : items.length}</span>}
+        <LuBell aria-hidden />{items.length > 0 && <span>{items.length > 99 ? "99+" : items.length}</span>}
         <i className={`liveDot${live ? " on" : ""}`} title={live ? t("bell.live") : t("bell.polling")} />
       </button>
       {open && (

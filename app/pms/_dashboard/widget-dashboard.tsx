@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { IconType } from "react-icons";
+import { LuBedDouble, LuBell, LuBot, LuCalendarDays, LuCalendarSearch, LuCloudSun, LuIdCard, LuPlaneLanding, LuPlaneTakeoff, LuSparkles, LuSprayCan, LuStickyNote, LuWallet } from "react-icons/lu";
 import { moveWidget, type WidgetId, type WidgetPlacement, type WidgetSize } from "@/lib/dashboard-widgets";
 import { pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 import { AiAssistant, BookingSearch, BookingsCalendar, CheckAvailability, Finance, Forecast, Housekeeping, LatestBookings, Notifications, RoomsToday, StayList, StickyNotes, type Balance, type Feed, type Note, type Recent, type RoomToday, type Stay } from "./widgets";
@@ -20,7 +22,9 @@ export type DashboardData = {
 };
 export type DashboardPermissions = { editNotes: boolean; editStays: boolean; createReservation: boolean; financial: boolean; housekeeping: boolean };
 
-const icons: Record<WidgetId, string> = { sticky_notes: "📌", booking_search: "🪪", ai_assistant: "🤖", forecast: "🌤️", arriving: "🛬", departing: "🛫", check_availability: "🧮", bookings_calendar: "📅", latest_bookings: "🆕", rooms_today: "🛏️", finance: "💶", housekeeping: "🧹", notifications: "🔔" };
+// Line icons for the widget headers.
+const icons: Record<WidgetId, IconType> = { sticky_notes: LuStickyNote, booking_search: LuIdCard, ai_assistant: LuBot, forecast: LuCloudSun, arriving: LuPlaneLanding, departing: LuPlaneTakeoff, check_availability: LuCalendarSearch, bookings_calendar: LuCalendarDays, latest_bookings: LuSparkles, rooms_today: LuBedDouble, finance: LuWallet, housekeeping: LuSprayCan, notifications: LuBell };
+const WidgetIcon = ({ id }: { id: WidgetId }) => { const I = icons[id]; return <I className="wIcon" aria-hidden />; };
 
 export function WidgetDashboard({ lang, data, can, initialLayout }: { lang: PmsLang; data: DashboardData; can: DashboardPermissions; initialLayout: WidgetPlacement[] }) {
   const t = pmsT(lang);
@@ -71,14 +75,14 @@ export function WidgetDashboard({ lang, data, can, initialLayout }: { lang: PmsL
       {customize && hidden.length > 0 && (
         <div className="widgetTray">
           <b>{t("w.hiddenWidgets")}:</b>
-          {hidden.map((w) => <button key={w.id} type="button" onClick={() => update(w.id, { hidden: false })}>＋ {icons[w.id]} {t(`w.title.${w.id}` as PmsKey)}</button>)}
+          {hidden.map((w) => <button key={w.id} type="button" onClick={() => update(w.id, { hidden: false })}>＋ <WidgetIcon id={w.id} /> {t(`w.title.${w.id}` as PmsKey)}</button>)}
         </div>
       )}
       <div className="widgetGrid">
         {visible.map((w) => (
           <MasonryItem key={w.id} className={`widget span${w.size}${customize ? " editing" : ""}`} labelledBy={`w-${w.id}`}>
             <header>
-              <h2 id={`w-${w.id}`}><span aria-hidden="true">{icons[w.id]}</span> {t(`w.title.${w.id}` as PmsKey)}</h2>
+              <h2 id={`w-${w.id}`}><span className="wIconBox"><WidgetIcon id={w.id} /></span> {t(`w.title.${w.id}` as PmsKey)}</h2>
               {customize && (
                 <div className="widgetControls">
                   <button type="button" aria-label={t("w.moveUp")} onClick={() => void persist(moveWidget(layout, w.id, -1))}>↑</button>

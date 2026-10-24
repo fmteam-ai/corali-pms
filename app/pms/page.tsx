@@ -5,6 +5,10 @@ import { getPmsT } from "@/lib/pms-lang";
 import { loadNotifications, type FeedItem } from "@/lib/pms-notification-feed";
 import { can } from "@/lib/security/permissions";
 import { hotelToday } from "@/lib/tape-chart";
+import Image from "next/image";
+import Link from "next/link";
+import { LuCalendarDays, LuTv } from "react-icons/lu";
+import { pmsLocale } from "@/lib/pms-i18n";
 import { DashboardRefresh } from "./dashboard-refresh";
 import { WidgetDashboard, type DashboardData } from "./_dashboard/widget-dashboard";
 
@@ -52,7 +56,20 @@ export default async function PmsPage() {
   };
   return (
     <section className="dashboardPage">
-      <div className="pageTitle"><div><h1>{t("dash.title")}</h1><p>{t("dash.welcome", { name: user.displayName })}</p></div><DashboardRefresh label={t("dash.autoRefresh")} button={t("dash.refreshNow")} /></div>
+      <div className="dashHero">
+        <Image src="/images/corali-harbour.jpg" alt="" fill sizes="(max-width: 1480px) 100vw, 1480px" priority />
+        <div>
+          <span className="heroDate">{new Date().toLocaleDateString(pmsLocale(lang), { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Athens" })}</span>
+          <h1>{t(Number(new Intl.DateTimeFormat("en-GB", { hour: "2-digit", hour12: false, timeZone: "Europe/Athens" }).format(new Date())) < 13 ? "dash.heroMorning" : "dash.heroEvening", { name: user.displayName.split(" ")[0] })}</h1>
+          <p>{t("dash.heroStats", { arrivals: String(data.arrivals.today.length), departures: String(data.departures.today.length), inHouse: String(data.rooms.filter((r) => r.guest_name).length), occupancy: String(data.totalRooms ? Math.round((data.rooms.filter((r) => r.guest_name).length / data.totalRooms) * 100) : 0) })}</p>
+        </div>
+        <div className="heroActions">
+          {can(user.role, "reservations.create", user.permissions) && <Link className="primary" href="/pms/reservations/new">{t("app.newReservation")}</Link>}
+          {can(user.role, "rooms.read", user.permissions) && <Link href="/pms/rooms"><LuCalendarDays aria-hidden />{t("nav.roomPlan")}</Link>}
+          <Link href="/pms/tv-messages"><LuTv aria-hidden />{t("nav.tvMessages")}</Link>
+        </div>
+      </div>
+      <div className="dashTools"><DashboardRefresh label={t("dash.autoRefresh")} button={t("dash.refreshNow")} /></div>
       {failures.length > 0 && <p role="alert" className="notice">{t("dash.partialFailure")} <small>({[...new Set(failures)].join(", ")})</small> <a href="/api/pms/diagnostics" target="_blank" rel="noopener noreferrer">{t("dash.diagnostics")}</a></p>}
       <WidgetDashboard
         lang={lang}

@@ -1,6 +1,15 @@
-# Hotel Corali PMS v81 — release verification
+# Hotel Corali PMS v82 — release verification
 
 ## Scope in this package
+
+### New in v82
+- PMS redesign (app/pms/pms-theme.css, loaded after styles.css by the PMS layout and the login page): Open Sans (Greek) instead of DejaVu, colour tokens around the hotel teal, slimmer full-width menu with Lucide line icons and a gold active marker, 26 px page titles, consistent cards, tables (sticky uppercase headers, hover), buttons, form fields with focus ring, status colours. Dashboard widget headers and the notification bell use line icons instead of emoji.
+- Login page: photo of the hotel (harbour from the balcony) beside the sign-in form; stacked on phones.
+- Dashboard: welcome banner with the hotel photo, date, greeting and today's arrivals / departures / occupied rooms / occupancy, plus shortcuts (new reservation, room plan, TV messages).
+- TV messages: optional photo (resized to 1600 px JPEG in the browser, type checked by content, stored with the message, served only to the screens it was sent to, preview in the PMS list); themes Standard / Birthday / Anniversary / Celebration with festive TV cards (confetti, floating hearts, themed colours and headings in 6 languages, reduced-motion respected); presets for birthday, anniversary and honeymoon; {name} becomes the guest's first name (removed cleanly when the room has no guest). New card layout: photo left, serif text, "Hotel Corali · Reception · time" signature, OK button.
+- Corali TV admin: dates shown in Athens time (avoids a server/browser mismatch).
+- Verified: all 36 PMS pages captured at 1440×900 after the change; login on desktop and phone; birthday message with photo and anniversary message sent from PMS to room 101 (guest Maria) and shown on the TV at 1920×1080 and on a phone, with the name filled in.
+- Tests: 192 pass. Note: tests/security.test.ts fails by design when the shell has a local PMS_ORIGIN (e.g. http://localhost) exported; the packaging script unsets those variables. This explains the single failure seen in some v80/v81 local runs.
 
 ### New in v81
 - Messages to room TVs: PMS → Bookings → TV messages (reservations.read to view, reservations.write to send, so reception can use it). Greek + English text (Greek guests see Greek, others English, missing one falls back), presets, one/several/all/occupied rooms, shown for 1 h / 3 h / until tonight / until the guest's check-out (per room, Athens time), "urgent" option, withdraw, per-room "seen" time.

@@ -2,12 +2,34 @@
 import { useState } from "react";
 import { pmsLocale, pmsT, type PmsLang } from "@/lib/pms-i18n";
 import type { TvMessageRow } from "@/lib/tv-messages";
-import type { TvMessageDuration } from "@/lib/tv-messages-core";
+import type { TvMessageDuration, TvMessageTheme } from "@/lib/tv-messages-core";
 
 type Room = { id: number; code: string; guest: string | null };
 
+/** Resize a photo to max 1600 px JPEG in the browser (like room photos), so uploads stay small. */
+async function resize(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return canvas.toDataURL("image/jpeg", 0.82);
+}
+
 // Ready-made texts (Greek / English); the hotel can edit them before sending.
-const presets: { key: string; el: string; en: string }[] = [
+const themes: { key: TvMessageTheme; icon: string; label: string }[] = [
+  { key: "standard", icon: "✉️", label: "tvm.thStandard" },
+  { key: "birthday", icon: "🎂", label: "tvm.thBirthday" },
+  { key: "anniversary", icon: "💞", label: "tvm.thAnniversary" },
+  { key: "celebration", icon: "🥂", label: "tvm.thCelebration" },
+];
+
+const presets: { key: string; el: string; en: string; theme?: TvMessageTheme }[] = [
+  { key: "tvm.pBirthday", theme: "birthday", el: "Χρόνια πολλά, {name}! Όλη η ομάδα του Hotel Corali σας εύχεται υγεία, χαρά και μια υπέροχη χρονιά. Σας περιμένει μια μικρή έκπληξη στη ρεσεψιόν!", en: "Happy birthday, {name}! The whole Hotel Corali team wishes you health, joy and a wonderful year ahead. A small surprise is waiting for you at reception!" },
+  { key: "tvm.pAnniversary", theme: "anniversary", el: "{name}, χρόνια πολλά για την επέτειό σας! Σας ευχαριστούμε που επιλέξατε να τη γιορτάσετε μαζί μας στην Πάρο. Σας ευχόμαστε πολλά ακόμη ευτυχισμένα χρόνια.", en: "{name}, happy anniversary! Thank you for choosing to celebrate it with us in Paros. We wish you many more happy years together." },
+  { key: "tvm.pHoneymoon", theme: "celebration", el: "Συγχαρητήρια για τον γάμο σας! Σας ευχόμαστε έναν αξέχαστο μήνα του μέλιτος στην Πάρο.", en: "Congratulations on your wedding! We wish you an unforgettable honeymoon in Paros." },
   { key: "tvm.pBreakfast", el: "Καλημέρα! Το πρωινό σερβίρεται σήμερα έως τις 10:30.", en: "Good morning! Breakfast is served today until 10:30." },
   { key: "tvm.pParcel", el: "Υπάρχει ένα δέμα για εσάς στη ρεσεψιόν.", en: "There is a parcel for you at reception." },
   { key: "tvm.pCleaning", el: "Η καθαρίστρια θα περάσει από το δωμάτιό σας σύντομα. Αν δεν θέλετε καθαρισμό σήμερα, ενημερώστε τη ρεσεψιόν.", en: "Housekeeping will visit your room shortly. If you prefer no cleaning today, please let reception know." },
@@ -23,6 +45,8 @@ export function TvMessages({ lang, rooms, initialMessages, canSend }: { lang: Pm
   const [all, setAll] = useState(false);
   const [duration, setDuration] = useState<TvMessageDuration>("tonight");
   const [urgent, setUrgent] = useState(false);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [theme, setTheme] = useState<TvMessageTheme>("standard");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const when = (ms: number) => new Date(ms).toLocaleString(pmsLocale(lang), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" });
@@ -33,14 +57,14 @@ export function TvMessages({ lang, rooms, initialMessages, canSend }: { lang: Pm
     try {
       const r = await fetch("/api/pms/tv-messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await r.json().catch(() => ({}));
-      if (!d.ok) { setMsg(t(d.error === "NO_ROOMS" ? "tvm.noRooms" : "tvm.failed")); return false; }
+      if (!d.ok) { setMsg(t(d.error === "NO_ROOMS" ? "tvm.noRooms" : d.error === "INVALID_PHOTO" ? "tvm.badPhoto" : "tvm.failed")); return false; }
       setMessages(d.messages); setMsg(done); return true;
     } finally { setBusy(false); }
   }
   async function send() {
-    if (!el.trim() && !en.trim()) { setMsg(t("tvm.needText")); return; }
+    if (!el.trim() && !en.trim() && !photo) { setMsg(t("tvm.needText")); return; }
     if (!all && !picked.length) { setMsg(t("tvm.needRooms")); return; }
-    if (await post({ action: "send", el, en, rooms: all ? "all" : picked, duration, urgent }, t("tvm.sent"))) { setEl(""); setEn(""); setPicked([]); setAll(false); setUrgent(false); }
+    if (await post({ action: "send", el, en, rooms: all ? "all" : picked, duration, urgent, photo, theme }, t("tvm.sent"))) { setEl(""); setEn(""); setPicked([]); setAll(false); setUrgent(false); setPhoto(null); setTheme("standard"); }
   }
 
   return (
@@ -48,12 +72,25 @@ export function TvMessages({ lang, rooms, initialMessages, canSend }: { lang: Pm
       {canSend && (
         <div className="hubCard">
           <h2>{t("tvm.new")}</h2>
-          <div className="tvmPresets">{presets.map((p) => <button type="button" className="secondaryButton" key={p.key} onClick={() => { setEl(p.el); setEn(p.en); }}>{t(p.key as Parameters<typeof t>[0])}</button>)}</div>
+          <div className="tvmPresets">{presets.map((p) => <button type="button" className="secondaryButton" key={p.key} onClick={() => { setEl(p.el); setEn(p.en); setTheme(p.theme ?? "standard"); }}>{t(p.key as Parameters<typeof t>[0])}</button>)}</div>
           <div className="tvAdminGrid">
             <label>{t("tvm.textEl")}<textarea rows={3} maxLength={500} value={el} onChange={(e) => setEl(e.target.value)} /></label>
             <label>{t("tvm.textEn")}<textarea rows={3} maxLength={500} value={en} onChange={(e) => setEn(e.target.value)} /></label>
           </div>
-          <small>{t("tvm.langHelp")}</small>
+          <small>{t("tvm.langHelp")} {t("tvm.nameHelp")}</small>
+          <h3>{t("tvm.theme")}</h3>
+          <div className="tvmThemes" role="radiogroup">{themes.map((x) => (
+            <button type="button" role="radio" aria-checked={theme === x.key} key={x.key} className={`tvmTheme th-${x.key}${theme === x.key ? " active" : ""}`} onClick={() => setTheme(x.key)}><span aria-hidden>{x.icon}</span>{t(x.label as Parameters<typeof t>[0])}</button>
+          ))}</div>
+          <div className="tvmPhoto">
+            {photo ? (
+              <><img src={photo} alt="" /><button type="button" className="secondaryButton" onClick={() => setPhoto(null)}>{t("tvm.photoRemove")}</button></>
+            ) : (
+              <label className="tvmPhotoPick"><span>🖼 {t("tvm.photoAdd")}</span><small>{t("tvm.photoHelp")}</small>
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void resize(f).then(setPhoto).catch(() => setMsg(t("tvm.badPhoto"))); }} />
+              </label>
+            )}
+          </div>
           <h3>{t("tvm.rooms")}</h3>
           <div className="tvmRooms">
             <button type="button" className={all ? "active" : ""} onClick={() => { setAll(!all); setPicked([]); }}>{t("tvm.allRooms")}</button>
@@ -86,7 +123,7 @@ export function TvMessages({ lang, rooms, initialMessages, canSend }: { lang: Pm
             return (
               <tr key={m.id}>
                 <td className="tvmWhen">{when(m.createdAt)}{m.createdBy && <small>{m.createdBy}</small>}</td>
-                <td className="tvmText">{m.urgent && <b className="debit">{t("tvm.urgentTag")} </b>}{m.body.el ?? m.body.en}{m.body.el && m.body.en && <small>{m.body.en}</small>}</td>
+                <td className="tvmText">{m.hasImage && <img className="tvmThumb" src={`/api/pms/tv-messages/${m.id}/image`} alt="" />}{m.urgent && <b className="debit">{t("tvm.urgentTag")} </b>}{m.body.el ?? m.body.en}{m.body.el && m.body.en && <small>{m.body.en}</small>}</td>
                 <td><div className="tvmSeen">{m.rooms.map((r) => (
                   <span key={r.roomId} className={r.seenAt ? "credit" : ""} title={r.seenAt ? `${t("tvm.seen")} ${when(r.seenAt)}` : `${t("tvm.until")} ${when(r.expiresAt)}`}>
                     {r.roomCode} {r.seenAt ? `✓ ${when(r.seenAt)}` : m.cancelledAt ? "✕" : r.expiresAt > Date.now() ? "…" : "—"}
