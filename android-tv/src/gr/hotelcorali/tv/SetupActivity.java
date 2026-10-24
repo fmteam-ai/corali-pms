@@ -97,7 +97,7 @@ public class SetupActivity extends Activity {
             @Override
             public void onCheckedChanged(CompoundButton b, boolean on) {
                 prefs.setOpenOnWake(on);
-                if (on) WakeService.start(SetupActivity.this); else WakeService.stop(SetupActivity.this);
+                WakeService.start(SetupActivity.this);
             }
         });
         box.addView(wake);
@@ -175,7 +175,7 @@ public class SetupActivity extends Activity {
                         connect.setEnabled(true);
                         if (fError != null) { status.setText(fError); return; }
                         prefs.saveScreen(fUrl, fRoom, base);
-                        if (prefs.openOnWake()) WakeService.start(SetupActivity.this);
+                        WakeService.start(SetupActivity.this);
                         status.setText(Prefs.t("Συνδέθηκε με το δωμάτιο ", "Connected to room ") + fRoom);
                         startActivity(new Intent(SetupActivity.this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
                         finish();

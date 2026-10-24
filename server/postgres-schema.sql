@@ -1385,3 +1385,25 @@ ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS power_auto_state BIGINT;
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS power_state BIGINT;
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS power_changed_at BIGINT;
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS power_error TEXT NOT NULL DEFAULT '';
+
+-- v81: messages from reception to the guest's TV (one or more rooms). Each room has its own expiry and "seen"
+-- (the guest pressed OK on the TV). Urgent messages bring the Corali TV app to the front.
+CREATE TABLE IF NOT EXISTS tv_messages (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ body_json TEXT NOT NULL,
+ urgent BIGINT NOT NULL DEFAULT 0,
+ created_by BIGINT,
+ created_at BIGINT NOT NULL,
+ cancelled_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_tv_messages_owner_created ON tv_messages(owner_id, created_at);
+CREATE TABLE IF NOT EXISTS tv_message_rooms (
+ message_id BIGINT NOT NULL REFERENCES tv_messages(id) ON DELETE CASCADE,
+ owner_id TEXT NOT NULL,
+ room_id BIGINT NOT NULL,
+ expires_at BIGINT NOT NULL,
+ seen_at BIGINT,
+ PRIMARY KEY(message_id, room_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tv_message_rooms_room ON tv_message_rooms(owner_id, room_id, expires_at);

@@ -19,6 +19,8 @@ final class Prefs {
     String room() { return p.getString("room", ""); }
     String server() { return p.getString("server", DEFAULT_SERVER); }
     boolean openOnWake() { return p.getBoolean("open_on_wake", true); }
+    long lastUrgent() { return p.getLong("last_urgent", 0); }
+    void setLastUrgent(long id) { p.edit().putLong("last_urgent", id).apply(); }
 
     void saveScreen(String url, String room, String server) {
         p.edit().putString("screen_url", url).putString("room", room).putString("server", server).apply();

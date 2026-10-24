@@ -118,3 +118,22 @@
 /* The site's general <dl> styling must not reach the Wi-Fi block. */
 .tvScreen .tvWifi dl{display:grid;border:0;padding:0;background:none;grid-template-columns:none}
 .tvScreen .tvWifi dl dt,.tvScreen .tvWifi dl dd{display:block;border:0;padding:0;background:none;width:auto;text-align:left}
+
+/* Reception message (PMS → TV messages): a card over the screen, closed with OK. Urgent ones dim the screen. */
+.tvMsg{position:fixed;inset:0;display:flex;align-items:flex-start;justify-content:center;padding-top:9vw;background:rgba(5,22,28,.35);z-index:10}
+.tvMsg.urgent{align-items:center;padding-top:0;background:rgba(5,22,28,.72)}
+.tvMsgCard{width:min(56vw,1100px);background:#fffaf0;color:var(--ink);border-radius:1.4vw;border:.25vw solid var(--gold);box-shadow:0 1.5vw 4vw rgba(0,0,0,.45);padding:2vw 2.4vw;display:grid;gap:1vw;justify-items:start}
+.tvMsg.urgent .tvMsgCard{border-color:#e0574b}
+.tvMsgHead{display:inline-flex;align-items:center;font-size:1.05vw;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#a8741a}
+.tvMsgHead svg{margin-right:.6vw;font-size:1.3vw}
+.tvMsg.urgent .tvMsgHead{color:#c2392d}
+.tvMsgCard p{margin:0;font-family:"Corali TV Serif",Georgia,serif;font-size:2vw;line-height:1.4;white-space:pre-line}
+.tvMsgCard button{font:inherit;font-size:1.2vw;font-weight:700;padding:.6vw 2.4vw;border:0;border-radius:999px;background:var(--ink);color:#fff;cursor:pointer}
+.tvMsgCard button:focus{outline:.2vw solid var(--gold);outline-offset:.2vw}
+.tvMsgCard small{font-size:.9vw;color:#5b6b70}
+@media (max-width:900px),(orientation:portrait){
+  .tvMsg{padding:80px 16px 0}.tvMsg.urgent{padding:16px}
+  .tvMsgCard{width:100%;border-radius:16px;padding:20px;gap:12px;border-width:3px}
+  .tvMsgHead{font-size:13px}.tvMsgHead svg{font-size:16px;margin-right:8px}
+  .tvMsgCard p{font-size:20px}.tvMsgCard button{font-size:16px;padding:10px 28px}.tvMsgCard small{font-size:12px}
+}

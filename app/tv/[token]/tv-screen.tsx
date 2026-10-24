@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { IconType } from "react-icons";
-import { FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
+import { FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
 import { WiCloud, WiCloudy, WiDayCloudy, WiDaySunny, WiFog, WiRain, WiShowers, WiSnow, WiThunderstorm } from "react-icons/wi";
 import type { TvScreenData } from "@/lib/tv";
 import "./tv.css";
@@ -45,6 +45,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   const [missing, setMissing] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
   const [tab, setTab] = useState("home");
+  const [closed, setClosed] = useState<number[]>([]);
   const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tabsRef = useRef<HTMLElement | null>(null);
 
@@ -55,9 +56,20 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
     if (key !== "home") idle.current = setTimeout(() => setTab("home"), HOME_AFTER_MS);
   };
   useEffect(() => () => { if (idle.current) clearTimeout(idle.current); }, []);
+  const message = data?.messages.find((m) => !closed.includes(m.id));
+  // OK on the remote closes a reception message; the PMS then shows it as seen.
+  const dismiss = (id: number) => {
+    setClosed((c) => [...c, id]);
+    void fetch(`/api/public/tv/${encodeURIComponent(token)}/seen`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => {});
+  };
   // TV remotes send arrow keys: left/right move between tabs.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (message) {
+        if (e.key === "Enter" || e.key === " ") { dismiss(message.id); e.preventDefault(); }
+        else if (e.key.startsWith("Arrow")) e.preventDefault();
+        return;
+      }
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
       const buttons = Array.from(tabsRef.current?.querySelectorAll("button") ?? []);
       if (!buttons.length) return;
@@ -163,6 +175,16 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
             </div>
           </div>
         </section>
+      )}
+      {message && (
+        <div className={`tvMsg${message.urgent ? " urgent" : ""}`} role="alertdialog" aria-labelledby="tvMsgHead">
+          <div className="tvMsgCard">
+            <span className="tvMsgHead" id="tvMsgHead"><FaRegEnvelope aria-hidden />{message.urgent ? t.msgUrgent : t.msgFrom}</span>
+            <p>{message.text}</p>
+            <button type="button" autoFocus onClick={() => dismiss(message.id)}>OK</button>
+            <small>{t.msgOk}</small>
+          </div>
+        </div>
       )}
     </main>
   );

@@ -10,8 +10,8 @@ public class BootReceiver extends BroadcastReceiver {
     public void onReceive(Context context, Intent intent) {
         Prefs prefs = new Prefs(context);
         if (!prefs.configured()) return;
-        if (prefs.openOnWake()) WakeService.start(context);
+        WakeService.start(context);
         if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(intent.getAction())) return;
-        MainActivity.bringToFront(context);
+        MainActivity.bringToFront(context, false);
     }
 }

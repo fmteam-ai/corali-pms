@@ -8,17 +8,55 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IBinder;
+import android.os.PowerManager;
 
-/** Brings the welcome screen back when the TV wakes from standby (screen-on is only delivered to running apps). */
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+
+/**
+ * Runs while the TV is on: brings the welcome screen back when the TV wakes from standby (if enabled) and, every
+ * minute, checks for an urgent reception message, which brings Corali TV to the front over Netflix / live TV.
+ */
 public class WakeService extends Service {
     private static final String CHANNEL = "corali_tv";
+    private static final long URGENT_CHECK_MS = 60_000;
+
+    private HandlerThread worker;
+    private Handler background;
 
     private final BroadcastReceiver screenOn = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (new Prefs(context).configured()) MainActivity.bringToFront(context);
+            Prefs prefs = new Prefs(context);
+            if (prefs.configured() && prefs.openOnWake()) MainActivity.bringToFront(context, false);
+        }
+    };
+
+    private final Runnable checkUrgent = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                long id = urgentMessage();
+                Prefs prefs = new Prefs(WakeService.this);
+                PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+                // Only while the screen is on; when it wakes, the welcome screen opens anyway and shows the message.
+                if (id > 0 && id != prefs.lastUrgent() && pm.isInteractive()) {
+                    prefs.setLastUrgent(id);
+                    MainActivity.bringToFront(WakeService.this, true);
+                }
+            } catch (Exception ignored) {
+                // Offline or server busy: try again next minute.
+            }
+            background.postDelayed(this, URGENT_CHECK_MS);
         }
     };
 
@@ -31,7 +69,29 @@ public class WakeService extends Service {
         }
     }
 
-    static void stop(Context c) { c.stopService(new Intent(c, WakeService.class)); }
+    /** Newest unseen urgent message id for this room (0 when none) from /api/public/tv/<token>/urgent. */
+    private long urgentMessage() throws Exception {
+        Prefs prefs = new Prefs(this);
+        if (!prefs.configured()) return 0;
+        Uri screen = Uri.parse(prefs.screenUrl());
+        String token = screen.getLastPathSegment();
+        if (token == null) return 0;
+        URL url = new URL(screen.getScheme() + "://" + screen.getAuthority() + "/api/public/tv/" + Uri.encode(token) + "/urgent");
+        HttpURLConnection http = (HttpURLConnection) url.openConnection();
+        try {
+            http.setConnectTimeout(15_000);
+            http.setReadTimeout(15_000);
+            if (http.getResponseCode() != 200) return 0;
+            InputStream in = http.getInputStream();
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            byte[] chunk = new byte[2048];
+            for (int n; (n = in.read(chunk)) > 0; ) buf.write(chunk, 0, n);
+            JSONObject r = new JSONObject(buf.toString("UTF-8"));
+            return r.optBoolean("ok") ? r.optLong("urgent", 0) : 0;
+        } finally {
+            http.disconnect();
+        }
+    }
 
     @Override
     public void onCreate() {
@@ -50,6 +110,10 @@ public class WakeService extends Service {
                 .build();
         startForeground(1, n);
         registerReceiver(screenOn, new IntentFilter(Intent.ACTION_SCREEN_ON));
+        worker = new HandlerThread("corali-urgent");
+        worker.start();
+        background = new Handler(worker.getLooper());
+        background.postDelayed(checkUrgent, 10_000);
     }
 
     @Override
@@ -58,6 +122,8 @@ public class WakeService extends Service {
     @Override
     public void onDestroy() {
         unregisterReceiver(screenOn);
+        background.removeCallbacks(checkUrgent);
+        worker.quit();
         super.onDestroy();
     }
 

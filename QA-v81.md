@@ -1,6 +1,14 @@
-# Hotel Corali PMS v80 — release verification
+# Hotel Corali PMS v81 — release verification
 
 ## Scope in this package
+
+### New in v81
+- Messages to room TVs: PMS → Bookings → TV messages (reservations.read to view, reservations.write to send, so reception can use it). Greek + English text (Greek guests see Greek, others English, missing one falls back), presets, one/several/all/occupied rooms, shown for 1 h / 3 h / until tonight / until the guest's check-out (per room, Athens time), "urgent" option, withdraw, per-room "seen" time.
+- Corali TV screen: message card over the screen (urgent: dimmed screen, red frame), closed with OK on the remote → POST /api/public/tv/<token>/seen. Texts in 6 languages.
+- Corali TV app 1.1 (versionCode 2, same signing key): checks GET /api/public/tv/<token>/urgent every minute while the screen is on and brings the app to the front for a new urgent message (then reloads the screen).
+- Schema: tv_messages, tv_message_rooms. Tests: expiry (summer/winter time, check-out, 30-day cap) and language choice.
+- Unit tests: 190 pass in the packaging run and in three separate runs. A run started while the dev server was being stopped had one failure (also seen in v80) that did not reproduce afterwards.
+- Verified on the dev database: two messages sent from PMS to room 101 (normal until tonight, urgent for 1 h with correct expiry); /urgent returned the urgent id; the TV showed the urgent then the normal card; OK closed each and PMS showed "101 ✓ 09:20"; /urgent then returned null; unknown screen link → 404. The app part was not run on a real TV.
 
 ### New in v80
 - Corali TV power through Shelly smart plugs (Shelly Cloud Control API v2): PMS → Corali TV → "Automatic TV power" (server, auth key stored encrypted, switch-on time, auto on/off) and a Device ID per room with On/Off buttons and "Check plugs" (online/output).

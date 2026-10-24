@@ -39,10 +39,11 @@ public class MainActivity extends Activity {
         }
     };
 
-    /** Open (or return to) the welcome screen from the background: start-up, wake, app update. */
-    static void bringToFront(Context c) {
+    /** Open (or return to) the welcome screen from the background: start-up, wake, urgent message (reload at once). */
+    static void bringToFront(Context c, boolean reload) {
         Intent i = new Intent(c, MainActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                .putExtra("reload", reload);
         try {
             c.startActivity(i);
         } catch (RuntimeException ignored) {
@@ -61,7 +62,7 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.0");
+        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.1");
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -97,6 +98,13 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // Urgent message: show it now instead of waiting for the screen's next refresh.
+        if (intent.getBooleanExtra("reload", false) && !loadedUrl.isEmpty()) web.reload();
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         hideSystemBars();
@@ -105,7 +113,7 @@ public class MainActivity extends Activity {
             startActivity(new Intent(this, SetupActivity.class));
             return;
         }
-        if (prefs.openOnWake()) WakeService.start(this);
+        WakeService.start(this);
         web.onResume();
         if (!prefs.screenUrl().equals(loadedUrl)) {
             loadedUrl = prefs.screenUrl();
