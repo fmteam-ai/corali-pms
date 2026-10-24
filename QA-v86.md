@@ -1,6 +1,13 @@
-# Hotel Corali PMS v85 — release verification
+# Hotel Corali PMS v86 — release verification
 
 ## Scope in this package
+
+### New in v86
+- New PMS notifications pop up bottom right for 5 seconds (all kinds; requests from TV with a red edge), then stay in the bell; click opens the link, × closes early.
+- Dashboard widget "Requests from TV" (housekeeping.read; ✓ Done needs housekeeping.write): requests waiting, rooms with Do not disturb, link to all requests; refreshes every 30 s and at once when a new notification arrives. New widget goes after the AI assistant in saved layouts.
+- TV requests: "Room cleaning" (no "now"), Late check-out removed, new Extra pillows and Blankets please (6 languages). Old late check-out rows keep their label in the PMS.
+- Verified: notification inserted while the dashboard was open → pop-up shown and gone after ~5 s, widget refreshed with the new request and the DND room; TV tab at 1920×1080 shows the 8 requests + Do not disturb and a request was sent with the remote keys. Test data restored.
+- Tests: 196 pass.
 
 ### New in v85
 - Requests from the room TV to the PMS (two-way): Corali TV gets a "Requests" tab (only while a guest is staying; 6 languages) with Do not disturb (switch) and Clean my room now, Extra towels, Toiletries, Please contact me, Technical problem, Late check-out, I need a taxi. Remote: right arrow to the tab, down into the buttons, arrows move to the nearest button, OK sends; the button shows "Sent to reception ✓". POST /api/public/tv/<token>/request (12 per 15 min per screen, the same open request is not repeated within 10 min).

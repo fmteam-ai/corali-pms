@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { IconType } from "react-icons";
-import { FaBan, FaBath, FaBirthdayCake, FaCheck, FaClock, FaGlassCheers, FaPhoneAlt, FaPumpSoap, FaTaxi, FaTools, FaHeart, FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
+import { FaBan, FaBath, FaBed, FaBirthdayCake, FaCheck, FaGlassCheers, FaPhoneAlt, FaPumpSoap, FaTaxi, FaTools, FaHeart, FaLayerGroup, FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
 import { WiCloud, WiCloudy, WiDayCloudy, WiDaySunny, WiFog, WiRain, WiShowers, WiSnow, WiThunderstorm } from "react-icons/wi";
 import type { TvScreenData } from "@/lib/tv";
 import { messageSound } from "@/lib/tv-messages-core";
@@ -46,7 +46,7 @@ const Confetti = () => <div className="tvMsgDeco" aria-hidden>{Array.from({ leng
 const Hearts = () => <div className="tvMsgDeco hearts" aria-hidden>{Array.from({ length: 10 }, (_, i) => <FaHeart key={i} />)}</div>;
 
 // Requests to reception (Requests tab).
-const reqIcons: Record<TvRequestKind, IconType> = { cleaning: FaBroom, towels: FaBath, toiletries: FaPumpSoap, call_me: FaPhoneAlt, problem: FaTools, late_checkout: FaClock, taxi: FaTaxi };
+const reqIcons: Record<TvRequestKind, IconType> = { cleaning: FaBroom, towels: FaBath, toiletries: FaPumpSoap, call_me: FaPhoneAlt, problem: FaTools, pillows: FaBed, blankets: FaLayerGroup, taxi: FaTaxi };
 type ReqState = "sending" | "sent" | "already" | "failed";
 
 const CardHead = ({ icon: I, title }: { icon: IconType; title: string }) => <div className="tvCardHead"><span className="tvIcon"><I aria-hidden /></span><h2>{title}</h2></div>;

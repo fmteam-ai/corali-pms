@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LuBell } from "react-icons/lu";
 import { pmsT, type PmsLang } from "@/lib/pms-i18n";
 
@@ -12,10 +12,23 @@ export function NotificationBell({ lang }: { lang: PmsLang }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
   const [live, setLive] = useState(false);
+  const [toasts, setToasts] = useState<Notification[]>([]);
+  const seen = useRef<Set<string> | null>(null);
 
+  // A notification that arrives while the PMS is open pops up for 5 seconds (bottom right), then stays in the bell.
   const load = useCallback(async () => {
     const r = await fetch("/api/pms/dashboard", { cache: "no-store" });
-    if (r.ok) setItems((await r.json()).notifications ?? []);
+    if (!r.ok) return;
+    const list: Notification[] = (await r.json()).notifications ?? [];
+    setItems(list);
+    const known = seen.current;
+    seen.current = new Set([...(known ?? []), ...list.map((x) => x.key)]);
+    if (!known) return;
+    const fresh = list.filter((x) => !known.has(x.key)).slice(0, 3);
+    if (!fresh.length) return;
+    window.dispatchEvent(new Event("corali:notifications"));
+    setToasts((v) => [...fresh, ...v].slice(0, 4));
+    for (const x of fresh) window.setTimeout(() => setToasts((v) => v.filter((y) => y.key !== x.key)), 5_000);
   }, []);
 
   useEffect(() => {
@@ -50,6 +63,17 @@ export function NotificationBell({ lang }: { lang: PmsLang }) {
 
   return (
     <div className="bell">
+      {toasts.length > 0 && (
+        <div className="pmsToasts" role="status" aria-live="polite">
+          {toasts.map((x) => (
+            <div key={x.key} className={`pmsToast kind-${x.kind}`}>
+              <span className="bellIcon" aria-hidden="true">{kindIcons[x.kind] ?? "•"}</span>
+              <Link href={x.link} onClick={() => setToasts((v) => v.filter((y) => y.key !== x.key))}>{x.title}</Link>
+              <button type="button" aria-label={t("bell.toastClose")} onClick={() => setToasts((v) => v.filter((y) => y.key !== x.key))}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
       <button type="button" aria-label={`${t("bell.title")} (${items.length})`} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <LuBell aria-hidden />{items.length > 0 && <span>{items.length > 99 ? "99+" : items.length}</span>}
         <i className={`liveDot${live ? " on" : ""}`} title={live ? t("bell.live") : t("bell.polling")} />

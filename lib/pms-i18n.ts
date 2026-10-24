@@ -1473,6 +1473,9 @@ const el = {
   "tvr.error": "Η ενέργεια απέτυχε. Δοκιμάστε ξανά.",
   "tvr.howTo": "Ο πελάτης ανοίγει την καρτέλα «Αιτήματα» με το τηλεχειριστήριο. Τα αιτήματα εμφανίζονται μόνο όταν υπάρχει διαμονή στο δωμάτιο· το «Μην ενοχλείτε» σβήνει αυτόματα στο check-out.",
   "hk.dnd": "Μην ενοχλείτε",
+  "w.title.tv_requests": "Αιτήματα από TV",
+  "tvr.openPage": "Όλα τα αιτήματα",
+  "bell.toastClose": "Κλείσιμο",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -2942,6 +2945,9 @@ const en: Record<PmsKey, string> = {
   "tvr.error": "The action failed. Please try again.",
   "tvr.howTo": "Guests open the “Requests” tab with the remote. Requests are only available while a guest is staying; “Do not disturb” is cleared automatically at check-out.",
   "hk.dnd": "Do not disturb",
+  "w.title.tv_requests": "Requests from TV",
+  "tvr.openPage": "All requests",
+  "bell.toastClose": "Close",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

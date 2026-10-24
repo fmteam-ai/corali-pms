@@ -75,7 +75,7 @@ export default async function PmsPage() {
         lang={lang}
         data={data}
         initialLayout={normalizeLayout(layout.rows[0]?.layout_json ?? null)}
-        can={{ editNotes: can(user.role, "dashboard.write", user.permissions), editStays: can(user.role, "reservations.edit", user.permissions), createReservation: can(user.role, "reservations.create", user.permissions), financial, housekeeping: can(user.role, "housekeeping.read", user.permissions) }}
+        can={{ editNotes: can(user.role, "dashboard.write", user.permissions), editStays: can(user.role, "reservations.edit", user.permissions), createReservation: can(user.role, "reservations.create", user.permissions), financial, housekeeping: can(user.role, "housekeeping.read", user.permissions), housekeepingWrite: can(user.role, "housekeeping.write", user.permissions) }}
       />
     </section>
   );

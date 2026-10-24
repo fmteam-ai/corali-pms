@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { IconType } from "react-icons";
-import { LuBedDouble, LuBell, LuBot, LuCalendarDays, LuCalendarSearch, LuCloudSun, LuIdCard, LuPlaneLanding, LuPlaneTakeoff, LuSparkles, LuSprayCan, LuStickyNote, LuWallet } from "react-icons/lu";
+import { LuBedDouble, LuBell, LuBot, LuCalendarDays, LuCalendarSearch, LuCloudSun, LuIdCard, LuPlaneLanding, LuPlaneTakeoff, LuSparkles, LuSprayCan, LuStickyNote, LuTv, LuWallet } from "react-icons/lu";
 import { moveWidget, type WidgetId, type WidgetPlacement, type WidgetSize } from "@/lib/dashboard-widgets";
 import { pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
+import { TvRequestsWidget } from "./tv-requests-widget";
 import { AiAssistant, BookingSearch, BookingsCalendar, CheckAvailability, Finance, Forecast, Housekeeping, LatestBookings, Notifications, RoomsToday, StayList, StickyNotes, type Balance, type Feed, type Note, type Recent, type RoomToday, type Stay } from "./widgets";
 
 export type DashboardData = {
@@ -20,10 +21,10 @@ export type DashboardData = {
   housekeeping: { todo: number; inProgress: number; review: number; ooo: number; openDefects: number };
   notifications: Feed[];
 };
-export type DashboardPermissions = { editNotes: boolean; editStays: boolean; createReservation: boolean; financial: boolean; housekeeping: boolean };
+export type DashboardPermissions = { editNotes: boolean; editStays: boolean; createReservation: boolean; financial: boolean; housekeeping: boolean; housekeepingWrite: boolean };
 
 // Line icons for the widget headers.
-const icons: Record<WidgetId, IconType> = { sticky_notes: LuStickyNote, booking_search: LuIdCard, ai_assistant: LuBot, forecast: LuCloudSun, arriving: LuPlaneLanding, departing: LuPlaneTakeoff, check_availability: LuCalendarSearch, bookings_calendar: LuCalendarDays, latest_bookings: LuSparkles, rooms_today: LuBedDouble, finance: LuWallet, housekeeping: LuSprayCan, notifications: LuBell };
+const icons: Record<WidgetId, IconType> = { sticky_notes: LuStickyNote, booking_search: LuIdCard, ai_assistant: LuBot, forecast: LuCloudSun, arriving: LuPlaneLanding, departing: LuPlaneTakeoff, check_availability: LuCalendarSearch, bookings_calendar: LuCalendarDays, latest_bookings: LuSparkles, rooms_today: LuBedDouble, finance: LuWallet, housekeeping: LuSprayCan, notifications: LuBell, tv_requests: LuTv };
 const WidgetIcon = ({ id }: { id: WidgetId }) => { const I = icons[id]; return <I className="wIcon" aria-hidden />; };
 
 export function WidgetDashboard({ lang, data, can, initialLayout }: { lang: PmsLang; data: DashboardData; can: DashboardPermissions; initialLayout: WidgetPlacement[] }) {
@@ -31,7 +32,7 @@ export function WidgetDashboard({ lang, data, can, initialLayout }: { lang: PmsL
   const [layout, setLayout] = useState(initialLayout);
   const [customize, setCustomize] = useState(false);
   const [msg, setMsg] = useState("");
-  const allowed = (id: WidgetId) => (id === "finance" ? can.financial : id === "housekeeping" ? can.housekeeping : true);
+  const allowed = (id: WidgetId) => (id === "finance" ? can.financial : id === "housekeeping" || id === "tv_requests" ? can.housekeeping : true);
 
   async function persist(next: WidgetPlacement[]) {
     setLayout(next);
@@ -60,6 +61,7 @@ export function WidgetDashboard({ lang, data, can, initialLayout }: { lang: PmsL
       case "finance": return <Finance t={t} lang={lang} paymentsToday={data.paymentsToday} balances={data.balances} />;
       case "housekeeping": return <Housekeeping t={t} counts={data.housekeeping} />;
       case "notifications": return <Notifications t={t} lang={lang} items={data.notifications} />;
+      case "tv_requests": return <TvRequestsWidget lang={lang} canHandle={can.housekeepingWrite} />;
     }
   }
 
