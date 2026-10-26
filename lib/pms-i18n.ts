@@ -1685,6 +1685,7 @@ const el = {
   "stf.kind.ota_change": "Κρατήσεις & αλλαγές από OTA",
   "stf.kind.guest_message": "Μηνύματα επισκεπτών",
   "stf.kind.payment": "Πληρωμές",
+  "login.totpHelp": "Ο λογαριασμός σας έχει 2FA: γράψτε τον 6ψήφιο κωδικό από την εφαρμογή επαλήθευσης (ή έναν κωδικό ανάκτησης).",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -3366,6 +3367,7 @@ const en: Record<PmsKey, string> = {
   "stf.kind.ota_change": "OTA bookings & changes",
   "stf.kind.guest_message": "Guest messages",
   "stf.kind.payment": "Payments",
+  "login.totpHelp": "Your account uses 2FA: enter the 6-digit code from your authenticator app (or a recovery code).",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

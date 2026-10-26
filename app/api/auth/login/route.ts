@@ -74,6 +74,8 @@ export async function POST(request: Request): Promise<Response> {
         );
       });
       await recordAudit({ ownerId, userId: user?.id ? Number(user.id) : null, action: "security.login_failed", entity: "session", after: { username: input.username, reason: passwordOk ? "second_factor" : "credentials" } });
+      // Right password, 2FA account, no code yet: ask for the code (the attempt still counts towards the lockout).
+      if (passwordOk && user?.totp_confirmed_at && !input.totp) return Response.json({ ok: false, error: "SECOND_FACTOR_REQUIRED" }, { status: 401 });
       return Response.json({ ok: false, error: "INVALID_CREDENTIALS" }, { status: 401 });
     }
 

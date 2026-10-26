@@ -2,6 +2,10 @@
 
 ## Scope in this package
 
+### New in v96
+
+- [ ] Login (PMS and Corali Staff): the 2FA code field appears only after the password, and only for accounts that turned 2FA on; employees without 2FA sign in with username + password. Recovery codes are accepted in that field.
+
 ### New in v95
 
 - [ ] Corali Staff app at `/staff` (PMS host), installable on the phone (Android "Install", iPhone "Add to Home Screen"). Housekeeping and the new role "Staff" land there after login; `/hk` redirects there.

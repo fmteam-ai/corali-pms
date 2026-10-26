@@ -9,6 +9,8 @@ export function LoginForm({ lang }: { lang: PmsLang }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // The 2FA code is asked only for accounts that turned 2FA on (the server says so after the password).
+  const [needCode, setNeedCode] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -18,10 +20,12 @@ export function LoginForm({ lang }: { lang: PmsLang }) {
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: data.get("username"), password: data.get("password"), totp: data.get("totp") }),
+      body: JSON.stringify({ username: data.get("username"), password: data.get("password"), totp: data.get("totp") ?? "" }),
     });
     setBusy(false);
     if (!response.ok) {
+      const fail = await response.json().catch(() => ({}));
+      if (fail.error === "SECOND_FACTOR_REQUIRED") { setNeedCode(true); setError(""); return; }
       setError(response.status === 429 ? t("login.locked") : t("login.invalid"));
       return;
     }
@@ -34,7 +38,7 @@ export function LoginForm({ lang }: { lang: PmsLang }) {
     <form className="loginForm" onSubmit={submit}>
       <label>{t("login.username")}<input name="username" autoComplete="username" required maxLength={100} /></label>
       <label>{t("login.password")}<input name="password" type="password" autoComplete="current-password" required minLength={8} /></label>
-      <label>{t("login.totp")}<input name="totp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} /></label>
+      {needCode && <label>{t("login.totp")}<small className="muted">{t("login.totpHelp")}</small><input name="totp" inputMode="numeric" autoComplete="one-time-code" maxLength={20} required autoFocus /></label>}
       {error && <p className="error" role="alert">{error}</p>}
       <button disabled={busy}>{busy ? t("login.checking") : t("login.submit")}</button>
     </form>
