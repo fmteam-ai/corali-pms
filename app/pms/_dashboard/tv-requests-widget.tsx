@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { pmsLocale, pmsT, type PmsLang } from "@/lib/pms-i18n";
 import type { TvRequestRow } from "@/lib/tv-requests";
-import { tvRequestLabels } from "@/lib/tv-requests-core";
+import { transferSummary, tvRequestLabels } from "@/lib/tv-requests-core";
 
 type Dnd = { roomId: number; roomCode: string; since: number };
 
@@ -48,7 +48,7 @@ export function TvRequestsWidget({ lang, canHandle }: { lang: PmsLang; canHandle
           {open.slice(0, 8).map((r) => { const l = tvRequestLabels[r.kind] ?? { icon: "📺", el: r.kind, en: r.kind }; return (
             <li key={r.id}>
               <span aria-hidden>{l.icon}</span>
-              <div><b>{lang === "el" ? l.el : l.en}</b><small>{t("tvr.room")} {r.roomCode}{r.guestName ? ` · ${r.guestName}` : ""} · {time(r.createdAt)}</small></div>
+              <div><b>{lang === "el" ? l.el : l.en}</b>{r.details && <small className="tvrTransfer">{transferSummary(r.details, lang === "el" ? "el" : "en")}</small>}<small>{t("tvr.room")} {r.roomCode}{r.guestName ? ` · ${r.guestName}` : ""} · {time(r.createdAt)}</small></div>
               {canHandle && <button type="button" disabled={busy} title={t("tvr.done")} aria-label={t("tvr.done")} onClick={() => done(r.id)}>✓</button>}
             </li>
           ); })}

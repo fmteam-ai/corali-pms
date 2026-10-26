@@ -6,6 +6,7 @@ import { can } from "@/lib/security/permissions";
 import { addDays, heldRoomIds, hotelToday, isIsoDate } from "@/lib/tape-chart";
 import { getPmsT } from "@/lib/pms-lang";
 import { RoomGrid } from "./grid";
+import { hkServiceRows } from "@/lib/hk-services";
 
 const DAYS = 31;
 
@@ -17,7 +18,7 @@ export default async function RoomsPage({ searchParams }: { searchParams: Promis
   const start = isIsoDate(params.start) ? params.start : addDays(today, -2);
   const end = addDays(start, DAYS);
   const showCancelled = params.cancelled === "1";
-  const [rooms, bookings, holds] = await Promise.all([
+  const [rooms, bookings, holds, linenToday] = await Promise.all([
     db().query(
       `SELECT r.id,r.code,r.room_type,r.capacity,r.operational_status,
               (SELECT t.status FROM housekeeping_tasks t WHERE t.owner_id=r.owner_id AND t.room_id=r.id AND t.status NOT IN ('ready') ORDER BY t.id DESC LIMIT 1) AS open_task_status,${roomNoticeSql}
@@ -38,6 +39,7 @@ export default async function RoomsPage({ searchParams }: { searchParams: Promis
         WHERE owner_id=$1 AND status='payment_pending' AND recovery_due_at>(EXTRACT(EPOCH FROM now())*1000)::bigint AND check_in<$3 AND check_out>$2`,
       [user.ownerId, start, end],
     ),
+    hkServiceRows(user.ownerId),
   ]);
   const holdBars = holds.rows.flatMap((h) =>
     heldRoomIds(h.room_allocations).map((roomId) => ({ id: Number(h.id), roomId, guestName: `${h.guest_first_name} ${h.guest_last_name}`.trim(), checkIn: String(h.check_in), checkOut: String(h.check_out) })),
@@ -65,6 +67,8 @@ export default async function RoomsPage({ searchParams }: { searchParams: Promis
         rooms={rooms.rows}
         initialBookings={bookings.rows}
         holds={holdBars}
+        /* Sheets / towels due today (Housekeeping schedule) and not yet done: a blinking chip next to the room. */
+        linen={Object.fromEntries(linenToday.rows.map((r) => [r.roomId, r.due.filter((x) => !r.done.includes(x))]).filter(([, due]) => (due as string[]).length))}
       />
     </section>
   );

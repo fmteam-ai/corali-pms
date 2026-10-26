@@ -9,7 +9,11 @@ import {NotificationBell} from "./notification-bell";
 import {LangToggle} from "./lang-toggle";
 import {QuickSearch} from "./quick-search";
 import {TopNav} from "./top-nav";
+import {cookies} from "next/headers";
+import {ThemeToggle} from "./theme-toggle";
 import "./pms-theme.css";
+import "./pms-dark.css";
+import "./pms-dark-base.css";
 
 type Item={href:string;label:PmsKey;permission:Permission};
 // Grouped like a classic hotel back office: settings, rooms, pricing, bookings, management and daily operations.
@@ -24,6 +28,7 @@ const groups:{key:string;title:PmsKey;icon:string;items:Item[]}[]=[
 export default async function PmsLayout({children}:Readonly<{children:React.ReactNode}>){
  const user=await requireUser("dashboard.read");
  const {lang,t}=await getPmsT();
+ const theme=(await cookies()).get("corali_pms_theme")?.value==="dark"?"dark":"light";
  const navGroups=groups.map(g=>({key:g.key,label:t(g.title),icon:g.icon,items:g.items.filter(i=>can(user.role,i.permission,user.permissions)).map(i=>({href:i.href,label:t(i.label)}))}));
- return <div className="pms pmsTop" lang={lang}><header className="pmsTopbar"><Link href="/pms" className="pmsIdentity" aria-label={`${t("app.name")} · ${t("nav.overview")}`}><span className="pmsLogoPanel"><Image src="/hotel-corali-logo.png" alt="Hotel Corali" width={602} height={151} priority/></span></Link><div className="pmsTitle"><strong>{t("app.name")}</strong><small>{t("app.location")}</small></div>{can(user.role,"reservations.read",user.permissions)&&<QuickSearch lang={lang}/>}<div className="pmsTopActions">{can(user.role,"reservations.create",user.permissions)&&<Link href="/pms/reservations/new">{t("app.newReservation")}</Link>}<LangToggle lang={lang} label={t("app.language")}/><NotificationBell lang={lang}/><UserMenu name={user.displayName} logoutLabel={t("app.logout")}/></div></header><TopNav groups={navGroups} menuLabel={t("app.mainMenu")}/><div className="pmsBody"><main>{children}</main></div></div>
+ return <div className="pms pmsTop" lang={lang} data-theme={theme}><header className="pmsTopbar"><Link href="/pms" className="pmsIdentity" aria-label={`${t("app.name")} · ${t("nav.overview")}`}><span className="pmsLogoPanel"><Image src="/hotel-corali-logo.png" alt="Hotel Corali" width={602} height={151} priority/></span></Link><div className="pmsTitle"><strong>{t("app.name")}</strong><small>{t("app.location")}</small></div>{can(user.role,"reservations.read",user.permissions)&&<QuickSearch lang={lang}/>}<div className="pmsTopActions">{can(user.role,"reservations.create",user.permissions)&&<Link href="/pms/reservations/new">{t("app.newReservation")}</Link>}<ThemeToggle initial={theme} labels={{light:t("app.themeLight"),dark:t("app.themeDark")}}/><LangToggle lang={lang} label={t("app.language")}/><NotificationBell lang={lang}/><UserMenu name={user.displayName} logoutLabel={t("app.logout")}/></div></header><TopNav groups={navGroups} menuLabel={t("app.mainMenu")}/><div className="pmsBody"><main>{children}</main></div></div>
 }

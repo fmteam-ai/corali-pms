@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { pmsLocale, pmsT, type PmsLang } from "@/lib/pms-i18n";
 import type { TvRequestRow } from "@/lib/tv-requests";
-import { tvRequestLabels } from "@/lib/tv-requests-core";
+import { transferSummary, tvRequestLabels } from "@/lib/tv-requests-core";
 
 type Dnd = { roomId: number; roomCode: string; since: number };
 const REFRESH_MS = 30_000;
@@ -87,6 +87,7 @@ export function TvRequests({ lang, initialRequests, initialDnd, canHandle }: { l
             <span className="tvrIcon" aria-hidden>{l.icon}</span>
             <div>
               <b>{l.text}</b>
+              {r.details && <p className="tvrTransfer">{transferSummary(r.details, lang === "el" ? "el" : "en")}</p>}
               <p>{t("tvr.room")} <strong>{r.roomCode}</strong>{r.guestName ? ` · ${r.guestName}` : ""}</p>
               <small>{ago(r.createdAt)}</small>
             </div>
@@ -107,7 +108,7 @@ export function TvRequests({ lang, initialRequests, initialDnd, canHandle }: { l
                 <tr key={r.id}>
                   <td>{when(r.createdAt)}</td>
                   <td><b>{r.roomCode}</b></td>
-                  <td>{l.icon} {l.text}</td>
+                  <td>{l.icon} {l.text}{r.details && <small>{transferSummary(r.details, lang === "el" ? "el" : "en")}</small>}</td>
                   <td>{r.guestName ?? ""}</td>
                   <td className="muted">{r.status === "info" ? t("tvr.info") : r.handledBy ? t("tvr.doneBy").replace("{name}", r.handledBy) : t("tvr.done")}{r.handledAt ? ` · ${time(r.handledAt)}` : ""}</td>
                 </tr>

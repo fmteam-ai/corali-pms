@@ -332,3 +332,48 @@ body:has(.pms){background:#f2f4f6}
 .pms .channelCheck ul{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:6px;width:100%}
 .pms .channelCheck li{display:flex;gap:8px;align-items:flex-start;padding:8px 12px;border-radius:8px;border:1px solid #e3e8ea;background:#fff;font-size:14px}
 .pms .channelCheck li.ok{border-color:#bfe3cc;background:#f3fbf6}.pms .channelCheck li.bad{border-color:#f1b8b1;background:#fdf1ef}.pms .channelCheck li.warn{border-color:#f1dfb8;background:#fffaf0}
+/* Corali TV → TV channels editor */
+.pms .tvChannelEdit{display:grid;gap:10px;margin:8px 0 16px}
+.pms .tvChannelRow{display:grid;grid-template-columns:minmax(140px,1fr) minmax(220px,2fr) minmax(160px,1.4fr) 140px auto;gap:8px;align-items:center;padding:8px;border:1px solid var(--border,#e3e8ea);border-radius:10px;background:#fff}
+.pms .tvChannelRow small{grid-column:1/-1}
+.pms .tvChannelEdit>button{justify-self:start}
+@media (max-width:900px){.pms .tvChannelRow{grid-template-columns:1fr 1fr}}
+.pms .tvrTransfer{font-weight:700;color:#8a5a00 !important}
+.pms .tvrWidget small.tvrTransfer{display:block}
+/* Housekeeping → sheets & towels today */
+.pms .hks{margin:0 0 18px}
+.pms .hksHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.pms .hksHead h2{margin:0 0 4px;font-size:18px}
+.pms .hksCount{display:inline-block;margin-left:8px;background:#fdeccb;color:#8a5a00;border-radius:999px;padding:2px 10px;font-size:13px;vertical-align:middle}
+.pms .hksTools{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.pms .hksSettings{display:flex;flex-wrap:wrap;gap:12px;align-items:end;padding:12px;border:1px dashed var(--border,#d7dee1);border-radius:10px;margin-bottom:12px;background:#fafcfc}
+.pms .hksSettings label{min-width:170px}
+.pms .hksSettings small{flex-basis:100%}
+.pms .hks tr.due td{background:#fffdf5}
+.pms .hksBadges{display:flex;flex-wrap:wrap;gap:6px}
+.pms .hksBadge{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:4px 6px 4px 10px;font-size:13px;font-weight:700;color:#fff}
+.pms .hksBadge.sheets{background:#8e44ad}.pms .hksBadge.towels{background:#2c7fb8}
+.pms .hksBadge.done{background:#e9f6ee;color:#25774a;text-decoration:line-through}
+.pms .tableWrap td .hksBadge button{min-height:0;padding:2px 8px;font-size:12px;border-radius:6px;background:rgba(255,255,255,.22);color:inherit;border:1px solid rgba(255,255,255,.5)}
+.pms .tableWrap td .hksBadge.done button{background:#fff;border-color:#bfe3cc;color:#25774a;text-decoration:none}
+.pms .hks.card{max-width:none;width:auto}
+/* Room plan: sheets / towels change due today (blinks until marked done in Housekeeping) */
+.pms .linenChip{display:inline-flex;align-items:center;gap:3px;margin-left:5px;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;color:#fff;text-decoration:none;vertical-align:middle;animation:linenBlink 1.2s ease-in-out infinite}
+.pms .linenChip.sheets{background:#8e44ad}.pms .linenChip.towels{background:#2c7fb8}
+.pms .linenChip span{color:#fff}
+@keyframes linenBlink{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.pms .linenChip{animation:none;outline:2px solid #f2b84b}}
+/* Today's tasks widget (dashboard) */
+.dtWidget h3{display:flex;align-items:center;gap:8px;margin:4px 0 8px;font-size:14px}
+.dtWidget h3 small{margin-left:auto;font-weight:600;color:var(--muted)}
+.dtWidget ul{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:6px}
+.dtWidget li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:7px 10px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
+.dtWidget li b{font-size:14px}
+.dtWidget li small{display:block;color:var(--muted);font-size:12px}
+.dtWidget li.done{opacity:.55}
+.dtWidget li.done .linenChip{animation:none}
+.dtWidget li .linenChip{margin:0;font-size:13px}
+.dtWidget li button{width:32px;height:32px;border-radius:50%;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--muted);font-weight:700;cursor:pointer}
+.dtWidget li button[aria-pressed="true"]{background:#1d8a5a;border-color:#1d8a5a;color:#fff}
+.dtStatus{width:10px;height:10px;border-radius:50%;background:#e08a2c}
+.dtStatus.st-in_progress{background:#f2b84b}.dtStatus.st-cleaned,.dtStatus.st-repaired{background:#2f7fd1}.dtStatus.st-out_of_order{background:#333}

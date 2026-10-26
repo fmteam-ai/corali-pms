@@ -5,11 +5,13 @@ import { roomNoticeSql } from "@/lib/maintenance-db";
 import { getPmsT } from "@/lib/pms-lang";
 import { can } from "@/lib/security/permissions";
 import { HousekeepingBoard } from "./board";
+import { HousekeepingServices } from "./services";
+import { hkServiceRows } from "@/lib/hk-services";
 
 export default async function HousekeepingPage() {
   const u = await requireUser("housekeeping.read");
   const { lang, t } = await getPmsT();
-  const [tasks, rooms] = await Promise.all([
+  const [tasks, rooms, services] = await Promise.all([
     db().query(
       `SELECT t.*,r.code room_code,r.room_type,s.display_name assigned_name FROM housekeeping_tasks t
          JOIN rooms r ON r.id=t.room_id AND r.owner_id=t.owner_id
@@ -24,10 +26,12 @@ export default async function HousekeepingPage() {
          FROM rooms r WHERE r.owner_id=$1 AND r.active=1 ORDER BY r.code`,
       [u.ownerId],
     ),
+    hkServiceRows(u.ownerId),
   ]);
   return (
     <section className="hkPage">
       <div className="pageTitle"><div><h1>{t("hkb.title")}</h1><p>{t("hkb.subtitle")}</p></div>{can(u.role, "users.manage", u.permissions) && <Link className="secondaryLink" href="/pms/housekeeping/settings">{t("hkb.settings")}</Link>}</div>
+      <HousekeepingServices lang={lang} initial={services} canWrite={can(u.role, "housekeeping.write", u.permissions)} />
       <HousekeepingBoard lang={lang} initialTasks={tasks.rows} rooms={rooms.rows} userId={u.id} canWrite={can(u.role, "housekeeping.write", u.permissions)} canResolve={can(u.role, "maintenance.resolve", u.permissions)} />
     </section>
   );

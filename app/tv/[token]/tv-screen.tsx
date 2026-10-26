@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { IconType } from "react-icons";
-import { FaBan, FaBath, FaBed, FaBirthdayCake, FaCheck, FaGlassCheers, FaPhoneAlt, FaPumpSoap, FaTaxi, FaTools, FaHeart, FaLayerGroup, FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
+import { FaBan, FaBath, FaBed, FaTv, FaBirthdayCake, FaCheck, FaGlassCheers, FaPhoneAlt, FaPumpSoap, FaTaxi, FaTools, FaHeart, FaLayerGroup, FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
 import { WiCloud, WiCloudy, WiDayCloudy, WiDaySunny, WiFog, WiRain, WiShowers, WiSnow, WiThunderstorm } from "react-icons/wi";
 import type { TvScreenData } from "@/lib/tv";
 import { messageSound } from "@/lib/tv-messages-core";
@@ -48,8 +48,47 @@ const Hearts = () => <div className="tvMsgDeco hearts" aria-hidden>{Array.from({
 // Requests to reception (Requests tab).
 const reqIcons: Record<TvRequestKind, IconType> = { cleaning: FaBroom, towels: FaBath, toiletries: FaPumpSoap, call_me: FaPhoneAlt, problem: FaTools, pillows: FaBed, blankets: FaLayerGroup, taxi: FaTaxi };
 type ReqState = "sending" | "sent" | "already" | "failed";
+type Transfer = { destination: "port" | "airport" | "other"; day: number; time: string; people: number };
+const shiftTime = (t: string, mins: number) => { const v = (Number(t.slice(0, 2)) * 60 + Number(t.slice(3)) + mins + 1440) % 1440; return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`; };
 
 const CardHead = ({ icon: I, title }: { icon: IconType; title: string }) => <div className="tvCardHead"><span className="tvIcon"><I aria-hidden /></span><h2>{title}</h2></div>;
+
+type Channel = TvScreenData["channels"][number];
+/** Full-screen live channel: YouTube live in an iframe (never focused, so the remote keys stay with the screen), HLS through hls.js, or a plain video. */
+function ChannelPlayer({ channel, texts, onClose }: { channel: Channel; texts: TvScreenData["channelTexts"]; onClose: () => void }) {
+  const video = useRef<HTMLVideoElement | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [label, setLabel] = useState(true);
+  useEffect(() => { const t = setTimeout(() => setLabel(false), 5_000); return () => clearTimeout(t); }, []);
+  useEffect(() => {
+    const src = channel.source, el = video.current;
+    if (src.kind === "youtube" || !el) return;
+    let hls: { destroy: () => void } | null = null, live = true;
+    const fail = () => live && setFailed(true);
+    el.addEventListener("error", fail);
+    if (src.kind === "hls" && !el.canPlayType("application/vnd.apple.mpegurl")) {
+      void import("hls.js").then(({ default: Hls }) => {
+        if (!live || !Hls.isSupported()) { fail(); return; }
+        const h = new Hls({ lowLatencyMode: true });
+        h.on(Hls.Events.ERROR, (_e, d) => { if (d.fatal) fail(); });
+        h.loadSource(src.url);
+        h.attachMedia(el);
+        hls = h;
+      }).catch(fail);
+    } else el.src = src.url;
+    void el.play().catch(() => {});
+    return () => { live = false; el.removeEventListener("error", fail); hls?.destroy(); el.removeAttribute("src"); el.load(); };
+  }, [channel]);
+  return (
+    <div className="tvPlayer" role="dialog" aria-label={channel.name}>
+      {channel.source.kind === "youtube"
+        ? <iframe src={channel.source.embedUrl} title={channel.name} tabIndex={-1} allow="autoplay; encrypted-media; picture-in-picture" referrerPolicy="strict-origin-when-cross-origin" />
+        : <video ref={video} autoPlay playsInline />}
+      {failed && <p className="tvPlayerError">{texts.failed}</p>}
+      <div className={`tvPlayerBar${label || failed ? " show" : ""}`}><b>{channel.name}</b><span>{texts.hint}</span><button type="button" onClick={onClose}>{texts.back}</button></div>
+    </div>
+  );
+}
 
 export function TvScreen({ token, lang }: { token: string; lang: string }) {
   const [data, setData] = useState<TvScreenData | null>(null);
@@ -59,9 +98,13 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   const [closed, setClosed] = useState<number[]>([]);
   const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tabsRef = useRef<HTMLElement | null>(null);
-  const reqRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const transferRef = useRef<HTMLDivElement | null>(null);
   const [reqState, setReqState] = useState<Partial<Record<TvRequestKind | "dnd", ReqState>>>({});
   const [dnd, setDnd] = useState<boolean | null>(null);
+  const [transfer, setTransfer] = useState<Transfer | null>(null);
+  const [transferError, setTransferError] = useState("");
+  const [playing, setPlaying] = useState<number | null>(null);
 
   // Any remote/keyboard/touch use keeps the chosen tab; after 90 s without it the screen goes back home.
   const choose = (key: string) => {
@@ -88,20 +131,46 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
     void fetch(`/api/public/tv/${encodeURIComponent(token)}/seen`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => {});
   };
   // A request to reception; do not disturb is a switch. The answer shows on the button for a few seconds.
-  const sendRequest = async (kind: TvRequestKind | "dnd", on?: boolean) => {
-    if (reqState[kind] === "sending") return;
+  const sendRequest = async (kind: TvRequestKind | "dnd", extra?: Record<string, unknown>) => {
+    if (reqState[kind] === "sending") return false;
     choose("requests");
     setReqState((s) => ({ ...s, [kind]: "sending" }));
-    let result: ReqState = "failed";
+    let result: ReqState = "failed", error = "";
     try {
-      const r = await fetch(`/api/public/tv/${encodeURIComponent(token)}/request`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(kind === "dnd" ? { kind, on } : { kind }) });
+      const r = await fetch(`/api/public/tv/${encodeURIComponent(token)}/request`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, ...extra }) });
       const d = await r.json();
-      if (d.ok) { result = d.recorded ? "sent" : "already"; setDnd(Boolean(d.dnd)); }
+      if (d.ok) { result = d.recorded ? "sent" : "already"; setDnd(Boolean(d.dnd)); } else error = String(d.error ?? "");
     } catch { /* offline: show "not sent" */ }
     setReqState((s) => ({ ...s, [kind]: result }));
     setTimeout(() => setReqState((s) => (s[kind] === result ? { ...s, [kind]: undefined } : s)), 6_000);
+    return result === "failed" ? error || "FAILED" : true;
   };
-  // TV remotes send arrow keys: left/right move between tabs; down enters the request buttons, which move in a grid.
+  // Transfer: the form opens over the requests; OK on "Send" posts it with destination, day, time and people.
+  const openTransfer = () => {
+    const tr = data?.requests?.transfer;
+    if (!tr) return;
+    setTransferError("");
+    setTransfer({ destination: "port", day: Math.min(tr.first.dayOffset, tr.days.length - 1), time: tr.first.time, people: tr.people });
+  };
+  const sendTransfer = async () => {
+    const tr = data?.requests?.transfer;
+    if (!transfer || !tr) return;
+    const result = await sendRequest("taxi", { transfer: { destination: transfer.destination, date: tr.days[transfer.day], time: transfer.time, people: transfer.people } });
+    if (result === true) { setTransfer(null); requestAnimationFrame(() => panelRef.current?.querySelector<HTMLButtonElement>('[data-req="taxi"]')?.focus()); }
+    else setTransferError(result === "TIME" ? tr.texts.tooSoon : data?.requests?.texts.failed ?? "");
+  };
+  // BACK on the remote (the Corali TV app asks the page first): close the player / form, then go back home.
+  const back = () => {
+    if (playing !== null) { setPlaying(null); return true; }
+    if (transfer) { setTransfer(null); return true; }
+    if (tab !== "home") { choose("home"); (tabsRef.current?.querySelector<HTMLButtonElement>('[data-key="home"]'))?.focus(); return true; }
+    return false;
+  };
+  useEffect(() => {
+    (window as unknown as { coraliBack?: () => boolean }).coraliBack = back;
+  });
+  // TV remotes send arrow keys: left/right move between tabs; down enters the buttons of the open tab, which move
+  // to the nearest button in the arrow's direction. While a channel plays, up/down switch channels.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (message) {
@@ -109,10 +178,19 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         else if (e.key.startsWith("Arrow")) e.preventDefault();
         return;
       }
-      const grid = Array.from(reqRef.current?.querySelectorAll("button") ?? []);
+      if (["Escape", "Backspace", "GoBack", "BrowserBack"].includes(e.key)) { if (back()) e.preventDefault(); return; }
+      const channels = data?.channels ?? [];
+      if (playing !== null) {
+        if (["ArrowUp", "ChannelUp", "PageUp"].includes(e.key)) setPlaying((playing + channels.length - 1) % channels.length);
+        else if (["ArrowDown", "ChannelDown", "PageDown"].includes(e.key)) setPlaying((playing + 1) % channels.length);
+        e.preventDefault();
+        return;
+      }
+      const container = transfer ? transferRef.current : panelRef.current;
+      const grid = Array.from(container?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
       const inGrid = grid.indexOf(document.activeElement as HTMLButtonElement);
+      if (transfer && inGrid < 0 && grid.length) { grid[0].focus(); e.preventDefault(); return; }
       if (inGrid >= 0 && e.key.startsWith("Arrow")) {
-        // Move to the nearest button in the arrow's direction (the do-not-disturb tile is two rows high).
         const box = (b: Element) => { const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
         const from = box(grid[inGrid]), dx = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0, dy = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
         let best: HTMLButtonElement | null = null, bestScore = Infinity;
@@ -123,12 +201,12 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
           if (score < bestScore) { bestScore = score; best = b; }
         }
         if (best) best.focus();
-        else if (dy < 0) (tabsRef.current?.querySelector<HTMLButtonElement>('[data-key="requests"]'))?.focus();
-        if (idle.current) choose("requests");
+        else if (dy < 0 && !transfer) (tabsRef.current?.querySelector<HTMLButtonElement>(`[data-key="${tab}"]`))?.focus();
+        if (idle.current) choose(tab);
         e.preventDefault();
         return;
       }
-      if (e.key === "ArrowDown" && tab === "requests" && grid.length) { grid[0].focus(); e.preventDefault(); return; }
+      if (e.key === "ArrowDown" && (tab === "requests" || tab === "channels") && grid.length) { grid[0].focus(); e.preventDefault(); return; }
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
       const buttons = Array.from(tabsRef.current?.querySelectorAll("button") ?? []);
       if (!buttons.length) return;
@@ -190,10 +268,11 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         )}
       </section>
 
-      {(data.info.length > 0 || rq) && (
+      {(data.info.length > 0 || rq || data.channels.length > 0) && (
         <nav className={`tvTabs${rq ? " withReq" : ""}`} ref={tabsRef} aria-label="Hotel information">
           <button type="button" data-key="home" className={tab === "home" ? "active" : ""} onClick={() => choose("home")}><TabIcon k="home" />{t.home}</button>
           {data.info.map((x) => <button type="button" key={x.key} data-key={x.key} className={tab === x.key ? "active" : ""} onClick={() => choose(x.key)}><TabIcon k={x.key} emoji={x.icon} />{x.title}</button>)}
+          {data.channels.length > 0 && <button type="button" data-key="channels" className={tab === "channels" ? "active" : ""} onClick={() => choose("channels")}><FaTv aria-hidden />{data.channelTexts.tab}</button>}
           {rq && <button type="button" data-key="requests" className={`tvReqTab${tab === "requests" ? " active" : ""}`} onClick={() => choose("requests")}><FaConciergeBell aria-hidden />{rq.texts.tab}</button>}
         </nav>
       )}
@@ -201,19 +280,31 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
       {tab === "requests" && rq ? (
         <section className="tvInfo tvReq">
           <p className="tvReqIntro">{rq.texts.intro}</p>
-          <div className="tvReqGrid" ref={reqRef}>
-            <button type="button" className={`tvReqBtn tvReqDnd${dndOn ? " on" : ""}${reqState.dnd ? ` is-${reqState.dnd}` : ""}`} aria-pressed={dndOn} onClick={() => sendRequest("dnd", !dndOn)}>
+          <div className="tvReqGrid" ref={panelRef}>
+            <button type="button" className={`tvReqBtn tvReqDnd${dndOn ? " on" : ""}${reqState.dnd ? ` is-${reqState.dnd}` : ""}`} aria-pressed={dndOn} onClick={() => sendRequest("dnd", { on: !dndOn })}>
               <span className="tvReqIcon"><FaBan aria-hidden /></span>
               <b>{reqLabel("dnd", rq.texts.dnd)}</b>
               <small>{rq.texts.dndHint}</small>
               <span className="tvSwitch" aria-hidden><i />{dndOn ? rq.texts.dndOn : rq.texts.dndOff}</span>
             </button>
             {tvRequestKinds.map((k) => { const I = reqIcons[k]; const st = reqState[k]; return (
-              <button type="button" key={k} className={`tvReqBtn${st ? ` is-${st}` : ""}`} onClick={() => sendRequest(k)}>
+              <button type="button" key={k} data-req={k} className={`tvReqBtn${st ? ` is-${st}` : ""}`} onClick={() => (k === "taxi" && rq.transfer ? openTransfer() : sendRequest(k))}>
                 <span className="tvReqIcon">{st === "sent" || st === "already" ? <FaCheck aria-hidden /> : <I aria-hidden />}</span>
                 <b>{reqLabel(k, rq.texts[k])}</b>
               </button>
             ); })}
+          </div>
+        </section>
+      ) : tab === "channels" && data.channels.length > 0 ? (
+        <section className="tvInfo tvChannels">
+          <div className="tvChannelGrid" ref={panelRef}>
+            {data.channels.map((c, i) => (
+              <button type="button" key={`${c.name}-${i}`} className="tvChannel" onClick={() => setPlaying(i)}>
+                <span className="tvChannelLogo">{c.logo ? <img src={c.logo} alt="" /> : <FaTv aria-hidden />}</span>
+                <b>{c.name}</b>
+                <small>{data.channelTexts[c.category]}</small>
+              </button>
+            ))}
           </div>
         </section>
       ) : current ? (
@@ -257,6 +348,23 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
           </div>
         </section>
       )}
+      {transfer && rq?.transfer && (() => { const tr = rq.transfer, tx = tr.texts; const dayName = (i: number) => (i === 0 ? tx.today : i === 1 ? tx.tomorrow : day(tr.days[i])); return (
+        <div className="tvMsg tvTransfer" role="dialog" aria-label={tx.title}>
+          <article className="tvMsgCard" ref={transferRef}>
+            <div className="tvMsgBody">
+              <span className="tvMsgHead"><span className="tvMsgBadge"><FaTaxi aria-hidden /></span>{tx.title}</span>
+              <div className="tvTfRow"><span>{tx.destination}</span>{(["port", "airport", "other"] as const).map((d) => <button type="button" key={d} className={transfer.destination === d ? "on" : ""} onClick={() => setTransfer({ ...transfer, destination: d })}>{tx[d]}</button>)}</div>
+              {transfer.destination === "other" && <p className="tvTfHint">{tx.otherHint}</p>}
+              <div className="tvTfRow"><span>{tx.day}</span>{tr.days.slice(0, 7).map((_, i) => <button type="button" key={i} className={transfer.day === i ? "on" : ""} onClick={() => setTransfer({ ...transfer, day: i })}>{dayName(i)}</button>)}</div>
+              <div className="tvTfRow"><span>{tx.time}</span><button type="button" aria-label="−" onClick={() => setTransfer({ ...transfer, time: shiftTime(transfer.time, -15) })}>−</button><b className="tvTfValue">{transfer.time}</b><button type="button" aria-label="+" onClick={() => setTransfer({ ...transfer, time: shiftTime(transfer.time, 15) })}>+</button>
+                <span className="tvTfGap">{tx.people}</span><button type="button" aria-label="−" disabled={transfer.people <= 1} onClick={() => setTransfer({ ...transfer, people: transfer.people - 1 })}>−</button><b className="tvTfValue">{transfer.people}</b><button type="button" aria-label="+" disabled={transfer.people >= 12} onClick={() => setTransfer({ ...transfer, people: transfer.people + 1 })}>+</button></div>
+              {transferError && <p className="tvTfError">{transferError}</p>}
+              <footer className="tvTfActions"><button type="button" className="tvTfSend" autoFocus disabled={reqState.taxi === "sending"} onClick={sendTransfer}>{tx.send}</button><button type="button" onClick={() => setTransfer(null)}>{tx.cancel}</button></footer>
+            </div>
+          </article>
+        </div>
+      ); })()}
+      {playing !== null && data.channels[playing] && <ChannelPlayer key={playing} channel={data.channels[playing]} texts={data.channelTexts} onClose={() => setPlaying(null)} />}
       {message && (
         <div className={`tvMsg theme-${message.theme}${message.urgent ? " urgent" : ""}${message.image ? " withPhoto" : ""}`} role="alertdialog" aria-labelledby="tvMsgHead">
           {(message.theme === "birthday" || message.theme === "celebration") && <Confetti />}

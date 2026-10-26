@@ -15,6 +15,7 @@ import android.view.WindowManager;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
+import android.webkit.ValueCallback;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
@@ -64,11 +65,13 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.2");
+        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.3");
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                // Stay on the hotel's own pages; anything else is ignored on the TV.
+                // Stay on the hotel's own pages; anything else is ignored on the TV. Frames inside the page (a channel's
+                // YouTube player) load normally.
+                if (!request.isForMainFrame()) return false;
                 Uri target = request.getUrl();
                 Uri home = Uri.parse(loadedUrl);
                 return target.getHost() == null || !target.getHost().equals(home.getHost());
@@ -168,12 +171,18 @@ public class MainActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
-            // Short press: leave to the TV's home screen. Held for 3 s: staff set-up screen.
+            // Short press: the page closes what is open (a channel, a form, a tab) or, if nothing is, leave to the TV's
+            // home screen. Held for 3 s: staff set-up screen.
             if (event.getAction() == KeyEvent.ACTION_UP) {
                 if (event.getEventTime() - event.getDownTime() >= SETTINGS_HOLD_MS) {
                     startActivity(new Intent(this, SetupActivity.class));
                 } else {
-                    moveTaskToBack(true);
+                    web.evaluateJavascript("(function(){try{return !!(window.coraliBack&&window.coraliBack());}catch(e){return false;}})()", new ValueCallback<String>() {
+                        @Override
+                        public void onReceiveValue(String handled) {
+                            if (!"true".equals(handled)) moveTaskToBack(true);
+                        }
+                    });
                 }
             }
             return true;

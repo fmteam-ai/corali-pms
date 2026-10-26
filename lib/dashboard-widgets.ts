@@ -1,5 +1,5 @@
 // Dashboard widgets: catalogue, default arrangement and validation of a user's saved layout (pure; unit tested).
-export const widgetIds = ["sticky_notes", "booking_search", "ai_assistant", "forecast", "arriving", "departing", "check_availability", "bookings_calendar", "latest_bookings", "rooms_today", "finance", "housekeeping", "notifications", "tv_requests"] as const;
+export const widgetIds = ["sticky_notes", "booking_search", "ai_assistant", "forecast", "arriving", "departing", "check_availability", "bookings_calendar", "latest_bookings", "rooms_today", "finance", "housekeeping", "notifications", "tv_requests", "daily_tasks"] as const;
 export type WidgetId = (typeof widgetIds)[number];
 export type WidgetSize = 1 | 2 | 3;
 export type WidgetPlacement = { id: WidgetId; size: WidgetSize; hidden: boolean };
@@ -10,6 +10,7 @@ export const defaultLayout: WidgetPlacement[] = [
   { id: "booking_search", size: 1, hidden: false },
   { id: "ai_assistant", size: 1, hidden: false },
   { id: "tv_requests", size: 1, hidden: false },
+  { id: "daily_tasks", size: 1, hidden: false },
   { id: "arriving", size: 2, hidden: false },
   { id: "forecast", size: 1, hidden: false },
   { id: "departing", size: 2, hidden: false },
@@ -22,7 +23,7 @@ export const defaultLayout: WidgetPlacement[] = [
   { id: "notifications", size: 1, hidden: false },
 ];
 
-const insertAfter: Partial<Record<WidgetId, WidgetId>> = { ai_assistant: "booking_search", tv_requests: "ai_assistant" };
+const insertAfter: Partial<Record<WidgetId, WidgetId>> = { ai_assistant: "booking_search", tv_requests: "ai_assistant", daily_tasks: "tv_requests" };
 
 /** Keep known widgets once each, in the saved order; widgets added in later releases are appended visible. */
 export function normalizeLayout(raw: unknown): WidgetPlacement[] {

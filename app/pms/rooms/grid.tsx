@@ -14,7 +14,7 @@ const CELL = 46;
 const euro = (cents: number) => `€${(cents / 100).toFixed(2)}`;
 const HkDot = ({ state }: { state: HousekeepingState }) => <i className="hkDot" style={{ background: housekeepingColors[state] }} aria-hidden="true" />;
 
-export function RoomGrid({ lang, start, today, days, showCancelled, canCreate, canEdit, canResolve = false, canReport = false, rooms, initialBookings, holds }: { lang: PmsLang; start: string; today: string; days: number; showCancelled: boolean; canCreate: boolean; canEdit: boolean; canResolve?: boolean; canReport?: boolean; rooms: Room[]; initialBookings: Booking[]; holds: Hold[] }) {
+export function RoomGrid({ lang, start, today, days, showCancelled, canCreate, canEdit, canResolve = false, canReport = false, rooms, initialBookings, holds, linen = {} }: { lang: PmsLang; start: string; today: string; days: number; showCancelled: boolean; canCreate: boolean; canEdit: boolean; canResolve?: boolean; canReport?: boolean; rooms: Room[]; initialBookings: Booking[]; holds: Hold[]; linen?: Record<number, string[]> }) {
   const router = useRouter();
   const t = pmsT(lang);
   const locale = pmsLocale(lang);
@@ -106,6 +106,7 @@ export function RoomGrid({ lang, start, today, days, showCancelled, canCreate, c
             <div className="tapeRow" key={room.id}>
               <b>
                 <span title={hkLabel(hk)} role="img" aria-label={hkLabel(hk)}><HkDot state={hk} /></span> {room.code}
+                {(linen[room.id] ?? []).map((s) => <a key={s} href="/pms/housekeeping" className={`linenChip ${s}`} title={t(s === "sheets" ? "hks.sheets" : "hks.towels")}>{s === "sheets" ? "🛏️" : "🛁"}<span>{t(s === "sheets" ? "hks.sheetsShort" : "hks.towelsShort")}</span></a>)}
                 {room.top_notice && (
                   <span className="defectWrap">
                     <button type="button" className={`defectBadge sev-${room.top_notice.severity}`} onClick={() => setNoticeRoom(room)} aria-label={t("mnt.badge", { n: room.open_notices ?? 1, severity: t(`mnt.sev.${room.top_notice.severity}` as PmsKey) })}>

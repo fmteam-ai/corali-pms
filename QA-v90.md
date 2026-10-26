@@ -1,6 +1,18 @@
-# Hotel Corali PMS v89 — release verification
+# Hotel Corali PMS v90 — release verification
 
 ## Scope in this package
+
+### New in v90
+- TV transfer: the "Transfer / taxi" request opens a form on the TV — destination (Port / Airport / Other: reception calls), day (today … check-out day, max 14), time (±15 min, at least 15 min ahead, Athens time), people (from the booking, 1–12). Stored in tv_requests.details_json; the PMS notification, Requests from TV page and dashboard widget show "→ Αεροδρόμιο · Τρί 27/10 09:30 · 1 άτομο". Server-side validation (lib/tv-requests-core.ts transferProblem).
+- TV channels: PMS → Corali TV → "Κανάλια TV" (name, https stream link, logo, category; max 40). YouTube live links (watch / youtu.be / live / channel/…/live), HLS .m3u8 (hls.js, loaded only when played) or a video file. TV: "Κανάλια TV" tab, full-screen player, ▲▼ / CH± switch channel, BACK closes. No channels are preset: BBC World News / CNN International have no free stream (satellite or licensed IPTV) — the hotel adds only streams it may show.
+- Corali TV app 1.3 (versionCode 4, same signing key): BACK asks the page first (closes the player / form / tab), then goes to the TV home; frames inside the page (YouTube) may load.
+- Housekeeping: "Σεντόνια & πετσέτες σήμερα" — every N nights for sheets / towels (0 = on request; never on arrival or departure day), reminder hour; table of rooms in stay with today's changes, ✓ Done / Undo, next change dates, DND. Daily reminder notification ("🛏️ Σήμερα · Αλλαγή σεντονιών: 101 …") sent once from the reminder hour, when the PMS loads notifications (no extra cron). Tables housekeeping_service_settings, housekeeping_service_done.
+- Room plan: a blinking "Σεντόνια" / "Πετσέτες" chip next to a room whose change is due today and not yet done (links to Housekeeping; no blinking with reduced motion). These scheduled changes are staff-only — nothing about them is shown on the TV.
+- Dashboard widget "Εργασίες ημέρας": today's sheets / towels changes with ✓ (done / undo, progress d/n) and open cleaning tasks (room, type, status); refreshes every minute and on new notifications.
+- ESLint ignores .claude/** (Claude Code skills / agents in the repository are not part of the PMS).
+- PMS light / dark theme: moon / sun button in the top bar (cookie corali_pms_theme, rendered by the layout — no flash). app/pms/pms-dark.css is generated from the light styles by scripts/generate-pms-dark.mjs (rerun after style changes); tokens and hand-made tweaks in app/pms/pms-dark-base.css.
+- Verified: TV transfer sent with the remote keys → notification and stored details; past time refused; channels tab, player, ▲▼ and BACK (window.coraliBack); PMS channel list saved with invalid links dropped; housekeeping list, done/undo and a single reminder; all 39 PMS pages captured in dark mode and checked. YouTube / external streams are blocked in the test environment, so playback itself was not seen.
+- Tests: 201 pass.
 
 ### New in v89 — min stay & stop sell to Channex
 - Stop sell in the PMS: Prices → Booking restrictions → "Κλειστό για πωλήσεις (stop sell)" (booking_restrictions.stop_sell). The booking engine hides any stay with a night in the period; the availability explainer names the restriction.

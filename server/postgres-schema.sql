@@ -1458,3 +1458,26 @@ CREATE TABLE IF NOT EXISTS channel_restriction_state (
  values_json TEXT NOT NULL,
  PRIMARY KEY (owner_id, rate_plan_id, date)
 );
+
+-- v90: transfer requests from the TV carry destination / day / time / people; TV channels live in tv_settings.
+ALTER TABLE tv_requests ADD COLUMN IF NOT EXISTS details_json TEXT;
+
+-- v90: housekeeping linen & towel changes during a stay (every N nights) with a daily reminder, and what was done.
+CREATE TABLE IF NOT EXISTS housekeeping_service_settings (
+ owner_id TEXT PRIMARY KEY,
+ sheets_every BIGINT NOT NULL DEFAULT 3,
+ towels_every BIGINT NOT NULL DEFAULT 2,
+ reminder_hour BIGINT NOT NULL DEFAULT 9,
+ last_reminder_date TEXT,
+ updated_at BIGINT NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS housekeeping_service_done (
+ owner_id TEXT NOT NULL,
+ booking_id BIGINT NOT NULL,
+ service TEXT NOT NULL,
+ date TEXT NOT NULL,
+ room_id BIGINT,
+ done_by BIGINT,
+ done_at BIGINT NOT NULL,
+ PRIMARY KEY (owner_id, booking_id, service, date)
+);

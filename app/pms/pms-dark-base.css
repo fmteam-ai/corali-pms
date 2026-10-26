@@ -1,0 +1,28 @@
+/* PMS dark theme: colour tokens and hand-made adjustments. The bulk (every light rule with colours) is generated into
+   pms-dark.css by scripts/generate-pms-dark.mjs. The theme follows the toggle in the top bar (cookie corali_pms_theme). */
+.pms[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0f171b;--surface:#16222a;--surface-2:#1c2b34;--border:#2a3a44;--border-strong:#3a4c57;
+  --text:#e3ecef;--muted:#9fb2ba;--primary:#3d8fa1;--primary-hover:#4aa1b4;--primary-soft:#1d3640;
+  --gold:#e5ad4c;--gold-soft:#3a2f1a;--coral:#e07a62;--success:#4cc08b;--success-soft:#173226;--danger:#ef6f63;--danger-soft:#3a1d1b;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4);--shadow:0 6px 20px rgba(0,0,0,.45);
+  background:var(--bg);color:var(--text);
+}
+body:has(.pms[data-theme="dark"]){background:#0f171b}
+.pms[data-theme="dark"] .pmsTopbar{background:#121d23;border-color:var(--border)}
+/* The full-colour logo has navy lettering: keep it on a light pill. */
+.pms[data-theme="dark"] .pmsLogoPanel{background:#fff;border-radius:10px;padding:4px 8px !important}
+.pms[data-theme="dark"] .pmsNav{background:linear-gradient(180deg,#132a31,#0f2329)}
+.pms[data-theme="dark"] :is(input,select,textarea){background:var(--surface-2);color:var(--text);border-color:var(--border-strong)}
+.pms[data-theme="dark"] :is(input,textarea)::placeholder{color:#7f939b}
+.pms[data-theme="dark"] option{background:var(--surface);color:var(--text)}
+.pms[data-theme="dark"] :is(.primaryAction,.adminForm button,.tableWrap button:not(.linkButton):not(.secondaryButton):not(.danger)){background:#2b6b7a;color:#fff}
+.pms[data-theme="dark"] :is(.primaryAction,.adminForm button):hover{background:#357f90}
+.pms[data-theme="dark"] .secondaryButton,.pms[data-theme="dark"] .secondaryLink{background:var(--surface-2);color:var(--text);border-color:var(--border-strong)}
+.pms[data-theme="dark"] a{color:#86cad9}
+.pms[data-theme="dark"] .pageTitle h1,.pms[data-theme="dark"] h1,.pms[data-theme="dark"] h2,.pms[data-theme="dark"] h3{color:var(--text)}
+.pms[data-theme="dark"] .dashHero{box-shadow:none}
+.pms[data-theme="dark"] img:not(.pmsLogoPanel img){filter:brightness(.92)}
+/* Theme switch in the top bar */
+.themeToggle{width:42px;height:42px;border-radius:50%;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text);display:inline-grid;place-items:center;font-size:18px;cursor:pointer}
+.themeToggle:hover{border-color:var(--primary)}

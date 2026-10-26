@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
-import { pmsLocale, pmsT, type PmsLang } from "@/lib/pms-i18n";
+import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 import type { TvScreenRow } from "@/lib/tv";
 import { tvLanguages, type TvLanguage, type TvSettings } from "@/lib/tv-core";
 import { defaultInfoSections, MAX_INFO_SECTIONS, type TvInfoSection } from "@/lib/tv-info";
+import { channelSource, MAX_TV_CHANNELS, tvChannelCategories, type TvChannel } from "@/lib/tv-channels-core";
 import type { PowerSettings, RoomPowerState } from "@/lib/tv-power";
 
 const langNames: Record<TvLanguage, string> = { el: "Ελληνικά", en: "English", fr: "Français", de: "Deutsch", it: "Italiano", es: "Español" };
@@ -26,6 +27,9 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
   const set = (patch: Partial<TvSettings>) => setSettings((s) => ({ ...s, ...patch }));
   const setInfo = (info: TvInfoSection[]) => set({ info });
   const editInfo = (i: number, patch: Partial<TvInfoSection>) => setInfo(settings.info.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const setChannels = (channels: TvChannel[]) => set({ channels });
+  const editChannel = (i: number, patch: Partial<TvChannel>) => setChannels(settings.channels.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const moveChannel = (i: number, d: -1 | 1) => { const next = [...settings.channels]; const [x] = next.splice(i, 1); next.splice(i + d, 0, x); setChannels(next); };
   const moveInfo = (i: number, d: -1 | 1) => { const next = [...settings.info]; const [x] = next.splice(i, 1); next.splice(i + d, 0, x); setInfo(next); };
 
   async function post(body: Record<string, unknown>, done: string) {
@@ -112,6 +116,22 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
             <button type="button" className="secondaryButton" onClick={() => confirm(t("tv.infoResetConfirm")) && setInfo(defaultInfoSections.map((x) => ({ ...x, title: { ...x.title }, body: { ...x.body } })))}>{t("tv.infoReset")}</button>
           </div>
         )}
+        <h3>{t("tv.channelsTitle")}</h3>
+        <small>{t("tv.channelsHelp")}</small>
+        <div className="tvChannelEdit">
+          {settings.channels.map((c, i) => (
+            <div className="tvChannelRow" key={i}>
+              <input aria-label={t("tv.channelName")} placeholder={t("tv.channelName")} value={c.name} maxLength={60} disabled={!canEdit} onChange={(e) => editChannel(i, { name: e.target.value })} />
+              <input aria-label={t("tv.channelUrl")} placeholder={t("tv.channelUrl")} type="url" value={c.url} maxLength={600} disabled={!canEdit} onChange={(e) => editChannel(i, { url: e.target.value })} />
+              <input aria-label={t("tv.channelLogo")} placeholder={t("tv.channelLogo")} type="url" value={c.logo} maxLength={500} disabled={!canEdit} onChange={(e) => editChannel(i, { logo: e.target.value })} />
+              <select aria-label={t("tv.channelCategory")} value={c.category} disabled={!canEdit} onChange={(e) => editChannel(i, { category: e.target.value as TvChannel["category"] })}>{tvChannelCategories.map((k) => <option key={k} value={k}>{t(`tv.cat.${k}` as PmsKey)}</option>)}</select>
+              {canEdit && <span className="tvInfoActions"><button type="button" className="secondaryButton" disabled={i === 0} onClick={() => moveChannel(i, -1)}>↑</button><button type="button" className="secondaryButton" disabled={i === settings.channels.length - 1} onClick={() => moveChannel(i, 1)}>↓</button><button type="button" className="secondaryButton" onClick={() => setChannels(settings.channels.filter((_, j) => j !== i))}>✕</button></span>}
+              {c.url && !channelSource(c.url) && <small className="error">{t("tv.channelInvalid")}</small>}
+              {c.url && channelSource(c.url) && <small className="muted">{channelSource(c.url)!.kind === "youtube" ? "YouTube" : channelSource(c.url)!.kind === "hls" ? "HLS (.m3u8)" : "Video"}</small>}
+            </div>
+          ))}
+          {canEdit && <button type="button" className="secondaryButton" disabled={settings.channels.length >= MAX_TV_CHANNELS} onClick={() => setChannels([...settings.channels, { name: "", url: "", logo: "", category: "news" }])}>+ {t("tv.channelAdd")}</button>}
+        </div>
         {canEdit && <button type="button" disabled={busy} onClick={() => post({ action: "settings", settings }, t("tv.saved"))}>{t("tv.save")}</button>}
       </div>
 

@@ -1,0 +1,100 @@
+// Generates app/pms/pms-dark.css: the PMS dark theme. It reads the light styles (app/styles.css, app/pms/pms-theme.css)
+// and, for every rule with colours, writes the same rule under .pms[data-theme="dark"] with light backgrounds turned
+// dark, dark text turned light and light borders darkened; status colours (mid lightness) stay as they are.
+// Hand-written dark tweaks live in app/pms/pms-dark-base.css. Run after changing the PMS styles:
+//   node scripts/generate-pms-dark.mjs
+import { readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+let postcss;
+try { postcss = require("postcss"); } catch { postcss = require(new URL("../node_modules/.pnpm/node_modules/postcss", import.meta.url).pathname); }
+
+const ROOT = '.pms[data-theme="dark"]';
+const sources = ["app/styles.css", "app/pms/pms-theme.css"];
+
+const named = { white: "#ffffff", black: "#000000" };
+function parse(c) {
+  c = named[c.toLowerCase()] ?? c;
+  let m = c.match(/^#([0-9a-f]{3,8})$/i);
+  if (m) {
+    let h = m[1];
+    if (h.length <= 4) h = [...h].map((x) => x + x).join("");
+    return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16), a: h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1 };
+  }
+  m = c.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+%?))?\s*\)$/i);
+  if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : m[4].endsWith("%") ? parseFloat(m[4]) / 100 : +m[4] };
+  return null;
+}
+function toHsl({ r, g, b }) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+  if (max === min) return { h: 0, s: 0, l };
+  const d = max - min, s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return { h: h * 60, s, l };
+}
+const fmt = ({ h, s, l }, a) => `hsl(${h.toFixed(0)} ${(s * 100).toFixed(0)}% ${(l * 100).toFixed(0)}%${a < 1 ? ` / ${+a.toFixed(3)}` : ""})`;
+
+/** Dark equivalent of one colour for a kind of property, or null to keep it. */
+function darken(c, kind) {
+  const p = parse(c);
+  if (!p) return null;
+  const hsl = toHsl(p);
+  if (kind === "bg") {
+    // Translucent overlays (hover tints on the dark menu, glass panels) keep working on dark backgrounds.
+    if (p.a < 0.9) return null;
+    if (hsl.l >= 0.8) {
+      // White / near-white surfaces → dark slate; light tints keep a hint of their hue.
+      const tint = hsl.s > 0.25 && hsl.l < 0.985;
+      return fmt({ h: tint ? hsl.h : 200, s: tint ? Math.min(0.45, hsl.s * 0.5) : 0.18, l: tint ? 0.2 : 0.09 + (1 - hsl.l) * 0.8 }, p.a);
+    }
+    return null;
+  }
+  if (kind === "text") {
+    if (hsl.l <= 0.42) return fmt({ h: hsl.h, s: hsl.s > 0.3 ? Math.min(0.75, hsl.s) : hsl.s * 0.4, l: hsl.s > 0.3 ? 0.72 : 0.9 - hsl.l * 0.35 }, p.a);
+    return null;
+  }
+  if (kind === "border") {
+    if (hsl.l >= 0.72) return fmt({ h: hsl.s > 0.25 ? hsl.h : 200, s: Math.min(0.35, hsl.s), l: 0.24 + (1 - hsl.l) * 0.3 }, p.a);
+    return null;
+  }
+  return null;
+}
+const kindOf = (prop) => (/^(background|background-color|background-image|fill)$/.test(prop) ? "bg" : /^(color|caret-color|-webkit-text-fill-color)$/.test(prop) ? "text" : /^(border|border-(top|right|bottom|left)(-color)?|border-color|outline(-color)?)$/.test(prop) ? "border" : null);
+const colorRe = /#[0-9a-f]{3,8}\b|rgba?\([^)]*\)|\b(?:white|black)\b/gi;
+
+function scope(selector) {
+  return selector.split(",").map((s) => {
+    s = s.trim();
+    if (/^(html|body|:root)\b/.test(s)) return null;
+    if (/^\.pms\b(?![-\w])/.test(s)) return s.replace(/^\.pms\b/, ROOT);
+    if (/^\.pmsTop\b/.test(s)) return s.replace(/^\.pmsTop\b/, '.pmsTop[data-theme="dark"]');
+    if (/^\.loginPage\b/.test(s)) return null;
+    return `${ROOT} ${s}`;
+  }).filter(Boolean).join(",\n");
+}
+
+const out = [];
+for (const file of sources) {
+  const root = postcss.parse(readFileSync(file, "utf8"), { from: file });
+  root.walkRules((rule) => {
+    if (rule.parent.type === "atrule" && /keyframes/.test(rule.parent.name)) return;
+    const decls = [];
+    rule.walkDecls((d) => {
+      const kind = kindOf(d.prop);
+      if (!kind || /var\(/.test(d.value)) return;
+      let changed = false;
+      const value = d.value.replace(colorRe, (c) => { const v = darken(c, kind); if (v) { changed = true; return v; } return c; });
+      if (changed) decls.push(`${d.prop}:${value}${d.important ? " !important" : ""}`);
+    });
+    if (!decls.length) return;
+    const sel = scope(rule.selector);
+    if (!sel) return;
+    let css = `${sel}{${decls.join(";")}}`;
+    for (let p = rule.parent; p && p.type === "atrule"; p = p.parent) css = `@${p.name} ${p.params}{${css}}`;
+    out.push(css);
+  });
+}
+writeFileSync("app/pms/pms-dark.css", `/* Generated by scripts/generate-pms-dark.mjs from the PMS light styles — do not edit by hand. */\n${out.join("\n")}\n`);
+console.log(`pms-dark.css: ${out.length} rules`);

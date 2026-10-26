@@ -224,3 +224,38 @@
 .tvReqDnd.on .tvSwitch i{background:rgba(255,255,255,.45)}
 .tvReqDnd.on .tvSwitch i::after{left:1.6vw}
 @media (max-width:800px){.tvReqGrid{grid-template-columns:1fr 1fr}.tvReqBtn{min-height:0;padding:14px}.tvReqBtn b{font-size:16px}.tvReqBtn small,.tvReqIntro,.tvSwitch{font-size:13px}.tvReqIcon{width:36px;height:36px;font-size:18px}.tvReqDnd{grid-column:span 2;grid-row:auto}.tvSwitch i{width:36px;height:20px}.tvSwitch i::after{width:14px;height:14px;top:3px;left:3px}.tvReqDnd.on .tvSwitch i::after{left:19px}.tvDndChip{font-size:13px !important;padding:4px 12px}}
+
+/* Transfer form (Requests → Transfer) */
+.tvTransfer .tvMsgCard{width:min(68vw,1300px)}
+.tvTransfer .tvMsgBody{display:grid;gap:1.1vw}
+.tvTfRow{display:flex;flex-wrap:wrap;align-items:center;gap:.6vw}
+.tvTfRow>span{min-width:9vw;font-size:1.1vw;color:#5b6b70;font-weight:600}
+.tvTfRow .tvTfGap{min-width:0;margin-left:2vw}
+.tvTransfer button{font:inherit;font-size:1.15vw;font-weight:700;color:var(--ink);background:rgba(15,47,55,.06);border:1px solid rgba(15,47,55,.18);border-radius:.7vw;padding:.6vw 1.2vw;cursor:pointer}
+.tvTransfer button.on{background:var(--gold);color:var(--ink);border-color:var(--gold)}
+.tvTransfer button:focus-visible,.tvTransfer button:hover{outline:.22vw solid var(--ink);outline-offset:.12vw}
+.tvTransfer button:disabled{opacity:.4}
+.tvTfValue{min-width:5.5vw;text-align:center;font-size:1.8vw;font-variant-numeric:tabular-nums}
+.tvTfHint{margin:0;font-size:1vw;color:#5b6b70}
+.tvTfError{margin:0;font-size:1.05vw;color:#b03a2e;font-weight:700}
+.tvTfActions{display:flex;gap:.8vw;justify-content:flex-end}
+.tvTransfer .tvTfSend{background:var(--gold);color:var(--ink);border-color:var(--gold);padding:.8vw 2vw}
+
+/* TV channels */
+.tvChannels{align-content:start}
+.tvChannelGrid{display:grid;grid-template-columns:repeat(6,1fr);gap:.9vw;align-content:start}
+.tvChannel{font:inherit;color:#fff;cursor:pointer;background:var(--glass);border:1px solid var(--line);border-radius:1vw;padding:1vw;display:grid;justify-items:center;gap:.5vw;text-align:center;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.tvChannelLogo{width:100%;height:6vw;display:grid;place-items:center;background:rgba(255,255,255,.92);border-radius:.6vw;color:var(--ink);font-size:2.6vw;overflow:hidden}
+.tvChannelLogo img{max-width:85%;max-height:80%;object-fit:contain}
+.tvChannel b{font-size:1.1vw}
+.tvChannel small{font-size:.85vw;color:var(--muted)}
+.tvChannel:focus-visible,.tvChannel:hover{outline:none;border-color:var(--gold);box-shadow:0 0 0 .22vw var(--gold);transform:translateY(-.2vw)}
+.tvPlayer{position:fixed;inset:0;z-index:60;background:#000}
+.tvPlayer iframe,.tvPlayer video{position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none;background:#000}
+.tvPlayerError{position:absolute;inset:0;display:grid;place-items:center;margin:0;font-size:1.6vw;color:#fff}
+.tvPlayerBar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:1.5vw;padding:1.2vw 2vw;background:linear-gradient(transparent,rgba(0,0,0,.8));color:#fff;opacity:0;transition:opacity .4s}
+.tvPlayerBar.show{opacity:1}
+.tvPlayerBar b{font-size:1.6vw}
+.tvPlayerBar span{flex:1;font-size:1vw;color:rgba(255,255,255,.8)}
+.tvPlayerBar button{font:inherit;font-size:1vw;color:#fff;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);border-radius:.5vw;padding:.4vw 1vw}
+@media (max-width:800px){.tvChannelGrid{grid-template-columns:repeat(2,1fr)}.tvChannelLogo{height:60px;font-size:28px}.tvChannel b{font-size:15px}.tvChannel small{font-size:12px}.tvTransfer .tvMsgCard{max-width:none}.tvTransfer button{font-size:14px;padding:8px 12px}.tvTfRow>span{min-width:90px;font-size:13px}.tvTfValue{font-size:20px;min-width:56px}.tvTfHint,.tvTfError{font-size:13px}.tvPlayerBar b{font-size:16px}.tvPlayerBar span,.tvPlayerBar button{font-size:12px}}
