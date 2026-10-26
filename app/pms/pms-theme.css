@@ -377,3 +377,10 @@ body:has(.pms){background:#f2f4f6}
 .dtWidget li button[aria-pressed="true"]{background:#1d8a5a;border-color:#1d8a5a;color:#fff}
 .dtStatus{width:10px;height:10px;border-radius:50%;background:#e08a2c}
 .dtStatus.st-in_progress{background:#f2b84b}.dtStatus.st-cleaned,.dtStatus.st-repaired{background:#2f7fd1}.dtStatus.st-out_of_order{background:#333}
+/* Corali TV → apps */
+.pms .tvAppsEdit{display:flex;flex-wrap:wrap;gap:8px 18px;margin:8px 0 10px}
+.pms .tvAppCheck{display:inline-flex;align-items:center;gap:8px;font-weight:600}
+.pms .tvAppDot{width:14px;height:14px;border-radius:4px;display:inline-block}
+.pms .tvAppRow{grid-template-columns:minmax(140px,1fr) minmax(240px,2.4fr) 56px auto}
+.pms .tvAppRow input[type=color]{padding:2px;height:38px;width:56px;border-radius:8px;cursor:pointer}
+.pms .tvAppRow input[type=color]{padding:2px;height:38px;width:56px;border-radius:8px;cursor:pointer}

@@ -38,7 +38,7 @@ async function handlePATCH(q: Request, { params }: { params: Promise<{ id: strin
       if (!validHousekeepingTransition(r.status, x.action)) throw Error("INVALID_TRANSITION");
       if ((x.action === "report_issue" || x.action === "reject" || x.action === "repair_done") && !x.notes) throw Error("DESCRIPTION_REQUIRED");
       if (review && Number(r.cleaned_by_staff_id) === u.id) throw Error("SECOND_REVIEW_REQUIRED");
-      if (x.action === "complete" && !validChecklist(x.checklist)) throw Error("CHECKLIST_INCOMPLETE");
+      if (x.action === "complete" && !validChecklist(x.checklist, r.task_type)) throw Error("CHECKLIST_INCOMPLETE");
 
       const now = Date.now();
       const severity = severityFrom(x);

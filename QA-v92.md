@@ -1,6 +1,12 @@
-# Hotel Corali PMS v91 — release verification
+# Hotel Corali PMS v92 — release verification
 
 ## Scope in this package
+
+### New in v92
+- Corali TV "Εφαρμογές / Apps" tab: PMS → Corali TV → Apps — tick Netflix, YouTube, Prime Video, Disney+, Apple TV, Spotify (known Android TV package names, lib/tv-apps-core.ts) or add another app by Android package name, name and colour (max 16). The TV shows the tab only inside the Corali TV app 1.4+ and only apps installed on that TV; OK opens the app. Not shown in a plain browser / on phones.
+- Corali TV app 1.4 (versionCode 5, same signing key): window.CoraliTVApp bridge — installed(packages) / open(package); <queries> for launcher apps (Android 11+). The bridge only launches apps with a launcher entry; it cannot read or change other apps' data (so signing guests out is a housekeeping step).
+- Housekeeping: departure cleans have a 13th checklist step "Αποσύνδεση εφαρμογών TV (Netflix, YouTube κ.λπ.)"; completing a departure clean without it is refused (CHECKLIST_INCOMPLETE). Stay-over and other cleans keep the 12 points.
+- Verified: TV with a simulated app bridge (Netflix, YouTube, Disney+ installed) showed only those three, OK opened YouTube's package; plain browser had no Apps tab; PMS apps editor; departure clean refused with 12 points and completed with 13 (test data restored). Tests: 203 pass. Not yet tried on a real Android TV.
 
 ### New in v91
 - PMS → New reservation: phone and country as on the guest booking form — phone country selector (flag, +prefix, country name) and local number, saved in international form (lib/dial-codes internationalPhone, e.g. +39 0612345678); country chosen from the full list in the staff language (ISO code stored, as from the booking engine); choosing a country presets the phone prefix. Lists are built in the browser (no hydration mismatch from server/browser country names).

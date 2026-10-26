@@ -21,5 +21,5 @@ CORALI_TV_KEYSTORE=/path/to/corali-tv.jks CORALI_TV_KEYSTORE_PASS=… \
 scripts/build-tv-app.sh
 ```
 
-Raise `android:versionCode` in `AndroidManifest.xml` for every new build. Updates must be signed with the same
+Current: 1.4 (versionCode 5) — Apps tab bridge (window.CoraliTVApp). Raise `android:versionCode` in `AndroidManifest.xml` for every new build. Updates must be signed with the same
 keystore (kept by the hotel, never in this repository), otherwise Android will not install them over the old app.

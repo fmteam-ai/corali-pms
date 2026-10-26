@@ -1,5 +1,6 @@
 // Corali TV: the welcome screen shown on each room's TV (Google TV stick + kiosk browser) and on guests' phones.
 // Pure rules (unit tested): which stay a room shows right now, the Wi-Fi QR payload, settings and screen texts.
+import { normalizeTvApps, type TvApp } from "./tv-apps-core.ts";
 import { normalizeTvChannels, type TvChannel } from "./tv-channels-core.ts";
 import { normalizeInfoSections, type TvInfoSection } from "./tv-info.ts";
 
@@ -21,6 +22,7 @@ export type TvSettings = {
   showExtras: boolean;
   info: TvInfoSection[];
   channels: TvChannel[];
+  apps: TvApp[];
 };
 
 export const defaultTvSettings: TvSettings = {
@@ -51,6 +53,7 @@ export const defaultTvSettings: TvSettings = {
   showExtras: true,
   info: normalizeInfoSections(undefined),
   channels: [],
+  apps: [],
 };
 
 const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -97,6 +100,7 @@ export function normalizeTvSettings(raw: unknown): TvSettings {
     showExtras: r.showExtras !== false,
     info: normalizeInfoSections(r.info),
     channels: normalizeTvChannels(r.channels),
+    apps: normalizeTvApps(r.apps),
   };
 }
 

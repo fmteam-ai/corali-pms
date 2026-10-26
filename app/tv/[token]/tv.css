@@ -264,3 +264,11 @@
 @media (max-width:800px){.tvProblemGrid{grid-template-columns:1fr 1fr}.tvProblemGrid button{font-size:14px;padding:10px}}
 .tvMsg .tvMsgBody p.tvTfHint,.tvMsg .tvMsgBody p.tvTfError{font-family:inherit;font-size:1.15vw;line-height:1.4;margin:0}
 @media (max-width:800px){.tvMsg .tvMsgBody p.tvTfHint,.tvMsg .tvMsgBody p.tvTfError{font-size:13px}}
+/* Streaming apps (opened by the Corali TV app) */
+.tvApps{align-content:start;gap:1vw}
+.tvAppGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:1vw}
+.tvApp{font:inherit;color:#fff;cursor:pointer;border:2px solid rgba(255,255,255,.18);border-radius:1vw;height:9vw;display:grid;place-items:center;box-shadow:0 .5vw 1.5vw rgba(0,0,0,.35)}
+.tvApp b{font-size:1.9vw;font-weight:800;letter-spacing:.01em;text-shadow:0 .1vw .4vw rgba(0,0,0,.35)}
+.tvApp:focus-visible,.tvApp:hover{outline:none;border-color:#fff;box-shadow:0 0 0 .25vw var(--gold);transform:translateY(-.25vw)}
+.tvAppError{color:#ffb4a8}
+@media (max-width:800px){.tvAppGrid{grid-template-columns:1fr 1fr}.tvApp{height:80px}.tvApp b{font-size:18px}}

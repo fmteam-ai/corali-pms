@@ -5,6 +5,7 @@ import type { TvScreenRow } from "@/lib/tv";
 import { tvLanguages, type TvLanguage, type TvSettings } from "@/lib/tv-core";
 import { defaultInfoSections, MAX_INFO_SECTIONS, type TvInfoSection } from "@/lib/tv-info";
 import { channelSource, MAX_TV_CHANNELS, tvChannelCategories, type TvChannel } from "@/lib/tv-channels-core";
+import { MAX_TV_APPS, tvAppCatalog, type TvApp } from "@/lib/tv-apps-core";
 import type { PowerSettings, RoomPowerState } from "@/lib/tv-power";
 
 const langNames: Record<TvLanguage, string> = { el: "Ελληνικά", en: "English", fr: "Français", de: "Deutsch", it: "Italiano", es: "Español" };
@@ -30,6 +31,11 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
   const setChannels = (channels: TvChannel[]) => set({ channels });
   const editChannel = (i: number, patch: Partial<TvChannel>) => setChannels(settings.channels.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const moveChannel = (i: number, d: -1 | 1) => { const next = [...settings.channels]; const [x] = next.splice(i, 1); next.splice(i + d, 0, x); setChannels(next); };
+  const setApps = (apps: TvApp[]) => set({ apps });
+  const hasApp = (key: string) => settings.apps.some((a) => a.key === key);
+  const toggleApp = (app: TvApp, on: boolean) => setApps(on ? [...settings.apps, { ...app }] : settings.apps.filter((a) => a.key !== app.key));
+  const customApps = settings.apps.map((a, i) => ({ a, i })).filter(({ a }) => !tvAppCatalog.some((c) => c.key === a.key));
+  const editApp = (i: number, patch: Partial<TvApp>) => setApps(settings.apps.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const moveInfo = (i: number, d: -1 | 1) => { const next = [...settings.info]; const [x] = next.splice(i, 1); next.splice(i + d, 0, x); setInfo(next); };
 
   async function post(body: Record<string, unknown>, done: string) {
@@ -116,6 +122,20 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
             <button type="button" className="secondaryButton" onClick={() => confirm(t("tv.infoResetConfirm")) && setInfo(defaultInfoSections.map((x) => ({ ...x, title: { ...x.title }, body: { ...x.body } })))}>{t("tv.infoReset")}</button>
           </div>
         )}
+        <h3>{t("tv.appsTitle")}</h3>
+        <small>{t("tv.appsHelp")}</small>
+        <div className="tvAppsEdit">
+          {tvAppCatalog.map((app) => <label key={app.key} className="inline tvAppCheck"><input type="checkbox" checked={hasApp(app.key)} disabled={!canEdit || (!hasApp(app.key) && settings.apps.length >= MAX_TV_APPS)} onChange={(e) => toggleApp(app, e.target.checked)} /><span className="tvAppDot" style={{ background: app.color }} />{app.name}</label>)}
+        </div>
+        {customApps.map(({ a, i }) => (
+          <div className="tvChannelRow tvAppRow" key={i}>
+            <input aria-label={t("tv.appName")} placeholder={t("tv.appName")} value={a.name} maxLength={40} disabled={!canEdit} onChange={(e) => editApp(i, { name: e.target.value })} />
+            <input aria-label={t("tv.appPackage")} placeholder={t("tv.appPackage")} value={a.packages.join(", ")} maxLength={300} disabled={!canEdit} onChange={(e) => editApp(i, { packages: e.target.value.split(/[\s,]+/).filter(Boolean), key: `custom:${e.target.value.split(/[\s,]+/)[0] ?? ""}` })} />
+            <input aria-label="Color" type="color" value={a.color} disabled={!canEdit} onChange={(e) => editApp(i, { color: e.target.value })} />
+            {canEdit && <span className="tvInfoActions"><button type="button" className="secondaryButton" onClick={() => setApps(settings.apps.filter((_, j) => j !== i))}>✕</button></span>}
+          </div>
+        ))}
+        {canEdit && <button type="button" className="secondaryButton" disabled={settings.apps.length >= MAX_TV_APPS} onClick={() => setApps([...settings.apps, { key: `custom:new${Date.now()}`, name: "", packages: [], color: "#173e47" }])}>+ {t("tv.appAdd")} ({t("tv.appCustom")})</button>}
         <h3>{t("tv.channelsTitle")}</h3>
         <small>{t("tv.channelsHelp")}</small>
         <div className="tvChannelEdit">

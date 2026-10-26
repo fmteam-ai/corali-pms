@@ -15,7 +15,14 @@ export const housekeepingChecklist = [
   "wifi_guide",
   "final_inspection",
 ] as const;
-export type ChecklistKey = (typeof housekeepingChecklist)[number];
+/** Extra step on a departure clean: the next guest must not find the previous guest's streaming accounts. */
+export const departureChecklistExtra = ["tv_apps_logout"] as const;
+export type ChecklistKey = (typeof housekeepingChecklist)[number] | (typeof departureChecklistExtra)[number];
+
+/** Checklist for a task: the 12 points, plus signing out of TV apps on a departure clean. */
+export function checklistFor(taskType: string | null | undefined): readonly ChecklistKey[] {
+  return taskType === "departure_clean" ? [...housekeepingChecklist, ...departureChecklistExtra] : housekeepingChecklist;
+}
 
 export const checklistLabels: Record<"el" | "en", Record<ChecklistKey, string>> = {
   el: {
@@ -31,6 +38,7 @@ export const checklistLabels: Record<"el" | "en", Record<ChecklistKey, string>> 
     safe_box: "Χρηματοκιβώτιο",
     wifi_guide: "Wi-Fi / οδηγός QR",
     final_inspection: "Τελικός έλεγχος",
+    tv_apps_logout: "Αποσύνδεση εφαρμογών TV (Netflix, YouTube κ.λπ.)",
   },
   en: {
     bed_linens: "Bed & linens",
@@ -45,15 +53,16 @@ export const checklistLabels: Record<"el" | "en", Record<ChecklistKey, string>> 
     safe_box: "Safe box",
     wifi_guide: "Wi-Fi / QR info guide",
     final_inspection: "Final inspection",
+    tv_apps_logout: "Sign out of TV apps (Netflix, YouTube, etc.)",
   },
 };
 
-export function validChecklist(v: unknown): v is Record<ChecklistKey, true> {
-  return !!v && typeof v === "object" && !Array.isArray(v) && housekeepingChecklist.every((i) => (v as Record<string, unknown>)[i] === true);
+export function validChecklist(v: unknown, taskType?: string | null): v is Record<ChecklistKey, true> {
+  return !!v && typeof v === "object" && !Array.isArray(v) && checklistFor(taskType).every((i) => (v as Record<string, unknown>)[i] === true);
 }
 
-export function checklistProgress(v: Record<string, boolean> | undefined): number {
-  return housekeepingChecklist.filter((k) => v?.[k] === true).length;
+export function checklistProgress(v: Record<string, boolean> | undefined, taskType?: string | null): number {
+  return checklistFor(taskType).filter((k) => v?.[k] === true).length;
 }
 
 /**

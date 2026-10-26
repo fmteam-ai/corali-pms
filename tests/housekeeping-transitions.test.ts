@@ -31,7 +31,8 @@ test("severe damage needs a repair and a second sign-off to return to service", 
 
 test("the checklist has the twelve specified points in both languages", () => {
   assert.equal(housekeepingChecklist.length, 12);
-  for (const lang of ["el", "en"] as const) assert.deepEqual(Object.keys(checklistLabels[lang]), [...housekeepingChecklist]);
+  // Labels cover the 12 points plus the departure-only "sign out of TV apps" step.
+  for (const lang of ["el", "en"] as const) assert.deepEqual(Object.keys(checklistLabels[lang]), [...housekeepingChecklist, "tv_apps_logout"]);
   const all = Object.fromEntries(housekeepingChecklist.map((k) => [k, true]));
   assert.equal(validChecklist(all), true);
   assert.equal(validChecklist({ ...all, tv: false }), false);

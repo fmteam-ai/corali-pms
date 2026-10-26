@@ -65,7 +65,9 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.3");
+        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.4");
+        // Lets the page open the streaming apps installed on this TV (Apps tab).
+        web.addJavascriptInterface(new AppBridge(this), "CoraliTVApp");
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {

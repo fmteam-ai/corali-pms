@@ -11,6 +11,7 @@ import { screenMessages } from "@/lib/tv-messages";
 import { screenDnd } from "@/lib/tv-requests";
 import { defaultTransferTime, transferDays, tvProblemTexts, tvRequestTexts, tvTransferTexts } from "@/lib/tv-requests-core";
 import { channelSource, tvChannelTexts } from "@/lib/tv-channels-core";
+import { tvAppTexts } from "@/lib/tv-apps-core";
 import { beaufort, currentStay, whatsappLink, firstName, normalizeTvSettings, pickText, tvLanguage, tvTexts, weatherIcon, wifiQrPayload, type TvLanguage, type TvSettings, type TvStay } from "@/lib/tv-core";
 
 export async function loadTvSettings(ownerId: string): Promise<TvSettings> {
@@ -118,6 +119,9 @@ export async function tvScreenData(token: string, langOverride?: string | null) 
     // Live channels the hotel added (PMS → Corali TV): only the ones that can play.
     channels: settings.channels.flatMap((c) => { const source = channelSource(c.url); return source ? [{ name: c.name, logo: c.logo, category: c.category, source }] : []; }),
     channelTexts: tvChannelTexts[lang],
+    // Streaming apps the Corali TV Android app may open (shown only inside the app, only if installed).
+    apps: settings.apps.map((a) => ({ key: a.key, name: a.name, packages: a.packages, color: a.color })),
+    appTexts: tvAppTexts[lang],
     messages: await screenMessages(ownerId, Number(s.room_id), lang, token, state.mode === "stay" ? firstName(state.stay.guest_name) : null),
     info: settings.info.map((x) => ({ key: x.key, icon: x.icon, title: pickText(x.title, lang), body: fillInfo(pickText(x.body, lang), { checkIn: settings.checkInTime, checkOut: settings.checkOutTime, wifi: ssid, password }) })).filter((x) => x.title && x.body),
   };

@@ -1527,6 +1527,12 @@ const el = {
   "dt.progress": "{d}/{n} ολοκληρώθηκαν",
   "new.phoneCountry": "Κωδικός χώρας τηλεφώνου",
   "new.chooseCountry": "— Επιλέξτε χώρα —",
+  "tv.appsTitle": "Εφαρμογές (Netflix, YouTube κ.λπ.)",
+  "tv.appsHelp": "Η καρτέλα «Εφαρμογές» εμφανίζεται μόνο στην εφαρμογή Corali TV (έκδοση 1.4+) σε Android / Google TV, και μόνο για εφαρμογές εγκατεστημένες στη συγκεκριμένη τηλεόραση. Ο πελάτης συνδέεται με τον δικό του λογαριασμό· στον καθαρισμό αναχώρησης υπάρχει βήμα «Αποσύνδεση εφαρμογών TV».",
+  "tv.appCustom": "Άλλη εφαρμογή",
+  "tv.appName": "Όνομα",
+  "tv.appPackage": "Όνομα πακέτου Android (π.χ. com.example.tv)",
+  "tv.appAdd": "Προσθήκη εφαρμογής",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -3050,6 +3056,12 @@ const en: Record<PmsKey, string> = {
   "dt.progress": "{d}/{n} done",
   "new.phoneCountry": "Phone country code",
   "new.chooseCountry": "— Choose a country —",
+  "tv.appsTitle": "Apps (Netflix, YouTube, etc.)",
+  "tv.appsHelp": "The “Apps” tab shows only in the Corali TV app (version 1.4+) on Android / Google TV, and only for apps installed on that TV. Guests sign in with their own account; the departure clean has a “Sign out of TV apps” step.",
+  "tv.appCustom": "Other app",
+  "tv.appName": "Name",
+  "tv.appPackage": "Android package name (e.g. com.example.tv)",
+  "tv.appAdd": "Add app",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

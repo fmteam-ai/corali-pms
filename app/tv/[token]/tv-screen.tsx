@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { IconType } from "react-icons";
-import { FaBan, FaBath, FaBed, FaTv, FaBirthdayCake, FaCheck, FaGlassCheers, FaPhoneAlt, FaPumpSoap, FaTaxi, FaTools, FaHeart, FaLayerGroup, FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
+import { FaBan, FaBath, FaBed, FaTv, FaThLarge, FaBirthdayCake, FaCheck, FaGlassCheers, FaPhoneAlt, FaPumpSoap, FaTaxi, FaTools, FaHeart, FaLayerGroup, FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
 import { WiCloud, WiCloudy, WiDayCloudy, WiDaySunny, WiFog, WiRain, WiShowers, WiSnow, WiThunderstorm } from "react-icons/wi";
 import type { TvScreenData } from "@/lib/tv";
 import { messageSound } from "@/lib/tv-messages-core";
@@ -49,6 +49,9 @@ const Hearts = () => <div className="tvMsgDeco hearts" aria-hidden>{Array.from({
 const reqIcons: Record<TvRequestKind, IconType> = { cleaning: FaBroom, towels: FaBath, toiletries: FaPumpSoap, call_me: FaPhoneAlt, problem: FaTools, pillows: FaBed, blankets: FaLayerGroup, taxi: FaTaxi };
 type ReqState = "sending" | "sent" | "already" | "failed";
 type Transfer = { destination: "port" | "airport" | "other"; day: number; time: string; people: number };
+/** Bridge of the Corali TV Android app (1.4+): which packages are installed, and open one. Absent in a plain browser. */
+type AppBridge = { installed: (json: string) => string; open: (pkg: string) => boolean };
+const appBridge = (): AppBridge | undefined => (typeof window === "undefined" ? undefined : (window as unknown as { CoraliTVApp?: AppBridge }).CoraliTVApp);
 const shiftTime = (t: string, mins: number) => { const v = (Number(t.slice(0, 2)) * 60 + Number(t.slice(3)) + mins + 1440) % 1440; return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`; };
 
 const CardHead = ({ icon: I, title }: { icon: IconType; title: string }) => <div className="tvCardHead"><span className="tvIcon"><I aria-hidden /></span><h2>{title}</h2></div>;
@@ -106,6 +109,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   const [transferError, setTransferError] = useState("");
   const [playing, setPlaying] = useState<number | null>(null);
   const [problemOpen, setProblemOpen] = useState(false);
+  const [appError, setAppError] = useState("");
 
   // Any remote/keyboard/touch use keeps the chosen tab; after 90 s without it the screen goes back home.
   const choose = (key: string) => {
@@ -209,7 +213,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         e.preventDefault();
         return;
       }
-      if (e.key === "ArrowDown" && (tab === "requests" || tab === "channels") && grid.length) { grid[0].focus(); e.preventDefault(); return; }
+      if (e.key === "ArrowDown" && (tab === "requests" || tab === "channels" || tab === "apps") && grid.length) { grid[0].focus(); e.preventDefault(); return; }
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
       const buttons = Array.from(tabsRef.current?.querySelectorAll("button") ?? []);
       if (!buttons.length) return;
@@ -251,6 +255,11 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   const g = data.guest;
   const current = tab !== "home" ? data.info.find((x) => x.key === tab) : undefined;
   const rq = data.requests, dndOn = rq ? (dnd ?? rq.dnd) : false;
+  // Apps tab: only inside the Corali TV app, only apps installed on this TV (first installed package of each).
+  const bridge = appBridge();
+  const installed = (() => { if (!bridge || !data.apps.length) return [] as string[]; try { return JSON.parse(bridge.installed(JSON.stringify(data.apps.flatMap((a) => a.packages)))) as string[]; } catch { return []; } })();
+  const apps = data.apps.flatMap((a) => { const pkg = a.packages.find((p) => installed.includes(p)); return pkg ? [{ ...a, pkg }] : []; });
+  const openApp = (pkg: string) => { setAppError(""); let ok = false; try { ok = Boolean(bridge?.open(pkg)); } catch { ok = false; } if (!ok) setAppError(data.appTexts.failed); };
   const reqLabel = (k: TvRequestKind | "dnd", label: string) => { const st = reqState[k]; return st === "sent" ? rq!.texts.sent : st === "already" ? rq!.texts.already : st === "failed" ? rq!.texts.failed : label; };
   return (
     <main className="tvScreen">
@@ -271,10 +280,11 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         )}
       </section>
 
-      {(data.info.length > 0 || rq || data.channels.length > 0) && (
+      {(data.info.length > 0 || rq || data.channels.length > 0 || apps.length > 0) && (
         <nav className={`tvTabs${rq ? " withReq" : ""}`} ref={tabsRef} aria-label="Hotel information">
           <button type="button" data-key="home" className={tab === "home" ? "active" : ""} onClick={() => choose("home")}><TabIcon k="home" />{t.home}</button>
           {data.info.map((x) => <button type="button" key={x.key} data-key={x.key} className={tab === x.key ? "active" : ""} onClick={() => choose(x.key)}><TabIcon k={x.key} emoji={x.icon} />{x.title}</button>)}
+          {apps.length > 0 && <button type="button" data-key="apps" className={tab === "apps" ? "active" : ""} onClick={() => choose("apps")}><FaThLarge aria-hidden />{data.appTexts.tab}</button>}
           {data.channels.length > 0 && <button type="button" data-key="channels" className={tab === "channels" ? "active" : ""} onClick={() => choose("channels")}><FaTv aria-hidden />{data.channelTexts.tab}</button>}
           {rq && <button type="button" data-key="requests" className={`tvReqTab${tab === "requests" ? " active" : ""}`} onClick={() => choose("requests")}><FaConciergeBell aria-hidden />{rq.texts.tab}</button>}
         </nav>
@@ -297,6 +307,14 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
               </button>
             ); })}
           </div>
+        </section>
+      ) : tab === "apps" && apps.length > 0 ? (
+        <section className="tvInfo tvApps">
+          <p className="tvReqIntro">{data.appTexts.hint}</p>
+          <div className="tvAppGrid" ref={panelRef}>
+            {apps.map((a) => <button type="button" key={a.key} className="tvApp" style={{ background: a.color }} onClick={() => openApp(a.pkg)}><b>{a.name}</b></button>)}
+          </div>
+          {appError && <p className="tvReqIntro tvAppError">{appError}</p>}
         </section>
       ) : tab === "channels" && data.channels.length > 0 ? (
         <section className="tvInfo tvChannels">

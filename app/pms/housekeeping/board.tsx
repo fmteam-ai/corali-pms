@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import type { MaintenanceSeverity } from "@/lib/maintenance";
 import { DefectForm } from "../maintenance/defect-form";
 import { NoticeModal } from "../maintenance/notice-modal";
-import { checklistLabels, checklistProgress, housekeepingChecklist } from "@/lib/housekeeping";
+import { checklistFor, checklistLabels, checklistProgress } from "@/lib/housekeeping";
 import { housekeepingColors, housekeepingState } from "@/lib/tape-chart";
 import { pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 
@@ -61,7 +61,8 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite,
       {shown.length === 0 && <p>{t("hkb.empty")}</p>}
       <div className="hkBoard">
         {shown.map((task) => {
-          const done = checklistProgress(checks[task.id]);
+          const steps = checklistFor(task.task_type);
+          const done = checklistProgress(checks[task.id], task.task_type);
           const reviewer = task.cleaned_by_staff_id !== userId;
           const form = pending?.taskId === task.id ? pending : null;
           return (
@@ -75,9 +76,9 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite,
               {task.inspection_notes && task.status !== "ready" && <p className="hkIssue"><b>{t("hkb.inspectionNotes")}:</b> {task.inspection_notes}</p>}
               {task.status === "in_progress" && (
                 <fieldset className="hkChecklist">
-                  <legend>{t("hkb.checklist")} · {t("hkb.progress", { done, total: housekeepingChecklist.length })}</legend>
-                  <progress max={housekeepingChecklist.length} value={done} />
-                  {housekeepingChecklist.map((key, i) => (
+                  <legend>{t("hkb.checklist")} · {t("hkb.progress", { done, total: steps.length })}</legend>
+                  <progress max={steps.length} value={done} />
+                  {steps.map((key, i) => (
                     <label key={key} className={checks[task.id]?.[key] ? "done" : undefined}>
                       <input type="checkbox" disabled={!canWrite} checked={checks[task.id]?.[key] ?? false} onChange={(e) => setChecks((a) => ({ ...a, [task.id]: { ...a[task.id], [key]: e.target.checked } }))} />
                       <span>{i + 1}. {labels[key]}</span>
@@ -98,7 +99,7 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite,
               {canWrite && !form && (
                 <div className="actions hkActions">
                   {task.status === "todo" && <button disabled={busy === task.id} onClick={() => act(task, "start")}>{t("hkb.start")}</button>}
-                  {task.status === "in_progress" && <button disabled={busy === task.id || done < housekeepingChecklist.length} onClick={() => act(task, "complete")}>{t("hkb.complete")}</button>}
+                  {task.status === "in_progress" && <button disabled={busy === task.id || done < steps.length} onClick={() => act(task, "complete")}>{t("hkb.complete")}</button>}
                   {(task.status === "cleaned" || task.status === "repaired") && (reviewer
                     ? <><button disabled={busy === task.id} onClick={() => act(task, "approve")}>{t("hkb.approve")}</button><button className="danger" onClick={() => setPending({ taskId: task.id, action: "reject" })}>{t("hkb.reject")}</button></>
                     : <small>{t("hkb.secondPerson")}</small>)}
