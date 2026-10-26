@@ -1,3 +1,5 @@
+import { prefsByEmail } from "@/lib/guest-prefs";
+import { emptyPrefs } from "@/lib/guest-prefs-core";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
@@ -42,7 +44,7 @@ export default async function GuestProfilePage({ searchParams }: { searchParams:
             <dt>{t("crm.channels")}</dt><dd>{channels.map((c) => `${c.channel} (${c.stays})`).join(", ") || "—"}</dd>
           </dl>
         </article>
-        <ProfileEditor lang={lang} email={g.email} initial={{ preferences: g.preferences, dietary: g.dietary, allergies: g.allergies, tags: g.tags }} canEdit={can(u.role, "reservations.write", u.permissions)} />
+        <ProfileEditor lang={lang} email={g.email} initial={{ preferences: g.preferences, dietary: g.dietary, allergies: g.allergies, tags: g.tags, prefs: (await prefsByEmail(u.ownerId, [g.email])).get(g.email.toLowerCase())?.prefs ?? emptyPrefs }} canEdit={can(u.role, "reservations.write", u.permissions)} />
       </div>
       <article className="wide">
         <h2>{t("crm.history")}</h2>

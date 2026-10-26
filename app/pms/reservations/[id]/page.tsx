@@ -1,3 +1,5 @@
+import { prefsByEmail } from "@/lib/guest-prefs";
+import { prefLines } from "@/lib/guest-prefs-core";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getReservation } from "@/lib/reservations";
@@ -44,6 +46,9 @@ export default async function ReservationPage({ params }: { params: Promise<{ id
   const arrivalSettings = await loadArrivalSettings(db(), user.ownerId);
   const hubName = (mode: string | null, hub: string | null) => (mode && hub ? arrivalInstructions(arrivalSettings, mode, hub, lang)?.hubName ?? hub : null);
   const transfers = (await db().query(`SELECT * FROM transfer_requests WHERE owner_id=$1 AND booking_id=$2 ORDER BY id DESC`, [user.ownerId, id])).rows.map((r) => ({ id: Number(r.id), arrival_mode: r.arrival_mode, hub_name: hubName(r.arrival_mode, r.arrival_hub) ?? r.arrival_hub, vehicle_name: r.vehicle_name, passengers: Number(r.passengers), price_cents: Number(r.price_cents), arrival_time: r.arrival_time, travel_details: r.travel_details, folio_entry_id: r.folio_entry_id ? Number(r.folio_entry_id) : null, status: r.status }));
+  // Guest preferences remembered from earlier stays, check-in and TV requests (CRM).
+  const pref = b.guest_email ? (await prefsByEmail(user.ownerId, [String(b.guest_email)])).get(String(b.guest_email).toLowerCase()) : undefined;
+  const prefs = pref ? prefLines(pref.prefs, lang, { dietary: pref.dietary, allergies: pref.allergies }) : [];
   const upsell = financial && ["confirmed", "checked_in"].includes(b.status) ? await reservationUpsell(user.ownerId, { id: b.id, guest_email: b.guest_email, adults: Number(b.adults), children: Number(b.children), check_in: b.check_in, check_out: b.check_out, created_at: Number(b.created_at) }) : null;
   const money = (cents: number) => new Intl.NumberFormat(pmsLocale(lang), { style: "currency", currency: "EUR" }).format(Number(cents) / 100);
   return (
@@ -53,7 +58,7 @@ export default async function ReservationPage({ params }: { params: Promise<{ id
         <article><h2>{t("res.guest")}</h2><dl><dt>Email</dt><dd>{b.guest_email ?? "—"}</dd><dt>{t("res.phone")}</dt><dd>{b.guest_phone || "—"}</dd><dt>{t("res.country")}</dt><dd>{b.guest_country || "—"}</dd><dt>{t("res.language")}</dt><dd>{b.guest_language}</dd></dl></article>
         <article><h2>{t("res.stay")}</h2><dl><dt>{t("res.room")}</dt><dd>{b.room_code ?? "—"} · {b.room_type ?? t("res.noRoom")}</dd><dt>{t("res.arrival")}</dt><dd>{b.check_in}</dd><dt>{t("res.departure")}</dt><dd>{b.check_out}</dd><dt>{t("res.nights")}</dt><dd>{stayDates(b.check_in, b.check_out).length}</dd><dt>{t("res.adultsChildren")}</dt><dd>{b.adults} / {b.children}</dd><dt>{t("res.channel")}</dt><dd>{b.channel}</dd></dl></article>
         <article><h2>{t("res.payment")}</h2><dl>{financial && <><dt>{t("res.total")}</dt><dd>{money(b.total_cents)}</dd><dt>{t("res.balance")}</dt><dd>{money(b.balance_cents)}</dd></>}<dt>{t("res.plan")}</dt><dd>{b.rate_policy}</dd><dt>{t("res.freeCancel")}</dt><dd>{t("res.days", { n: b.cancellation_days })}</dd></dl></article>
-        <article><h2>{t("res.extraInfo")}</h2><p>{b.special_requests || t("res.noRequests")}</p></article>
+        <article><h2>{t("res.extraInfo")}</h2><p>{b.special_requests || t("res.noRequests")}</p>{prefs.length > 0 && <><h3 className="prefHead">⭐ {t("gp.title")}</h3><ul className="prefChips">{prefs.map((x) => <li key={x}>{x}</li>)}</ul></>}</article>
         <CheckinCard lang={lang} bookingId={b.id} checkin={checkin} canReveal={can(user.role, "reservations.edit", user.permissions)} />
         {upsell && <UpsellPanel lang={lang} bookingId={b.id} stays={upsell.stays} suggestions={upsell.suggestions} canAdd={can(user.role, "folios.write", user.permissions)} />}
         {(ci?.arrival_mode || transfers.length > 0) && <ArrivalCard lang={lang} bookingId={b.id} mode={ci?.arrival_mode ?? null} hubName={hubName(ci?.arrival_mode ?? null, ci?.arrival_hub ?? null)} initial={transfers} canEdit={can(user.role, "reservations.edit", user.permissions)} />}

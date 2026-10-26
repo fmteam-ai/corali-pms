@@ -2,7 +2,7 @@ import type { PoolClient } from "pg";
 import { deskAlertKinds, type AlertKind } from "@/lib/staff-core";
 import { deferStaffPush } from "@/lib/staff-push";
 
-export type NotificationKind = "direct_booking" | "manual_booking" | "ota_change" | "housekeeping" | "payment" | "guest_message" | "tv_request" | "hk_message" | "system";
+export type NotificationKind = "direct_booking" | "manual_booking" | "ota_change" | "housekeeping" | "payment" | "guest_message" | "tv_request" | "hk_message" | "guest_order" | "system";
 
 type Queryable = Pick<PoolClient, "query">;
 

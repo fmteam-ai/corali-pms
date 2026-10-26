@@ -106,3 +106,15 @@
 .stGear{font-size:20px;line-height:1;width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:#fff}
 .stGear.on{background:var(--ink);border-color:var(--ink)}
 .stNav button{min-width:0}
+.hkNote.pref{background:#fff6e0;border:1px solid #f2c46d}
+.hkChips .chip.pref{background:#fff1d1;color:#8a5a00}
+.stPrefs{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.stPrefs i{font-style:normal;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:#fff1d1;color:#5b4310}
+.stMic{position:fixed;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:16;width:62px;height:62px;border-radius:50%;border:0;background:var(--ink);color:#fff;font-size:28px;box-shadow:0 8px 24px rgba(0,0,0,.28)}
+.stMic.on{background:#b3261e;animation:stPulse 1.2s ease-in-out infinite}
+@keyframes stPulse{50%{box-shadow:0 0 0 12px rgba(179,38,30,.18)}}
+.hkNote.listening{color:#b3261e;font-weight:700}
+.vcList li.st-ok{background:#e7f4ec}
+.vcList li.st-fail{background:#fdecea}
+.vcList li.st-skip{opacity:.5}
+.vcList .vcErr{display:block;color:#b3261e;padding:0 4px 6px 38px}

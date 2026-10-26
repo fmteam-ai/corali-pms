@@ -7,7 +7,9 @@ import { env } from "@/lib/env";
 import { ensureFolio, recalcBooking } from "@/lib/folio-db";
 import { pushNotification } from "@/lib/pms-notifications";
 import { encryptField } from "@/lib/security/encryption";
-import { hashToken } from "@/lib/security/tokens";
+import { hashToken, newOpaqueToken } from "@/lib/security/tokens";
+import { capturePrefs } from "@/lib/guest-prefs";
+import { normalizePrefs } from "@/lib/guest-prefs-core";
 
 const schema = z.object({
   token: z.string().min(32).max(200),
@@ -28,6 +30,10 @@ const schema = z.object({
   arrivalMode: z.enum(arrivalModes).optional().or(z.literal("").transform(() => undefined)),
   arrivalHub: z.string().max(40).optional(),
   transferVehicle: z.string().max(40).optional(),
+  // v98: structured preferences (remembered for next stays) and dietary needs / allergies.
+  prefs: z.record(z.string(), z.unknown()).optional(),
+  dietary: z.string().trim().max(300).default(""),
+  allergies: z.string().trim().max(300).default(""),
 });
 
 function ageOn(now: number, dob: Date) {
@@ -138,7 +144,14 @@ export async function POST(request: Request) {
         await pushNotification(client, c.PMS_OWNER_ID, { kind: "system", titleEl: `Αίτημα transfer: ${row.reference} · ${vehicleName} · ${hubNameEl} · ${i.arrivalTime} · ${euro(quote.vehicle.priceCents)}`, titleEn: `Transfer request: ${row.reference} · ${vehicleName} · ${instructions.hubName} · ${i.arrivalTime} · ${euro(quote.vehicle.priceCents)}`, link: `/pms/reservations/${row.booking_id}` });
       }
       await pushNotification(client, c.PMS_OWNER_ID, { kind: "system", titleEl: `Online pre-check-in: ${i.firstName} ${i.lastName} · ${row.reference} · άφιξη ${i.arrivalTime}`, titleEn: `Online pre-check-in: ${i.firstName} ${i.lastName} · ${row.reference} · arrival ${i.arrivalTime}`, link: `/pms/reservations/${row.booking_id}` });
-      return { instructions, transfer };
+      // Preferences go to the guest's CRM profile (booking e-mail); the arrival time is remembered too.
+      const crmEmail = String((await client.query(`SELECT guest_email FROM bookings WHERE owner_id=$1 AND id=$2`, [c.PMS_OWNER_ID, row.booking_id])).rows[0]?.guest_email || i.email);
+      const arrival = /^([01]\d|2[0-3]):[0-5]\d$/.test(i.arrivalTime.trim()) ? i.arrivalTime.trim() : "";
+      await capturePrefs(client, c.PMS_OWNER_ID, crmEmail, { ...normalizePrefs(i.prefs ?? {}), arrivalTime: arrival }, "check-in", { dietary: i.dietary, allergies: i.allergies });
+      // A "My booking" link for the rest of the stay: extras, upgrades and messages right after check-in.
+      const manageToken = newOpaqueToken();
+      await client.query(`INSERT INTO booking_manage_tokens(owner_id,booking_id,token_hash,status,expires_at,created_by,created_at) VALUES($1,$2,$3,'active',$4,'check-in',$5)`, [c.PMS_OWNER_ID, row.booking_id, hashToken(manageToken), Date.now() + 2 * 3_600_000, now]);
+      return { instructions, transfer, manageToken };
     });
     return Response.json({ ok: true, ...result });
   } catch (e) {

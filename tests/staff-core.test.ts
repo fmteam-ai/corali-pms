@@ -36,3 +36,12 @@ test("weeks run Monday to Sunday", () => {
   assert.equal(addDaysIso("2026-10-31", 1), "2026-11-01");
   assert.deepEqual(weekDays("2026-10-26").slice(-1), ["2026-11-01"]);
 });
+
+test("who is on shift right now", async () => {
+  const { shiftRunning } = await import("../lib/staff-core.ts");
+  assert.equal(shiftRunning({ date: "2026-10-26", start: "07:00", end: "15:00" }, "2026-10-26", "10:30"), true);
+  assert.equal(shiftRunning({ date: "2026-10-26", start: "07:00", end: "15:00" }, "2026-10-26", "15:00"), false);
+  assert.equal(shiftRunning({ date: "2026-10-25", start: "22:00", end: "06:00" }, "2026-10-26", "05:59"), true);
+  assert.equal(shiftRunning({ date: "2026-10-26", start: "22:00", end: "06:00" }, "2026-10-26", "23:00"), true);
+  assert.equal(shiftRunning({ date: "2026-10-25", start: "07:00", end: "15:00" }, "2026-10-26", "10:00"), false);
+});

@@ -1,6 +1,7 @@
 // Guest requests from the Corali TV screen (TV → PMS): stored in tv_requests, announced in the PMS notifications,
 // handled on PMS → Requests from TV. Do not disturb also sets tv_screens.dnd_since (Housekeeping shows it).
 import { db, withTransaction } from "@/lib/db";
+import { capturePrefs } from "@/lib/guest-prefs";
 import { pushNotification } from "@/lib/pms-notifications";
 import { hotelToday } from "@/lib/tape-chart";
 import { initialStatus, requestDetailsSummary, transferProblem, tvRequestLabels, type ProblemDetails, type TransferDetails, type TvRequestKind, type TvRequestRecordKind } from "@/lib/tv-requests-core";
@@ -51,6 +52,11 @@ export async function createTvRequest(token: string, kind: TvRequestKind | "dnd"
     const l = tvRequestLabels[record], who = s.guestName ? ` · ${s.guestName}` : "";
     const more = (lang: "el" | "en") => (detailObj ? ` ${requestDetailsSummary(detailObj, lang)}` : "");
     await pushNotification(c, s.ownerId, { kind: "tv_request", titleEl: `${l.icon} Δωμάτιο ${s.roomCode}${who}: ${l.el}${more("el")}`, titleEn: `${l.icon} Room ${s.roomCode}${who}: ${l.en}${more("en")}`, link: "/pms/tv-requests" });
+    // Remember it for the guest's next stays (CRM preferences, shown to housekeeping before arrival).
+    if (kind === "pillows" || kind === "blankets") {
+      const email = String((await c.query(`SELECT guest_email FROM bookings WHERE owner_id=$1 AND id=$2`, [s.ownerId, s.bookingId])).rows[0]?.guest_email ?? "");
+      if (email) await capturePrefs(c, s.ownerId, email, kind === "pillows" ? { extraPillows: true } : { extraBlankets: true }, "tv");
+    }
     return { recorded: true, dnd: kind === "dnd" ? Boolean(dndOn) : s.dnd };
   });
 }

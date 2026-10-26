@@ -28,6 +28,8 @@ const nextConfig: NextConfig = {
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
         ],
       },
+      // Corali Staff: voice commands need the microphone (this page only; the last matching header wins).
+      { source: "/staff", headers: [{ key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=()" }] },
     ];
   },
 };

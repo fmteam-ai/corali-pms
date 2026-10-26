@@ -5,11 +5,12 @@ import { requestDetailsSummary, tvRequestLabels } from "@/lib/tv-requests-core";
 import type { TvRequestRow } from "@/lib/tv-requests";
 
 type T = ReturnType<typeof pmsT>;
-type Stay = { id: number; version: number; guest: string; room: string | null; people: number; status: string };
+type Stay = { id: number; version: number; guest: string; room: string | null; people: number; status: string; prefs?: string[] };
+type Order = { id: number; kind: string; title: string; amountCents: number; reference: string; guest: string; room: string | null; date: string | null; time: string | null; note: string };
 type Inspect = { id: number; status: string; type: string; room: string; cleanedBy: string; mine: boolean };
-type Reception = { arrivals: Stay[]; departures: Stay[]; requests: TvRequestRow[]; inspect: Inspect[] };
-type Notice = { id: number; room_code: string; severity: string; description: string; reporter_name: string | null; reported_at: number; photo_ids: number[] };
-type Can = { checkInOut: boolean; housekeepingWrite: boolean; resolve: boolean };
+type Reception = { arrivals: Stay[]; departures: Stay[]; requests: TvRequestRow[]; inspect: Inspect[]; orders: Order[] };
+type Notice = { id: number; room_code: string; severity: string; description: string; reporter_name: string | null; reported_at: number; photo_ids: number[]; assignee_name?: string | null };
+type Can = { checkInOut: boolean; housekeepingWrite: boolean; resolve: boolean; folioWrite?: boolean };
 
 const time = (ms: number, lang: PmsLang) => new Date(ms).toLocaleTimeString(lang === "el" ? "el-GR" : "en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Athens" });
 
@@ -48,7 +49,7 @@ export function ReceptionSection({ lang, t, can, refreshKey, toast }: { lang: Pm
   const stay = (s: Stay, action: "check_in" | "check_out") => (
     <li key={s.id} className="stRow">
       <span className="hkCode sm">{s.room ?? "—"}</span>
-      <span className="stMain"><b>{s.guest}</b><small>{t("stf.people", { n: s.people })} · {t(`stf.status.${s.status}` as PmsKey)}</small></span>
+      <span className="stMain"><b>{s.guest}</b><small>{t("stf.people", { n: s.people })} · {t(`stf.status.${s.status}` as PmsKey)}</small>{s.prefs && s.prefs.length > 0 && <span className="stPrefs">{s.prefs.map((p) => <i key={p}>{p}</i>)}</span>}</span>
       {can.checkInOut && ((action === "check_in" && s.status === "confirmed") || (action === "check_out" && s.status === "checked_in")) && (
         <button type="button" className="stBtn" disabled={busy} onClick={() => void act(`/api/pms/reservations/${s.id}`, "PATCH", { action, version: s.version }, t(action === "check_in" ? "stf.checkedIn" : "stf.checkedOut"))}>{action === "check_in" ? "Check-in" : "Check-out"}</button>
       )}
@@ -58,6 +59,21 @@ export function ReceptionSection({ lang, t, can, refreshKey, toast }: { lang: Pm
     <div className="stSections">
       <section className="stCard"><h2>🧳 {t("stf.arrivals")} <em>{data.arrivals.length}</em></h2>{data.arrivals.length ? <ul>{data.arrivals.map((s) => stay(s, "check_in"))}</ul> : <p className="hkEmpty sm">{t("stf.none")}</p>}</section>
       <section className="stCard"><h2>👋 {t("stf.departures")} <em>{data.departures.length}</em></h2>{data.departures.length ? <ul>{data.departures.map((s) => stay(s, "check_out"))}</ul> : <p className="hkEmpty sm">{t("stf.none")}</p>}</section>
+      {data.orders.length > 0 && (
+        <section className="stCard">
+          <h2>🛎️ {t("go.title")} <em>{data.orders.length}</em></h2>
+          <ul>{data.orders.map((o) => (
+            <li key={o.id} className="stRow">
+              <span className="hkCode sm">{o.room ?? "—"}</span>
+              <span className="stMain"><b>{o.title}</b><small>{o.guest} · {(o.amountCents / 100).toLocaleString(lang === "el" ? "el-GR" : "en-GB", { style: "currency", currency: "EUR" })}{o.date ? ` · ${o.date.split("-").reverse().join("/")}` : ""}{o.time ? ` ${o.time}` : ""}{o.note ? ` · ${o.note}` : ""}</small></span>
+              {can.folioWrite && <>
+                <button type="button" className="stBtn" disabled={busy} onClick={() => void act("/api/pms/guest-orders", "POST", { action: "confirm", id: o.id }, t("go.done"))}>✓</button>
+                <button type="button" className="stBtn ghost" disabled={busy} onClick={() => { const reason = prompt(t("go.reason")); if (reason !== null) void act("/api/pms/guest-orders", "POST", { action: "decline", id: o.id, reason }, t("go.done")); }}>✕</button>
+              </>}
+            </li>
+          ))}</ul>
+        </section>
+      )}
       <section className="stCard">
         <h2>📺 {t("stf.tvRequests")} <em>{data.requests.length}</em></h2>
         {data.requests.length ? <ul>{data.requests.map((q) => { const l = tvRequestLabels[q.kind]; const more = requestDetailsSummary(q.details, lang); return (
@@ -112,6 +128,7 @@ export function MaintenanceSection({ lang, t, can, refreshKey, toast }: { lang: 
               </div>
               <div className="hkRoomBody">
                 <p className="hkNote">{n.description}</p>
+                {n.assignee_name && <p className="hkEmpty sm">👷 {t("vc.assigned", { name: n.assignee_name })}</p>}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 {n.photo_ids.length > 0 && <div className="stPhotos">{n.photo_ids.map((p) => <a key={p} href={`/api/pms/maintenance/photos/${p}`} target="_blank" rel="noreferrer"><img src={`/api/pms/maintenance/photos/${p}`} alt="" loading="lazy" /></a>)}</div>}
                 {can.resolve && <button type="button" className="hkBig" onClick={() => { setFix(n); setNotes(""); }}>🔧 {t("stf.markRepaired")}</button>}

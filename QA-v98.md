@@ -2,6 +2,14 @@
 
 ## Scope in this package
 
+### New in v98
+
+- [ ] Corali Staff 🎤 voice / typed commands (housekeeping & maintenance): e.g. "Το 104 είναι έτοιμο, αλλά η λάμπα στο μπαλκόνι είναι καμένη" → list of actions (finish clean with the checklist, defect with severity, sheets/towels changed, message to reception), shown first and run after "Run"; failures show the reason. Claude parses when an Anthropic key is set, built-in Greek/English rules otherwise. Microphone allowed only on /staff.
+- [ ] New defects go to the maintenance person whose shift is running (Staff & shifts); the alert goes to them, otherwise to every maintenance person; the Maintenance section shows "Assigned to".
+- [ ] "My booking" and the end of online check-in: services (recommended first, with optional date/time/note), late check-out until 18:00 (50% of a night, only if nobody arrives in that room), room upgrades before arrival (live price difference). Requests are pending until reception confirms.
+- [ ] PMS → Bookings → Guest requests (and Corali Staff → Reception): confirm (charged to the folio; an upgrade moves the booking to a free room of the new category) or decline with a reason; the guest gets the answer in the "My booking" messages, in the language they ordered in. New requests ring the desk (PMS + phone alerts).
+- [ ] Structured guest preferences (pillow, bed, floor, extra pillows/blanket, baby cot, arrival time, favourite drink, occasion) in the CRM profile, at online check-in (with diet/allergies) and automatically from TV requests (pillows/blankets). Shown on the reservation, in Corali Staff reception arrivals and on the housekeeping card of arriving rooms ("Prepare for the guest").
+
 ### New in v97
 
 - [ ] Pricing tabs (Prices & rules, Season prices, Minimum stay, Special prices & restrictions, Offers, Coupons, Price suggestions) appear on every pricing page, with the current one highlighted.

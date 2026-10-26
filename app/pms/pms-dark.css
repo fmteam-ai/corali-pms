@@ -455,6 +455,18 @@
 .pms[data-theme="dark"] .tvmTheme.th-anniversary.active{background:hsl(352 33% 20%)}
 .pms[data-theme="dark"] .tvmTheme.th-celebration.active{background:hsl(40 32% 20%)}
 .pms[data-theme="dark"] .tvmWakeHelp{background:hsl(39 44% 20%);color:hsl(38 75% 72%)}
+.pms[data-theme="dark"] .gOrderItem{border:1px solid hsl(41 25% 28%);background:hsl(200 18% 9%)}
+.pms[data-theme="dark"] .gOrderItem.rec{background:hsl(40 45% 20%)}
+.pms[data-theme="dark"] .gOrderRec{color:hsl(39 75% 72%)}
+.pms[data-theme="dark"] .gOrderForm{background:hsl(187 18% 20%);border:1px solid hsl(188 30% 28%)}
+.pms[data-theme="dark"] .gOrderForm input{border:1px solid hsl(200 17% 29%)}
+.pms[data-theme="dark"] .gOrderActions button.secondary{background:hsl(200 18% 9%);color:hsl(191 51% 72%);border:1px solid hsl(200 17% 29%)}
+.pms[data-theme="dark"] .gOrderList li{background:hsl(45 17% 20%)}
+.pms[data-theme="dark"] .gOrderList i{background:hsl(200 18% 14%)}
+.pms[data-theme="dark"] .gOrderList i.st-pending{background:hsl(42 45% 20%);color:hsl(39 75% 72%)}
+.pms[data-theme="dark"] .gOrderList i.st-confirmed{background:hsl(143 19% 20%);color:hsl(145 46% 72%)}
+.pms[data-theme="dark"] .gOrderList i.st-declined{background:hsl(6 41% 20%);color:hsl(3 71% 72%)}
+.pms[data-theme="dark"] .prefsFields{border:1px solid hsl(41 25% 28%)}
 .pmsTop[data-theme="dark"] .pmsTopbar{background:hsl(200 18% 9%)}
 .pms[data-theme="dark"] .tableWrap td{border-bottom:1px solid hsl(200 20% 26%)}
 .pms[data-theme="dark"] .tableWrap tbody tr:hover td{background:hsl(180 14% 20%)}
@@ -510,3 +522,7 @@
 .pms[data-theme="dark"] .staffModal .modalActions .staffDanger{color:hsl(3 71% 72%)}
 .pms[data-theme="dark"] .bulkChip:has(input:checked){background:hsl(191 22% 20%)}
 .pms[data-theme="dark"] .bulkSummary{background:hsl(43 45% 20%)}
+.pms[data-theme="dark"] .goStatus{background:hsl(200 18% 14%)}
+.pms[data-theme="dark"] .goStatus.st-confirmed{background:hsl(143 19% 20%);color:hsl(145 46% 72%)}
+.pms[data-theme="dark"] .goStatus.st-declined{background:hsl(6 41% 20%);color:hsl(3 71% 72%)}
+.pms[data-theme="dark"] .prefChips li{background:hsl(43 45% 20%)}

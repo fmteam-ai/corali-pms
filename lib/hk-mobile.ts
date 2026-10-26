@@ -1,6 +1,8 @@
 // Housekeeping day for the phone page (/hk) and the reception ↔ housekeeping messages.
 import { db, withTransaction } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
+import { prefsByEmail } from "@/lib/guest-prefs";
+import { prefLines } from "@/lib/guest-prefs-core";
 import { hkServiceRows } from "@/lib/hk-services";
 import type { HkService } from "@/lib/hk-services-core";
 import { hkKindOrder, roomDayKind, roomHasWork, type HkRoomKind } from "@/lib/hk-mobile-core";
@@ -13,7 +15,7 @@ export type HkTask = { id: number; type: string; status: string; assignedTo: str
 export type HkRoom = {
   id: number; code: string; type: string; status: string; kind: HkRoomKind; dnd: boolean;
   departure: { guest: string; departed: boolean } | null;
-  arrival: { guest: string; people: number; checkedIn: boolean } | null;
+  arrival: { guest: string; people: number; checkedIn: boolean; prefs: string[] } | null;
   stay: { guest: string; checkOut: string; night: number; nights: number; bookingId: number } | null;
   due: HkService[]; done: HkService[];
   task: HkTask | null; notices: number;
@@ -27,12 +29,12 @@ export async function hkDay(u: CurrentUser): Promise<{ today: string; rooms: HkR
   const [r, services] = await Promise.all([
     db().query(
       `SELECT r.id,r.code,r.room_type,r.operational_status,(SELECT s.dnd_since FROM tv_screens s WHERE s.owner_id=r.owner_id AND s.room_id=r.id) AS dnd_since,
-              dep.guest_name dep_guest,dep.status dep_status,arr.guest_name arr_guest,arr.people arr_people,arr.status arr_status,
+              dep.guest_name dep_guest,dep.status dep_status,arr.guest_name arr_guest,arr.people arr_people,arr.status arr_status,arr.guest_email arr_email,
               (SELECT count(*)::int FROM maintenance_notices n WHERE n.owner_id=r.owner_id AND n.room_id=r.id AND n.status='open') AS notices,
               t.id task_id,t.task_type,t.status task_status,t.assigned_to,su.display_name assigned_name,t.notes,t.inspection_notes,t.checklist_json,t.cleaned_by_staff_id
          FROM rooms r
          LEFT JOIN LATERAL (SELECT b.guest_name,b.status FROM bookings b WHERE b.owner_id=r.owner_id AND b.room_id=r.id AND b.check_out=$2 AND b.status IN ('confirmed','checked_in','checked_out') ORDER BY b.id DESC LIMIT 1) dep ON true
-         LEFT JOIN LATERAL (SELECT b.guest_name,b.status,(b.adults+b.children) AS people FROM bookings b WHERE b.owner_id=r.owner_id AND b.room_id=r.id AND b.check_in=$2 AND b.status IN ('confirmed','checked_in') ORDER BY b.id DESC LIMIT 1) arr ON true
+         LEFT JOIN LATERAL (SELECT b.guest_name,b.guest_email,b.status,(b.adults+b.children) AS people FROM bookings b WHERE b.owner_id=r.owner_id AND b.room_id=r.id AND b.check_in=$2 AND b.status IN ('confirmed','checked_in') ORDER BY b.id DESC LIMIT 1) arr ON true
          LEFT JOIN LATERAL (SELECT * FROM housekeeping_tasks x WHERE x.owner_id=r.owner_id AND x.room_id=r.id AND x.status<>'ready' ORDER BY x.id DESC LIMIT 1) t ON true
          LEFT JOIN pms_staff_users su ON su.owner_id=r.owner_id AND su.id::text=t.assigned_to
         WHERE r.owner_id=$1 AND r.active=1 ORDER BY r.code`,
@@ -41,13 +43,15 @@ export async function hkDay(u: CurrentUser): Promise<{ today: string; rooms: HkR
     hkServiceRows(u.ownerId, today),
   ]);
   const stays = new Map(services.rows.map((s) => [s.roomId, s]));
+  // What the arriving guest likes, so the room is prepared for it (pillow, cot, allergies…).
+  const prefs = await prefsByEmail(u.ownerId, r.rows.map((x) => String(x.arr_email ?? "")));
   const rooms = r.rows.map((x): HkRoom => {
     const stay = stays.get(Number(x.id));
     const kind = roomDayKind({ departure: x.dep_guest != null, arrival: x.arr_guest != null, stayover: Boolean(stay) });
     return {
       id: Number(x.id), code: String(x.code), type: String(x.room_type ?? ""), status: String(x.operational_status ?? ""), kind, dnd: x.dnd_since != null,
       departure: x.dep_guest != null ? { guest: String(x.dep_guest), departed: x.dep_status === "checked_out" } : null,
-      arrival: x.arr_guest != null ? { guest: String(x.arr_guest), people: Number(x.arr_people ?? 1), checkedIn: x.arr_status === "checked_in" } : null,
+      arrival: x.arr_guest != null ? { guest: String(x.arr_guest), people: Number(x.arr_people ?? 1), checkedIn: x.arr_status === "checked_in", prefs: (() => { const p = prefs.get(String(x.arr_email ?? "").toLowerCase()); return p ? prefLines(p.prefs, "el", { allergies: p.allergies }, true) : []; })() } : null,
       stay: stay ? { guest: stay.guestName, checkOut: stay.checkOut, night: stay.night, nights: stay.nights, bookingId: stay.bookingId } : null,
       due: stay?.due ?? [], done: stay?.done ?? [],
       task: x.task_id != null ? { id: Number(x.task_id), type: String(x.task_type), status: String(x.task_status), assignedTo: x.assigned_to ?? null, assignedName: x.assigned_name ?? null, notes: String(x.notes ?? ""), inspectionNotes: String(x.inspection_notes ?? ""), checklist: json(x.checklist_json), cleanedBy: x.cleaned_by_staff_id == null ? null : Number(x.cleaned_by_staff_id) } : null,

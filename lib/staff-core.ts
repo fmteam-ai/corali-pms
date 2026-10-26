@@ -26,7 +26,7 @@ export function userModules(role: string, specialties: unknown[]): StaffModule[]
 }
 
 // Alerts on the phone. Desk kinds mirror the PMS notifications; staff kinds are sent to the people concerned.
-export const deskAlertKinds = ["tv_request", "hk_message", "housekeeping", "direct_booking", "manual_booking", "ota_change", "guest_message", "payment"] as const;
+export const deskAlertKinds = ["tv_request", "hk_message", "guest_order", "housekeeping", "direct_booking", "manual_booking", "ota_change", "guest_message", "payment"] as const;
 export const staffAlertKinds = ["message", "checkout", "assignment", "shift", "maintenance"] as const;
 export type AlertKind = (typeof deskAlertKinds)[number] | (typeof staffAlertKinds)[number];
 export const allAlertKinds: readonly AlertKind[] = [...staffAlertKinds, ...deskAlertKinds];
@@ -35,7 +35,7 @@ export function defaultAlertKinds(role: string, modules: StaffModule[]): AlertKi
   const out: AlertKind[] = ["message", "shift"];
   if (modules.includes("housekeeping")) out.push("checkout", "assignment");
   if (modules.includes("maintenance") && !isDesk(role)) out.push("maintenance");
-  if (isDesk(role)) out.push("tv_request", "hk_message", "housekeeping", "direct_booking", "ota_change", "guest_message");
+  if (isDesk(role)) out.push("tv_request", "hk_message", "guest_order", "housekeeping", "direct_booking", "ota_change", "guest_message");
   return out;
 }
 
@@ -74,3 +74,11 @@ export function mondayOf(date: string): string {
 export const weekDays = (monday: string) => Array.from({ length: 7 }, (_, i) => addDaysIso(monday, i));
 
 export const hexColor = (v: unknown, fallback = "#2a7d8f") => (typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v : fallback);
+
+/** Is a shift running at `time` on `today`? (today's shift, or last night's shift that runs past midnight) */
+export function shiftRunning(shift: { date: string; start: string; end: string }, today: string, time: string): boolean {
+  const m = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
+  const now = m(time), s = m(shift.start), e = m(shift.end);
+  if (shift.date === today) return now >= s && (e > s ? now < e : true);
+  return shift.date === addDaysIso(today, -1) && e < s && now < e;
+}

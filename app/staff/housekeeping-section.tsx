@@ -99,11 +99,13 @@ export function HousekeepingSection({ lang, t, me, canWrite, isHousekeeper, refr
                     {r.dnd && <i className="chip dnd">🚫 {t("hk.dnd")}</i>}
                     {r.due.filter((s) => !r.done.includes(s)).map((s) => <i key={s} className="chip due">{s === "sheets" ? "🛏" : "🧺"} {t(s === "sheets" ? "hkm.sheets" : "hkm.towels")}</i>)}
                     {r.notices > 0 && <i className="chip warn">⚠ {r.notices}</i>}
+                    {r.arrival && r.arrival.prefs.length > 0 && <i className="chip pref">⭐ {r.arrival.prefs.length}</i>}
                     {tk && <i className={`chip st-${tk.status}`}>{t(`hkb.st.${tk.status}` as PmsKey)}</i>}
                   </span>
                 </button>
                 {expanded && (
                   <div className="hkRoomBody">
+                    {r.arrival && r.arrival.prefs.length > 0 && <p className="hkNote pref">⭐ {t("gp.prepare")}: {r.arrival.prefs.join(" · ")}</p>}
                     {tk?.notes && <p className="hkNote">📝 {tk.notes}</p>}
                     {tk?.inspectionNotes && tk.status === "in_progress" && <p className="hkNote warn">↩ {tk.inspectionNotes}</p>}
                     {r.stay && (

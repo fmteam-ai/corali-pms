@@ -454,3 +454,22 @@ body:has(.pms){background:#f2f4f6}
 .pms .bulkActions{display:flex;align-items:center;gap:12px}
 .pms .bulkActions .primaryAction{margin:0}
 @media (max-width:700px){.pms .bulkGrid{grid-template-columns:1fr}}
+/* Guest orders (PMS → Bookings → Guest orders). */
+.pms .goList{display:grid;gap:10px}
+.pms .goItem{display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:center;padding:14px 18px}
+.pms .goItem.st-pending{border-left:5px solid #e0a93b}
+.pms .goMain{display:flex;flex-direction:column;gap:3px;min-width:0}
+.pms .goAmount{font-size:18px;white-space:nowrap}
+.pms .goActions{display:flex;gap:8px}
+.pms .goActions .primaryAction{margin:0}
+.pms .goStatus{font-size:12px;font-weight:800;padding:4px 10px;border-radius:999px;background:#eef2f2}
+.pms .goStatus.st-confirmed{background:#e7f4ec;color:#2e7d4f}
+.pms .goStatus.st-declined{background:#fdecea;color:#b3261e}
+@media (max-width:760px){.pms .goItem{grid-template-columns:1fr}}
+.pms .crmPrefGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.pms .crmPrefChecks{display:flex;flex-wrap:wrap;gap:14px}
+@media (max-width:760px){.pms .crmPrefGrid{grid-template-columns:1fr 1fr}}
+.pms .prefHead{margin:14px 0 6px;font-size:15px}
+.pms .prefChips{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.pms .prefChips li{padding:4px 10px;border-radius:999px;background:#fff6e0;border:1px solid #f2c46d;font-size:13px;font-weight:600}
+.pms .goList .card{max-width:none;width:auto;margin:0}

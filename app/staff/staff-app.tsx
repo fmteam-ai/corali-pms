@@ -8,12 +8,13 @@ import { allAlertKinds, deskAlertKinds, type AlertKind } from "@/lib/staff-core"
 import type { Shift } from "@/lib/staff";
 import { MaintenanceSection, ReceptionSection } from "./desk-sections";
 import { HousekeepingSection } from "./housekeeping-section";
+import { VoiceCommand } from "./voice-command";
 
 type Tab = "housekeeping" | "reception" | "maintenance" | "messages" | "shifts" | "settings";
 type Me = {
   id: number; name: string; role: string; desk: boolean; specialties: { id: number; name: string; color: string }[];
   sections: { housekeeping: boolean; reception: boolean; maintenance: boolean }; defaultKinds: AlertKind[];
-  can: { checkInOut: boolean; housekeepingWrite: boolean; resolve: boolean };
+  can: { checkInOut: boolean; housekeepingWrite: boolean; resolve: boolean; folioWrite?: boolean };
 };
 type Base = { today: string; me: Me; shifts: Shift[]; team: Shift[] };
 type Install = { prompt: () => Promise<void> };
@@ -266,6 +267,7 @@ export function StaffApp({ lang, initialTab }: { lang: PmsLang; initialTab: stri
           </div>
         </div>
       )}
+      {base && (base.me.sections.housekeeping || base.me.sections.maintenance) && <VoiceCommand lang={lang} t={t} toast={toast} onDone={() => setRefreshKey((k) => k + 1)} />}
       {toastText && <p className="hkToast" role="status">{toastText}</p>}
     </main>
   );

@@ -1554,3 +1554,35 @@ CREATE TABLE IF NOT EXISTS "push_subscriptions" (
   "failures" INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS "idx_push_subscriptions_user" ON "push_subscriptions" ("owner_id", "staff_user_id");
+
+-- v98: structured guest preferences (pillow, bed, floor, extra pillows/blankets, baby cot, arrival time, drink, occasion).
+ALTER TABLE "guest_preferences" ADD COLUMN IF NOT EXISTS "prefs_json" TEXT NOT NULL DEFAULT '{}';
+
+-- v98: guest orders (services, late check-out, room upgrade) from "My booking" / online check-in, confirmed by reception.
+CREATE TABLE IF NOT EXISTS "guest_orders" (
+  "id" BIGSERIAL PRIMARY KEY,
+  "owner_id" TEXT NOT NULL,
+  "booking_id" BIGINT NOT NULL,
+  "kind" TEXT NOT NULL,
+  "extra_id" BIGINT,
+  "room_type" TEXT,
+  "title_el" TEXT NOT NULL,
+  "title_guest" TEXT NOT NULL,
+  "quantity" INTEGER NOT NULL DEFAULT 1,
+  "amount_cents" BIGINT NOT NULL,
+  "service_date" TEXT,
+  "service_time" TEXT,
+  "note" TEXT NOT NULL DEFAULT '',
+  "status" TEXT NOT NULL DEFAULT 'pending',
+  "source" TEXT NOT NULL DEFAULT 'manage',
+  "decline_reason" TEXT NOT NULL DEFAULT '',
+  "folio_entry_id" BIGINT,
+  "handled_by" BIGINT,
+  "handled_at" BIGINT,
+  "created_at" BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "idx_guest_orders_owner_status" ON "guest_orders" ("owner_id", "status", "created_at");
+CREATE INDEX IF NOT EXISTS "idx_guest_orders_booking" ON "guest_orders" ("owner_id", "booking_id");
+-- v98: a new defect goes to the maintenance person on shift (Corali Staff alert to them).
+ALTER TABLE maintenance_notices ADD COLUMN IF NOT EXISTS assigned_to BIGINT;
+ALTER TABLE "guest_orders" ADD COLUMN IF NOT EXISTS "lang" TEXT NOT NULL DEFAULT 'en';

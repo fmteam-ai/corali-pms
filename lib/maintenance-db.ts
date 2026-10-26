@@ -4,6 +4,7 @@ import { enqueueAvailability } from "@/lib/channel-sync";
 import { db } from "@/lib/db";
 import { maxPhotosPerNotice, needsSecondPerson, parsePhoto, roomStatusAfterResolution, severityBlocksRoom, type MaintenanceSeverity, type PostRepairState } from "@/lib/maintenance";
 import { pushNotification } from "@/lib/pms-notifications";
+import { shiftRunning } from "@/lib/staff-core";
 import { deferStaffPush } from "@/lib/staff-push";
 import { addDays, hotelToday } from "@/lib/tape-chart";
 
@@ -31,10 +32,13 @@ export async function createNotice(c: PoolClient, ownerId: string, input: { room
     const today = hotelToday();
     await enqueueAvailability(c, ownerId, today, addDays(today, 180), "room_status");
   }
+  // The maintenance person on shift now takes it (Corali Staff → Staff & shifts); otherwise every maintenance person is told.
+  const assignee = await maintenanceOnShift(c, ownerId);
+  if (assignee) await c.query(`UPDATE maintenance_notices SET assigned_to=$3 WHERE owner_id=$1 AND id=$2`, [ownerId, notice.id, assignee]);
   const code = await roomCode(c, ownerId, input.roomId);
   await pushNotification(c, ownerId, { kind: "housekeeping", titleEl: `${severityEl[input.severity]} · δωμάτιο ${code}: ${input.description}`, titleEn: `${severityEn[input.severity]} · room ${code}: ${input.description}`, link: `/pms/maintenance?notice=${notice.id}` });
   // Maintenance staff (team with the Maintenance section) get it on the phone once committed.
-  deferStaffPush(ownerId, { module: "maintenance" }, { kind: "maintenance", tag: `notice-${notice.id}`, url: "/staff?tab=maintenance", title: { el: `🔧 ${severityEl[input.severity]} · ${code}`, en: `🔧 ${severityEn[input.severity]} · ${code}` }, body: { el: input.description, en: input.description } }, { committed: { table: "maintenance_notices", id: Number(notice.id) }, exceptUserId: input.reportedBy });
+  deferStaffPush(ownerId, assignee ? { userIds: [assignee] } : { module: "maintenance" }, { kind: "maintenance", tag: `notice-${notice.id}`, url: "/staff?tab=maintenance", title: { el: `🔧 ${severityEl[input.severity]} · ${code}`, en: `🔧 ${severityEn[input.severity]} · ${code}` }, body: { el: input.description, en: input.description } }, { committed: { table: "maintenance_notices", id: Number(notice.id) }, exceptUserId: input.reportedBy });
   return notice;
 }
 
@@ -93,10 +97,11 @@ export const roomNoticeSql = `(SELECT count(*)::int FROM maintenance_notices n W
     ORDER BY CASE n.severity WHEN 'out_of_order' THEN 3 WHEN 'major' THEN 2 ELSE 1 END DESC, n.reported_at DESC LIMIT 1) AS top_notice`;
 
 const noticeColumns = `n.id,n.room_id,r.code room_code,r.room_type,r.operational_status,n.housekeeping_task_id,n.severity,n.description,n.reported_by,rep.display_name reporter_name,n.reported_at,n.status,
-  n.resolved_by,res.display_name resolver_name,n.resolved_at,n.resolution_notes,n.labor_hours,n.cost_cents,n.vendor_reference,n.post_repair_state,
+  n.resolved_by,res.display_name resolver_name,n.assigned_to,asg.display_name assignee_name,n.resolved_at,n.resolution_notes,n.labor_hours,n.cost_cents,n.vendor_reference,n.post_repair_state,
   COALESCE((SELECT json_agg(p.id ORDER BY p.id) FROM maintenance_notice_photos p WHERE p.owner_id=n.owner_id AND p.notice_id=n.id),'[]'::json) photo_ids`;
 const noticeJoins = `FROM maintenance_notices n JOIN rooms r ON r.owner_id=n.owner_id AND r.id=n.room_id
-  LEFT JOIN pms_staff_users rep ON rep.owner_id=n.owner_id AND rep.id=n.reported_by LEFT JOIN pms_staff_users res ON res.owner_id=n.owner_id AND res.id=n.resolved_by`;
+  LEFT JOIN pms_staff_users rep ON rep.owner_id=n.owner_id AND rep.id=n.reported_by LEFT JOIN pms_staff_users res ON res.owner_id=n.owner_id AND res.id=n.resolved_by
+  LEFT JOIN pms_staff_users asg ON asg.owner_id=n.owner_id AND asg.id=n.assigned_to`;
 
 export async function listNotices(ownerId: string, filter: { status?: "open" | "resolved" | "all"; roomId?: number | null; limit?: number } = {}) {
   const status = filter.status ?? "all";
@@ -110,4 +115,20 @@ export async function listNotices(ownerId: string, filter: { status?: "open" | "
 
 export async function getNotice(ownerId: string, id: number) {
   return (await db().query(`SELECT ${noticeColumns} ${noticeJoins} WHERE n.owner_id=$1 AND n.id=$2`, [ownerId, id])).rows[0] ?? null;
+}
+
+/** First member of a team with the Maintenance section whose shift is running now (hotel time), or null. */
+async function maintenanceOnShift(c: PoolClient, ownerId: string): Promise<number | null> {
+  const today = hotelToday();
+  const time = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Athens", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
+  const rows = (await c.query(
+    `SELECT DISTINCT s.staff_user_id,s.date,s.start_time,s.end_time FROM staff_shifts s
+       JOIN staff_user_specialties us ON us.owner_id=s.owner_id AND us.staff_user_id=s.staff_user_id
+       JOIN staff_specialties sp ON sp.owner_id=us.owner_id AND sp.id=us.specialty_id AND sp.active=1 AND sp.modules_json LIKE '%maintenance%'
+       JOIN pms_staff_users u ON u.owner_id=s.owner_id AND u.id=s.staff_user_id AND u.active=1
+      WHERE s.owner_id=$1 AND s.date IN ($2,$3) ORDER BY s.date DESC,s.start_time`,
+    [ownerId, today, addDays(today, -1)],
+  )).rows;
+  const on = rows.find((r) => shiftRunning({ date: String(r.date), start: String(r.start_time), end: String(r.end_time) }, today, time));
+  return on ? Number(on.staff_user_id) : null;
 }
