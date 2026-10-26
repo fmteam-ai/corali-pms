@@ -7,7 +7,7 @@ import { can } from "@/lib/security/permissions";
 import { HousekeepingBoard } from "./board";
 import { HousekeepingServices } from "./services";
 import { hkServiceRows } from "@/lib/hk-services";
-import { housekeepers } from "@/lib/hk-mobile";
+import { messageTargets } from "@/lib/hk-mobile";
 import { HkMessages } from "./hk-messages";
 
 export default async function HousekeepingPage() {
@@ -29,13 +29,13 @@ export default async function HousekeepingPage() {
       [u.ownerId],
     ),
     hkServiceRows(u.ownerId),
-    housekeepers(u.ownerId),
+    messageTargets(u.ownerId),
   ]);
   return (
     <section className="hkPage">
       <div className="pageTitle"><div><h1>{t("hkb.title")}</h1><p>{t("hkb.subtitle")}</p></div>{can(u.role, "users.manage", u.permissions) && <Link className="secondaryLink" href="/pms/housekeeping/settings">{t("hkb.settings")}</Link>}</div>
       <HousekeepingServices lang={lang} initial={services} canWrite={can(u.role, "housekeeping.write", u.permissions)} />
-      <HkMessages lang={lang} me={u.id} staff={staff} rooms={rooms.rows.map((r) => ({ id: Number(r.id), code: String(r.code) }))} />
+      <HkMessages lang={lang} me={u.id} targets={staff} rooms={rooms.rows.map((r) => ({ id: Number(r.id), code: String(r.code) }))} />
       <HousekeepingBoard lang={lang} initialTasks={tasks.rows} rooms={rooms.rows} userId={u.id} canWrite={can(u.role, "housekeeping.write", u.permissions)} canResolve={can(u.role, "maintenance.resolve", u.permissions)} />
     </section>
   );

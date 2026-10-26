@@ -4,7 +4,7 @@ import { env } from "@/lib/env";
 export type SessionClaims = {
   userId: string;
   ownerId: string;
-  role: "owner" | "admin" | "reception" | "housekeeping" | "readonly";
+  role: "owner" | "admin" | "reception" | "housekeeping" | "readonly" | "staff";
   sessionId: string;
 };
 
@@ -30,7 +30,7 @@ export async function verifySessionToken(token: string): Promise<SessionClaims> 
     throw new Error("INVALID_SESSION");
   }
   const role = payload.role;
-  if (!['owner', 'admin', 'reception', 'housekeeping', 'readonly'].includes(String(role))) {
+  if (!['owner', 'admin', 'reception', 'housekeeping', 'readonly', 'staff'].includes(String(role))) {
     throw new Error("INVALID_SESSION_ROLE");
   }
   return {

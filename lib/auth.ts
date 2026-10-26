@@ -35,7 +35,7 @@ export async function currentUser(): Promise<CurrentUser | null> {
   });
   const row = result.rows[0];
   if (!row) return null;
-  if (!['owner', 'admin', 'reception', 'housekeeping', 'readonly'].includes(row.role)) return null;
+  if (!['owner', 'admin', 'reception', 'housekeeping', 'readonly', 'staff'].includes(row.role)) return null;
   if (now - Number(row.last_seen_at ?? 0) > 60_000) {
     void db().query("UPDATE pms_sessions SET last_seen_at = $1 WHERE id = $2", [now, row.session_id]);
   }

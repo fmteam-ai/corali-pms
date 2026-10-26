@@ -26,7 +26,7 @@ export function LoginForm({ lang }: { lang: PmsLang }) {
       return;
     }
     const done = await response.json().catch(() => ({}));
-    router.replace(done.home === "/hk" ? "/hk" : "/pms");
+    router.replace(done.home === "/staff" ? "/staff" : "/pms");
     router.refresh();
   }
 

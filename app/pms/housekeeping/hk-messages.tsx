@@ -4,7 +4,7 @@ import type { HkMessage } from "@/lib/hk-mobile";
 import { pmsT, type PmsLang } from "@/lib/pms-i18n";
 
 /** Reception ↔ housekeeping messages (the housekeepers answer from their phone page, /hk). */
-export function HkMessages({ lang, me, staff, rooms }: { lang: PmsLang; me: number; staff: { id: number; name: string }[]; rooms: { id: number; code: string }[] }) {
+export function HkMessages({ lang, me, targets, rooms }: { lang: PmsLang; me: number; targets: { people: { id: number; name: string }[]; teams: { id: number; name: string }[] }; rooms: { id: number; code: string }[] }) {
   const t = pmsT(lang);
   const [messages, setMessages] = useState<HkMessage[]>([]);
   const [body, setBody] = useState("");
@@ -13,14 +13,14 @@ export function HkMessages({ lang, me, staff, rooms }: { lang: PmsLang; me: numb
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const post = useCallback(async (payload: object) => {
-    const r = await fetch("/api/pms/hk-mobile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const r = await fetch("/api/pms/staff-messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const d = await r.json().catch(() => ({}));
     if (d.ok) setMessages(d.messages);
     return r.ok;
   }, []);
   const load = useCallback(async () => {
     try {
-      const d = await (await fetch("/api/pms/hk-mobile", { cache: "no-store" })).json();
+      const d = await (await fetch("/api/pms/staff-messages", { cache: "no-store" })).json();
       if (!d.ok) return;
       setMessages(d.messages);
       // Opening the page counts as reading what the housekeepers wrote.
@@ -37,7 +37,7 @@ export function HkMessages({ lang, me, staff, rooms }: { lang: PmsLang; me: numb
     setBusy(true);
     setMsg("");
     try {
-      if (await post({ action: "message", body: body.trim(), roomId: room ? Number(room) : null, toStaffId: to ? Number(to) : null })) { setBody(""); setMsg(t("hkm.sent")); }
+      if (await post({ action: "message", body: body.trim(), roomId: room ? Number(room) : null, toStaffId: to.startsWith("p") ? Number(to.slice(1)) : null, toSpecialtyId: to.startsWith("t") ? Number(to.slice(1)) : null })) { setBody(""); setMsg(t("hkm.sent")); }
       else setMsg(t("hkm.sendFailed"));
     } finally { setBusy(false); }
   }
@@ -45,10 +45,14 @@ export function HkMessages({ lang, me, staff, rooms }: { lang: PmsLang; me: numb
 
   return (
     <section className="card hkMsgPanel" id="hk-messages">
-      <div className="hksHead"><h2>💬 {t("hkm.panelTitle")}</h2><a className="secondaryLink" href="/hk" target="_blank" rel="noreferrer">📱 {t("hkm.openPhone")}</a></div>
-      <p className="muted">{t("hkm.panelHelp")} <a href="/hk" target="_blank" rel="noreferrer"><code>/hk</code></a></p>
+      <div className="hksHead"><h2>💬 {t("hkm.panelTitle")}</h2><a className="secondaryLink" href="/staff" target="_blank" rel="noreferrer">📱 {t("hkm.openPhone")}</a></div>
+      <p className="muted">{t("hkm.panelHelp")} <a href="/staff" target="_blank" rel="noreferrer"><code>/staff</code></a></p>
       <div className="hkMsgForm">
-        <select value={to} onChange={(e) => setTo(e.target.value)} aria-label={t("hkm.toHousekeeping")}><option value="">{t("hkm.everyone")}</option>{staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+        <select value={to} onChange={(e) => setTo(e.target.value)} aria-label={t("hkm.toHousekeeping")}>
+          <option value="">{t("hkm.everyone")}</option>
+          {targets.teams.length > 0 && <optgroup label={t("staff.teams")}>{targets.teams.map((s) => <option key={`t${s.id}`} value={`t${s.id}`}>{s.name}</option>)}</optgroup>}
+          {targets.people.length > 0 && <optgroup label={t("staff.people")}>{targets.people.map((s) => <option key={`p${s.id}`} value={`p${s.id}`}>{s.name}</option>)}</optgroup>}
+        </select>
         <select value={room} onChange={(e) => setRoom(e.target.value)} aria-label={t("hkb.rooms")}><option value="">{t("hkm.noRoom")}</option>{rooms.map((r) => <option key={r.id} value={r.id}>{r.code}</option>)}</select>
         <input value={body} maxLength={500} placeholder={t("hkm.write")} onChange={(e) => setBody(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && body.trim() && !busy) void send(); }} />
         <button type="button" disabled={busy || !body.trim()} onClick={() => void send()}>{t("hkm.send")}</button>
@@ -58,7 +62,7 @@ export function HkMessages({ lang, me, staff, rooms }: { lang: PmsLang; me: numb
         <ul className="hkMsgList">
           {messages.map((m) => (
             <li key={m.id} className={`${m.direction}${m.direction === "to_reception" && !m.read ? " unread" : ""}`}>
-              <small>{m.fromId === me ? t("hkm.you") : m.from}{m.direction === "to_hk" ? ` → ${m.to ?? t("hkm.everyone")}` : ""}{m.room ? ` · ${t("hkb.room", { code: m.room })}` : ""} · {time(m.createdAt)}</small>
+              <small>{m.fromId === me ? t("hkm.you") : m.from}{m.direction === "to_hk" ? ` → ${m.to ?? m.toSpecialty ?? t("hkm.everyone")}` : ""}{m.room ? ` · ${t("hkb.room", { code: m.room })}` : ""} · {time(m.createdAt)}</small>
               <p>{m.body}</p>
             </li>
           ))}

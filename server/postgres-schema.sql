@@ -1495,3 +1495,62 @@ CREATE TABLE IF NOT EXISTS "hk_messages" (
   "read_at" BIGINT
 );
 CREATE INDEX IF NOT EXISTS "idx_hk_messages_owner_time" ON "hk_messages" ("owner_id", "created_at" DESC);
+
+-- v95: Corali Staff app. Role "staff" (phone app only); specialties (team + app sections); shifts; Web Push.
+ALTER TABLE "pms_staff_users" DROP CONSTRAINT IF EXISTS "pms_staff_users_role_check";
+ALTER TABLE "pms_staff_users" ADD CONSTRAINT "pms_staff_users_role_check"
+  CHECK ("role" IN ('owner', 'admin', 'reception', 'housekeeping', 'readonly', 'staff')) NOT VALID;
+CREATE TABLE IF NOT EXISTS "staff_specialties" (
+  "id" BIGSERIAL PRIMARY KEY,
+  "owner_id" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "color" TEXT NOT NULL DEFAULT '#2a7d8f',
+  "modules_json" TEXT NOT NULL DEFAULT '[]',
+  "sort" INTEGER NOT NULL DEFAULT 0,
+  "active" SMALLINT NOT NULL DEFAULT 1,
+  "created_at" BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "idx_staff_specialties_owner" ON "staff_specialties" ("owner_id", "active", "sort");
+CREATE TABLE IF NOT EXISTS "staff_user_specialties" (
+  "owner_id" TEXT NOT NULL,
+  "staff_user_id" BIGINT NOT NULL,
+  "specialty_id" BIGINT NOT NULL,
+  PRIMARY KEY ("owner_id", "staff_user_id", "specialty_id")
+);
+CREATE TABLE IF NOT EXISTS "staff_shifts" (
+  "id" BIGSERIAL PRIMARY KEY,
+  "owner_id" TEXT NOT NULL,
+  "staff_user_id" BIGINT NOT NULL,
+  "date" TEXT NOT NULL,
+  "start_time" TEXT NOT NULL,
+  "end_time" TEXT NOT NULL,
+  "specialty_id" BIGINT,
+  "note" TEXT NOT NULL DEFAULT '',
+  "created_by" BIGINT,
+  "created_at" BIGINT NOT NULL,
+  "updated_at" BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "idx_staff_shifts_owner_date" ON "staff_shifts" ("owner_id", "date");
+CREATE INDEX IF NOT EXISTS "idx_staff_shifts_user_date" ON "staff_shifts" ("owner_id", "staff_user_id", "date");
+ALTER TABLE "hk_messages" ADD COLUMN IF NOT EXISTS "to_specialty_id" BIGINT;
+CREATE TABLE IF NOT EXISTS "push_vapid" (
+  "owner_id" TEXT PRIMARY KEY,
+  "public_key" TEXT NOT NULL,
+  "private_key" TEXT NOT NULL,
+  "created_at" BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS "push_subscriptions" (
+  "id" BIGSERIAL PRIMARY KEY,
+  "owner_id" TEXT NOT NULL,
+  "staff_user_id" BIGINT NOT NULL,
+  "endpoint" TEXT NOT NULL UNIQUE,
+  "p256dh" TEXT NOT NULL,
+  "auth" TEXT NOT NULL,
+  "kinds_json" TEXT NOT NULL DEFAULT '[]',
+  "lang" TEXT NOT NULL DEFAULT 'el',
+  "user_agent" TEXT NOT NULL DEFAULT '',
+  "created_at" BIGINT NOT NULL,
+  "last_sent_at" BIGINT,
+  "failures" INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS "idx_push_subscriptions_user" ON "push_subscriptions" ("owner_id", "staff_user_id");

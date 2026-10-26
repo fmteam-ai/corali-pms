@@ -5,8 +5,8 @@ export type RoleRouteDecision =
   | { action: "redirect"; destination: string }
   | { action: "not-found" };
 
-// /hk is the housekeeping page for phones (PMS login, its own light layout).
-const pmsPage = (pathname: string) => pathname === "/login" || pathname === "/pms" || pathname.startsWith("/pms/") || pathname === "/hk";
+// /staff is the Corali Staff phone app (PMS login, its own layout); /hk is its v94 address.
+const pmsPage = (pathname: string) => pathname === "/login" || pathname === "/pms" || pathname.startsWith("/pms/") || pathname === "/hk" || pathname === "/staff";
 const pmsApi = (pathname: string) => pathname === "/api/auth" || pathname.startsWith("/api/auth/") || pathname === "/api/pms" || pathname.startsWith("/api/pms/");
 const bookingPage = (pathname: string) => ["/book", "/check-in", "/manage-booking", "/pay-balance", "/review", "/tv"].some((path) => pathname === path || pathname.startsWith(`${path}/`));
 const bookingApi = (pathname: string) => pathname === "/api/public" || pathname.startsWith("/api/public/") || pathname === "/api/webhooks" || pathname.startsWith("/api/webhooks/");

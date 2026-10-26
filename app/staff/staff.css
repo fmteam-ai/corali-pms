@@ -1,4 +1,4 @@
-/* Housekeeping on the phone (/hk): big touch targets, one column, readable in daylight. */
+/* Corali Staff (phone app, /staff): big touch targets, one column, readable in daylight, bottom tab bar. */
 .hkApp{--ink:#173e47;--sea:#2a7d8f;--sand:#f4f1ea;--card:#fff;--line:#e2ddd2;--muted:#5f6b6e;--gold:#e0a93b;--red:#b3261e;--green:#2e7d4f;
   min-height:100vh;background:var(--sand);color:var(--ink);font-size:16px;padding:12px 12px 96px;max-width:640px;margin:0 auto;box-sizing:border-box}
 .hkApp *{box-sizing:border-box}
@@ -69,3 +69,40 @@
 .hkQuick{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .hkQuick button{font-weight:600;font-size:14px;min-height:44px}
 .hkToast{position:fixed;left:12px;right:12px;bottom:16px;margin:0 auto;max-width:616px;background:var(--ink);color:#fff;padding:14px 16px;border-radius:12px;font-weight:700;z-index:30;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.stApp{padding-bottom:calc(92px + env(safe-area-inset-bottom))}
+.stTeams{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.stTeams i{font-style:normal;font-size:11px;font-weight:700;color:#fff;padding:2px 8px;border-radius:999px}
+.stNav{position:fixed;left:0;right:0;bottom:0;z-index:15;display:flex;justify-content:center;gap:2px;padding:6px 6px calc(6px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid var(--line);box-shadow:0 -4px 16px rgba(0,0,0,.06)}
+.stNav button{flex:1;max-width:110px;font:inherit;font-size:11px;font-weight:700;color:var(--muted);background:none;border:0;border-radius:12px;padding:6px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative}
+.stNav button span{font-size:22px;line-height:1.1}
+.stNav button[aria-current="page"]{color:var(--ink);background:#eef4f5}
+.stNav .hkBadge{position:absolute;top:2px;right:12%;margin:0}
+.stSections{display:grid;gap:10px}
+.stCard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+.stCard h2{margin:0 0 8px;font-size:17px;display:flex;align-items:center;gap:8px}
+.stCard h2 em{font-style:normal;font-size:13px;background:#eef2f2;border-radius:999px;padding:1px 8px}
+.stCard ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.stRow{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f0ece3}
+.stRow:last-child{border-bottom:0}
+.hkCode.sm{grid-row:auto;font-size:20px;min-width:44px}
+.stMain{flex:1;display:flex;flex-direction:column;min-width:0}
+.stMain small{color:var(--muted);font-size:13px}
+.stBtn{font:inherit;font-weight:800;font-size:14px;min-height:44px;padding:8px 12px;border-radius:10px;border:0;background:var(--sea);color:#fff;white-space:nowrap}
+.stBtn.ghost{background:#fff;color:var(--red);border:1px solid var(--red)}
+.stBtn:disabled{opacity:.5}
+.hkEmpty.sm{padding:6px 0;text-align:left}
+.stShift{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#f7f5ef;border-left:5px solid var(--sea)}
+.stShift.today{background:#fff8e8;box-shadow:inset 0 0 0 2px var(--gold)}
+.stShift span{display:flex;flex-direction:column;text-transform:capitalize}
+.stShift small{color:var(--muted);text-transform:none}
+.stShift strong{font-size:18px;white-space:nowrap}
+.stPhotos{display:flex;gap:6px;overflow-x:auto}
+.stPhotos img{width:84px;height:84px;object-fit:cover;border-radius:10px}
+.stLink{display:flex;align-items:center;justify-content:center;font-weight:700;padding:12px 10px;border-radius:12px;border:1px solid var(--line);color:var(--ink);text-decoration:none;min-height:48px}
+.hkRoomHead.static{cursor:default}
+.hkRoom.sev-major{border-left-color:#d4682a}
+.hkRoom.sev-out_of_order{border-left-color:var(--red)}
+.hkRoom.sev-minor{border-left-color:var(--gold)}
+.stGear{font-size:20px;line-height:1;width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:#fff}
+.stGear.on{background:var(--ink);border-color:var(--ink)}
+.stNav button{min-width:0}

@@ -24,4 +24,6 @@ test("the phone rings for new messages to me, guests who just left and new assig
 test("the phone page lives on the PMS host only", () => {
   assert.deepEqual(routeForRole("pms", "/hk"), { action: "allow" });
   assert.deepEqual(routeForRole("booking", "/hk"), { action: "redirect", destination: "/book" });
+  assert.deepEqual(routeForRole("pms", "/staff"), { action: "allow" });
+  assert.deepEqual(routeForRole("booking", "/staff"), { action: "redirect", destination: "/book" });
 });

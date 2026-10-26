@@ -4,6 +4,7 @@ import { enqueueAvailability } from "@/lib/channel-sync";
 import { db } from "@/lib/db";
 import { maxPhotosPerNotice, needsSecondPerson, parsePhoto, roomStatusAfterResolution, severityBlocksRoom, type MaintenanceSeverity, type PostRepairState } from "@/lib/maintenance";
 import { pushNotification } from "@/lib/pms-notifications";
+import { deferStaffPush } from "@/lib/staff-push";
 import { addDays, hotelToday } from "@/lib/tape-chart";
 
 const severityEl: Record<MaintenanceSeverity, string> = { minor: "Μικρή βλάβη", major: "Σοβαρή βλάβη · εκτός λειτουργίας", out_of_order: "Εκτός λειτουργίας" };
@@ -32,6 +33,8 @@ export async function createNotice(c: PoolClient, ownerId: string, input: { room
   }
   const code = await roomCode(c, ownerId, input.roomId);
   await pushNotification(c, ownerId, { kind: "housekeeping", titleEl: `${severityEl[input.severity]} · δωμάτιο ${code}: ${input.description}`, titleEn: `${severityEn[input.severity]} · room ${code}: ${input.description}`, link: `/pms/maintenance?notice=${notice.id}` });
+  // Maintenance staff (team with the Maintenance section) get it on the phone once committed.
+  deferStaffPush(ownerId, { module: "maintenance" }, { kind: "maintenance", tag: `notice-${notice.id}`, url: "/staff?tab=maintenance", title: { el: `🔧 ${severityEl[input.severity]} · ${code}`, en: `🔧 ${severityEn[input.severity]} · ${code}` }, body: { el: input.description, en: input.description } }, { committed: { table: "maintenance_notices", id: Number(notice.id) }, exceptUserId: input.reportedBy });
   return notice;
 }
 

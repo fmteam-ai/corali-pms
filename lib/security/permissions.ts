@@ -27,13 +27,15 @@ export const permissionKeys = [
   "integrations.write",
   "users.manage",
   "audit.read",
+  // Corali Staff phone app (/staff): messages, own shifts; other sections still need their own permissions.
+  "staff.app",
 ] as const;
 
 export type Permission = (typeof permissionKeys)[number];
-export type Role = "owner" | "admin" | "reception" | "housekeeping" | "readonly";
+export type Role = "owner" | "admin" | "reception" | "housekeeping" | "readonly" | "staff";
 
 /** Staff roles from the specification: Owner, Manager (stored as "admin"), Reception, Housekeeping, Read-only. */
-export const roleOrder: Role[] = ["owner", "admin", "reception", "housekeeping", "readonly"];
+export const roleOrder: Role[] = ["owner", "admin", "reception", "housekeeping", "readonly", "staff"];
 
 const rolePermissions: Record<Role, ReadonlySet<Permission>> = {
   // Unrestricted.
@@ -46,12 +48,14 @@ const rolePermissions: Record<Role, ReadonlySet<Permission>> = {
     "reservations.read", "reservations.write", "reservations.create", "reservations.edit", "reservations.delete",
     "folios.read", "folios.write",
     "rooms.read", "housekeeping.read", "pricing.read",
-    "maintenance.resolve",
+    "maintenance.resolve", "staff.app",
   ]),
   // Housekeeping: mobile room status, checklists and damage reports.
-  housekeeping: new Set<Permission>(["dashboard.read", "rooms.read", "housekeeping.read", "housekeeping.write", "maintenance.resolve"]),
+  housekeeping: new Set<Permission>(["dashboard.read", "rooms.read", "housekeeping.read", "housekeeping.write", "maintenance.resolve", "staff.app"]),
   // Read-only: occupancy, calendars and non-financial reporting.
-  readonly: new Set<Permission>(["dashboard.read", "reservations.read", "rooms.read", "housekeeping.read", "pricing.read", "reports.read"]),
+  readonly: new Set<Permission>(["dashboard.read", "reservations.read", "rooms.read", "housekeeping.read", "pricing.read", "reports.read", "staff.app"]),
+  // Staff (bar, kitchen, maintenance, …): only the Corali Staff phone app; specialties and permission overrides add more.
+  staff: new Set<Permission>(["staff.app"]),
 };
 
 /** Parent permission consulted when a granular permission has no explicit override (keeps legacy ".write" overrides working). */

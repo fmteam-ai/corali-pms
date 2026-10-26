@@ -7,7 +7,7 @@ import {assertTrustedOrigin} from "@/lib/security/origin";
 import {hashPassword} from "@/lib/security/password";
 import {permissionKeys} from "@/lib/security/permissions";
 
-const role=z.enum(["admin","reception","housekeeping","readonly"]);
+const role=z.enum(["admin","reception","housekeeping","readonly","staff"]);
 const permissions=z.partialRecord(z.enum(permissionKeys),z.boolean());
 const create=z.object({username:z.string().trim().min(3).max(40).regex(/^[a-zA-Z0-9._-]+$/),displayName:z.string().trim().min(2).max(100),email:z.email(),role,password:z.string().min(12).max(128),permissions:permissions.default({})});
 const update=z.object({id:z.number().int().positive(),displayName:z.string().trim().min(2).max(100).optional(),email:z.email().optional(),role:role.optional(),active:z.boolean().optional(),password:z.string().min(12).max(128).optional(),permissions:permissions.optional(),revokeSessions:z.boolean().optional()});

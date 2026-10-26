@@ -8,7 +8,7 @@ import "@/app/pms/pms-theme.css";
 
 export default async function LoginPage() {
   const user = await currentUser();
-  if (user) redirect(user.role === "housekeeping" ? "/hk" : "/pms");
+  if (user) redirect(user.role === "housekeeping" || user.role === "staff" ? "/staff" : "/pms");
   const { lang, t } = await getPmsT();
   return (
     <main className="loginPage" lang={lang}>

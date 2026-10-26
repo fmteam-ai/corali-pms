@@ -25,6 +25,7 @@ export const config = {
     "/",
     "/login",
     "/hk",
+    "/staff",
     "/pms/:path*",
     "/book/:path*",
     "/check-in/:path*",

@@ -5,7 +5,7 @@ import { parsePermissions, permissionColumns, permissionMatrix, roleDefault, typ
 
 type U = { id: number; username: string; display_name: string; email: string; role: Role; active: number; permissions_json: string; two_factor: boolean };
 type Overrides = Partial<Record<Permission, boolean>>;
-const assignable: Role[] = ["admin", "reception", "housekeeping", "readonly"];
+const assignable: Role[] = ["admin", "reception", "housekeeping", "readonly", "staff"];
 
 export function UsersManager({ lang, initial, currentUserId }: { lang: PmsLang; initial: U[]; currentUserId: number }) {
   const t = pmsT(lang);

@@ -395,3 +395,44 @@ body:has(.pms){background:#f2f4f6}
 .pms .hkMsgList small{color:var(--muted,#5f6b6e)}
 .pms .hkMsgList p{margin:2px 0 0;white-space:pre-wrap}
 @media (max-width:760px){.pms .hkMsgForm{grid-template-columns:1fr 1fr}.pms .hkMsgForm input,.pms .hkMsgForm button{grid-column:span 2}}
+/* PMS → Staff: weekly shift plan and teams (specialties). */
+.pms .staffMgr .segmented{margin-bottom:6px}
+.pms .staffWeekBar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px}
+.pms .staffWeekBar b{min-width:180px;text-align:center}
+.pms .staffWeekBar select{width:auto}
+.pms .staffGridWrap{overflow-x:auto}
+.pms .staffGrid{width:100%;border-collapse:separate;border-spacing:0;min-width:900px}
+.pms .staffGrid th,.pms .staffGrid td{border-bottom:1px solid var(--border,#e3e7ea);padding:6px;vertical-align:top;text-align:left}
+.pms .staffGrid thead th{font-size:13px;text-transform:capitalize;color:var(--muted,#5f6b6e);position:sticky;top:0;background:var(--surface,#fff)}
+.pms .staffGrid tbody th{min-width:150px}
+.pms .staffGrid tbody th b{display:block}
+.pms .staffGrid tbody th small{color:var(--muted,#5f6b6e)}
+.pms .staffGrid .today{background:rgba(242,196,109,.12)}
+.pms .staffDots{display:flex;gap:3px;margin-top:3px}
+.pms .staffDots i{width:10px;height:10px;border-radius:50%}
+.pms .shiftChip{display:block;width:100%;margin:0 0 4px;padding:5px 6px;border:0;border-radius:8px;color:#fff;font:inherit;font-size:12px;font-weight:700;cursor:pointer;text-align:center}
+.pms .shiftAdd{display:block;width:100%;padding:3px;border:1px dashed var(--border-strong,#c6cfd4);border-radius:8px;background:none;color:var(--muted,#5f6b6e);cursor:pointer;opacity:.55}
+.pms .shiftAdd:hover,.pms .shiftAdd:focus-visible{opacity:1}
+.pms .staffHours{font-weight:800;text-align:center !important}
+.pms .staffTeams{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.pms .staffTeam{border:1px solid var(--border,#e3e7ea);border-top:5px solid;border-radius:12px;padding:12px;display:grid;gap:6px;align-content:start}
+.pms .staffTeam h3{margin:0;display:flex;align-items:center;gap:8px;font-size:17px}
+.pms .staffTeam h3 i{width:12px;height:12px;border-radius:50%}
+.pms .staffTeam p{margin:0}
+.pms .staffTeamAdd{border:2px dashed var(--border-strong,#c6cfd4);border-radius:12px;background:none;font:inherit;font-weight:700;min-height:120px;cursor:pointer;color:var(--text,#173e47)}
+.pms .staffModal{background:var(--surface,#fff);border-radius:16px;padding:18px;width:min(560px,100%);display:grid;gap:12px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.pms .staffModal h2{margin:0;font-size:19px}
+.pms .staffModal .formGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pms .staffModal .formGrid .staffWide{grid-column:span 2}
+.pms .staffModal .modalActions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.pms .staffModal .modalActions .staffDanger{margin-right:auto;color:#b3261e;border-color:#b3261e}
+.pms .staffMgr .card{max-width:none;width:auto;margin:0}
+.pms .staffPresets{display:flex;flex-wrap:wrap;gap:6px}
+.pms .staffPresets button{font:inherit;font-size:13px;padding:6px 10px;border-radius:999px;border:1px solid var(--border-strong,#c6cfd4);background:var(--surface,#fff);color:var(--text,#173e47);cursor:pointer}
+.pms .staffPresets button.on{background:#173e47;color:#fff;border-color:#173e47}
+.pms .staffColors{display:flex;gap:6px;flex-wrap:wrap;padding-top:4px}
+.pms .staffColors button{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer}
+.pms .staffColors button.on{border-color:var(--text,#173e47);box-shadow:0 0 0 2px #fff inset}
+.pms .staffChecks{border:1px solid var(--border,#e3e7ea);border-radius:12px;padding:10px;display:grid;gap:6px;max-height:240px;overflow:auto}
+@media (max-width:600px){.pms .staffModal .formGrid{grid-template-columns:1fr}.pms .staffModal .formGrid .staffWide{grid-column:auto}}
+.pms .staffModal .primaryAction{margin:0}

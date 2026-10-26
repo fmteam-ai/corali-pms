@@ -2,7 +2,8 @@ import { audited } from "@/lib/audit";
 import { reservationSnapshot } from "@/lib/audit-snapshots";
 import { forbidden, requireApiUser } from "@/lib/auth";
 import { can } from "@/lib/security/permissions";
-import { withTransaction } from "@/lib/db";
+import { db, withTransaction } from "@/lib/db";
+import { deferStaffPush } from "@/lib/staff-push";
 import { getReservation } from "@/lib/reservations";
 import { moveNights, recalcBooking } from "@/lib/folio-db";
 import { enqueueAvailability } from "@/lib/channel-sync";
@@ -76,6 +77,8 @@ async function handlePATCH(request: Request, context: { params: Promise<{ id: st
     });
     // Corali TV power (Shelly plug): on at check-in, off at check-out. Never delays or fails the reservation change.
     if((input.action==="check_in"||input.action==="check_out")&&updated?.room_id)void syncRoomPower(user.ownerId,Number(updated.room_id)).catch((e)=>console.error("TV power sync failed",e));
+    // Housekeeping phones: the room is free to clean.
+    if(input.action==="check_out"&&updated?.room_id)void alertCheckout(user.ownerId,Number(updated.room_id));
     return Response.json({ok:true,booking:updated});
   } catch(error){
     if(error instanceof z.ZodError || (error instanceof Error && error.message==="INVALID_DATES")) return Response.json({ok:false,error:"INVALID_INPUT"},{status:400});
@@ -87,3 +90,8 @@ async function handlePATCH(request: Request, context: { params: Promise<{ id: st
 }
 
 export const PATCH = audited("reservation", handlePATCH, { snapshot: reservationSnapshot });
+
+async function alertCheckout(ownerId:string,roomId:number){
+  const code=String((await db().query(`SELECT code FROM rooms WHERE owner_id=$1 AND id=$2`,[ownerId,roomId])).rows[0]?.code??roomId);
+  deferStaffPush(ownerId,{module:"housekeeping"},{kind:"checkout",tag:`checkout-${roomId}`,url:"/staff?tab=housekeeping",title:{el:`🧳 Αναχώρηση · ${code}`,en:`🧳 Checked out · ${code}`},body:{el:"Ο πελάτης έφυγε, το δωμάτιο μπορεί να καθαριστεί.",en:"The guest has left; the room can be cleaned."}});
+}

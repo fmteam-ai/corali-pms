@@ -5,6 +5,8 @@ import { hkServiceRows } from "@/lib/hk-services";
 import type { HkService } from "@/lib/hk-services-core";
 import { hkKindOrder, roomDayKind, roomHasWork, type HkRoomKind } from "@/lib/hk-mobile-core";
 import { pushNotification } from "@/lib/pms-notifications";
+import { isDesk } from "@/lib/staff-core";
+import { deferStaffPush } from "@/lib/staff-push";
 import { hotelToday } from "@/lib/tape-chart";
 
 export type HkTask = { id: number; type: string; status: string; assignedTo: string | null; assignedName: string | null; notes: string; inspectionNotes: string; checklist: Record<string, boolean>; cleanedBy: number | null };
@@ -16,7 +18,7 @@ export type HkRoom = {
   due: HkService[]; done: HkService[];
   task: HkTask | null; notices: number;
 };
-export type HkMessage = { id: number; direction: "to_hk" | "to_reception"; from: string; fromId: number; to: string | null; toId: number | null; room: string | null; body: string; createdAt: number; read: boolean };
+export type HkMessage = { id: number; direction: "to_hk" | "to_reception"; from: string; fromId: number; to: string | null; toId: number | null; toSpecialty: string | null; room: string | null; body: string; createdAt: number; read: boolean };
 
 const json = (v: unknown) => { try { return JSON.parse(String(v || "{}")) as Record<string, boolean>; } catch { return {}; } };
 
@@ -58,50 +60,67 @@ export async function hkDay(u: CurrentUser): Promise<{ today: string; rooms: HkR
   };
 }
 
-/** Last two days of messages: a housekeeper sees the ones to everyone or to them, and their own; reception sees all. */
+/**
+ * Messages of the last two days. Staff see what they wrote and what was sent to them, to one of their teams or to
+ * everyone; the front desk sees all. (Table name kept from v94, when only housekeeping used it.)
+ */
 export async function hkMessages(u: CurrentUser): Promise<HkMessage[]> {
   const r = await db().query(
-    `SELECT m.*,f.display_name from_name,t.display_name to_name,r.code room_code FROM hk_messages m
+    `SELECT m.*,f.display_name from_name,t.display_name to_name,sp.name specialty_name,r.code room_code FROM hk_messages m
        LEFT JOIN pms_staff_users f ON f.owner_id=m.owner_id AND f.id=m.from_staff_id
        LEFT JOIN pms_staff_users t ON t.owner_id=m.owner_id AND t.id=m.to_staff_id
+       LEFT JOIN staff_specialties sp ON sp.owner_id=m.owner_id AND sp.id=m.to_specialty_id
        LEFT JOIN rooms r ON r.owner_id=m.owner_id AND r.id=m.room_id
-      WHERE m.owner_id=$1 AND m.created_at>$2 AND ($3<>'housekeeping' OR m.from_staff_id=$4 OR (m.direction='to_hk' AND (m.to_staff_id IS NULL OR m.to_staff_id=$4)))
-      ORDER BY m.id DESC LIMIT 60`,
-    [u.ownerId, Date.now() - 2 * 86_400_000, u.role, u.id],
+      WHERE m.owner_id=$1 AND m.created_at>$2 AND ($3 OR m.from_staff_id=$4 OR (m.direction='to_hk' AND ${toMe}))
+      ORDER BY m.id DESC LIMIT 80`,
+    [u.ownerId, Date.now() - 2 * 86_400_000, isDesk(u.role), u.id],
   );
-  return r.rows.map((m) => ({ id: Number(m.id), direction: m.direction, from: String(m.from_name ?? ""), fromId: Number(m.from_staff_id), to: m.to_name ?? null, toId: m.to_staff_id == null ? null : Number(m.to_staff_id), room: m.room_code ?? null, body: String(m.body), createdAt: Number(m.created_at), read: m.read_at != null }));
+  return r.rows.map((m) => ({ id: Number(m.id), direction: m.direction, from: String(m.from_name ?? ""), fromId: Number(m.from_staff_id), to: m.to_name ?? null, toId: m.to_staff_id == null ? null : Number(m.to_staff_id), toSpecialty: m.specialty_name ?? null, room: m.room_code ?? null, body: String(m.body), createdAt: Number(m.created_at), read: m.read_at != null }));
 }
 
-/** Housekeepers write to reception (a PMS notification with sound); everyone else writes to housekeeping. */
-export async function sendHkMessage(u: CurrentUser, input: { body: string; roomId: number | null; toStaffId: number | null }): Promise<void> {
-  const direction = u.role === "housekeeping" ? "to_reception" : "to_hk";
+const toMe = `(m.to_staff_id=$4 OR m.to_specialty_id IN (SELECT specialty_id FROM staff_user_specialties WHERE owner_id=m.owner_id AND staff_user_id=$4) OR (m.to_staff_id IS NULL AND m.to_specialty_id IS NULL))`;
+
+/** Staff write to the front desk (a PMS notification with sound); the front desk writes to a person, a team or everyone. */
+export async function sendHkMessage(u: CurrentUser, input: { body: string; roomId: number | null; toStaffId: number | null; toSpecialtyId?: number | null }): Promise<void> {
+  const desk = isDesk(u.role);
+  const direction = desk ? "to_hk" : "to_reception";
+  const toStaff = desk ? input.toStaffId : null, toSpecialty = desk && !toStaff ? input.toSpecialtyId ?? null : null;
+  let roomCode = "";
   await withTransaction(async (c) => {
     const room = input.roomId ? (await c.query(`SELECT code FROM rooms WHERE owner_id=$1 AND id=$2`, [u.ownerId, input.roomId])).rows[0] : null;
     if (input.roomId && !room) throw Error("INVALID_ROOM");
-    if (direction === "to_hk" && input.toStaffId && !(await c.query(`SELECT 1 FROM pms_staff_users WHERE owner_id=$1 AND id=$2 AND active=1`, [u.ownerId, input.toStaffId])).rowCount) throw Error("INVALID_STAFF");
+    roomCode = room ? String(room.code) : "";
+    if (toStaff && !(await c.query(`SELECT 1 FROM pms_staff_users WHERE owner_id=$1 AND id=$2 AND active=1`, [u.ownerId, toStaff])).rowCount) throw Error("INVALID_STAFF");
+    if (toSpecialty && !(await c.query(`SELECT 1 FROM staff_specialties WHERE owner_id=$1 AND id=$2 AND active=1`, [u.ownerId, toSpecialty])).rowCount) throw Error("INVALID_STAFF");
     await c.query(
-      `INSERT INTO hk_messages(owner_id,direction,from_staff_id,to_staff_id,room_id,body,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)`,
-      [u.ownerId, direction, u.id, direction === "to_hk" ? input.toStaffId : null, input.roomId, input.body, Date.now()],
+      `INSERT INTO hk_messages(owner_id,direction,from_staff_id,to_staff_id,to_specialty_id,room_id,body,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [u.ownerId, direction, u.id, toStaff, toSpecialty, input.roomId, input.body, Date.now()],
     );
-    if (direction === "to_reception") {
+    if (!desk) {
       const where = room ? ` · ${room.code}` : "";
       await pushNotification(c, u.ownerId, { kind: "hk_message", titleEl: `💬 ${u.displayName}${where}: ${input.body}`, titleEn: `💬 ${u.displayName}${where}: ${input.body}`, link: "/pms/housekeeping#hk-messages" });
     }
   });
+  if (desk) {
+    const where = roomCode ? ` · ${roomCode}` : "";
+    deferStaffPush(u.ownerId, toStaff ? { userIds: [toStaff] } : toSpecialty ? { specialtyId: toSpecialty } : { staff: true }, {
+      kind: "message", url: "/staff?tab=messages",
+      title: { el: `💬 ${u.displayName}${where}`, en: `💬 ${u.displayName}${where}` }, body: { el: input.body, en: input.body },
+    }, { exceptUserId: u.id });
+  }
 }
 
-/** Mark the messages addressed to this user (housekeepers) or to reception (everyone else) as read. */
+/** Mark what was sent to this person (staff) or to the front desk (desk) as read. */
 export async function readHkMessages(u: CurrentUser): Promise<void> {
-  await db().query(
-    u.role === "housekeeping"
-      ? `UPDATE hk_messages SET read_at=$3 WHERE owner_id=$1 AND read_at IS NULL AND direction='to_hk' AND (to_staff_id IS NULL OR to_staff_id=$2)`
-      : `UPDATE hk_messages SET read_at=$3 WHERE owner_id=$1 AND read_at IS NULL AND direction='to_reception' AND $2::bigint IS NOT NULL`,
-    [u.ownerId, u.id, Date.now()],
-  );
+  if (isDesk(u.role)) await db().query(`UPDATE hk_messages m SET read_at=$2 WHERE m.owner_id=$1 AND m.read_at IS NULL AND m.direction='to_reception'`, [u.ownerId, Date.now()]);
+  else await db().query(`UPDATE hk_messages m SET read_at=$3 WHERE m.owner_id=$1 AND m.read_at IS NULL AND m.direction='to_hk' AND ${toMe.replaceAll("$4", "$2")}`, [u.ownerId, u.id, Date.now()]);
 }
 
-/** Staff a message can be addressed to. */
-export async function housekeepers(ownerId: string): Promise<{ id: number; name: string }[]> {
-  const r = await db().query(`SELECT id,display_name FROM pms_staff_users WHERE owner_id=$1 AND active=1 AND role='housekeeping' ORDER BY display_name`, [ownerId]);
-  return r.rows.map((x) => ({ id: Number(x.id), name: String(x.display_name) }));
+/** People and teams a message can be addressed to. */
+export async function messageTargets(ownerId: string): Promise<{ people: { id: number; name: string }[]; teams: { id: number; name: string }[] }> {
+  const [people, teams] = await Promise.all([
+    db().query(`SELECT id,display_name FROM pms_staff_users WHERE owner_id=$1 AND active=1 AND role NOT IN ('owner','admin','reception') ORDER BY display_name`, [ownerId]),
+    db().query(`SELECT id,name FROM staff_specialties WHERE owner_id=$1 AND active=1 ORDER BY sort,id`, [ownerId]),
+  ]);
+  return { people: people.rows.map((x) => ({ id: Number(x.id), name: String(x.display_name) })), teams: teams.rows.map((x) => ({ id: Number(x.id), name: String(x.name) })) };
 }

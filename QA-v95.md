@@ -2,6 +2,14 @@
 
 ## Scope in this package
 
+### New in v95
+
+- [ ] Corali Staff app at `/staff` (PMS host), installable on the phone (Android "Install", iPhone "Add to Home Screen"). Housekeeping and the new role "Staff" land there after login; `/hk` redirects there.
+- [ ] Sections by role and team: Housekeeping (v94 rooms page), Reception (today's arrivals/departures with check-in/out, open TV requests, rooms to inspect with approve/return), Maintenance (open defects with photos, "Repaired"), Messages, Shifts (my next 14 days, who works today); ⚙️ settings.
+- [ ] Phone alerts with the app closed (Web Push, VAPID keys created per hotel): staff choose the kinds (messages, shifts, check-outs, assignments, defects; desk: TV requests, staff messages, bookings…); "Test" button.
+- [ ] PMS → PMS menu → Staff & shifts: teams (specialties) with colour, members and app sections (add Bar, Kitchen, …); weekly shift planner (presets, overnight shifts, overlap check, copy previous week, hours per person); employees are alerted for new/changed/cancelled shifts.
+- [ ] PMS → Users: new role "Staff" (phone app only). Housekeeping page: messages to everyone, a team or a person.
+
 ### New in v94
 
 - [ ] Housekeeping phone page `/hk` (PMS host): housekeepers land there after login. It lists today's rooms (departure + arrival, departure, arrival, stayover, open work), whether the guest has left, sheets/towels due (blinking) with "changed" buttons, DND, open problems and the task status.

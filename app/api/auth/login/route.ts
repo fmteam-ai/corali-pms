@@ -95,8 +95,8 @@ export async function POST(request: Request): Promise<Response> {
       expires: new Date(expiresAt),
     });
     await recordAudit({ ownerId, userId: Number(user.id), action: "security.login", entity: "session" });
-    // Housekeepers start on the phone page.
-    return Response.json({ ok: true, home: user.role === "housekeeping" ? "/hk" : "/pms" });
+    // Housekeepers and other staff start on the Corali Staff phone app.
+    return Response.json({ ok: true, home: user.role === "housekeeping" || user.role === "staff" ? "/staff" : "/pms" });
   } catch (error) {
     if (error instanceof z.ZodError) return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
     if (error instanceof Error && error.message === "UNTRUSTED_ORIGIN") return Response.json({ ok: false, error: "UNTRUSTED_ORIGIN" }, { status: 403 });
