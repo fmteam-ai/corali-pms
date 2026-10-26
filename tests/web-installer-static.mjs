@@ -5,10 +5,10 @@ import path from "node:path";
 
 const project = process.cwd();
 const template = await readFile(path.join(project, "web-installer", "corali-installer.php.template"), "utf8");
-const installer = await readFile(path.join(project, "corali-web-installer-v98.php"), "utf8");
-const access = await readFile(path.join(project, "corali-web-installer-v98-access.txt"), "utf8");
-const archive=await readFile(path.join(project,"corali-pms-cpanel-v98-root.tar.gz"));
-const stateId=`v98-${createHash("sha256").update(archive).digest("hex").slice(0,20)}`;
+const installer = await readFile(path.join(project, "corali-web-installer-v99.php"), "utf8");
+const access = await readFile(path.join(project, "corali-web-installer-v99-access.txt"), "utf8");
+const archive=await readFile(path.join(project,"corali-pms-cpanel-v99-root.tar.gz"));
+const stateId=`v99-${createHash("sha256").update(archive).digest("hex").slice(0,20)}`;
 assert.ok(installer.includes(`/.corali-web-installer-${stateId}`),"installer lock must belong to this exact archive");
 assert.ok(!installer.includes("__INSTALL_STATE_ID__"));
 
@@ -70,7 +70,7 @@ for (const required of [
   "INSTALL-CPANEL.sh --yes",
   "αυτόματο rollback",
   "@unlink(__FILE__)",
-  "corali-pms-cpanel-v98-root.tar.gz",
+  "corali-pms-cpanel-v99-root.tar.gz",
   "access_action",
   "access_csrf",
   "authorizeAccessKey",
@@ -85,6 +85,9 @@ for (const required of [
   "scripts/recover-admin.mjs",
   "admin_password_confirmation",
   "@unlink($inputFile)",
+  "scripts/has-active-owner.mjs",
+  "'resetTwoFactor' => !empty($input['reset_2fa'])",
+  "$postAction === 'keep_admin'",
 ]) {
   assert.ok(installer.includes(required), `missing web-installer safeguard: ${required}`);
 }
@@ -92,4 +95,5 @@ for (const required of [
 assert.equal(/(?:sk_live_|whsec_)[A-Za-z0-9]{16,}/.test(installer), false);
 assert.equal(/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(installer), false);
 assert.equal(installer.includes("$password . ' "), false, "administrator password must not be added to a shell command");
+assert.equal(installer.includes("'resetTwoFactor' => true"), false, "upgrades must not reset 2FA by default");
 console.log("Web installer token, CSRF, headers, checksum, rollback and secret checks: OK");

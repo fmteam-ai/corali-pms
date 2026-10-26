@@ -2,6 +2,12 @@
 
 ## Scope in this package
 
+### New in v99
+
+- Web installer, step 3 (administrator access): upgrades no longer reset two-factor authentication. When the PMS already has an active owner account, the installer shows it and offers "Continue with the existing account" — password and 2FA stay unchanged and "Finish" is unlocked. The recovery form (new account / forgotten password / lost 2FA) is collapsed, and resetting 2FA is now an explicit, unchecked opt-in instead of always on.
+- New `scripts/has-active-owner.mjs` (packaged and verified) reports whether an active owner exists; it prints only the username.
+- `tests/web-installer-static.mjs` fails if the installer ever forces `resetTwoFactor => true` again.
+
 ### New in v98
 
 - [ ] Corali Staff 🎤 voice / typed commands (housekeeping & maintenance): e.g. "Το 104 είναι έτοιμο, αλλά η λάμπα στο μπαλκόνι είναι καμένη" → list of actions (finish clean with the checklist, defect with severity, sheets/towels changed, message to reception), shown first and run after "Run"; failures show the reason. Claude parses when an Anthropic key is set, built-in Greek/English rules otherwise. Microphone allowed only on /staff.

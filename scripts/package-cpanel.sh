@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project="$(cd "$(dirname "$0")/.." && pwd)"
-output="$project/corali-pms-cpanel-v98-root.tar.gz"
+output="$project/corali-pms-cpanel-v99-root.tar.gz"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 
@@ -23,12 +23,12 @@ cp -a server "$stage/server"
 cp scripts/init-postgres.mjs scripts/create-admin.mjs scripts/create-admin.sh \
   scripts/reset-admin-2fa.mjs scripts/run-birthday-automation.mjs scripts/run-message-automations.mjs scripts/automation-core.mjs scripts/retention-core.mjs scripts/birthday-core.mjs scripts/run-data-retention.mjs scripts/run-balance-collection.mjs scripts/balance-collection-core.mjs scripts/mydata-core.mjs scripts/run-mydata-queue.mjs scripts/channel-core.mjs scripts/run-channel-sync.mjs scripts/run-social-publisher.mjs scripts/arrival-core.mjs scripts/rate-shopper-core.mjs scripts/run-rate-shopper.mjs scripts/tv-power-core.mjs scripts/run-tv-power.mjs \
   scripts/database-config.mjs scripts/backup-postgres.mjs scripts/prepare-runtime-env.mjs \
-  scripts/load-runtime-env.mjs scripts/admin-recovery-core.mjs scripts/recover-admin.mjs \
+  scripts/load-runtime-env.mjs scripts/admin-recovery-core.mjs scripts/recover-admin.mjs scripts/has-active-owner.mjs \
   scripts/fix-cpanel-permissions.sh scripts/smoke-runtime.sh \
   scripts/verify-package.sh "$stage/scripts/"
-cp app.js .env.example DEPLOY-CPANEL.md QA-v98.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md INSTALL-CPANEL.sh \
+cp app.js .env.example DEPLOY-CPANEL.md QA-v99.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md INSTALL-CPANEL.sh \
   ROLLBACK-CPANEL.sh package.json "$stage/"
-printf 'v98\n' > "$stage/DEPLOY_VERSION.txt"
+printf 'v99\n' > "$stage/DEPLOY_VERSION.txt"
 
 find "$stage" -type d -exec chmod 755 {} +
 find "$stage" -type f -exec chmod 644 {} +

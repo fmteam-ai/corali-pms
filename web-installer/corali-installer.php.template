@@ -5,14 +5,14 @@ const CORALI_INSTALL_TOKEN_HASH = '__INSTALL_TOKEN_HASH__';
 const CORALI_FONT_REGULAR = '__FONT_REGULAR_BASE64__';
 const CORALI_FONT_BOLD = '__FONT_BOLD_BASE64__';
 const CORALI_HOME = '/home/corali';
-const CORALI_ARCHIVE = 'corali-pms-cpanel-v98-root.tar.gz';
-const CORALI_CHECKSUM = 'corali-pms-cpanel-v98-root.tar.gz.sha256';
+const CORALI_ARCHIVE = 'corali-pms-cpanel-v99-root.tar.gz';
+const CORALI_CHECKSUM = 'corali-pms-cpanel-v99-root.tar.gz.sha256';
 const CORALI_PMS_ROOT = '/home/corali/apps/corali-pms';
 const CORALI_BOOKING_ROOT = '/home/corali/apps/corali-booking';
 const CORALI_APP_USER = 'corali';
 const CORALI_PMS_URL = 'https://pms.hotelcorali.gr';
 const CORALI_BOOKING_URL = 'https://booking.hotelcorali.gr';
-const CORALI_INSTALLER_RELEASE = 'v98';
+const CORALI_INSTALLER_RELEASE = 'v99';
 
 $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
     || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
@@ -51,11 +51,12 @@ function i18n(string $key): string
             'start' => 'Έναρξη εγκατάστασης', 'retry' => 'Νέα ασφαλής προσπάθεια',
             'previous_failed' => 'Η προηγούμενη προσπάθεια απέτυχε με κωδικό %s. Ελέγξτε το log πριν από νέα προσπάθεια.',
             'admin_access' => 'Πρόσβαση διαχειριστή PMS',
-            'admin_help' => 'Ορίστε ή επαναφέρετε με ασφάλεια τον κύριο λογαριασμό. Η ενέργεια ακυρώνει παλιές συνεδρίες και μηδενίζει το 2FA.',
+            'admin_help' => 'Στην πρώτη εγκατάσταση ορίστε τον κύριο λογαριασμό. Σε αναβάθμιση κρατήστε τον υπάρχοντα χωρίς αλλαγές· η φόρμα χρειάζεται μόνο αν ξεχάσατε τον κωδικό ή χάσατε το 2FA.',
             'username' => 'Όνομα χρήστη', 'display_name' => 'Ονοματεπώνυμο', 'email' => 'Email',
             'password' => 'Νέος κωδικός (τουλάχιστον 14 χαρακτήρες)', 'confirm_password' => 'Επιβεβαίωση κωδικού',
             'reset_2fa' => 'Επαναφορά 2FA και κωδικών ανάκτησης', 'recover_admin' => 'Αποθήκευση πρόσβασης διαχειριστή',
-            'admin_recovered' => 'Η πρόσβαση διαχειριστή αποθηκεύτηκε. Συνδεθείτε στο PMS χωρίς κωδικό 2FA και ρυθμίστε νέο 2FA από το Προφίλ.',
+            'admin_recovered' => 'Η πρόσβαση διαχειριστή αποθηκεύτηκε. Αν επιλέξατε επαναφορά 2FA, συνδεθείτε χωρίς κωδικό 2FA και ρυθμίστε νέο από το Προφίλ.',
+            'keep_admin' => 'Συνέχεια με τον υπάρχοντα λογαριασμό (χωρίς αλλαγές στον κωδικό και στο 2FA)', 'existing_admin' => 'Υπάρχει ήδη ο λογαριασμός διαχειριστή «%s». Για αναβάθμιση δεν χρειάζεται να αλλάξετε τίποτα.', 'recover_form' => 'Νέος λογαριασμός ή ανάκτηση (ξεχασμένος κωδικός / χαμένο 2FA)',
             'password_mismatch' => 'Οι δύο κωδικοί δεν συμφωνούν.',
             'final_check' => 'Τελικός έλεγχος', 'final_help' => 'Ελέγξτε σύνδεση PMS και φόρμα Booking πριν διαγράψετε τον installer.',
             'check_pms' => 'Άνοιγμα σύνδεσης PMS', 'check_booking' => 'Άνοιγμα φόρμας Booking',
@@ -76,11 +77,12 @@ function i18n(string $key): string
             'start' => 'Start installation', 'retry' => 'Retry safely',
             'previous_failed' => 'The previous attempt failed with code %s. Review the log before trying again.',
             'admin_access' => 'PMS administrator access',
-            'admin_help' => 'Securely create or recover the owner account. This revokes old sessions and resets 2FA.',
+            'admin_help' => 'On the first installation create the owner account. On an upgrade keep the existing one as it is; the form is only needed if you forgot the password or lost 2FA.',
             'username' => 'Username', 'display_name' => 'Full name', 'email' => 'Email',
             'password' => 'New password (at least 14 characters)', 'confirm_password' => 'Confirm password',
             'reset_2fa' => 'Reset 2FA and recovery codes', 'recover_admin' => 'Save administrator access',
-            'admin_recovered' => 'Administrator access was saved. Sign in without a 2FA code, then configure new 2FA from Profile.',
+            'admin_recovered' => 'Administrator access was saved. If you chose to reset 2FA, sign in without a 2FA code and set it up again from Profile.',
+            'keep_admin' => 'Continue with the existing account (password and 2FA unchanged)', 'existing_admin' => 'The administrator account “%s” already exists. Nothing needs to change for an upgrade.', 'recover_form' => 'New account or recovery (forgotten password / lost 2FA)',
             'password_mismatch' => 'The passwords do not match.',
             'final_check' => 'Final check', 'final_help' => 'Test PMS sign-in and the Booking form before deleting the installer.',
             'check_pms' => 'Open PMS sign-in', 'check_booking' => 'Open Booking form',
@@ -492,7 +494,7 @@ function startInstallation(array $checks): void
     }
 
     $suffix = gmdate('Ymd\THis\Z') . '-' . bin2hex(random_bytes(3));
-    $release = $releaseRoot . '/corali-v98-web-' . $suffix;
+    $release = $releaseRoot . '/corali-v99-web-' . $suffix;
     $archive = CORALI_HOME . '/' . CORALI_ARCHIVE;
     $log = $stateDir . '/install.log';
     $status = $stateDir . '/exit.status';
@@ -560,6 +562,21 @@ function startInstallation(array $checks): void
     ]);
 }
 
+/** Username of the active owner account, or null (runs scripts/has-active-owner.mjs with the runtime environment). */
+function activeOwner(): ?string
+{
+    $nodePath = resolvedCommandPath('node');
+    $script = CORALI_PMS_ROOT . '/scripts/has-active-owner.mjs';
+    $runtime = CORALI_PMS_ROOT . '/runtime.env';
+    if ($nodePath === '' || !is_file($script) || !is_file($runtime)) return null;
+    $output = [];
+    $exitCode = 1;
+    exec(escapeshellarg($nodePath) . ' --env-file=' . escapeshellarg($runtime) . ' ' . escapeshellarg($script) . ' 2>&1', $output, $exitCode);
+    if ($exitCode !== 0) return null;
+    $line = (string) end($output);
+    return str_starts_with($line, 'Active owner account: ') ? substr($line, 22) : null;
+}
+
 function recoverAdministrator(array $input): void
 {
     $status = installationStatus(loadState());
@@ -601,7 +618,7 @@ function recoverAdministrator(array $input): void
         'displayName' => $displayName,
         'email' => $email,
         'password' => $password,
-        'resetTwoFactor' => true,
+        'resetTwoFactor' => !empty($input['reset_2fa']),
     ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     if (file_put_contents($inputFile, $payload, LOCK_EX) === false) {
         throw new RuntimeException($GLOBALS['language'] === 'en' ? 'Could not create the protected recovery request.' : 'Δεν ήταν δυνατό να δημιουργηθεί το προστατευμένο αίτημα ανάκτησης.');
@@ -698,6 +715,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: ' . ($_SERVER['PHP_SELF'] ?? '/'), true, 303);
             exit;
         }
+        if ($postAction === 'keep_admin') {
+            // Upgrade: the owner account already exists, so it stays exactly as it is (password and 2FA).
+            $owner = activeOwner();
+            if ($owner === null) {
+                throw new RuntimeException($GLOBALS['language'] === 'en' ? 'No active administrator account was found. Create one below.' : 'Δεν βρέθηκε ενεργός λογαριασμός διαχειριστή. Δημιουργήστε έναν παρακάτω.');
+            }
+            $savedState = loadState();
+            $savedState['admin_recovered_at'] = gmdate(DATE_ATOM);
+            $savedState['admin_kept'] = true;
+            saveState($savedState);
+            $message = $GLOBALS['language'] === 'en' ? 'The existing administrator account was kept unchanged (password and 2FA).' : 'Ο υπάρχων λογαριασμός διαχειριστή διατηρήθηκε χωρίς αλλαγές (κωδικός και 2FA).';
+        }
         if ($postAction === 'recover_admin') {
             recoverAdministrator($_POST);
             $savedState = loadState();
@@ -783,7 +812,13 @@ $safeCsrf = htmlspecialchars($csrf, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
   <section id="adminCard" class="card" <?= $installStatus['phase'] === 'complete' ? '' : 'hidden' ?>>
     <div class="step"><div class="num">3</div><div><h2><?= htmlspecialchars(i18n('admin_access'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h2><p><?= htmlspecialchars(i18n('admin_help'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p></div></div>
-    <?php if ($adminRecovered): ?><div class="notice ok"><?= htmlspecialchars(i18n('admin_recovered'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div><?php endif; ?>
+    <?php if ($adminRecovered): ?><div class="notice ok"><?= htmlspecialchars(!empty($state['admin_kept']) ? ($language === 'en' ? 'The existing administrator account was kept unchanged (password and 2FA).' : 'Ο υπάρχων λογαριασμός διαχειριστή διατηρήθηκε χωρίς αλλαγές (κωδικός και 2FA).') : i18n('admin_recovered'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div><?php endif; ?>
+    <?php $existingOwner = $installStatus['phase'] === 'complete' && !$adminRecovered ? activeOwner() : null; ?>
+    <?php if ($existingOwner !== null): ?>
+      <div class="notice ok"><?= htmlspecialchars(sprintf(i18n('existing_admin'), $existingOwner), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div>
+      <form method="post" class="actions"><input type="hidden" name="csrf" value="<?= $safeCsrf ?>"><input type="hidden" name="language" value="<?= htmlspecialchars($language, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"><input type="hidden" name="action" value="keep_admin"><button class="btn" type="submit"><?= htmlspecialchars(i18n('keep_admin'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></button></form>
+    <?php endif; ?>
+    <details <?= $existingOwner === null && !$adminRecovered ? 'open' : '' ?>><summary><?= htmlspecialchars(i18n('recover_form'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></summary>
     <form method="post" autocomplete="off"><input type="hidden" name="csrf" value="<?= $safeCsrf ?>"><input type="hidden" name="language" value="<?= htmlspecialchars($language, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"><input type="hidden" name="action" value="recover_admin">
       <div class="fields">
         <div class="field"><label for="admin_username"><?= htmlspecialchars(i18n('username'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></label><input id="admin_username" name="admin_username" pattern="[a-z0-9._-]{3,100}" autocomplete="username" required></div>
@@ -792,9 +827,10 @@ $safeCsrf = htmlspecialchars($csrf, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         <div class="field"><label for="admin_password"><?= htmlspecialchars(i18n('password'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></label><input id="admin_password" name="admin_password" type="password" minlength="14" maxlength="256" autocomplete="new-password" required></div>
         <div class="field"><label for="admin_password_confirmation"><?= htmlspecialchars(i18n('confirm_password'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></label><input id="admin_password_confirmation" name="admin_password_confirmation" type="password" minlength="14" maxlength="256" autocomplete="new-password" required></div>
       </div>
-      <label class="choice"><input type="checkbox" checked disabled><span><?= htmlspecialchars(i18n('reset_2fa'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></span></label>
+      <label class="choice"><input type="checkbox" name="reset_2fa" value="1"><span><?= htmlspecialchars(i18n('reset_2fa'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></span></label>
       <div class="actions"><button class="btn" type="submit"><?= htmlspecialchars(i18n('recover_admin'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></button></div>
     </form>
+    </details>
   </section>
 
   <section id="finishCard" class="card" <?= $installStatus['phase'] === 'complete' ? '' : 'hidden' ?>>
