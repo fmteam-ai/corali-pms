@@ -330,7 +330,7 @@
 .pms[data-theme="dark"] .srChoices{border:1px solid hsl(200 17% 27%)}
 @media (hover:hover){.pms[data-theme="dark"] .srGrid td button:not(:disabled):hover{color:hsl(12 62% 72%)}}
 @media (hover:hover){.pms[data-theme="dark"] .srGrid tbody tr:hover th{background:hsl(190 15% 20%)}}
-.pms[data-theme="dark"] .minStayNotes{background:hsl(187 18% 20%);border:1px solid hsl(188 30% 28%);color:hsl(191 51% 72%)}
+.pms[data-theme="dark"] .minStayLock{background:hsl(43 45% 20%);color:hsl(41 70% 72%)}
 .pms[data-theme="dark"] .msYear input{border:1px solid hsl(200 17% 29%)}
 .pms[data-theme="dark"] .msEditor{background:hsl(22 45% 20%)}
 .pms[data-theme="dark"] .shell .loginForm select,
@@ -508,3 +508,5 @@
 .pms[data-theme="dark"] .tableWrap td .hksBadge.done button{background:hsl(200 18% 9%);border-color:hsl(142 35% 29%);color:hsl(147 53% 72%)}
 .pms[data-theme="dark"] .hkMsgList li.unread{background:hsl(43 45% 20%)}
 .pms[data-theme="dark"] .staffModal .modalActions .staffDanger{color:hsl(3 71% 72%)}
+.pms[data-theme="dark"] .bulkChip:has(input:checked){background:hsl(191 22% 20%)}
+.pms[data-theme="dark"] .bulkSummary{background:hsl(43 45% 20%)}

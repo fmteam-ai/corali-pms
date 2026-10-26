@@ -1,5 +1,7 @@
 // Minimum stay per room category (room type), checked against the check-in date (pure; unit tested).
-// A period rule beats an all-year rule, a room-type rule beats one for all rooms, then the shorter period, then the latest edit.
+// A rule for the room category beats one for all rooms (even a period one); then a period beats all-year, then the shorter
+// period, then the latest edit. (v97: the category comes first, so "Penthouse: 4 nights" is not undone by "all rooms in
+// summer: 2 nights".)
 
 export type MinStayRule = { id: number | string; room_type: string | null; starts_on: string | null; ends_on: string | null; min_nights: number | string; active?: number | string | null; updated_at?: number | string | null };
 
@@ -13,7 +15,7 @@ export function minStayRuleFor(rules: MinStayRule[], checkIn: string, roomType: 
     if (r.room_type && r.room_type !== roomType) continue;
     const period = Boolean(r.starts_on && r.ends_on);
     if (period && (r.starts_on! > checkIn || r.ends_on! < checkIn)) continue;
-    const key = [period ? 1 : 0, r.room_type ? 1 : 0, -span(r), Number(r.updated_at ?? 0), Number(r.id) || 0];
+    const key = [r.room_type ? 1 : 0, period ? 1 : 0, -span(r), Number(r.updated_at ?? 0), Number(r.id) || 0];
     if (!best || greater(key, bestKey)) { best = r; bestKey = key; }
   }
   return best;

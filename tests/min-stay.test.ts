@@ -20,3 +20,10 @@ test("period beats all-year, judged on the check-in date; shorter period wins", 
   assert.equal(requiredMinStay(rules, "2026-08-31", "double"), 5);
   assert.equal(requiredMinStay([r({ min_nights: 3, active: 0 })], "2026-07-10", "double"), 1, "inactive ignored");
 });
+
+test("a category's own rule beats an all-rooms period (v97)", () => {
+  const rules = [r({ id: 1, room_type: "Penthouse", min_nights: 4 }), r({ id: 2, starts_on: "2026-06-01", ends_on: "2026-10-31", min_nights: 2 })];
+  assert.equal(requiredMinStay(rules, "2026-07-10", "Penthouse"), 4);
+  assert.equal(requiredMinStay(rules, "2026-07-10", "double"), 2);
+  assert.equal(requiredMinStay(rules, "2026-11-10", "double"), 1);
+});

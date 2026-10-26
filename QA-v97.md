@@ -2,6 +2,13 @@
 
 ## Scope in this package
 
+### New in v97
+
+- [ ] Pricing tabs (Prices & rules, Season prices, Minimum stay, Special prices & restrictions, Offers, Coupons, Price suggestions) appear on every pricing page, with the current one highlighted.
+- [ ] Season prices → "Bulk price update": date range, optional weekdays, categories and/or rooms, one nightly price; it becomes the final price for those nights (older periods are cut around it and kept before/after and on other weekdays). Prices apply to the website booking engine; OTA prices stay as set in Channex (rates are not pushed).
+- [ ] Minimum stay: a category's own rule now beats an "all categories" period (e.g. Penthouse 4 nights is not undone by "all rooms in summer: 2"); the same precedence is sent to Channex.
+- [ ] Booking engine: a category that needs more nights is shown (photos, text, amenities) without prices and with "Minimum stay for this room: N nights", in all 6 languages. Minimum stays from season-rate rules and from restrictions for all plans are shown the same way.
+
 ### New in v96
 
 - [ ] Login (PMS and Corali Staff): the 2FA code field appears only after the password, and only for accounts that turned 2FA on; employees without 2FA sign in with username + password. Recovery codes are accepted in that field.

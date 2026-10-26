@@ -109,7 +109,7 @@ function minStayOnArrival(rules, date, roomType) {
     const period = Boolean(r.starts_on && r.ends_on);
     if (period && (r.starts_on > date || r.ends_on < date)) continue;
     const span = period ? (Date.parse(r.ends_on) - Date.parse(r.starts_on)) / 86_400_000 : Number.MAX_SAFE_INTEGER;
-    const key = [period ? 1 : 0, r.room_type ? 1 : 0, -span, Number(r.updated_at ?? 0), Number(r.id) || 0];
+    const key = [r.room_type ? 1 : 0, period ? 1 : 0, -span, Number(r.updated_at ?? 0), Number(r.id) || 0];
     const greater = !best || key.some((v, i) => key.slice(0, i).every((w, j) => w === bestKey[j]) && v > bestKey[i]);
     if (greater) { best = r; bestKey = key; }
   }

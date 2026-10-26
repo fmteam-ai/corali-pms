@@ -32,3 +32,31 @@ test("latest edit wins on a tie", () => {
   const rules = [rule({ id: 1, price_cents: 15000, updated_at: 5 }), rule({ id: 2, price_cents: 17000, updated_at: 9 })];
   assert.equal(nightlyPrice(rules, "2026-07-10", "Double", "101", 9000), 17000);
 });
+
+test("bulk price update: the new price is final for those nights; older rules are kept around it", async () => {
+  const { bulkPricePlan } = await import("../lib/season-rates.ts");
+  const rooms: Record<string, string> = { "101": "Double", "102": "Double", "201": "Suite" };
+  const existing: SeasonRule[] = [
+    { id: 1, room_type: "Double", room_codes: "[]", weekdays: "[]", starts_on: "2026-05-01", ends_on: "2026-09-30", price_cents: 10000, active: 1, updated_at: 1 },
+    { id: 2, room_type: "Double", room_codes: "[]", weekdays: "[]", starts_on: "2026-08-01", ends_on: "2026-08-31", price_cents: 15000, active: 1, updated_at: 1 },
+    { id: 3, room_type: null, room_codes: '["101","201"]', weekdays: "[]", starts_on: "2026-07-01", ends_on: "2026-07-31", price_cents: 13000, active: 1, updated_at: 1 },
+    { id: 4, room_type: "Suite", room_codes: "[]", weekdays: "[]", starts_on: "2026-01-01", ends_on: "2026-12-31", price_cents: 30000, active: 1, updated_at: 1 },
+  ];
+  const plan = bulkPricePlan(existing, { roomTypes: ["Double"], roomCodes: [], codesOfTypes: ["101", "102"] }, "2026-07-15", "2026-08-15", [], 12000, "Bulk");
+  assert.deepEqual(plan.deleteIds.sort(), [1, 2, 3]);
+  const after: SeasonRule[] = [...existing.filter((r) => !plan.deleteIds.includes(Number(r.id))), ...plan.inserts.map((r, i) => ({ ...r, id: 100 + i, room_codes: JSON.stringify(r.room_codes), weekdays: JSON.stringify(r.weekdays), updated_at: 2 }))];
+  const price = (date: string, code: string) => nightlyPrice(after, date, rooms[code], code, 5000);
+  assert.equal(price("2026-07-20", "101"), 12000, "room rule of the category is overridden");
+  assert.equal(price("2026-08-10", "102"), 12000, "shorter August rule is overridden inside the period");
+  assert.equal(price("2026-08-20", "102"), 15000, "August rule kept after the period");
+  assert.equal(price("2026-07-10", "101"), 13000, "room rule kept before the period");
+  assert.equal(price("2026-07-20", "201"), 13000, "other rooms of a split room rule keep it");
+  assert.equal(price("2026-06-01", "102"), 10000);
+  assert.equal(price("2026-07-20", "201") , 13000);
+  // Only weekends: weekdays keep the old price.
+  const wk = bulkPricePlan(existing.slice(0, 1), { roomTypes: ["Double"], roomCodes: [], codesOfTypes: ["101", "102"] }, "2026-06-01", "2026-06-30", [5, 6], 14000, "Weekends");
+  const after2: SeasonRule[] = wk.inserts.map((r, i) => ({ ...r, id: 200 + i, room_codes: JSON.stringify(r.room_codes), weekdays: JSON.stringify(r.weekdays), updated_at: 2 }));
+  assert.equal(nightlyPrice(after2, "2026-06-05", "Double", "101", 5000), 14000, "Friday");
+  assert.equal(nightlyPrice(after2, "2026-06-03", "Double", "101", 5000), 10000, "Wednesday keeps the old price");
+  assert.equal(nightlyPrice(after2, "2026-07-03", "Double", "101", 5000), 10000, "after the period");
+});

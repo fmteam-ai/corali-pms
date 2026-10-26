@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getPmsT } from "@/lib/pms-lang";
 import { can } from "@/lib/security/permissions";
+import { BulkPrices } from "./bulk-prices";
 import { SeasonRates } from "./season-rates";
 
 export default async function SeasonRatesPage() {
@@ -15,6 +16,7 @@ export default async function SeasonRatesPage() {
   return (
     <section className="srPage">
       <div className="pageTitle"><div><h1>{t("sr.title")}</h1><p>{t("sr.subtitle")}</p></div></div>
+      {can(u.role, "pricing.edit", u.permissions) && can(u.role, "pricing.create", u.permissions) && <BulkPrices lang={lang} today={String(today.rows[0].d)} rooms={rooms.rows.map((r) => ({ code: String(r.code), roomType: String(r.room_type) }))} />}
       <SeasonRates
         lang={lang}
         today={String(today.rows[0].d)}

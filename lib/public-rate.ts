@@ -64,10 +64,22 @@ export async function publicAvailability(input:AvailabilityInput){
   // Offers whose stay-level conditions hold (min nights, last-minute / early-booking window, arrival within the period).
   const stayOffers=(specials.rows as Offer[]).filter(o=>offerFitsStay(o,{checkIn:input.checkIn,nights,today:hotelToday()}));
   const grouped=new Map<string,typeof rooms.rows>(); for(const row of rooms.rows){const key=String(row.room_type);grouped.set(key,[...(grouped.get(key)??[]),row])}
-  // Minimum stay per room category, judged on the check-in date; rooms hidden for it are reported so the guest knows why.
+  // What the guest sees of a room category (name, text, photos, amenities), with or without prices.
+  const cardOf=(roomType:string,list:typeof rooms.rows)=>{const room=list[0];return {roomType,code:room.code,name:localized(room.name_translations_json,room.name_el,room.name_en,roomType),description:list.map(r=>localized(r.description_translations_json,r.description_el,r.description_en,r.description)).find(d=>String(d??"").trim())??"",capacity:Number(room.capacity),amenities:jsonArray<string>(room.amenities),characteristics:cardAmenities<{icon:string;el:string;en:string;tr:string}>(list).map(a=>{let tr:Record<string,string>={};try{tr=JSON.parse(a.tr||"{}")}catch{tr={}}return {icon:amenityIcon(a.icon),name:amenityName({...tr,el:a.el,en:a.en},input.lang)}}),images:cardImages(list),availableCount:list.length}};
+  // Season-rate rule with stay limits for one room and night (the last one wins).
+  const stayRule=(roomType:string,code:string,date:string)=>rules.rows.filter(r=>ruleTarget(r,roomType,code)>0&&r.starts_on<=date&&r.ends_on>=date&&(r.minimum_stay!==null||r.maximum_stay!==null||Number(r.closed)===1||Number(r.closed_to_arrival)===1||Number(r.closed_to_departure)===1)).at(-1);
+  // Minimum stay from every source: the min-stay rules (arrival date), season-rate rules (any night) and restrictions
+  // that apply to all rate plans. A category that needs more nights is shown without prices and with the minimum.
   const minStayRows=(await db().query(`SELECT id,room_type,starts_on,ends_on,min_nights,active,updated_at FROM min_stay_rules WHERE owner_id=$1 AND active=1`,[input.ownerId])).rows as MinStayRule[];
-  const minStayNotices:{roomType:string;name:string;minNights:number}[]=[];
-  const available=[...grouped.entries()].filter(([roomType,list])=>{if(list.length<input.rooms)return false;const need=requiredMinStay(minStayRows,input.checkIn,roomType);if(nights<need){const first=list[0];minStayNotices.push({roomType,name:localized(first.name_translations_json,first.name_el,first.name_en,roomType),minNights:need});return false}return true}).map(([roomType,list])=>{
+  const minNightsFor=(roomType:string,list:typeof rooms.rows)=>{
+    let need=requiredMinStay(minStayRows,input.checkIn,roomType);
+    const codes=list.slice(0,input.rooms).map(r=>String(r.code));
+    for(const code of codes)for(const date of dates){const rule=stayRule(roomType,code,date);if(rule?.minimum_stay!==null&&rule?.minimum_stay!==undefined&&Number(rule.closed)!==1)need=Math.max(need,Number(rule.minimum_stay)||1)}
+    for(const r of restrictions.rows)if(r.starts_on<input.checkOut&&r.ends_on>=input.checkIn&&!jsonArray<string>(r.rate_plan_keys).length&&Number(r.stop_sell)!==1&&(!jsonArray<string>(r.room_codes).length||codes.some(c=>jsonArray<string>(r.room_codes).includes(c))))need=Math.max(need,Number(r.minimum_stay)||1);
+    return need;
+  };
+  const minStayNotices:(ReturnType<typeof cardOf>&{minNights:number})[]=[];
+  const available=[...grouped.entries()].filter(([roomType,list])=>{if(list.length<input.rooms)return false;const need=minNightsFor(roomType,list);if(nights<need){minStayNotices.push({...cardOf(roomType,list),minNights:need});return false}return true}).map(([roomType,list])=>{
     // A room without a base price (0 €, e.g. added in the PMS without one) takes its category's price, so booking
     // several rooms never adds a free room to the total; a category with no price at all is not offered.
     const typeBaseCents=Math.max(0,...list.map(r=>Number(r.base_rate_cents)||0));
@@ -84,7 +96,7 @@ export async function publicAvailability(input:AvailabilityInput){
         const roomTotals=selectedRooms.map(selected=>{
           let base=0,nonPromoBase=0;
           for(const date of dates){
-            const rule=rules.rows.filter(r=>ruleTarget(r,roomType,selected.code)>0&&r.starts_on<=date&&r.ends_on>=date&&(r.minimum_stay!==null||r.maximum_stay!==null||Number(r.closed)===1||Number(r.closed_to_arrival)===1||Number(r.closed_to_departure)===1)).at(-1);
+            const rule=stayRule(roomType,String(selected.code),date);
             if(Number(rule?.closed)===1||Number(rule?.minimum_stay??1)>nights||(rule?.maximum_stay&&Number(rule.maximum_stay)<nights)||date===input.checkIn&&Number(rule?.closed_to_arrival)===1||date===dates.at(-1)&&Number(rule?.closed_to_departure)===1)restricted=true;
             const start=money(nightlyPrice(rules.rows,date,roomType,selected.code,roomBase(selected)));if(start<=0)unpriced=true;
             const used=bestOfferSet(start,stayOffers.filter(o=>!skip(o)&&offerCoversNight(o,{date,roomCode:String(selected.code),planKey:p.plan_key})),nights);
@@ -115,7 +127,7 @@ export async function publicAvailability(input:AvailabilityInput){
       if(offer.couponApplied)couponUsed=true;
       return [{key:p.plan_key,name:planName(p.plan_key,p.name,p.name_translations_json),adjustmentPercent:best.direct?-best.direct:best.adjustment,directPercent:best.direct,paymentPolicy:p.payment_policy,payment:{depositPercent:p.deposit_percent===null||p.deposit_percent===undefined?null:Number(p.deposit_percent),balanceMode:String(p.balance_mode??"general"),balanceDaysBefore:p.balance_days_before===null||p.balance_days_before===undefined?null:Number(p.balance_days_before),fullPrepayment:Number(p.full_prepayment??0)===1},cancellationDays:p.cancellation_days===null||p.cancellation_days===undefined?cancellationDays:Number(p.cancellation_days),refundPercent:refundPercentOf(p.plan_key,p.refund_percent),totalCents:offer.totalCents,standardCents:offer.standardCents,referenceCents:Math.max(referenceCents,offer.standardCents),directCents:offer.directCents,directSavingCents:offer.directSavingCents,couponCents:offer.couponCents,promotions:[...promos].map(([name,x])=>({name,...x}))}];
     });
-    return {roomType,roomIds:list.slice(0,input.rooms).map(r=>Number(r.id)),code:room.code,name:localized(room.name_translations_json,room.name_el,room.name_en,roomType),description:list.map(r=>localized(r.description_translations_json,r.description_el,r.description_en,r.description)).find(d=>String(d??"").trim())??"",capacity:Number(room.capacity),amenities:jsonArray<string>(room.amenities),characteristics:cardAmenities<{icon:string;el:string;en:string;tr:string}>(list).map(a=>{let tr:Record<string,string>={};try{tr=JSON.parse(a.tr||"{}")}catch{tr={}}return {icon:amenityIcon(a.icon),name:amenityName({...tr,el:a.el,en:a.en},input.lang)}}),images:cardImages(list),availableCount:list.length,plans:plansForRoom};
+    return {...cardOf(roomType,list),roomIds:list.slice(0,input.rooms).map(r=>Number(r.id)),plans:plansForRoom};
   }).filter(r=>r.plans.length>0);
   const extraRows=extras.rows.map(e=>({...e,name:localized(e.name_translations_json,e.name_el,e.name_en,e.name),description:localized(e.description_translations_json,e.description_el,e.description_en,e.description),id:Number(e.id),price_cents:Number(e.price_cents)}));
   const chargeRows=charges.rows.map(c=>{const unit=money(c.amount_cents);const mode=chargeMode(c);const multiplier=mode==="per_night"?nights:mode==="per_room"?input.rooms:mode==="per_person"?(input.adults+input.children):mode==="per_room_night"?input.rooms*nights:1;return {...c,calculation_mode:mode,name:localized(c.name_translations_json,c.name_el,c.name_en,c.name),id:Number(c.id),amount_cents:unit,multiplier,total_cents:unit*multiplier};});
