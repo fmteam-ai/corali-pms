@@ -2,6 +2,13 @@
 
 ## Scope in this package
 
+### New in v94
+
+- [ ] Housekeeping phone page `/hk` (PMS host): housekeepers land there after login. It lists today's rooms (departure + arrival, departure, arrival, stayover, open work), whether the guest has left, sheets/towels due (blinking) with "changed" buttons, DND, open problems and the task status.
+- [ ] On the phone: start a clean, tick the checklist, "Room finished"; "Problem in the room" with severity, description and camera photos (becomes a maintenance notice); messages to reception with quick replies.
+- [ ] The phone refreshes every 20 s and rings/vibrates (after "Tap to turn on sound") for new messages, guests who just checked out and new assignments.
+- [ ] PMS → Housekeeping: "Messages with housekeeping" panel (to everyone or one housekeeper, optional room); housekeeper messages arrive as PMS notifications with a chime.
+
 ### New in v93
 
 - [ ] Corali TV → Κανάλια TV: above the channel list, a remote-control guide in the screen language (◀▲▼▶ choose · OK watch · ▲▼ switch while watching · BACK ↩ back to the list), in all 6 languages.

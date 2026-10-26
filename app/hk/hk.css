@@ -1,0 +1,71 @@
+/* Housekeeping on the phone (/hk): big touch targets, one column, readable in daylight. */
+.hkApp{--ink:#173e47;--sea:#2a7d8f;--sand:#f4f1ea;--card:#fff;--line:#e2ddd2;--muted:#5f6b6e;--gold:#e0a93b;--red:#b3261e;--green:#2e7d4f;
+  min-height:100vh;background:var(--sand);color:var(--ink);font-size:16px;padding:12px 12px 96px;max-width:640px;margin:0 auto;box-sizing:border-box}
+.hkApp *{box-sizing:border-box}
+.hkTop{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 2px 10px}
+.hkTop b{display:block;font-size:20px}
+.hkTop small{color:var(--muted);text-transform:capitalize}
+.hkTopTools{display:flex;align-items:center;gap:6px}
+.hkLogout{font:inherit;font-size:13px;background:none;border:1px solid var(--line);border-radius:8px;padding:6px 8px;color:var(--muted)}
+.hkAlertsBtn{width:100%;font:inherit;font-weight:700;padding:12px;border-radius:12px;border:2px dashed var(--gold);background:#fff8e8;color:var(--ink);margin-bottom:10px}
+.hkOffline{background:#fdecea;color:var(--red);border-radius:10px;padding:8px 12px;margin:0 0 10px}
+.hkTabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;position:sticky;top:0;z-index:5;background:var(--sand);padding:6px 0}
+.hkTabs button{font:inherit;font-weight:700;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);position:relative}
+.hkTabs button[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.hkBadge{display:inline-block;min-width:22px;margin-left:6px;padding:1px 6px;border-radius:999px;background:var(--red);color:#fff;font-size:13px}
+.hkSummary{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+.hkSummary span{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px;font-size:12px;color:var(--muted);text-align:center;line-height:1.2}
+.hkSummary b{display:block;font-size:20px;color:var(--ink)}
+.hkMine{display:flex;align-items:center;gap:8px;margin:4px 2px 8px}
+.hkMine input{width:22px;height:22px}
+.hkEmpty{text-align:center;color:var(--muted);padding:24px}
+.hkList{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.hkRoom{background:var(--card);border:1px solid var(--line);border-left:6px solid #9aa7aa;border-radius:12px;overflow:hidden}
+.hkRoom.k-turnover{border-left-color:var(--red)}
+.hkRoom.k-departure{border-left-color:#d4682a}
+.hkRoom.k-arrival{border-left-color:var(--sea)}
+.hkRoom.k-stayover{border-left-color:var(--green)}
+.hkRoomHead{width:100%;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:center;text-align:left;font:inherit;color:inherit;background:none;border:0;padding:12px}
+.hkCode{grid-row:span 2;font-size:28px;font-weight:800;min-width:56px;text-align:center}
+.hkWhat{display:flex;flex-direction:column;gap:2px}
+.hkWhat small{color:var(--muted);font-size:14px}
+.hkChips{display:flex;flex-wrap:wrap;gap:4px}
+.hkChips .chip{font-style:normal;font-size:12px;font-weight:700;padding:3px 8px;border-radius:999px;background:#eef2f2;color:var(--ink)}
+.hkChips .chip.due{background:#fff1d1;color:#8a5a00;animation:hkBlink 1.4s ease-in-out infinite}
+.hkChips .chip.dnd{background:#fdecea;color:var(--red)}
+.hkChips .chip.warn{background:#fdecea;color:var(--red)}
+.hkChips .chip.st-in_progress{background:#e3f1f4;color:var(--sea)}
+.hkChips .chip.st-cleaned{background:#e7f4ec;color:var(--green)}
+.hkChips .chip.st-out_of_order{background:var(--red);color:#fff}
+@keyframes hkBlink{50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.hkChips .chip.due{animation:none}}
+.hkRoomBody{padding:0 12px 12px;display:grid;gap:10px}
+.hkNote{margin:0;background:#f6f4ee;border-radius:10px;padding:8px 10px;white-space:pre-wrap}
+.hkNote.warn{background:#fdecea;color:var(--red)}
+.hkLinen{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.hkLinen button,.hkActions button,.hkQuick button{font:inherit;font-weight:700;padding:12px 10px;border-radius:12px;border:1px solid var(--line);background:#fff;color:var(--ink);min-height:48px}
+.hkLinen button.due{border:2px solid var(--gold);background:#fff8e8}
+.hkLinen button.done{background:#e7f4ec;border-color:var(--green);color:var(--green)}
+.hkBig{width:100%;font:inherit;font-weight:800;font-size:17px;padding:14px;border-radius:12px;border:0;background:var(--sea);color:#fff;min-height:52px}
+.hkBig:disabled{opacity:.45}
+.hkProgress{margin:0;font-weight:700}
+.hkChecklist{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.hkChecklist label{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid #f0ece3}
+.hkChecklist input{width:24px;height:24px;flex:none}
+.hkActions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.hkActions .danger{border-color:var(--red);color:var(--red)}
+.hkActions .primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+.hkActions button:disabled{opacity:.5}
+.hkMessages{display:grid;gap:10px}
+.hkMessages ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.hkMessages li{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-right:36px}
+.hkMessages li.mine{background:#e3f1f4;margin:0 0 0 36px}
+.hkMessages li small{color:var(--muted)}
+.hkMessages li p{margin:4px 0 0;white-space:pre-wrap}
+.hkSheet{position:fixed;inset:0;background:rgba(10,30,36,.5);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.hkSheetCard{background:var(--card);width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px;display:grid;gap:12px}
+.hkSheetCard h2{margin:0;font-size:19px}
+.hkSheetCard textarea{width:100%;min-height:110px;font:inherit;font-size:16px;padding:10px;border-radius:10px;border:1px solid var(--line)}
+.hkQuick{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.hkQuick button{font-weight:600;font-size:14px;min-height:44px}
+.hkToast{position:fixed;left:12px;right:12px;bottom:16px;margin:0 auto;max-width:616px;background:var(--ink);color:#fff;padding:14px 16px;border-radius:12px;font-weight:700;z-index:30;box-shadow:0 8px 24px rgba(0,0,0,.25)}

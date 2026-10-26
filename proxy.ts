@@ -24,6 +24,7 @@ export const config = {
   matcher: [
     "/",
     "/login",
+    "/hk",
     "/pms/:path*",
     "/book/:path*",
     "/check-in/:path*",

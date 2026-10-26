@@ -34,7 +34,7 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const userResult = await db().query({
-      text: `SELECT id, password_hash, totp_secret, totp_confirmed_at, recovery_codes_json, active FROM pms_staff_users
+      text: `SELECT id, role, password_hash, totp_secret, totp_confirmed_at, recovery_codes_json, active FROM pms_staff_users
               WHERE owner_id = $1 AND lower(username) = $2 LIMIT 1`,
       values: [ownerId, input.username],
     });
@@ -95,7 +95,8 @@ export async function POST(request: Request): Promise<Response> {
       expires: new Date(expiresAt),
     });
     await recordAudit({ ownerId, userId: Number(user.id), action: "security.login", entity: "session" });
-    return Response.json({ ok: true });
+    // Housekeepers start on the phone page.
+    return Response.json({ ok: true, home: user.role === "housekeeping" ? "/hk" : "/pms" });
   } catch (error) {
     if (error instanceof z.ZodError) return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
     if (error instanceof Error && error.message === "UNTRUSTED_ORIGIN") return Response.json({ ok: false, error: "UNTRUSTED_ORIGIN" }, { status: 403 });

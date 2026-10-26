@@ -7,7 +7,8 @@ import Image from "next/image";
 import "@/app/pms/pms-theme.css";
 
 export default async function LoginPage() {
-  if (await currentUser()) redirect("/pms");
+  const user = await currentUser();
+  if (user) redirect(user.role === "housekeeping" ? "/hk" : "/pms");
   const { lang, t } = await getPmsT();
   return (
     <main className="loginPage" lang={lang}>

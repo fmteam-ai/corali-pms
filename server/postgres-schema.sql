@@ -1481,3 +1481,17 @@ CREATE TABLE IF NOT EXISTS housekeeping_service_done (
  done_at BIGINT NOT NULL,
  PRIMARY KEY (owner_id, booking_id, service, date)
 );
+
+-- v94: messages between reception and housekeeping (mobile page /hk). to_staff_id NULL = every housekeeper.
+CREATE TABLE IF NOT EXISTS "hk_messages" (
+  "id" BIGSERIAL PRIMARY KEY,
+  "owner_id" TEXT NOT NULL,
+  "direction" TEXT NOT NULL,
+  "from_staff_id" BIGINT NOT NULL,
+  "to_staff_id" BIGINT,
+  "room_id" BIGINT,
+  "body" TEXT NOT NULL,
+  "created_at" BIGINT NOT NULL,
+  "read_at" BIGINT
+);
+CREATE INDEX IF NOT EXISTS "idx_hk_messages_owner_time" ON "hk_messages" ("owner_id", "created_at" DESC);

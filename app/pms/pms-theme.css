@@ -384,3 +384,14 @@ body:has(.pms){background:#f2f4f6}
 .pms .tvAppRow{grid-template-columns:minmax(140px,1fr) minmax(240px,2.4fr) 56px auto}
 .pms .tvAppRow input[type=color]{padding:2px;height:38px;width:56px;border-radius:8px;cursor:pointer}
 .pms .tvAppRow input[type=color]{padding:2px;height:38px;width:56px;border-radius:8px;cursor:pointer}
+/* Reception ↔ housekeeping messages (Housekeeping page). */
+.pms .hkMsgPanel{margin-bottom:16px}
+.pms .hkMsgForm{display:grid;grid-template-columns:minmax(140px,auto) minmax(110px,auto) 1fr auto;gap:8px;align-items:center}
+.pms .hkMsgList{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:6px;max-height:300px;overflow:auto}
+.pms .hkMsgList li{padding:8px 12px;border-radius:10px;background:var(--surface-2,#f4f6f7);border-left:4px solid #9aa7aa}
+.pms .hkMsgList li.to_reception{border-left-color:#e0a93b}
+.pms .hkMsgList li.unread{background:#fff6e0}
+.pms .hkMsgList li.to_hk{border-left-color:#2a7d8f}
+.pms .hkMsgList small{color:var(--muted,#5f6b6e)}
+.pms .hkMsgList p{margin:2px 0 0;white-space:pre-wrap}
+@media (max-width:760px){.pms .hkMsgForm{grid-template-columns:1fr 1fr}.pms .hkMsgForm input,.pms .hkMsgForm button{grid-column:span 2}}

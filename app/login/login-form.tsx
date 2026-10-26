@@ -25,7 +25,8 @@ export function LoginForm({ lang }: { lang: PmsLang }) {
       setError(response.status === 429 ? t("login.locked") : t("login.invalid"));
       return;
     }
-    router.replace("/pms");
+    const done = await response.json().catch(() => ({}));
+    router.replace(done.home === "/hk" ? "/hk" : "/pms");
     router.refresh();
   }
 

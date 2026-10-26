@@ -5,7 +5,7 @@ import { LuBell } from "react-icons/lu";
 import { pmsT, type PmsLang } from "@/lib/pms-i18n";
 
 type Notification = { key: string; kind: string; title: string; link: string; created_at: number };
-const kindIcons: Record<string, string> = { message: "✉", guest_message: "✉", tv_request: "📺", arrival: "🛎", direct_booking: "★", manual_booking: "✎", ota_change: "⇄", housekeeping: "🧹", payment: "€", system: "ⓘ" };
+const kindIcons: Record<string, string> = { message: "✉", guest_message: "✉", tv_request: "📺", hk_message: "💬", arrival: "🛎", direct_booking: "★", manual_booking: "✎", ota_change: "⇄", housekeeping: "🧹", payment: "€", system: "ⓘ" };
 
 export function NotificationBell({ lang }: { lang: PmsLang }) {
   const t = pmsT(lang);
@@ -27,8 +27,8 @@ export function NotificationBell({ lang }: { lang: PmsLang }) {
     const fresh = list.filter((x) => !known.has(x.key)).slice(0, 3);
     if (!fresh.length) return;
     window.dispatchEvent(new Event("corali:notifications"));
-    // A request from a room TV also plays a chime (once the browser allows sound, i.e. after any click in the PMS).
-    if (fresh.some((x) => x.kind === "tv_request")) {
+    // A request from a room TV or a message from housekeeping also plays a chime (once the browser allows sound, i.e. after any click in the PMS).
+    if (fresh.some((x) => x.kind === "tv_request" || x.kind === "hk_message")) {
       const audio = new Audio("/sounds/pms-request.wav");
       audio.volume = 0.8;
       void audio.play().catch(() => { /* sound blocked until the page has been clicked */ });

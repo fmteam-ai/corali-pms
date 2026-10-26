@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 
-export type NotificationKind = "direct_booking" | "manual_booking" | "ota_change" | "housekeeping" | "payment" | "guest_message" | "tv_request" | "system";
+export type NotificationKind = "direct_booking" | "manual_booking" | "ota_change" | "housekeeping" | "payment" | "guest_message" | "tv_request" | "hk_message" | "system";
 
 type Queryable = Pick<PoolClient, "query">;
 
