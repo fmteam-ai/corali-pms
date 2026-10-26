@@ -2,6 +2,13 @@
 
 ## Scope in this package
 
+### New in v93
+
+- [ ] Corali TV → Κανάλια TV: above the channel list, a remote-control guide in the screen language (◀▲▼▶ choose · OK watch · ▲▼ switch while watching · BACK ↩ back to the list), in all 6 languages.
+- [ ] While a channel plays, the bar with the channel name, the keys and "Back" shows for 6 s at start and again after any key press.
+- [ ] The "Wi-Fi & facilities" tab is gone for hotels that never edited it; the home screen shows "We provide high-speed internet up to 350 Mbps via Starlink." under the Wi-Fi QR code (editable per language in PMS → Corali TV).
+- [ ] Reception tab: adds rentals (cars/scooters), day trips and sightseeing, and the lending library and computer/printer line; translated in all 6 languages. Edited texts stay as they are.
+
 ### New in v92
 - Corali TV "Εφαρμογές / Apps" tab: PMS → Corali TV → Apps — tick Netflix, YouTube, Prime Video, Disney+, Apple TV, Spotify (known Android TV package names, lib/tv-apps-core.ts) or add another app by Android package name, name and colour (max 16). The TV shows the tab only inside the Corali TV app 1.4+ and only apps installed on that TV; OK opens the app. Not shown in a plain browser / on phones.
 - Corali TV app 1.4 (versionCode 5, same signing key): window.CoraliTVApp bridge — installed(packages) / open(package); <queries> for launcher apps (Android 11+). The bridge only launches apps with a launcher entry; it cannot read or change other apps' data (so signing guests out is a housekeeping step).

@@ -1533,6 +1533,7 @@ const el = {
   "tv.appName": "Όνομα",
   "tv.appPackage": "Όνομα πακέτου Android (π.χ. com.example.tv)",
   "tv.appAdd": "Προσθήκη εφαρμογής",
+  "tv.wifiNote": "Κείμενο κάτω από το QR του Wi-Fi (αρχική)",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -3062,6 +3063,7 @@ const en: Record<PmsKey, string> = {
   "tv.appName": "Name",
   "tv.appPackage": "Android package name (e.g. com.example.tv)",
   "tv.appAdd": "Add app",
+  "tv.wifiNote": "Text under the Wi-Fi QR code (home)",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

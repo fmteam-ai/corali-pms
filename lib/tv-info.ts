@@ -33,19 +33,15 @@ export const defaultInfoSections: TvInfoSection[] = [
     },
   },
   {
-    key: "wifi", icon: "📶",
-    title: { en: "Wi-Fi & facilities", el: "Wi-Fi & παροχές" },
-    body: {
-      en: "Hotel Corali provides **high-speed internet access up to 350 Mbps with Starlink**.\nWi-Fi is available throughout the hotel.\n- Network: **{wifi}**\n- Password: **{password}**\nGuests may also use our lending library and computer/printer facilities.",
-      el: "Το Hotel Corali προσφέρει **γρήγορο internet έως 350 Mbps μέσω Starlink**.\nΤο Wi-Fi είναι διαθέσιμο σε όλο το ξενοδοχείο.\n- Δίκτυο: **{wifi}**\n- Κωδικός: **{password}**\nΜπορείτε επίσης να χρησιμοποιήσετε τη δανειστική μας βιβλιοθήκη και τον υπολογιστή/εκτυπωτή.",
-    },
-  },
-  {
     key: "reception", icon: "🛎️",
-    title: { en: "Reception", el: "Ρεσεψιόν" },
+    title: { en: "Reception", el: "Ρεσεψιόν", fr: "Réception", de: "Rezeption", it: "Reception", es: "Recepción" },
     body: {
-      en: "Reception is open daily: **07:30 – 21:00**\nPlease do not hesitate to contact us if you need assistance or experience any problem during your stay. We will be happy to help.",
-      el: "Η ρεσεψιόν είναι ανοιχτή καθημερινά: **07:30 – 21:00**\nΜη διστάσετε να επικοινωνήσετε μαζί μας αν χρειάζεστε βοήθεια ή αντιμετωπίσετε οποιοδήποτε πρόβλημα κατά τη διαμονή σας. Θα χαρούμε να βοηθήσουμε.",
+      en: "Reception is open daily: **07:30 – 21:00**\nPlease do not hesitate to contact us if you need assistance or experience any problem during your stay. We will be happy to help.\nContact Reception if you need information about **car or scooter rentals**, **day trips** or **sightseeing**.\nYou may also use our lending library and computer/printer.",
+      el: "Η ρεσεψιόν είναι ανοιχτή καθημερινά: **07:30 – 21:00**\nΜη διστάσετε να επικοινωνήσετε μαζί μας αν χρειάζεστε βοήθεια ή αντιμετωπίσετε οποιοδήποτε πρόβλημα κατά τη διαμονή σας. Θα χαρούμε να βοηθήσουμε.\nΕπικοινωνήστε με τη ρεσεψιόν αν χρειάζεστε πληροφορίες για **ενοικιάσεις αυτοκινήτων ή μηχανακιών**, **ημερήσιες εκδρομές** ή **αξιοθέατα**.\nΜπορείτε επίσης να χρησιμοποιήσετε τη δανειστική μας βιβλιοθήκη και τον υπολογιστή/εκτυπωτή.",
+      fr: "La réception est ouverte tous les jours : **07:30 – 21:00**\nN'hésitez pas à nous contacter si vous avez besoin d'aide ou rencontrez un problème pendant votre séjour. Nous serons heureux de vous aider.\nContactez la réception pour toute information sur la **location de voitures ou de scooters**, les **excursions d'une journée** ou les **sites à visiter**.\nVous pouvez aussi utiliser notre bibliothèque de prêt et l'ordinateur/imprimante.",
+      de: "Die Rezeption ist täglich geöffnet: **07:30 – 21:00**\nBitte wenden Sie sich jederzeit an uns, wenn Sie Hilfe benötigen oder während Ihres Aufenthalts ein Problem haben. Wir helfen Ihnen gerne.\nWenden Sie sich an die Rezeption für Informationen zu **Auto- oder Rollervermietung**, **Tagesausflügen** oder **Sehenswürdigkeiten**.\nSie können auch unsere Leihbibliothek und den Computer/Drucker nutzen.",
+      it: "La reception è aperta tutti i giorni: **07:30 – 21:00**\nNon esitate a contattarci se avete bisogno di aiuto o riscontrate un problema durante il soggiorno. Saremo felici di aiutarvi.\nContattate la reception per informazioni su **noleggio auto o scooter**, **escursioni giornaliere** o **luoghi da visitare**.\nPotete anche usare la nostra biblioteca in prestito e il computer/stampante.",
+      es: "La recepción está abierta todos los días: **07:30 – 21:00**\nNo dude en contactarnos si necesita ayuda o tiene algún problema durante su estancia. Estaremos encantados de ayudarle.\nContacte con recepción si necesita información sobre **alquiler de coches o motos**, **excursiones de un día** o **lugares de interés**.\nTambién puede usar nuestra biblioteca de préstamo y el ordenador/impresora.",
     },
   },
   {
@@ -100,6 +96,24 @@ function upgradeDefaults(section: TvInfoSection): TvInfoSection {
   return { ...section, body };
 }
 
+// v93: the "Wi-Fi & facilities" tab is gone (the Starlink line sits under the Wi-Fi QR code on the home screen, the
+// library and computer/printer line moved to Reception, which also mentions rentals, day trips and sightseeing).
+// Saved copies of the untouched old texts follow; texts the hotel edited stay as they are.
+const retired: Record<string, Partial<Record<TvLanguage, string>>> = {
+  wifi: {
+    en: "Hotel Corali provides **high-speed internet access up to 350 Mbps with Starlink**.\nWi-Fi is available throughout the hotel.\n- Network: **{wifi}**\n- Password: **{password}**\nGuests may also use our lending library and computer/printer facilities.",
+    el: "Το Hotel Corali προσφέρει **γρήγορο internet έως 350 Mbps μέσω Starlink**.\nΤο Wi-Fi είναι διαθέσιμο σε όλο το ξενοδοχείο.\n- Δίκτυο: **{wifi}**\n- Κωδικός: **{password}**\nΜπορείτε επίσης να χρησιμοποιήσετε τη δανειστική μας βιβλιοθήκη και τον υπολογιστή/εκτυπωτή.",
+  },
+  reception: {
+    en: "Reception is open daily: **07:30 – 21:00**\nPlease do not hesitate to contact us if you need assistance or experience any problem during your stay. We will be happy to help.",
+    el: "Η ρεσεψιόν είναι ανοιχτή καθημερινά: **07:30 – 21:00**\nΜη διστάσετε να επικοινωνήσετε μαζί μας αν χρειάζεστε βοήθεια ή αντιμετωπίσετε οποιοδήποτε πρόβλημα κατά τη διαμονή σας. Θα χαρούμε να βοηθήσουμε.",
+  },
+};
+const untouched = (section: TvInfoSection) => {
+  const old = retired[section.key];
+  return Boolean(old) && Object.keys(section.body).length > 0 && (Object.entries(section.body) as [TvLanguage, string][]).every(([l, t]) => old![l] === t);
+};
+
 /** Sections from storage or the PMS form (defaults when never saved; an empty list stays empty). */
 export function normalizeInfoSections(raw: unknown): TvInfoSection[] {
   if (!Array.isArray(raw)) return defaultInfoSections.map((s) => ({ ...s, title: { ...s.title }, body: { ...s.body } }));
@@ -110,7 +124,10 @@ export function normalizeInfoSections(raw: unknown): TvInfoSection[] {
     let key = clip(x.key, 30).replace(/[^a-z0-9_-]/gi, "") || `s${i + 1}`;
     while (seen.has(key)) key = `${key}_`;
     seen.add(key);
-    return [upgradeDefaults({ key, icon: clip(x.icon, 8) || "ℹ️", title: loc(x.title, 60), body: loc(x.body, 2500) })];
+    const section = upgradeDefaults({ key, icon: clip(x.icon, 8) || "ℹ️", title: loc(x.title, 60), body: loc(x.body, 2500) });
+    if (!untouched(section)) return [section];
+    const now = defaultInfoSections.find((d) => d.key === key);
+    return now ? [{ ...section, title: { ...now.title }, body: { ...now.body } }] : [];
   });
 }
 

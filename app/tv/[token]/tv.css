@@ -243,6 +243,11 @@
 
 /* TV channels */
 .tvChannels{align-content:start}
+.tvWifiNote{margin:.6vw 0 0;font-size:.95vw;line-height:1.35;color:var(--muted);text-align:center}
+.tvKeysHelp{display:flex;flex-wrap:wrap;align-items:center;gap:.6vw 1.6vw;margin-bottom:1vw;padding:.8vw 1.2vw;border-radius:.8vw;background:var(--glass);border:1px solid var(--line);font-size:1vw;color:#fff}
+.tvKeysHelp b{font-size:1.05vw;margin-right:.4vw}
+.tvKeysHelp span{display:inline-flex;align-items:center;gap:.5vw}
+.tvKeysHelp kbd{font:inherit;font-weight:700;padding:.15vw .6vw;border-radius:.4vw;background:var(--gold);color:var(--ink);white-space:nowrap}
 .tvChannelGrid{display:grid;grid-template-columns:repeat(6,1fr);gap:.9vw;align-content:start}
 .tvChannel{font:inherit;color:#fff;cursor:pointer;background:var(--glass);border:1px solid var(--line);border-radius:1vw;padding:1vw;display:grid;justify-items:center;gap:.5vw;text-align:center;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .tvChannelLogo{width:100%;height:6vw;display:grid;place-items:center;background:rgba(255,255,255,.92);border-radius:.6vw;color:var(--ink);font-size:2.6vw;overflow:hidden}
@@ -258,7 +263,7 @@
 .tvPlayerBar b{font-size:1.6vw}
 .tvPlayerBar span{flex:1;font-size:1vw;color:rgba(255,255,255,.8)}
 .tvPlayerBar button{font:inherit;font-size:1vw;color:#fff;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);border-radius:.5vw;padding:.4vw 1vw}
-@media (max-width:800px){.tvChannelGrid{grid-template-columns:repeat(2,1fr)}.tvChannelLogo{height:60px;font-size:28px}.tvChannel b{font-size:15px}.tvChannel small{font-size:12px}.tvTransfer .tvMsgCard{max-width:none}.tvTransfer button{font-size:14px;padding:8px 12px}.tvTfRow>span{min-width:90px;font-size:13px}.tvTfValue{font-size:20px;min-width:56px}.tvTfHint,.tvTfError{font-size:13px}.tvPlayerBar b{font-size:16px}.tvPlayerBar span,.tvPlayerBar button{font-size:12px}}
+@media (max-width:800px){.tvChannelGrid{grid-template-columns:repeat(2,1fr)}.tvChannelLogo{height:60px;font-size:28px}.tvChannel b{font-size:15px}.tvChannel small{font-size:12px}.tvTransfer .tvMsgCard{max-width:none}.tvTransfer button{font-size:14px;padding:8px 12px}.tvTfRow>span{min-width:90px;font-size:13px}.tvTfValue{font-size:20px;min-width:56px}.tvTfHint,.tvTfError{font-size:13px}.tvPlayerBar b{font-size:16px}.tvPlayerBar span,.tvPlayerBar button{font-size:12px}.tvKeysHelp{font-size:12px;gap:6px 14px;padding:8px 12px}.tvKeysHelp b{font-size:13px}}
 .tvProblemGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:.8vw}
 .tvProblemGrid button{padding:1vw 1.2vw;font-size:1.25vw}
 @media (max-width:800px){.tvProblemGrid{grid-template-columns:1fr 1fr}.tvProblemGrid button{font-size:14px;padding:10px}}

@@ -17,6 +17,8 @@ export type TvSettings = {
   whatsappNumber: string;
   travelGuideUrl: string;
   welcome: Localized;
+  /** Line under the Wi-Fi QR code on the home screen. */
+  wifiNote: Localized;
   tips: Localized;
   showWeather: boolean;
   showExtras: boolean;
@@ -40,6 +42,14 @@ export const defaultTvSettings: TvSettings = {
     de: "Schön, dass Sie bei uns sind! Die Rezeption hilft Ihnen gerne bei allem weiter.",
     it: "Siamo felici di avervi con noi! La reception è a vostra disposizione per qualsiasi necessità.",
     es: "¡Estamos encantados de tenerle con nosotros! La recepción está a su disposición para lo que necesite.",
+  },
+  wifiNote: {
+    el: "Παρέχουμε γρήγορο internet έως 350 Mbps μέσω Starlink.",
+    en: "We provide high-speed internet up to 350 Mbps via Starlink.",
+    fr: "Nous offrons un internet haut débit jusqu'à 350 Mbps via Starlink.",
+    de: "Wir bieten schnelles Internet mit bis zu 350 Mbit/s über Starlink.",
+    it: "Offriamo internet veloce fino a 350 Mbps tramite Starlink.",
+    es: "Ofrecemos internet de alta velocidad de hasta 350 Mbps a través de Starlink.",
   },
   tips: {
     el: "Η παραλία του Πίσω Λιβαδιού είναι λίγα βήματα από το ξενοδοχείο\nΚαθημερινά καραβάκια για Αντίπαρο και τις παραλίες της ανατολικής Πάρου\nΒόλτα στα γραφικά Λεύκες, Νάουσα και Παροικιά",
@@ -95,6 +105,7 @@ export function normalizeTvSettings(raw: unknown): TvSettings {
     whatsappNumber: whatsappDigits(r.whatsappNumber),
     travelGuideUrl: httpsUrl(r.travelGuideUrl),
     welcome: localized(r.welcome, 600, defaultTvSettings.welcome),
+    wifiNote: localized(r.wifiNote, 200, defaultTvSettings.wifiNote),
     tips: localized(r.tips, 1500, defaultTvSettings.tips),
     showWeather: r.showWeather !== false,
     showExtras: r.showExtras !== false,

@@ -103,7 +103,7 @@ export async function tvScreenData(token: string, langOverride?: string | null) 
     checkInTime: settings.checkInTime, checkOutTime: settings.checkOutTime, receptionPhone: settings.receptionPhone,
     welcome: pickText(settings.welcome, lang),
     tips: pickText(settings.tips, lang).split("\n").map((t) => t.trim()).filter(Boolean).slice(0, 8),
-    wifi: ssid ? { ssid, password, qr: await qr(wifiQrPayload(ssid, password)) } : null,
+    wifi: ssid ? { ssid, password, qr: await qr(wifiQrPayload(ssid, password)), note: pickText(settings.wifiNote, lang) } : null,
     extras: extras.rows.map((e) => ({ name: translatedText(e.name_translations_json, lang, e.name_el, e.name_en, e.name), priceCents: Number(e.price_cents), perNight: String(e.pricing_mode).includes("night"), perPerson: e.pricing_mode === "per_person" })),
     weather: wx,
     manage: { url: manageUrl, qr: await qr(manageUrl) },

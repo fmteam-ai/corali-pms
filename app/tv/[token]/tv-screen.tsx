@@ -61,8 +61,15 @@ type Channel = TvScreenData["channels"][number];
 function ChannelPlayer({ channel, texts, onClose }: { channel: Channel; texts: TvScreenData["channelTexts"]; onClose: () => void }) {
   const video = useRef<HTMLVideoElement | null>(null);
   const [failed, setFailed] = useState(false);
+  // The bar with the channel name and the remote keys shows for 6 s on start and again after every key press.
   const [label, setLabel] = useState(true);
-  useEffect(() => { const t = setTimeout(() => setLabel(false), 5_000); return () => clearTimeout(t); }, []);
+  useEffect(() => {
+    let t = setTimeout(() => setLabel(false), 6_000);
+    const show = () => { setLabel(true); clearTimeout(t); t = setTimeout(() => setLabel(false), 6_000); };
+    window.addEventListener("keydown", show);
+    window.addEventListener("pointermove", show);
+    return () => { clearTimeout(t); window.removeEventListener("keydown", show); window.removeEventListener("pointermove", show); };
+  }, [channel]);
   useEffect(() => {
     const src = channel.source, el = video.current;
     if (src.kind === "youtube" || !el) return;
@@ -318,6 +325,10 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         </section>
       ) : tab === "channels" && data.channels.length > 0 ? (
         <section className="tvInfo tvChannels">
+          <div className="tvKeysHelp" aria-label={data.channelTexts.helpTitle}>
+            <b>{data.channelTexts.helpTitle}</b>
+            {([["◀ ▲ ▼ ▶", data.channelTexts.helpChoose], ["OK", data.channelTexts.helpWatch], ["▲ ▼", data.channelTexts.helpSwitch], ["BACK ↩", data.channelTexts.helpBack]] as const).map(([k, v]) => <span key={k}><kbd>{k}</kbd>{v}</span>)}
+          </div>
           <div className="tvChannelGrid" ref={panelRef}>
             {data.channels.map((c, i) => (
               <button type="button" key={`${c.name}-${i}`} className="tvChannel" onClick={() => setPlaying(i)}>
@@ -342,6 +353,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
               <CardHead icon={FaWifi} title={t.wifi} />
               <dl><dt>{t.network}</dt><dd>{data.wifi.ssid}</dd>{data.wifi.password && <><dt>{t.password}</dt><dd>{data.wifi.password}</dd></>}</dl>
               <figure className="tvQr"><img src={data.wifi.qr} alt="" /><figcaption>{t.scanWifi}</figcaption></figure>
+              {data.wifi.note && <p className="tvWifiNote">{data.wifi.note}</p>}
             </div>
           )}
           {data.weather && (

@@ -103,6 +103,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         </div>
         <div className="tvLangTabs" role="tablist">{tvLanguages.map((l) => <button type="button" role="tab" aria-selected={textLang === l} className={textLang === l ? "active" : ""} key={l} onClick={() => setTextLang(l)}>{langNames[l]}</button>)}</div>
         <label>{t("tv.welcome")}<textarea rows={3} maxLength={600} value={settings.welcome[textLang] ?? ""} disabled={!canEdit} onChange={(e) => set({ welcome: { ...settings.welcome, [textLang]: e.target.value } })} /></label>
+        <label>{t("tv.wifiNote")}<input value={settings.wifiNote[textLang] ?? ""} maxLength={200} disabled={!canEdit} onChange={(e) => set({ wifiNote: { ...settings.wifiNote, [textLang]: e.target.value } })} /></label>
         <label>{t("tv.tips")}<textarea rows={5} maxLength={1500} value={settings.tips[textLang] ?? ""} disabled={!canEdit} onChange={(e) => set({ tips: { ...settings.tips, [textLang]: e.target.value } })} /><small>{t("tv.tipsHelp")}</small></label>
         <h3>{t("tv.infoTitle")}</h3>
         <small>{t("tv.infoHelp")}</small>
