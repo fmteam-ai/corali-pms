@@ -5,7 +5,7 @@ import { FaBan, FaBath, FaBed, FaTv, FaBirthdayCake, FaCheck, FaGlassCheers, FaP
 import { WiCloud, WiCloudy, WiDayCloudy, WiDaySunny, WiFog, WiRain, WiShowers, WiSnow, WiThunderstorm } from "react-icons/wi";
 import type { TvScreenData } from "@/lib/tv";
 import { messageSound } from "@/lib/tv-messages-core";
-import { tvRequestKinds, type TvRequestKind } from "@/lib/tv-requests-core";
+import { tvProblems, tvRequestKinds, type TvRequestKind } from "@/lib/tv-requests-core";
 import "./tv.css";
 
 const locales = { el: "el-GR", en: "en-GB", fr: "fr-FR", de: "de-DE", it: "it-IT", es: "es-ES" } as const;
@@ -105,6 +105,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   const [transfer, setTransfer] = useState<Transfer | null>(null);
   const [transferError, setTransferError] = useState("");
   const [playing, setPlaying] = useState<number | null>(null);
+  const [problemOpen, setProblemOpen] = useState(false);
 
   // Any remote/keyboard/touch use keeps the chosen tab; after 90 s without it the screen goes back home.
   const choose = (key: string) => {
@@ -163,6 +164,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   const back = () => {
     if (playing !== null) { setPlaying(null); return true; }
     if (transfer) { setTransfer(null); return true; }
+    if (problemOpen) { setProblemOpen(false); return true; }
     if (tab !== "home") { choose("home"); (tabsRef.current?.querySelector<HTMLButtonElement>('[data-key="home"]'))?.focus(); return true; }
     return false;
   };
@@ -186,10 +188,11 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         e.preventDefault();
         return;
       }
-      const container = transfer ? transferRef.current : panelRef.current;
+      const modal = Boolean(transfer || problemOpen);
+      const container = modal ? transferRef.current : panelRef.current;
       const grid = Array.from(container?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
       const inGrid = grid.indexOf(document.activeElement as HTMLButtonElement);
-      if (transfer && inGrid < 0 && grid.length) { grid[0].focus(); e.preventDefault(); return; }
+      if (modal && inGrid < 0 && grid.length) { grid[0].focus(); e.preventDefault(); return; }
       if (inGrid >= 0 && e.key.startsWith("Arrow")) {
         const box = (b: Element) => { const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
         const from = box(grid[inGrid]), dx = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0, dy = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
@@ -201,7 +204,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
           if (score < bestScore) { bestScore = score; best = b; }
         }
         if (best) best.focus();
-        else if (dy < 0 && !transfer) (tabsRef.current?.querySelector<HTMLButtonElement>(`[data-key="${tab}"]`))?.focus();
+        else if (dy < 0 && !modal) (tabsRef.current?.querySelector<HTMLButtonElement>(`[data-key="${tab}"]`))?.focus();
         if (idle.current) choose(tab);
         e.preventDefault();
         return;
@@ -288,7 +291,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
               <span className="tvSwitch" aria-hidden><i />{dndOn ? rq.texts.dndOn : rq.texts.dndOff}</span>
             </button>
             {tvRequestKinds.map((k) => { const I = reqIcons[k]; const st = reqState[k]; return (
-              <button type="button" key={k} data-req={k} className={`tvReqBtn${st ? ` is-${st}` : ""}`} onClick={() => (k === "taxi" && rq.transfer ? openTransfer() : sendRequest(k))}>
+              <button type="button" key={k} data-req={k} className={`tvReqBtn${st ? ` is-${st}` : ""}`} onClick={() => (k === "taxi" && rq.transfer ? openTransfer() : k === "problem" && rq.problems ? setProblemOpen(true) : sendRequest(k))}>
                 <span className="tvReqIcon">{st === "sent" || st === "already" ? <FaCheck aria-hidden /> : <I aria-hidden />}</span>
                 <b>{reqLabel(k, rq.texts[k])}</b>
               </button>
@@ -364,6 +367,22 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
           </article>
         </div>
       ); })()}
+      {problemOpen && rq?.problems && (
+        <div className="tvMsg tvTransfer" role="dialog" aria-label={rq.problems.title}>
+          <article className="tvMsgCard" ref={transferRef}>
+            <div className="tvMsgBody">
+              <span className="tvMsgHead"><span className="tvMsgBadge"><FaTools aria-hidden /></span>{rq.problems.title}</span>
+              <p className="tvTfHint">{rq.problems.intro}</p>
+              <div className="tvProblemGrid">
+                {tvProblems.map((k, i) => (
+                  <button type="button" key={k} autoFocus={i === 0} onClick={async () => { setProblemOpen(false); await sendRequest("problem", { problem: k }); requestAnimationFrame(() => panelRef.current?.querySelector<HTMLButtonElement>('[data-req="problem"]')?.focus()); }}>{rq.problems![k]}</button>
+                ))}
+              </div>
+              <footer className="tvTfActions"><button type="button" onClick={() => setProblemOpen(false)}>{rq.problems.cancel}</button></footer>
+            </div>
+          </article>
+        </div>
+      )}
       {playing !== null && data.channels[playing] && <ChannelPlayer key={playing} channel={data.channels[playing]} texts={data.channelTexts} onClose={() => setPlaying(null)} />}
       {message && (
         <div className={`tvMsg theme-${message.theme}${message.urgent ? " urgent" : ""}${message.image ? " withPhoto" : ""}`} role="alertdialog" aria-labelledby="tvMsgHead">

@@ -91,3 +91,40 @@ export const tvTransferTexts: Record<"el" | "en" | "fr" | "de" | "it" | "es", Tr
   it: { title: "Transfer", destination: "Destinazione", port: "Porto", airport: "Aeroporto", other: "Altro", otherHint: "La reception vi contatterà per la destinazione.", day: "Giorno", today: "Oggi", tomorrow: "Domani", time: "Ora", people: "Persone", send: "Invia richiesta", cancel: "Annulla", tooSoon: "Scegliete un orario ad almeno 15 minuti da adesso." },
   es: { title: "Traslado", destination: "Destino", port: "Puerto", airport: "Aeropuerto", other: "Otro", otherHint: "Recepción le contactará para el destino.", day: "Día", today: "Hoy", tomorrow: "Mañana", time: "Hora", people: "Personas", send: "Enviar solicitud", cancel: "Cancelar", tooSoon: "Elija una hora al menos 15 minutos a partir de ahora." },
 };
+
+// Technical problem from the TV: the guest says what exactly is wrong.
+export const tvProblems = ["wifi", "tv", "ac", "electrical", "lighting", "hot_water", "water_leak", "door_lock", "safe", "other"] as const;
+export type TvProblem = (typeof tvProblems)[number];
+export type ProblemDetails = { problem: TvProblem };
+
+export const tvProblemLabels: Record<TvProblem, { icon: string; el: string; en: string }> = {
+  wifi: { icon: "📶", el: "Wi-Fi / internet", en: "Wi-Fi / internet" },
+  tv: { icon: "📺", el: "Τηλεόραση", en: "TV" },
+  ac: { icon: "❄️", el: "Κλιματιστικό", en: "Air conditioning" },
+  electrical: { icon: "⚡", el: "Ρεύμα / πρίζες", en: "Electricity / sockets" },
+  lighting: { icon: "💡", el: "Φωτισμός", en: "Lighting" },
+  hot_water: { icon: "🚿", el: "Ζεστό νερό", en: "Hot water" },
+  water_leak: { icon: "💧", el: "Διαρροή νερού", en: "Water leak" },
+  door_lock: { icon: "🔑", el: "Πόρτα / κλειδαριά", en: "Door / lock" },
+  safe: { icon: "🔒", el: "Χρηματοκιβώτιο", en: "Safe" },
+  other: { icon: "🛠️", el: "Κάτι άλλο (επικοινωνήστε με τον πελάτη)", en: "Something else (contact the guest)" },
+};
+
+/** Line for reception: "→ Κλιματιστικό". */
+export const problemSummary = (d: ProblemDetails, lang: "el" | "en") => `→ ${tvProblemLabels[d.problem]?.[lang] ?? d.problem}`;
+
+type ProblemTexts = { title: string; intro: string; cancel: string } & Record<TvProblem, string>;
+export const tvProblemTexts: Record<"el" | "en" | "fr" | "de" | "it" | "es", ProblemTexts> = {
+  el: { title: "Τεχνικό πρόβλημα", intro: "Τι δεν λειτουργεί; Επιλέξτε και πατήστε OK.", cancel: "Ακύρωση", wifi: "Wi-Fi / internet", tv: "Τηλεόραση", ac: "Κλιματιστικό", electrical: "Ρεύμα / πρίζες", lighting: "Φωτισμός", hot_water: "Ζεστό νερό", water_leak: "Διαρροή νερού", door_lock: "Πόρτα / κλειδαριά", safe: "Χρηματοκιβώτιο", other: "Κάτι άλλο" },
+  en: { title: "Technical problem", intro: "What is not working? Choose and press OK.", cancel: "Cancel", wifi: "Wi-Fi / internet", tv: "TV", ac: "Air conditioning", electrical: "Electricity / sockets", lighting: "Lighting", hot_water: "Hot water", water_leak: "Water leak", door_lock: "Door / lock", safe: "Safe", other: "Something else" },
+  fr: { title: "Problème technique", intro: "Qu'est-ce qui ne fonctionne pas ? Choisissez et appuyez sur OK.", cancel: "Annuler", wifi: "Wi-Fi / internet", tv: "Télévision", ac: "Climatisation", electrical: "Électricité / prises", lighting: "Éclairage", hot_water: "Eau chaude", water_leak: "Fuite d'eau", door_lock: "Porte / serrure", safe: "Coffre-fort", other: "Autre chose" },
+  de: { title: "Technisches Problem", intro: "Was funktioniert nicht? Auswählen und OK drücken.", cancel: "Abbrechen", wifi: "WLAN / Internet", tv: "Fernseher", ac: "Klimaanlage", electrical: "Strom / Steckdosen", lighting: "Beleuchtung", hot_water: "Warmwasser", water_leak: "Wasserleck", door_lock: "Tür / Schloss", safe: "Safe", other: "Etwas anderes" },
+  it: { title: "Problema tecnico", intro: "Cosa non funziona? Scegliete e premete OK.", cancel: "Annulla", wifi: "Wi-Fi / internet", tv: "TV", ac: "Aria condizionata", electrical: "Corrente / prese", lighting: "Illuminazione", hot_water: "Acqua calda", water_leak: "Perdita d'acqua", door_lock: "Porta / serratura", safe: "Cassaforte", other: "Altro" },
+  es: { title: "Problema técnico", intro: "¿Qué no funciona? Elija y pulse OK.", cancel: "Cancelar", wifi: "Wi-Fi / internet", tv: "Televisión", ac: "Aire acondicionado", electrical: "Electricidad / enchufes", lighting: "Iluminación", hot_water: "Agua caliente", water_leak: "Fuga de agua", door_lock: "Puerta / cerradura", safe: "Caja fuerte", other: "Otra cosa" },
+};
+
+/** Summary of a request's details for reception (transfer or technical problem). */
+export function requestDetailsSummary(d: TransferDetails | ProblemDetails | null, lang: "el" | "en"): string {
+  if (!d) return "";
+  return "problem" in d ? problemSummary(d, lang) : transferSummary(d, lang);
+}

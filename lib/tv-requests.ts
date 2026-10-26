@@ -3,9 +3,9 @@
 import { db, withTransaction } from "@/lib/db";
 import { pushNotification } from "@/lib/pms-notifications";
 import { hotelToday } from "@/lib/tape-chart";
-import { initialStatus, transferProblem, transferSummary, tvRequestLabels, type TransferDetails, type TvRequestKind, type TvRequestRecordKind } from "@/lib/tv-requests-core";
+import { initialStatus, requestDetailsSummary, transferProblem, tvRequestLabels, type ProblemDetails, type TransferDetails, type TvRequestKind, type TvRequestRecordKind } from "@/lib/tv-requests-core";
 
-export type TvRequestRow = { id: number; roomId: number; roomCode: string; guestName: string | null; kind: TvRequestRecordKind; status: string; createdAt: number; handledAt: number | null; handledBy: string; details: TransferDetails | null };
+export type TvRequestRow = { id: number; roomId: number; roomCode: string; guestName: string | null; kind: TvRequestRecordKind; status: string; createdAt: number; handledAt: number | null; handledBy: string; details: TransferDetails | ProblemDetails | null };
 
 const hotelTime = () => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Athens", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
 
@@ -27,7 +27,7 @@ async function screen(token: string) {
  * A request from the TV. Only while a guest is staying in the room. The same open request within 10 minutes is not
  * repeated. Returns null for an unknown link / no guest, otherwise whether it was recorded and the do-not-disturb state.
  */
-export async function createTvRequest(token: string, kind: TvRequestKind | "dnd", dndOn?: boolean, transfer?: TransferDetails): Promise<{ recorded: boolean; dnd: boolean; error?: string } | null> {
+export async function createTvRequest(token: string, kind: TvRequestKind | "dnd", dndOn?: boolean, transfer?: TransferDetails, problem?: ProblemDetails): Promise<{ recorded: boolean; dnd: boolean; error?: string } | null> {
   const s = await screen(token);
   if (!s || !s.bookingId) return null;
   // A transfer (the "taxi" request) carries where / when / how many; checked against the stay and the hotel clock.
@@ -35,7 +35,8 @@ export async function createTvRequest(token: string, kind: TvRequestKind | "dnd"
     const problem = transferProblem(transfer, s.today, hotelTime(), s.checkOut);
     if (problem) return { recorded: false, dnd: s.dnd, error: problem };
   }
-  const details = kind === "taxi" && transfer ? JSON.stringify({ destination: transfer.destination, date: transfer.date, time: transfer.time, people: transfer.people }) : null;
+  const detailObj: TransferDetails | ProblemDetails | null = kind === "taxi" && transfer ? { destination: transfer.destination, date: transfer.date, time: transfer.time, people: transfer.people } : kind === "problem" && problem ? { problem: problem.problem } : null;
+  const details = detailObj ? JSON.stringify(detailObj) : null;
   const now = Date.now();
   const record: TvRequestRecordKind = kind === "dnd" ? (dndOn ? "dnd_on" : "dnd_off") : kind;
   return withTransaction(async (c) => {
@@ -48,7 +49,7 @@ export async function createTvRequest(token: string, kind: TvRequestKind | "dnd"
     }
     await c.query(`INSERT INTO tv_requests(owner_id,room_id,booking_id,kind,status,created_at,details_json) VALUES($1,$2,$3,$4,$5,$6,$7)`, [s.ownerId, s.roomId, s.bookingId, record, initialStatus(record), now, details]);
     const l = tvRequestLabels[record], who = s.guestName ? ` · ${s.guestName}` : "";
-    const more = (lang: "el" | "en") => (transfer && details ? ` ${transferSummary(transfer, lang)}` : "");
+    const more = (lang: "el" | "en") => (detailObj ? ` ${requestDetailsSummary(detailObj, lang)}` : "");
     await pushNotification(c, s.ownerId, { kind: "tv_request", titleEl: `${l.icon} Δωμάτιο ${s.roomCode}${who}: ${l.el}${more("el")}`, titleEn: `${l.icon} Room ${s.roomCode}${who}: ${l.en}${more("en")}`, link: "/pms/tv-requests" });
     return { recorded: true, dnd: kind === "dnd" ? Boolean(dndOn) : s.dnd };
   });
@@ -69,7 +70,7 @@ export async function listTvRequests(ownerId: string, all: boolean): Promise<TvR
       ORDER BY (q.status='open') DESC, q.created_at DESC LIMIT 200`,
     [ownerId, all, Date.now() - 24 * 3_600_000],
   );
-  return r.rows.map((x) => ({ id: Number(x.id), roomId: Number(x.room_id), roomCode: String(x.code), guestName: x.guest_name ? String(x.guest_name) : null, kind: String(x.kind) as TvRequestRecordKind, status: String(x.status), createdAt: Number(x.created_at), handledAt: x.handled_at === null ? null : Number(x.handled_at), handledBy: String(x.handled_by), details: x.details_json ? (JSON.parse(String(x.details_json)) as TransferDetails) : null }));
+  return r.rows.map((x) => ({ id: Number(x.id), roomId: Number(x.room_id), roomCode: String(x.code), guestName: x.guest_name ? String(x.guest_name) : null, kind: String(x.kind) as TvRequestRecordKind, status: String(x.status), createdAt: Number(x.created_at), handledAt: x.handled_at === null ? null : Number(x.handled_at), handledBy: String(x.handled_by), details: x.details_json ? (JSON.parse(String(x.details_json)) as TransferDetails | ProblemDetails) : null }));
 }
 
 /** Rooms with do not disturb on, for the PMS. */

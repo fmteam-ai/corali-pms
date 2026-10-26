@@ -41,3 +41,14 @@ test("Housekeeping: sheets / towels every N nights, never on arrival or departur
   assert.deepEqual(dueServices(...stay, "2026-10-22", { ...s, towelsEvery: 0 }), []);
   assert.deepEqual(normalizeHkServiceSettings({ sheetsEvery: -1, towelsEvery: "x", reminderHour: 40 }), { sheetsEvery: 3, towelsEvery: 2, reminderHour: 9 });
 });
+
+test("TV technical problem: every problem has labels and a reception summary", async () => {
+  const { problemSummary, requestDetailsSummary, tvProblemLabels, tvProblemTexts, tvProblems } = await import("../lib/tv-requests-core.ts");
+  for (const p of tvProblems) {
+    assert.ok(tvProblemLabels[p].el && tvProblemLabels[p].en);
+    for (const lang of ["el", "en", "fr", "de", "it", "es"] as const) assert.ok(tvProblemTexts[lang][p], `${lang}.${p}`);
+  }
+  assert.equal(problemSummary({ problem: "ac" }, "el"), "→ Κλιματιστικό");
+  assert.equal(requestDetailsSummary({ problem: "safe" }, "en"), "→ Safe");
+  assert.equal(requestDetailsSummary(null, "el"), "");
+});

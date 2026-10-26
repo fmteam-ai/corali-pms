@@ -1525,6 +1525,8 @@ const el = {
   "dt.none": "Δεν υπάρχουν εργασίες για σήμερα.",
   "dt.all": "Όλα στο Housekeeping",
   "dt.progress": "{d}/{n} ολοκληρώθηκαν",
+  "new.phoneCountry": "Κωδικός χώρας τηλεφώνου",
+  "new.chooseCountry": "— Επιλέξτε χώρα —",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -3046,6 +3048,8 @@ const en: Record<PmsKey, string> = {
   "dt.none": "No tasks for today.",
   "dt.all": "All in Housekeeping",
   "dt.progress": "{d}/{n} done",
+  "new.phoneCountry": "Phone country code",
+  "new.chooseCountry": "— Choose a country —",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

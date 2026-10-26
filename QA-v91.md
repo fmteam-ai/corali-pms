@@ -1,6 +1,11 @@
-# Hotel Corali PMS v90 — release verification
+# Hotel Corali PMS v91 — release verification
 
 ## Scope in this package
+
+### New in v91
+- PMS → New reservation: phone and country as on the guest booking form — phone country selector (flag, +prefix, country name) and local number, saved in international form (lib/dial-codes internationalPhone, e.g. +39 0612345678); country chosen from the full list in the staff language (ISO code stored, as from the booking engine); choosing a country presets the phone prefix. Lists are built in the browser (no hydration mismatch from server/browser country names).
+- Corali TV → Requests → "Τεχνικό πρόβλημα" opens a window: Wi-Fi / internet, TV, air conditioning, electricity / sockets, lighting, hot water, water leak, door / lock, safe, something else (6 languages). Stored in tv_requests.details_json; reception sees e.g. "🛠️ Δωμάτιο 101 · Maria Test: Τεχνικό πρόβλημα στο δωμάτιο → Κλιματιστικό" (notification, Requests from TV page, dashboard widget).
+- Verified: new reservation saved with +39 0612345678 / IT and opened the reservation; TV: problem window with the remote keys → "Κλιματιστικό" sent and shown in the notification. Tests: 202 pass.
 
 ### New in v90
 - TV transfer: the "Transfer / taxi" request opens a form on the TV — destination (Port / Airport / Other: reception calls), day (today … check-out day, max 14), time (±15 min, at least 15 min ahead, Athens time), people (from the booking, 1–12). Stored in tv_requests.details_json; the PMS notification, Requests from TV page and dashboard widget show "→ Αεροδρόμιο · Τρί 27/10 09:30 · 1 άτομο". Server-side validation (lib/tv-requests-core.ts transferProblem).
