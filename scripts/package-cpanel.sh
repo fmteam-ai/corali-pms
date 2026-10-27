@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project="$(cd "$(dirname "$0")/.." && pwd)"
-output="$project/corali-pms-cpanel-v102-root.tar.gz"
+output="$project/corali-pms-cpanel-v103-root.tar.gz"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 
@@ -26,9 +26,14 @@ cp scripts/init-postgres.mjs scripts/create-admin.mjs scripts/create-admin.sh \
   scripts/load-runtime-env.mjs scripts/admin-recovery-core.mjs scripts/recover-admin.mjs scripts/has-active-owner.mjs \
   scripts/fix-cpanel-permissions.sh scripts/smoke-runtime.sh \
   scripts/verify-package.sh "$stage/scripts/"
-cp app.js .env.example DEPLOY-CPANEL.md QA-v102.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md INSTALL-CPANEL.sh \
+# Cron scripts import packages at run time; Next's standalone output bundles some of them (nodemailer) into its own
+# chunks, so copy every package a packaged script imports and the standalone tree lacks (dependency-free ones only).
+for pkg in nodemailer; do
+  [ -f "$stage/node_modules/$pkg/package.json" ] || cp -a "$(readlink -f "node_modules/$pkg")" "$stage/node_modules/$pkg"
+done
+cp app.js .env.example DEPLOY-CPANEL.md QA-v103.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md INSTALL-CPANEL.sh \
   ROLLBACK-CPANEL.sh package.json "$stage/"
-printf 'v102\n' > "$stage/DEPLOY_VERSION.txt"
+printf 'v103\n' > "$stage/DEPLOY_VERSION.txt"
 
 find "$stage" -type d -exec chmod 755 {} +
 find "$stage" -type f -exec chmod 644 {} +

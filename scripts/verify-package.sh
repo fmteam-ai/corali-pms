@@ -9,10 +9,10 @@ mode="${2:-package}"
 }
 
 version="$(tr -d '\r\n' < "$root/DEPLOY_VERSION.txt" 2>/dev/null || true)"
-[[ "$version" == "v102" ]] || { echo "Invalid deployment version: ${version:-missing}" >&2; exit 1; }
+[[ "$version" == "v103" ]] || { echo "Invalid deployment version: ${version:-missing}" >&2; exit 1; }
 
 required=(
-  app.js server.js package.json DEPLOY_VERSION.txt DEPLOY-CPANEL.md QA-v102.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md
+  app.js server.js package.json DEPLOY_VERSION.txt DEPLOY-CPANEL.md QA-v103.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md
   INSTALL-CPANEL.sh ROLLBACK-CPANEL.sh server/postgres-schema.sql
   scripts/init-postgres.mjs scripts/create-admin.mjs scripts/create-admin.sh
   scripts/reset-admin-2fa.mjs scripts/run-birthday-automation.mjs scripts/run-message-automations.mjs scripts/automation-core.mjs scripts/retention-core.mjs scripts/birthday-core.mjs scripts/run-data-retention.mjs scripts/run-balance-collection.mjs scripts/balance-collection-core.mjs scripts/mydata-core.mjs scripts/run-mydata-queue.mjs scripts/channel-core.mjs scripts/run-channel-sync.mjs scripts/run-social-publisher.mjs scripts/arrival-core.mjs scripts/rate-shopper-core.mjs scripts/run-rate-shopper.mjs scripts/tv-power-core.mjs scripts/run-tv-power.mjs scripts/access-card-core.mjs scripts/access-card-worker.mjs
@@ -44,7 +44,7 @@ fi
 
 node_version="$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).version)' "$root/package.json")"
 [[ "$node_version" == "49.0.0" ]] || { echo "package.json version mismatch: $node_version" >&2; exit 1; }
-grep -R -q 'version.*v102' "$root/.next/server"
+grep -R -q 'version.*v103' "$root/.next/server"
 ! grep -R -E -n 'rejectUnauthorized:[[:space:]]*false' "$root/scripts" "$root/server"
 grep -q 'idx_bookings_owner_room_dates' "$root/server/postgres-schema.sql"
 grep -q 'idx_guest_checkins_owner_booking' "$root/server/postgres-schema.sql"
@@ -64,5 +64,12 @@ if grep -R -E -n --exclude='.env.example' --exclude='DEPLOY-CPANEL.md' \
   echo "Possible production secret found in deployment files" >&2
   exit 1
 fi
+
+# Every package the cron scripts import must resolve from the deployed tree (a missing one fails the cron silently).
+for script in "$root"/scripts/*.mjs; do
+  for pkg in $(grep -ohE "from ['\"][^.'\"][^'\"]*['\"]" "$script" | sed -E "s/from ['\"]([^'\"]+)['\"]/\1/" | grep -v '^node:' | sort -u); do
+    [ -f "$root/node_modules/$pkg/package.json" ] || { echo "Missing package for cron scripts: $pkg (imported by $(basename "$script"))" >&2; exit 1; }
+  done
+done
 
 echo "Package verification ($mode): OK — $version"
