@@ -1789,7 +1789,7 @@ CREATE TABLE IF NOT EXISTS api_webhook_deliveries (
 );
 CREATE INDEX IF NOT EXISTS idx_api_webhook_deliveries_due ON api_webhook_deliveries(owner_id,status,next_at);
 CREATE INDEX IF NOT EXISTS idx_api_webhook_deliveries_hook ON api_webhook_deliveries(owner_id,webhook_id,id DESC);
--- What the webhooks last reported per booking, and how far folio entries were read (a new hook starts from "now").
+-- What the webhooks last reported per booking, and how far folio entries were read (a new hook starts at the current moment).
 CREATE TABLE IF NOT EXISTS api_booking_state (
  owner_id TEXT NOT NULL,
  booking_id BIGINT NOT NULL,

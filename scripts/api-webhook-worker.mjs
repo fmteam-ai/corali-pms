@@ -48,7 +48,7 @@ export async function runApiWebhooks({ pool, owner, unseal }) {
   const now = Date.now();
   const hooks = (await pool.query(`SELECT id,url,events_json,secret_encrypted FROM api_webhooks WHERE owner_id=$1 AND active=1`, [owner])).rows.map((h) => ({ ...h, events: JSON.parse(String(h.events_json)) }));
   if (!hooks.length) {
-    // Nothing listens: start again from "now" when a webhook is switched on (no flood of old changes).
+    // Nothing listens: start again at the current moment when a webhook is switched on (no flood of old changes).
     await pool.query(`UPDATE api_event_cursor SET seeded_at=NULL WHERE owner_id=$1 AND seeded_at IS NOT NULL`, [owner]);
   } else {
     const since = new Date(now - 30 * 86_400_000).toISOString().slice(0, 10);
