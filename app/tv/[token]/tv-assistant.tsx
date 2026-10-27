@@ -11,7 +11,7 @@ const voiceBridge = (): VoiceBridge | undefined => (typeof window === "undefined
 export type AssistantApi = { listen: () => void; back: () => boolean };
 
 /** Assistant tab: ready questions, the remote's microphone (Corali TV app), typing, Confirm for proposals. */
-export function TvAssistant({ token, lang, texts, speech, phoneQr, gridRef, apiRef, onActivity }: { token: string; lang: string; texts: Texts; speech: string; phoneQr: string; gridRef: RefObject<HTMLDivElement | null>; apiRef: Ref<AssistantApi>; onActivity: () => void }) {
+export function TvAssistant({ token, lang, texts, speech, gridRef, apiRef, onActivity }: { token: string; lang: string; texts: Texts; speech: string; gridRef: RefObject<HTMLDivElement | null>; apiRef: Ref<AssistantApi>; onActivity: () => void }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
@@ -124,7 +124,6 @@ export function TvAssistant({ token, lang, texts, speech, phoneQr, gridRef, apiR
           </div>
         </div>
       </div>
-      <figure className="tvQr tvAsPhone"><img src={phoneQr} alt="" /><figcaption>{texts.phone}</figcaption></figure>
     </section>
   );
 }

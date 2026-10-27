@@ -281,9 +281,19 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
     const poll = setInterval(load, REFRESH_MS);
     const clock = setInterval(() => setNow(new Date()), 15_000);
     queueMicrotask(() => live && setNow(new Date()));
-    // Reload the whole page every 6 hours so the screen picks up new versions of the PMS.
+    // A new PMS version (installer) reloads the page within ~5 minutes; a full reload every 6 hours as before.
     const reload = setTimeout(() => location.reload(), 6 * 3_600_000);
-    return () => { live = false; clearInterval(poll); clearInterval(clock); clearTimeout(reload); };
+    let version = "";
+    const checkVersion = async () => {
+      try {
+        const v = String((await (await fetch("/api/health", { cache: "no-store" })).json())?.version ?? "");
+        if (version && v && v !== version) location.reload();
+        else if (v) version = v;
+      } catch { /* offline or restarting: try again later */ }
+    };
+    void checkVersion();
+    const versionPoll = setInterval(checkVersion, 5 * 60_000);
+    return () => { live = false; clearInterval(poll); clearInterval(clock); clearTimeout(reload); clearInterval(versionPoll); };
   }, [token, lang]);
 
   if (missing || !data) return <main className="tvScreen tvEmpty"><span className="tvLogo"><img src="/hotel-corali-logo.png" alt="Hotel Corali" /></span></main>;
@@ -331,7 +341,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
       )}
 
       {tab === "assistant" && data.assistant ? (
-        <TvAssistant token={token} lang={data.lang} texts={data.assistant.texts} speech={data.assistant.speech} phoneQr={data.manage.qr} gridRef={panelRef} apiRef={assistantApi} onActivity={() => choose("assistant")} />
+        <TvAssistant token={token} lang={data.lang} texts={data.assistant.texts} speech={data.assistant.speech} gridRef={panelRef} apiRef={assistantApi} onActivity={() => choose("assistant")} />
       ) : tab === "requests" && rq ? (
         <section className="tvInfo tvReq">
           <p className="tvReqIntro">{rq.texts.intro}</p>
