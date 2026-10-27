@@ -2158,6 +2158,13 @@ const el = {
   "tv.assistant": "🤖 AI βοηθός στην τηλεόραση (με φωνή)",
   "tv.assistantLimit": "Ερωτήσεις ανά δωμάτιο την ημέρα",
   "tv.assistantHelp": "Καρτέλα «Βοηθός»: ο πελάτης πατάει 🎤 και μιλάει από το μικρόφωνο του τηλεχειριστηρίου (εφαρμογή Corali TV 1.5+) ή διαλέγει έτοιμη ερώτηση. Απαντά για το ξενοδοχείο, τη διαμονή και την Πάρο, και μπορεί να στείλει αιτήματα ή παραγγελίες μόνο αφού ο πελάτης πατήσει «Επιβεβαίωση». Χρειάζεται κλειδί Anthropic (Συνδέσεις). Η συζήτηση σβήνει με την επόμενη διαμονή.",
+  "tv.beachesTitle": "🏖️ Παραλίες για τον βοηθό (ανάλογα με τον αέρα)",
+  "tv.beachesHelp": "Ο βοηθός διαβάζει την πρόγνωση ανέμου (κατεύθυνση, μποφόρ, ριπές, κύμα) και με βοριά / μελτέμι προτείνει τις κοντινότερες προστατευμένες παραλίες. Σημειώστε από ποιους ανέμους προστατεύεται κάθε παραλία (π.χ. Λογαράς: Βοριάς, Μαΐστρος). Η αρχική λίστα είναι ενδεικτική — ελέγξτε την με τη δική σας γνώση.",
+  "tv.beachName": "Παραλία",
+  "tv.beachMinutes": "Λεπτά από το ξενοδοχείο",
+  "tv.beachSheltered": "Προστατευμένη από",
+  "tv.beachNote": "Σημείωση (π.χ. ρηχά νερά, ταβέρνα, windsurf)",
+  "tv.beachAdd": "Παραλία",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -4312,6 +4319,13 @@ const en: Record<PmsKey, string> = {
   "tv.assistant": "🤖 AI assistant on the TV (with voice)",
   "tv.assistantLimit": "Questions per room per day",
   "tv.assistantHelp": "\"Assistant\" tab: the guest presses 🎤 and speaks into the remote's microphone (Corali TV app 1.5+) or picks a ready question. It answers about the hotel, the stay and Paros, and sends requests or orders only after the guest presses Confirm. Needs the Anthropic key (Connections). The conversation is removed with the next stay.",
+  "tv.beachesTitle": "🏖️ Beaches for the assistant (by wind)",
+  "tv.beachesHelp": "The assistant reads the wind forecast (direction, Beaufort, gusts, waves) and on north / meltemi days suggests the nearest sheltered beaches. Mark which winds each beach is sheltered from. The starting list is a suggestion — check it with your local knowledge.",
+  "tv.beachName": "Beach",
+  "tv.beachMinutes": "Minutes from the hotel",
+  "tv.beachSheltered": "Sheltered from",
+  "tv.beachNote": "Note (e.g. shallow water, taverna, windsurf)",
+  "tv.beachAdd": "Beach",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

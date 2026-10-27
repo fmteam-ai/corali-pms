@@ -4,6 +4,7 @@ import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 import type { TvScreenRow } from "@/lib/tv";
 import { tvLanguages, type TvLanguage, type TvSettings } from "@/lib/tv-core";
 import { defaultInfoSections, MAX_INFO_SECTIONS, type TvInfoSection } from "@/lib/tv-info";
+import { defaultBeaches, windDirections, windNames, type TvBeach } from "@/lib/tv-beaches";
 import { channelSource, MAX_TV_CHANNELS, tvChannelCategories, type TvChannel } from "@/lib/tv-channels-core";
 import { MAX_TV_APPS, tvAppCatalog, type TvApp } from "@/lib/tv-apps-core";
 import type { PowerSettings, RoomPowerState } from "@/lib/tv-power";
@@ -27,6 +28,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
   const [appCode, setAppCode] = useState<{ roomId: number; room: string; code: string; expiresAt: number } | null>(null);
   const set = (patch: Partial<TvSettings>) => setSettings((s) => ({ ...s, ...patch }));
   const setInfo = (info: TvInfoSection[]) => set({ info });
+  const editBeach = (i: number, patch: Partial<TvBeach>) => set({ beaches: settings.beaches.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
   const editInfo = (i: number, patch: Partial<TvInfoSection>) => setInfo(settings.info.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const setChannels = (channels: TvChannel[]) => set({ channels });
   const editChannel = (i: number, patch: Partial<TvChannel>) => setChannels(settings.channels.map((x, j) => (j === i ? { ...x, ...patch } : x)));
@@ -126,6 +128,28 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
           <div className="tvInfoAdd">
             <button type="button" className="secondaryButton" disabled={settings.info.length >= MAX_INFO_SECTIONS} onClick={() => setInfo([...settings.info, { key: `s${Date.now().toString(36)}`, icon: "ℹ️", title: {}, body: {} }])}>+ {t("tv.infoAdd")}</button>
             <button type="button" className="secondaryButton" onClick={() => confirm(t("tv.infoResetConfirm")) && setInfo(defaultInfoSections.map((x) => ({ ...x, title: { ...x.title }, body: { ...x.body } })))}>{t("tv.infoReset")}</button>
+          </div>
+        )}
+        <h3>{t("tv.beachesTitle")}</h3>
+        <small>{t("tv.beachesHelp")}</small>
+        <div className="tvBeaches">
+          {settings.beaches.map((b, i) => (
+            <div className="tvBeach" key={i}>
+              <input aria-label={t("tv.beachName")} placeholder={t("tv.beachName")} value={b.name} maxLength={60} disabled={!canEdit} onChange={(e) => editBeach(i, { name: e.target.value })} />
+              <label className="inline">{t("tv.beachMinutes")} <input type="number" min={0} max={180} value={b.minutes} disabled={!canEdit} onChange={(e) => editBeach(i, { minutes: Number(e.target.value) || 0 })} /></label>
+              <div className="tvWinds" role="group" aria-label={t("tv.beachSheltered")}>
+                <span>{t("tv.beachSheltered")}:</span>
+                {windDirections.map((d) => <button type="button" key={d} title={windNames[d].el} aria-pressed={b.sheltered.includes(d)} className={b.sheltered.includes(d) ? "on" : ""} disabled={!canEdit} onClick={() => editBeach(i, { sheltered: b.sheltered.includes(d) ? b.sheltered.filter((x) => x !== d) : windDirections.filter((x) => x === d || b.sheltered.includes(x)) })}>{windNames[d].el}</button>)}
+              </div>
+              <input aria-label={t("tv.beachNote")} placeholder={t("tv.beachNote")} value={b.note} maxLength={200} disabled={!canEdit} onChange={(e) => editBeach(i, { note: e.target.value })} />
+              {canEdit && <button type="button" className="secondaryButton" onClick={() => confirm(t("tv.infoRemoveConfirm")) && set({ beaches: settings.beaches.filter((_, j) => j !== i) })}>✕</button>}
+            </div>
+          ))}
+        </div>
+        {canEdit && (
+          <div className="tvInfoAdd">
+            <button type="button" className="secondaryButton" disabled={settings.beaches.length >= 20} onClick={() => set({ beaches: [...settings.beaches, { name: "", minutes: 10, sheltered: [], note: "" }] })}>+ {t("tv.beachAdd")}</button>
+            <button type="button" className="secondaryButton" onClick={() => confirm(t("tv.infoResetConfirm")) && set({ beaches: defaultBeaches.map((b) => ({ ...b, sheltered: [...b.sheltered] })) })}>{t("tv.infoReset")}</button>
           </div>
         )}
         <h3>{t("tv.appsTitle")}</h3>
