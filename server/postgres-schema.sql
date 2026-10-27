@@ -1855,3 +1855,32 @@ CREATE TABLE IF NOT EXISTS provider_tokens (
  expires_at BIGINT NOT NULL,
  PRIMARY KEY(owner_id,provider_key)
 );
+
+-- v109: Corali TV AI assistant (voice through the remote's microphone). The conversation belongs to the stay
+-- (removed when another stay uses the room); proposals run only after the guest presses Confirm on the TV.
+CREATE TABLE IF NOT EXISTS tv_assistant_messages (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ room_id BIGINT NOT NULL,
+ booking_id BIGINT NOT NULL,
+ day TEXT NOT NULL,
+ role TEXT NOT NULL,
+ content TEXT NOT NULL,
+ action_id BIGINT,
+ created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tv_assistant_messages_booking ON tv_assistant_messages(owner_id,booking_id,id);
+CREATE INDEX IF NOT EXISTS idx_tv_assistant_messages_room ON tv_assistant_messages(owner_id,room_id);
+CREATE TABLE IF NOT EXISTS tv_assistant_actions (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ room_id BIGINT NOT NULL,
+ booking_id BIGINT NOT NULL,
+ payload_json TEXT NOT NULL,
+ summary TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'pending',
+ result TEXT NOT NULL DEFAULT '',
+ created_at BIGINT NOT NULL,
+ decided_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_tv_assistant_actions_booking ON tv_assistant_actions(owner_id,booking_id,id);

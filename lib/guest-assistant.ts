@@ -22,7 +22,7 @@ export async function guestPolicy(ownerId: string, lang: BookingLanguage): Promi
 }
 
 /** Room categories, characteristics and extras, written for the model (stable, so it is cached). */
-async function hotelCatalog(ownerId: string, lang: BookingLanguage): Promise<string> {
+export async function hotelCatalog(ownerId: string, lang: BookingLanguage): Promise<string> {
   const [rooms, extras] = await Promise.all([
     db().query(`SELECT r.room_type, max(r.capacity)::int AS capacity, count(*)::int AS units, min(c.name_el) name_el, min(c.name_en) name_en, min(c.name_translations_json) name_tr, min(c.description_el) d_el, min(c.description_en) d_en,
         (SELECT COALESCE(json_agg(DISTINCT jsonb_build_object('el',a.name_el,'en',a.name_en,'tr',a.name_translations_json)),'[]'::json) FROM room_amenity_assignments x JOIN room_amenities a ON a.id=x.amenity_id AND a.active=1 JOIN rooms r2 ON r2.id=x.room_id WHERE r2.owner_id=$1 AND r2.room_type=r.room_type) AS amenities

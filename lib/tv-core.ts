@@ -25,6 +25,10 @@ export type TvSettings = {
   info: TvInfoSection[];
   channels: TvChannel[];
   apps: TvApp[];
+  /** AI assistant tab on the TV (voice through the remote's microphone in the Corali TV app). */
+  assistant: boolean;
+  /** Questions a stay may ask per day (cost control). */
+  assistantDailyLimit: number;
 };
 
 export const defaultTvSettings: TvSettings = {
@@ -64,6 +68,8 @@ export const defaultTvSettings: TvSettings = {
   info: normalizeInfoSections(undefined),
   channels: [],
   apps: [],
+  assistant: false,
+  assistantDailyLimit: 40,
 };
 
 const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -112,6 +118,8 @@ export function normalizeTvSettings(raw: unknown): TvSettings {
     info: normalizeInfoSections(r.info),
     channels: normalizeTvChannels(r.channels),
     apps: normalizeTvApps(r.apps),
+    assistant: r.assistant === true,
+    assistantDailyLimit: Number.isFinite(Number(r.assistantDailyLimit)) && r.assistantDailyLimit !== null && r.assistantDailyLimit !== "" ? Math.min(200, Math.max(5, Math.round(Number(r.assistantDailyLimit)))) : 40,
   };
 }
 

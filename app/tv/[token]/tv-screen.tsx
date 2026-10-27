@@ -1,11 +1,12 @@
 "use client";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { IconType } from "react-icons";
-import { FaBan, FaBath, FaBed, FaTv, FaThLarge, FaBirthdayCake, FaCheck, FaGlassCheers, FaPhoneAlt, FaPumpSoap, FaTaxi, FaTools, FaHeart, FaLayerGroup, FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
+import { FaRobot, FaBan, FaBath, FaBed, FaTv, FaThLarge, FaBirthdayCake, FaCheck, FaGlassCheers, FaPhoneAlt, FaPumpSoap, FaTaxi, FaTools, FaHeart, FaLayerGroup, FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
 import { WiCloud, WiCloudy, WiDayCloudy, WiDaySunny, WiFog, WiRain, WiShowers, WiSnow, WiThunderstorm } from "react-icons/wi";
 import type { TvScreenData } from "@/lib/tv";
 import { messageSound } from "@/lib/tv-messages-core";
 import { tvProblems, tvRequestKinds, tvRequestLabels, type TvRequestKind } from "@/lib/tv-requests-core";
+import { TvAssistant, type AssistantApi } from "./tv-assistant";
 import "./tv.css";
 
 const locales = { el: "el-GR", en: "en-GB", fr: "fr-FR", de: "de-DE", it: "it-IT", es: "es-ES" } as const;
@@ -120,6 +121,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   // My requests: the id waiting for a second OK to cancel, and a reload of the screen data after a change.
   const [cancelArm, setCancelArm] = useState<number | null>(null);
   const reloadData = useRef<() => void>(() => {});
+  const assistantApi = useRef<AssistantApi | null>(null);
 
   // Any remote/keyboard/touch use keeps the chosen tab; after 90 s without it the screen goes back home. The channel
   // list stays (a guest returning from a channel expects the list, not the home screen).
@@ -189,16 +191,30 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
     if (playing !== null) { const was = playing; setPlaying(null); choose("channels"); requestAnimationFrame(() => panelRef.current?.querySelectorAll<HTMLButtonElement>(".tvChannel")[was]?.focus()); return true; }
     if (transfer) { setTransfer(null); return true; }
     if (problemOpen) { setProblemOpen(false); return true; }
+    if (tab === "assistant" && assistantApi.current?.back()) return true;
     if (tab !== "home") { choose("home"); (tabsRef.current?.querySelector<HTMLButtonElement>('[data-key="home"]'))?.focus(); return true; }
     return false;
   };
   useEffect(() => {
     (window as unknown as { coraliBack?: () => boolean }).coraliBack = back;
+    // The remote's microphone / search key (Corali TV app): open the assistant and listen.
+    (window as unknown as { coraliMic?: () => boolean }).coraliMic = () => {
+      if (!data?.assistant) return false;
+      choose("assistant");
+      (tabsRef.current?.querySelector<HTMLButtonElement>('[data-key="assistant"]'))?.focus();
+      requestAnimationFrame(() => assistantApi.current?.listen());
+      return true;
+    };
   });
   // TV remotes send arrow keys: left/right move between tabs; down enters the buttons of the open tab, which move
   // to the nearest button in the arrow's direction. While a channel plays, up/down switch channels.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Typing a question: the keys belong to the text field (BACK / Escape close it).
+      if (document.activeElement instanceof HTMLInputElement) {
+        if (["Escape", "GoBack", "BrowserBack"].includes(e.key) && back()) e.preventDefault();
+        return;
+      }
       if (message) {
         if (e.key === "Enter" || e.key === " ") { dismiss(message.id); e.preventDefault(); }
         else if (e.key.startsWith("Arrow")) e.preventDefault();
@@ -233,7 +249,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         e.preventDefault();
         return;
       }
-      if (e.key === "ArrowDown" && (tab === "requests" || tab === "channels" || tab === "apps") && grid.length) { grid[0].focus(); e.preventDefault(); return; }
+      if (e.key === "ArrowDown" && (tab === "requests" || tab === "channels" || tab === "apps" || tab === "assistant") && grid.length) { grid[0].focus(); e.preventDefault(); return; }
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
       const buttons = Array.from(tabsRef.current?.querySelectorAll("button") ?? []);
       if (!buttons.length) return;
@@ -301,17 +317,20 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         )}
       </section>
 
-      {(data.info.length > 0 || rq || data.channels.length > 0 || apps.length > 0) && (
+      {(data.info.length > 0 || rq || data.channels.length > 0 || apps.length > 0 || data.assistant) && (
         <nav className={`tvTabs${rq ? " withReq" : ""}`} ref={tabsRef} aria-label="Hotel information">
           <button type="button" data-key="home" className={tab === "home" ? "active" : ""} onClick={() => choose("home")}><TabIcon k="home" />{t.home}</button>
           {data.info.map((x) => <button type="button" key={x.key} data-key={x.key} className={tab === x.key ? "active" : ""} onClick={() => choose(x.key)}><TabIcon k={x.key} emoji={x.icon} />{x.title}</button>)}
           {apps.length > 0 && <button type="button" data-key="apps" className={tab === "apps" ? "active" : ""} onClick={() => choose("apps")}><FaThLarge aria-hidden />{data.appTexts.tab}</button>}
           {data.channels.length > 0 && <button type="button" data-key="channels" className={tab === "channels" ? "active" : ""} onClick={() => choose("channels")}><FaTv aria-hidden />{data.channelTexts.tab}</button>}
+          {data.assistant && <button type="button" data-key="assistant" className={`tvAsTab${tab === "assistant" ? " active" : ""}`} onClick={() => choose("assistant")}><FaRobot aria-hidden />{data.assistant.texts.tab}</button>}
           {rq && <button type="button" data-key="requests" className={`tvReqTab${tab === "requests" ? " active" : ""}`} onClick={() => choose("requests")}><FaConciergeBell aria-hidden />{rq.texts.tab}</button>}
         </nav>
       )}
 
-      {tab === "requests" && rq ? (
+      {tab === "assistant" && data.assistant ? (
+        <TvAssistant token={token} lang={data.lang} texts={data.assistant.texts} speech={data.assistant.speech} phoneQr={data.manage.qr} gridRef={panelRef} apiRef={assistantApi} onActivity={() => choose("assistant")} />
+      ) : tab === "requests" && rq ? (
         <section className="tvInfo tvReq">
           <p className="tvReqIntro">{rq.texts.intro}</p>
           <div className="tvReqPanel" ref={panelRef}>

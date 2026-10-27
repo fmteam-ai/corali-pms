@@ -101,6 +101,11 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
           <label className="inline"><input type="checkbox" checked={settings.showWeather} disabled={!canEdit} onChange={(e) => set({ showWeather: e.target.checked })} /> {t("tv.showWeather")}</label>
           <label className="inline"><input type="checkbox" checked={settings.showExtras} disabled={!canEdit} onChange={(e) => set({ showExtras: e.target.checked })} /> {t("tv.showExtras")}</label>
         </div>
+        <div className="tvAdminChecks tvAssistantSet">
+          <label className="inline"><input type="checkbox" checked={settings.assistant} disabled={!canEdit} onChange={(e) => set({ assistant: e.target.checked })} /> <b>{t("tv.assistant")}</b></label>
+          <label className="inline">{t("tv.assistantLimit")} <input type="number" min={5} max={200} value={settings.assistantDailyLimit} disabled={!canEdit} onChange={(e) => set({ assistantDailyLimit: Number(e.target.value) || 40 })} style={{ width: 80 }} /></label>
+        </div>
+        <small>{t("tv.assistantHelp")}</small>
         <div className="tvLangTabs" role="tablist">{tvLanguages.map((l) => <button type="button" role="tab" aria-selected={textLang === l} className={textLang === l ? "active" : ""} key={l} onClick={() => setTextLang(l)}>{langNames[l]}</button>)}</div>
         <label>{t("tv.welcome")}<textarea rows={3} maxLength={600} value={settings.welcome[textLang] ?? ""} disabled={!canEdit} onChange={(e) => set({ welcome: { ...settings.welcome, [textLang]: e.target.value } })} /></label>
         <label>{t("tv.wifiNote")}<input value={settings.wifiNote[textLang] ?? ""} maxLength={200} disabled={!canEdit} onChange={(e) => set({ wifiNote: { ...settings.wifiNote, [textLang]: e.target.value } })} /></label>

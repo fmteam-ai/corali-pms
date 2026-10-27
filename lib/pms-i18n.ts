@@ -2155,6 +2155,9 @@ const el = {
   "ac.away": "Κανείς",
   "ac.lastSeen": "τελευταία",
   "ac.how5": "Αισθητήρας Tuya: προσθέστε τον στην εφαρμογή Smart Life. Στο iot.tuya.com φτιάξτε Cloud Project (Data center: Central Europe), συνδέστε τον λογαριασμό Smart Life (Devices → Link App Account) και βάλτε Access ID / Secret στο PMS → Συνδέσεις → Tuya. Το Device ID φαίνεται στη λίστα συσκευών του project.",
+  "tv.assistant": "🤖 AI βοηθός στην τηλεόραση (με φωνή)",
+  "tv.assistantLimit": "Ερωτήσεις ανά δωμάτιο την ημέρα",
+  "tv.assistantHelp": "Καρτέλα «Βοηθός»: ο πελάτης πατάει 🎤 και μιλάει από το μικρόφωνο του τηλεχειριστηρίου (εφαρμογή Corali TV 1.5+) ή διαλέγει έτοιμη ερώτηση. Απαντά για το ξενοδοχείο, τη διαμονή και την Πάρο, και μπορεί να στείλει αιτήματα ή παραγγελίες μόνο αφού ο πελάτης πατήσει «Επιβεβαίωση». Χρειάζεται κλειδί Anthropic (Συνδέσεις). Η συζήτηση σβήνει με την επόμενη διαμονή.",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -4306,6 +4309,9 @@ const en: Record<PmsKey, string> = {
   "ac.away": "Nobody",
   "ac.lastSeen": "last seen",
   "ac.how5": "Tuya sensor: add it in the Smart Life app. On iot.tuya.com create a Cloud Project (data center: Central Europe), link the Smart Life account (Devices → Link App Account) and enter the Access ID / Secret in PMS → Connections → Tuya. The Device ID is in the project's device list.",
+  "tv.assistant": "🤖 AI assistant on the TV (with voice)",
+  "tv.assistantLimit": "Questions per room per day",
+  "tv.assistantHelp": "\"Assistant\" tab: the guest presses 🎤 and speaks into the remote's microphone (Corali TV app 1.5+) or picks a ready question. It answers about the hotel, the stay and Paros, and sends requests or orders only after the guest presses Confirm. Needs the Anthropic key (Connections). The conversation is removed with the next stay.",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

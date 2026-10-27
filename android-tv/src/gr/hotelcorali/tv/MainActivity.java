@@ -8,6 +8,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.speech.RecognizerIntent;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -21,6 +22,10 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
+import org.json.JSONObject;
+
+import java.util.ArrayList;
+
 /** The room's welcome screen, full screen. Hold Back for 3 seconds to open the set-up screen. */
 public class MainActivity extends Activity {
     private static final long SETTINGS_HOLD_MS = 3000;
@@ -28,6 +33,7 @@ public class MainActivity extends Activity {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private WebView web;
+    private VoiceBridge voice;
     private TextView offline;
     private String loadedUrl = "";
     private boolean failed;
@@ -65,9 +71,12 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.4");
+        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.5");
         // Lets the page open the streaming apps installed on this TV (Apps tab).
         web.addJavascriptInterface(new AppBridge(this), "CoraliTVApp");
+        // Assistant tab: voice input through the remote's microphone and answers read aloud.
+        voice = new VoiceBridge(this);
+        web.addJavascriptInterface(voice, "CoraliTVVoice");
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -139,8 +148,23 @@ public class MainActivity extends Activity {
         super.onPause();
     }
 
+    /** Hands the recognised words (or null: nothing heard / cancelled) to the page's Assistant tab. */
+    void voiceResult(String text) {
+        String arg = text == null ? "null" : JSONObject.quote(text);
+        web.evaluateJavascript("window.coraliVoiceResult&&window.coraliVoiceResult(" + arg + ")", null);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != VoiceBridge.REQUEST_SPEECH) return;
+        ArrayList<String> words = resultCode == RESULT_OK && data != null ? data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS) : null;
+        voiceResult(words != null && !words.isEmpty() ? words.get(0) : null);
+    }
+
     @Override
     protected void onDestroy() {
+        if (voice != null) voice.shutdown();
         handler.removeCallbacks(retry);
         web.destroy();
         super.onDestroy();
@@ -187,6 +211,12 @@ public class MainActivity extends Activity {
                     });
                 }
             }
+            return true;
+        }
+        // Remotes whose microphone / search key reaches the app: open the Assistant tab and listen.
+        int code = event.getKeyCode();
+        if (code == KeyEvent.KEYCODE_SEARCH || code == KeyEvent.KEYCODE_VOICE_ASSIST) {
+            if (event.getAction() == KeyEvent.ACTION_UP) web.evaluateJavascript("window.coraliMic&&window.coraliMic()", null);
             return true;
         }
         return super.dispatchKeyEvent(event);

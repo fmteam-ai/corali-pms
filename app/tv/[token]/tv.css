@@ -295,3 +295,30 @@
 .tvMine button:focus-visible,.tvMine button:hover{outline:none;border-color:var(--gold);box-shadow:0 0 0 .2vw var(--gold)}
 .tvMine button.armed{background:#c0392b;border-color:#e74c3c}
 @media (max-width:800px){.tvMine ul{grid-template-columns:1fr}.tvMine h3{font-size:14px}.tvMine b{font-size:15px}.tvMine small,.tvMine em,.tvMine button{font-size:12px}.tvMine .tvReqIcon{width:30px;height:30px;font-size:14px}}
+
+/* Assistant tab (AI, voice through the remote's microphone) */
+.tvTabs .tvAsTab{border-color:rgba(242,196,109,.55)}
+.tvAs{grid-template-columns:1fr auto;gap:1.6vw;align-items:start}
+.tvAsMain{display:grid;grid-template-rows:auto auto auto;gap:1vw;min-width:0}
+.tvAsLog{max-height:15vw;overflow-y:auto;display:grid;align-content:start;gap:.8vw;padding:1vw;border-radius:1vw;background:var(--glass);border:1px solid var(--line);scrollbar-width:none}
+.tvAsIntro{margin:0;font-size:1.3vw;color:var(--muted);line-height:1.45}
+.tvAsMsg{max-width:78%;display:grid;gap:.3vw}.tvAsMsg p{margin:0;padding:.8vw 1.1vw;border-radius:1vw;font-size:1.3vw;line-height:1.45;white-space:pre-line}
+.tvAsMsg.user{justify-self:end}.tvAsMsg.user p{background:var(--gold);color:var(--ink);border-bottom-right-radius:.2vw;font-weight:600}
+.tvAsMsg.assistant p{background:rgba(255,255,255,.1);border-bottom-left-radius:.2vw}
+.tvAsMsg.thinking p,.tvAsMsg.listening p{opacity:.8;animation:tvAsPulse 1.2s ease-in-out infinite}
+@keyframes tvAsPulse{50%{opacity:.4}}
+.tvAsAction{font-size:.95vw;color:var(--muted)}.tvAsAction.st-done{color:#9be3b5}.tvAsAction.st-failed{color:#ffb4a8}
+.tvAsNote{margin:0;font-size:1.1vw;color:var(--gold)}
+.tvAsControls{display:grid;gap:.8vw}
+.tvAsControls button{font:inherit;color:#fff;cursor:pointer;background:var(--glass);border:1px solid var(--line);border-radius:.8vw;padding:.7vw 1.1vw;font-size:1.1vw;display:inline-flex;align-items:center;gap:.5vw;transition:transform .15s,background .2s,border-color .2s}
+.tvAsControls button:disabled{opacity:.45}
+.tvAsControls button:focus,.tvAsControls button:hover{outline:none;background:var(--gold);color:var(--ink);border-color:var(--gold);transform:scale(1.04)}
+.tvAsRow{display:flex;gap:.7vw;flex-wrap:wrap;align-items:center}
+.tvAsControls .tvAsMic{font-size:1.35vw;font-weight:700;padding:.9vw 1.6vw;border-color:rgba(242,196,109,.7)}
+.tvAsChips{display:flex;gap:.6vw;flex-wrap:wrap}.tvAsChips button{font-size:1vw;border-radius:999px;padding:.55vw 1vw}
+.tvAsPending{display:flex;gap:.8vw;align-items:center;flex-wrap:wrap;padding:.8vw 1vw;border-radius:1vw;background:rgba(242,196,109,.14);border:1px solid rgba(242,196,109,.6)}
+.tvAsPending b{font-size:1.25vw;margin-right:auto}
+.tvAsControls .tvAsConfirm{background:#1f7a4d;border-color:#1f7a4d;font-weight:700}
+.tvAsType{display:flex;gap:.5vw;flex:1;min-width:20vw}.tvAsType input{flex:1;font:inherit;font-size:1.2vw;padding:.6vw .9vw;border-radius:.8vw;border:2px solid var(--gold);background:rgba(255,255,255,.95);color:var(--ink)}
+.tvAs .tvAsPhone{width:12vw;align-self:start;display:grid;gap:.6vw;justify-items:center;text-align:center}.tvAsPhone img{width:100%}.tvAsPhone figcaption{font-size:.9vw;line-height:1.35;color:var(--muted)}
+@media (max-width:800px){.tvAs{grid-template-columns:1fr}.tvAsPhone{display:none}.tvAsLog{max-height:50vh}.tvAsMsg p,.tvAsIntro{font-size:15px}.tvAsControls button,.tvAsChips button{font-size:14px;padding:8px 12px}.tvAsPending b{font-size:15px}.tvAsType input{font-size:15px}}
