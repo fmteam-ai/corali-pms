@@ -885,3 +885,26 @@ table.numeric tr.selected td{background:#fff8e6}
 .prefsGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .prefsChecks{display:flex;flex-wrap:wrap;gap:4px 16px}
 @media(max-width:600px){.prefsGrid{grid-template-columns:1fr}}
+/* Guest portal (My booking): messages from the hotel and hotel departments' services */
+.gpNews{display:grid;gap:10px;margin:16px 0;text-align:left}
+.gpNews h2{margin:0;font-size:18px}
+.gpNote{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start;padding:12px 14px;border-radius:14px;background:#eef6f7;border:1px solid #cfe2e5}
+.gpNote.kind-offer{background:#fffaf0;border-color:#f2c46d}
+.gpNote.kind-happy_hour{background:linear-gradient(135deg,#fff3e0,#fde7f0);border-color:#f0a35e}
+.gpNote.personal{background:#f1f0fb;border-color:#c9c4ef}
+.gpNoteIcon{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:#173e47;color:#fff;font-size:17px}
+.gpNote.kind-offer .gpNoteIcon{background:#b8860b}.gpNote.kind-happy_hour .gpNoteIcon{background:#d9643a}.gpNote.personal .gpNoteIcon{background:#5b4fc4}
+.gpNote div{display:grid;gap:3px;min-width:0;overflow-wrap:break-word}
+.gpNote p{margin:0;white-space:pre-line}
+.gpNoteKind{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#61788a}
+.gpTabs{display:flex;flex-wrap:wrap;gap:8px}
+.gpTabs button{display:inline-flex;align-items:center;gap:7px;border:1px solid #cbd6da;background:#fff;color:#173e47;border-radius:999px;padding:8px 14px;font:inherit;font-weight:700;cursor:pointer}
+.gpTabs button.on{background:#173e47;color:#fff;border-color:#173e47}
+.gpHours{color:#2e7d4f;font-weight:700}.gpHours.closed{color:#b3261e}
+.gOrderBtn:disabled{opacity:.45;cursor:not-allowed}
+.gOrderForm select{width:100%;padding:10px;border:1px solid #cbd6da;border-radius:10px;font:inherit;background:#fff}
+.gpQty span{display:inline-flex;align-items:center;gap:12px;margin-left:10px}
+.gpQty button{width:36px;height:36px;border-radius:50%;border:1px solid #cbd6da;background:#fff;font:inherit;font-size:18px;cursor:pointer}
+.gpOrders li{grid-template-columns:1fr auto auto auto}
+.gOrderList i.st-done{background:#e7eef4;color:#173e47}
+@media(max-width:600px){.gpOrders li{grid-template-columns:1fr auto}.gpOrders li i,.gpOrders li button{justify-self:start}}

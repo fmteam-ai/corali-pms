@@ -46,11 +46,11 @@ http.createServer((request, response) => {
     const required = ["DATABASE_URL", "SESSION_SECRET", "PMS_ORIGIN", "BOOKING_ORIGIN", "PMS_OWNER_ID", "PMS_DOCUMENT_KEY", "APP_ROLE"];
     if (required.some((key) => !process.env[key])) {
       response.writeHead(503, { "content-type": "application/json" });
-      response.end(JSON.stringify({ ok: false, service: "corali-pms", version: "v100", reason: "runtime_configuration_invalid" }));
+      response.end(JSON.stringify({ ok: false, service: "corali-pms", version: "v101", reason: "runtime_configuration_invalid" }));
       return;
     }
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ ok: true, service: "corali-pms", version: "v100" }));
+    response.end(JSON.stringify({ ok: true, service: "corali-pms", version: "v101" }));
     return;
   }
   response.writeHead(404);
@@ -105,11 +105,11 @@ bash "$release/INSTALL-CPANEL.sh" --yes --skip-db-backup \
   --pms-root "$pms" --booking-root "$booking" \
   --pms-url "https://pms.invalid" --booking-url "https://booking.invalid"
 
-grep -qx 'v100' "$pms/DEPLOY_VERSION.txt"
-grep -qx 'v100' "$booking/DEPLOY_VERSION.txt"
+grep -qx 'v101' "$pms/DEPLOY_VERSION.txt"
+grep -qx 'v101' "$booking/DEPLOY_VERSION.txt"
 grep -q '^PMS_DOCUMENT_KEY=integration-test-key-that-is-never-production$' "$pms/runtime.env"
 grep -q '^PMS_DOCUMENT_KEY=integration-test-key-that-is-never-production$' "$booking/runtime.env"
-manifest="$(find "$backups" -maxdepth 1 -name 'corali-deployment-v100-*.manifest' -print -quit)"
+manifest="$(find "$backups" -maxdepth 1 -name 'corali-deployment-v101-*.manifest' -print -quit)"
 [[ -n "$manifest" && -f "$manifest" ]]
 
 printf 'rollback-preservation-marker\n' >"$pms/rollback-marker"

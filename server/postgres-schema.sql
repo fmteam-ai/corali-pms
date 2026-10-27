@@ -1586,3 +1586,86 @@ CREATE INDEX IF NOT EXISTS "idx_guest_orders_booking" ON "guest_orders" ("owner_
 -- v98: a new defect goes to the maintenance person on shift (Corali Staff alert to them).
 ALTER TABLE maintenance_notices ADD COLUMN IF NOT EXISTS assigned_to BIGINT;
 ALTER TABLE "guest_orders" ADD COLUMN IF NOT EXISTS "lang" TEXT NOT NULL DEFAULT 'en';
+
+-- v101: guest portal. Hotel departments (bar, restaurant, spa…) with their services/products and prices; guests order
+-- or book them in "My booking" and the amount goes straight to the folio. Messages from the hotel to all guests in the
+-- hotel or to one booking (news, offers, happy hour), optionally per department.
+CREATE TABLE IF NOT EXISTS "hotel_departments" (
+  "id" BIGSERIAL PRIMARY KEY,
+  "owner_id" TEXT NOT NULL,
+  "name_el" TEXT NOT NULL,
+  "name_en" TEXT NOT NULL DEFAULT '',
+  "description_el" TEXT NOT NULL DEFAULT '',
+  "description_en" TEXT NOT NULL DEFAULT '',
+  "icon" TEXT NOT NULL DEFAULT 'bell',
+  "mode" TEXT NOT NULL DEFAULT 'order',
+  "open_from" TEXT NOT NULL DEFAULT '08:00',
+  "open_to" TEXT NOT NULL DEFAULT '22:00',
+  "capacity" INTEGER NOT NULL DEFAULT 1,
+  "active" INTEGER NOT NULL DEFAULT 1,
+  "sort_order" INTEGER NOT NULL DEFAULT 0,
+  "deleted_at" BIGINT,
+  "created_at" BIGINT NOT NULL,
+  "updated_at" BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "idx_hotel_departments_owner" ON "hotel_departments" ("owner_id", "sort_order");
+CREATE TABLE IF NOT EXISTS "department_items" (
+  "id" BIGSERIAL PRIMARY KEY,
+  "owner_id" TEXT NOT NULL,
+  "department_id" BIGINT NOT NULL,
+  "name_el" TEXT NOT NULL,
+  "name_en" TEXT NOT NULL DEFAULT '',
+  "description_el" TEXT NOT NULL DEFAULT '',
+  "description_en" TEXT NOT NULL DEFAULT '',
+  "price_cents" BIGINT NOT NULL,
+  "duration_min" INTEGER NOT NULL DEFAULT 0,
+  "active" INTEGER NOT NULL DEFAULT 1,
+  "sort_order" INTEGER NOT NULL DEFAULT 0,
+  "deleted_at" BIGINT,
+  "created_at" BIGINT NOT NULL,
+  "updated_at" BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "idx_department_items_dept" ON "department_items" ("owner_id", "department_id", "sort_order");
+CREATE TABLE IF NOT EXISTS "department_orders" (
+  "id" BIGSERIAL PRIMARY KEY,
+  "owner_id" TEXT NOT NULL,
+  "booking_id" BIGINT NOT NULL,
+  "department_id" BIGINT NOT NULL,
+  "item_id" BIGINT NOT NULL,
+  "mode" TEXT NOT NULL,
+  "title_el" TEXT NOT NULL,
+  "title_guest" TEXT NOT NULL,
+  "quantity" INTEGER NOT NULL DEFAULT 1,
+  "amount_cents" BIGINT NOT NULL,
+  "service_date" TEXT,
+  "service_time" TEXT,
+  "end_time" TEXT,
+  "note" TEXT NOT NULL DEFAULT '',
+  "status" TEXT NOT NULL DEFAULT 'placed',
+  "lang" TEXT NOT NULL DEFAULT 'en',
+  "folio_entry_id" BIGINT,
+  "cancel_reason" TEXT NOT NULL DEFAULT '',
+  "handled_by" BIGINT,
+  "handled_at" BIGINT,
+  "created_at" BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "idx_department_orders_owner" ON "department_orders" ("owner_id", "status", "created_at");
+CREATE INDEX IF NOT EXISTS "idx_department_orders_booking" ON "department_orders" ("owner_id", "booking_id");
+CREATE INDEX IF NOT EXISTS "idx_department_orders_slot" ON "department_orders" ("owner_id", "department_id", "service_date") WHERE "mode" = 'appointment' AND "status" <> 'cancelled';
+CREATE TABLE IF NOT EXISTS "guest_announcements" (
+  "id" BIGSERIAL PRIMARY KEY,
+  "owner_id" TEXT NOT NULL,
+  "department_id" BIGINT,
+  "booking_id" BIGINT,
+  "kind" TEXT NOT NULL DEFAULT 'info',
+  "title_el" TEXT NOT NULL DEFAULT '',
+  "title_en" TEXT NOT NULL DEFAULT '',
+  "body_el" TEXT NOT NULL DEFAULT '',
+  "body_en" TEXT NOT NULL DEFAULT '',
+  "starts_at" BIGINT NOT NULL,
+  "ends_at" BIGINT,
+  "created_by" BIGINT,
+  "deleted_at" BIGINT,
+  "created_at" BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "idx_guest_announcements_owner" ON "guest_announcements" ("owner_id", "starts_at");

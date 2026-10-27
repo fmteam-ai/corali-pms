@@ -5,6 +5,7 @@ import {bookingLanguage,bookingLocale,type BookingLanguage} from "@/lib/booking-
 import {flag,languageCountry} from "@/lib/dial-codes";
 import {guestLanguages,guestText} from "@/lib/guest-i18n";
 import {GuestOrders} from "./guest-orders";
+import {GuestPortal} from "./guest-portal";
 type Policy={nonRefundable:boolean;deadline:string;freeCancellation:boolean;canCancel:boolean;refundCents:number;paidCents:number;canChangeDates:boolean;blocked:null|string};
 type Data={policy:Policy;booking:{reference:string;guest_name:string;check_in:string;check_out:string;status:string;room_code:string;room_type:string;total_cents:number;balance_cents:number};messages:Array<{id:number;sender:string;body:string;created_at:number}>};
 type Quote={nights:number;newTotalCents:number;differenceCents:number;newBalanceCents:number;refundDueCents:number;lastMinute:boolean};
@@ -32,6 +33,7 @@ export function ManageBooking({token:initialToken}:{token:string}){
  const b=data.booking,p=data.policy,today=new Date().toISOString().slice(0,10);
  const addDays=(d:string,n:number)=>new Date(Date.parse(`${d}T00:00:00Z`)+n*86400000).toISOString().slice(0,10);
  return <main className="shell"><section className="card manageCard">{logo}{picker}<h1>{t.yourBooking}</h1><p><b>{b.reference}</b> · {b.guest_name}</p><dl><dt>{t.room}</dt><dd>{b.room_code} · {b.room_type}</dd><dt>{t.in}</dt><dd>{format(b.check_in)}</dd><dt>{t.out}</dt><dd>{format(b.check_out)}</dd><dt>{t.status}</dt><dd>{t[b.status]??b.status}</dd><dt>{t.balance}</dt><dd>{money(b.balance_cents)}</dd></dl>
+  <GuestPortal token={token} lang={lang} part="news"/>
   {notice&&<p className="notice" role="status">{notice}</p>}
   {payUrl&&Number(b.balance_cents)>0&&<p><a className="primary payLink" href={payUrl}>{t.payNow} · {money(b.balance_cents)}</a></p>}
   {!p.blocked&&<section className="selfService"><h2>{t.selfServiceTitle}</h2>
@@ -41,6 +43,7 @@ export function ManageBooking({token:initialToken}:{token:string}){
    :!p.nonRefundable&&<p className="hint">{t.changeNotAllowed.replace("{date}",format(p.deadline))}</p>}
    {p.canCancel&&<div className="cancelBox"><h3>{t.cancelTitle}</h3><p>{p.freeCancellation?t.cancelFree.replace("{date}",format(p.deadline)).replace("{amount}",money(p.refundCents)):t.cancelNoRefund.replace("{amount}",money(p.paidCents))}</p>{!confirmCancel?<button type="button" className="secondaryButton danger" onClick={()=>setConfirmCancel(true)}>{t.cancelTitle}</button>:<div className="actions"><span>{t.cancelSure}</span><button type="button" className="danger" disabled={busy} onClick={cancel}>{t.cancelConfirm}</button><button type="button" className="linkButton" onClick={()=>setConfirmCancel(false)}>✕</button></div>}</div>}
   </section>}
+  <GuestPortal token={token} lang={lang} part="services"/>
   <GuestOrders token={token} lang={lang}/>
   <h2>{t.messages}</h2><div className="thread">{data.messages.map(m=><div className={`bubble ${m.sender}`} key={m.id}><b>{m.sender==="guest"?t.you:"Hotel Corali"}</b><p>{m.body}</p></div>)}</div>{messageError&&<p role="alert" className="error">{t.messageError}</p>}<form action={send} className="messageComposer"><textarea name="body" required maxLength={4000} placeholder={t.write}/><button disabled={busy}>{t.send}</button></form>
   <p>{signOut}</p></section></main>

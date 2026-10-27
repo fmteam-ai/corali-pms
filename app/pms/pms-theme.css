@@ -181,6 +181,37 @@ body:has(.pms){background:#f2f4f6}
 .prcNav a{padding:8px 14px;border-radius:7px;color:var(--text);font-size:14px;font-weight:600;text-decoration:none;white-space:nowrap}
 .prcNav a:hover{background:var(--surface-2)}
 .prcNav a.current{background:var(--primary);color:#fff}
+.prcNav button{padding:8px 14px;border:0;border-radius:7px;background:none;color:var(--text);font:inherit;font-size:14px;font-weight:600;white-space:nowrap;cursor:pointer}
+.prcNav button:hover{background:var(--surface-2)}
+.prcNav button.current{background:var(--primary);color:#fff}
+/* Departments & services, messages to guests (v101) */
+.depFilter{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.depFilter button,.depIcons button{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:#fff;color:var(--text);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.depFilter button.on,.depIcons button.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.depIcons{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.depIcons button{width:40px;height:40px;justify-content:center;padding:0;font-size:17px}
+.depForm,.depCard{display:grid;gap:12px;margin-bottom:16px}
+.depHours{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.depHead{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.depHead>div:nth-child(2){flex:1;min-width:180px}
+.depHead h2{margin:0;font-size:18px}.depHead h2 small{font-weight:500;color:var(--muted)}
+.depIcon{display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:var(--surface-2);color:var(--primary);font-size:19px}
+.depHeadActions{display:flex;gap:6px}
+.depCard.inactive{opacity:.7}
+.depItems tr.inactive td{opacity:.55}
+.depRowActions{white-space:nowrap;text-align:right}
+.depItemForm{display:grid;gap:10px;padding:14px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border)}
+.gmTarget{display:flex;flex-wrap:wrap;gap:6px}
+.gmKinds{display:flex;flex-wrap:wrap;gap:6px}
+.gmKinds button{padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:#fff;color:var(--text);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.gmKinds button.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.gmList{display:grid;gap:10px}
+.gmItem{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start}
+.gmItem p{margin:4px 0 0;white-space:pre-line}
+.gmBadge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;background:var(--surface-2)}
+.gmBadge.offer{background:#fff1d1;color:#8a5a00}.gmBadge.happy_hour{background:#fde2d6;color:#a2401c}.gmBadge.personal{background:#ece9fb;color:#4a3fae}
+.gmItem.future{opacity:.75}
+@media(max-width:700px){.depHours{grid-template-columns:1fr}.gmItem{grid-template-columns:1fr}}
 .pricingPage .prcTop{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:18px;margin-bottom:18px;align-items:start}
 .pricingPage .prcTop>article{margin:0;padding:20px 22px;background:#fff;border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
 .pricingPage .prcTop>article h2{font-size:16px}
@@ -473,3 +504,6 @@ body:has(.pms){background:#f2f4f6}
 .pms .prefChips{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
 .pms .prefChips li{padding:4px 10px;border-radius:999px;background:#fff6e0;border:1px solid #f2c46d;font-size:13px;font-weight:600}
 .pms .goList .card{max-width:none;width:auto;margin:0}
+.depForm .formGrid,.depItemForm .formGrid,.gmForm .formGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.depForm label,.depItemForm label,.gmForm label{display:grid;gap:4px}
+@media(max-width:700px){.depForm .formGrid,.depItemForm .formGrid,.gmForm .formGrid{grid-template-columns:1fr}}
