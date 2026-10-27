@@ -35,6 +35,7 @@ export const config = {
     "/tv/:path*",
     "/api/auth/:path*",
     "/api/pms/:path*",
+    "/api/v1/:path*",
     "/api/public/:path*",
     "/api/webhooks/:path*",
   ],

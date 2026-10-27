@@ -1,0 +1,13 @@
+export declare const API_SCOPES: readonly ["rooms.read", "availability.read", "bookings.read", "folio.write", "accounting.read"];
+export type ApiScope = (typeof API_SCOPES)[number];
+export declare const WEBHOOK_EVENTS: readonly ["booking.created", "booking.updated", "booking.cancelled", "booking.checked_in", "booking.checked_out", "folio.charge", "folio.payment"];
+export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
+export declare function parseApiKey(header: string | null | undefined): { key: string; prefix: string } | null;
+export declare function apiKeyHash(key: string): string;
+export declare function sameHash(a: string, b: string): boolean;
+export declare function bookingFingerprint(b: { status: string; room_id?: unknown; check_in: string; check_out: string; total_cents: unknown; balance_cents: unknown; guest_name: string; guest_email?: string | null }): string;
+export declare function bookingEvent(previous: { status: string; fingerprint: string } | null, current: { status: string; fingerprint: string }): WebhookEvent | null;
+export declare function folioEvent(entryType: string): WebhookEvent | null;
+export declare function signWebhook(secret: string, body: string, at?: number): string;
+export declare function retryDelayMs(attempts: number): number | null;
+export declare function webhookUrlProblem(raw: string): string | null;

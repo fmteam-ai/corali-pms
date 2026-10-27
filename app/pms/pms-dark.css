@@ -551,3 +551,6 @@
 .pms[data-theme="dark"] .aiAction{background:hsl(43 45% 20%)}
 .pms[data-theme="dark"] .aiAction.st-done{background:hsl(142 26% 20%)}
 .pms[data-theme="dark"] .aiAction.st-failed{border-color:hsl(0 35% 31%);background:hsl(6 41% 20%)}
+.pms[data-theme="dark"] .apiTable .st-sent{color:hsl(150 59% 72%)}
+.pms[data-theme="dark"] .apiTable .st-failed{color:hsl(4 75% 72%)}
+.pms[data-theme="dark"] .apiTable .st-pending{color:hsl(40 75% 72%)}

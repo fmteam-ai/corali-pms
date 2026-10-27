@@ -544,3 +544,15 @@ body:has(.pms){background:#f2f4f6}
 .akPhoto{width:100%;max-width:520px;aspect-ratio:1032/336;object-fit:cover;border-radius:12px;border:1px solid var(--border)}
 .akFile{position:relative;overflow:hidden;cursor:pointer}.akFile input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .channelWebhook{display:grid;gap:4px}.channelWebhook input{width:100%;font-family:ui-monospace,monospace;font-size:12px}
+.apiPage{display:grid;gap:16px}.apiPage .card h2{margin:0 0 6px}
+.apiForm>input{width:100%;max-width:560px}.apiForm{display:grid;gap:10px;justify-items:start;margin:12px 0;padding:12px;border:1px dashed var(--line,#d6dde3);border-radius:12px}
+.apiChecks{display:flex;flex-wrap:wrap;gap:6px 16px}.apiChecks label{display:flex;gap:6px;align-items:center;font-size:14px}
+.apiList{display:grid;gap:8px}.apiItem{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--line,#d6dde3);border-radius:12px}
+.apiItem>div:first-child{display:grid;gap:3px;min-width:0;overflow-wrap:anywhere}.apiItem.off,.apiHook.off .apiItem{opacity:.6}
+.apiHook{display:grid;gap:6px;margin-top:8px}.apiRow{display:flex;gap:8px;flex-wrap:wrap}
+.apiSecret{display:grid;gap:8px;border:2px solid #c9a227}.apiSecret code{font-size:14px;word-break:break-all;padding:8px;background:var(--surface-2,#f4f6f8);border-radius:8px}
+.apiTable{width:100%;border-collapse:collapse;font-size:13px}.apiTable td{padding:5px 8px;border-top:1px solid var(--line,#e3e8ec);vertical-align:top;overflow-wrap:anywhere}
+.apiTable .st-sent{color:#1f7a4d}.apiTable .st-failed{color:#b42318}.apiTable .st-pending{color:#9a6700}
+.apiDocs pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:var(--surface-2,#f4f6f8);padding:10px;border-radius:10px}
+.apiPage>.card{max-width:none;width:100%}.apiTable td:first-child{white-space:nowrap}
+@media(min-width:1100px){.apiPage{grid-template-columns:1fr 1fr}.apiPage>.apiDocs,.apiPage>.notice,.apiPage>.apiSecret{grid-column:1/-1}}

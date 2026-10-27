@@ -1746,3 +1746,59 @@ ALTER TABLE access_card_settings ADD COLUMN IF NOT EXISTS wallet_images_json TEX
 ALTER TABLE channel_sync_state ADD COLUMN IF NOT EXISTS webhook_token_hash TEXT;
 ALTER TABLE channel_sync_state ADD COLUMN IF NOT EXISTS webhook_token_encrypted TEXT;
 ALTER TABLE channel_sync_state ADD COLUMN IF NOT EXISTS last_webhook_at BIGINT;
+
+-- v107: open API. Keys (only their SHA-256 is kept) with scopes; outgoing webhooks signed with a per-hook secret.
+CREATE TABLE IF NOT EXISTS api_keys (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ name TEXT NOT NULL,
+ prefix TEXT NOT NULL UNIQUE,
+ key_hash TEXT NOT NULL,
+ scopes_json TEXT NOT NULL DEFAULT '[]',
+ created_by TEXT NOT NULL,
+ created_at BIGINT NOT NULL,
+ last_used_at BIGINT,
+ revoked_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_api_keys_owner ON api_keys(owner_id,created_at DESC);
+CREATE TABLE IF NOT EXISTS api_webhooks (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ url TEXT NOT NULL,
+ events_json TEXT NOT NULL DEFAULT '[]',
+ secret_encrypted TEXT NOT NULL,
+ active BIGINT NOT NULL DEFAULT 1,
+ created_by TEXT NOT NULL,
+ created_at BIGINT NOT NULL,
+ last_ok_at BIGINT,
+ last_error TEXT
+);
+CREATE TABLE IF NOT EXISTS api_webhook_deliveries (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ webhook_id BIGINT NOT NULL,
+ event TEXT NOT NULL,
+ payload_json TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'pending',
+ attempts BIGINT NOT NULL DEFAULT 0,
+ next_at BIGINT NOT NULL,
+ response_status BIGINT,
+ last_error TEXT,
+ created_at BIGINT NOT NULL,
+ sent_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_api_webhook_deliveries_due ON api_webhook_deliveries(owner_id,status,next_at);
+CREATE INDEX IF NOT EXISTS idx_api_webhook_deliveries_hook ON api_webhook_deliveries(owner_id,webhook_id,id DESC);
+-- What the webhooks last reported per booking, and how far folio entries were read (a new hook starts from "now").
+CREATE TABLE IF NOT EXISTS api_booking_state (
+ owner_id TEXT NOT NULL,
+ booking_id BIGINT NOT NULL,
+ status TEXT NOT NULL,
+ fingerprint TEXT NOT NULL,
+ PRIMARY KEY(owner_id,booking_id)
+);
+CREATE TABLE IF NOT EXISTS api_event_cursor (
+ owner_id TEXT PRIMARY KEY,
+ folio_entry_id BIGINT NOT NULL DEFAULT 0,
+ seeded_at BIGINT
+);
