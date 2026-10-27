@@ -21,37 +21,39 @@ export default async function CardPage({ params }: { params: Promise<{ token: st
   const apple = live && appleReady(wallet, secrets), google = live && googleReady(wallet, secrets);
   return (
     <main className="keyPage" lang={card.lang}>
-      <article className={`keyCard st-${state}`}>
-        {/* Hotel-key look (as in the Wallet): the harbour photo with logo and stay dates, then the room number. */}
-        <div className="keyHero" style={found.photo ? { backgroundImage: `url(${walletImageUrl(found.photo, "strip2x")})` } : undefined}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="keyLogo" src="/wallet/logo@2x.png" alt="Hotel Corali" />
-          <span className="keyDates"><small>PISO LIVADI · PAROS</small><b>{stayDates(card)}</b></span>
-          <span className="keyHeroName">{t.title}</span>
+      {/* Like a bank card: the hotel photo edge to edge, logo, stay dates, the contactless mark; then the room panel. */}
+      <article className={`keyBank st-${state}`} style={{ backgroundImage: `url(${walletImageUrl(found.photo, "card")})` }} aria-label={`Hotel Corali · ${t.title}`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="keyLogo" src="/wallet/logo@2x.png" alt="Hotel Corali" />
+        <span className="keyDates"><small>PISO LIVADI · PAROS</small><b>{stayDates(card)}</b></span>
+        <span className="keyBrand">Hotel Corali</span>
+        <svg className="keyNfc" viewBox="0 0 24 24" aria-hidden><path d="M8.5 7.5a6.5 6.5 0 0 1 0 9M12 5a10 10 0 0 1 0 14M15.5 2.5a13.5 13.5 0 0 1 0 19M5 10a2.8 2.8 0 0 1 0 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+      </article>
+      <section className="keyPanel">
+        <div className="keyRoomBox">
+          {card.roomCode ? <><small>{t.room}</small><b className="keyRoom">{card.roomCode}</b></> : <><small>{t.guest}</small><b className="keyRoom small">{card.holder}</b></>}
+          {card.roomCode && <span className="keyHolder">{card.holder}</span>}
         </div>
-        <div className="keyBody">
-          <div className="keyMain">
-            {card.roomCode ? <div><small>{t.room}</small><b className="keyRoom">{card.roomCode}</b></div> : null}
-            <div className="keyHolder"><small>{t.guest}</small><b>{card.holder}</b></div>
-          </div>
-          <dl>
-            <dt>{t.from}</dt><dd>{when(card.validFrom, card.lang)}</dd>
-            <dt>{t.until}</dt><dd>{when(card.validUntil, card.lang)}</dd>
-            {card.zones.length > 0 && <><dt>{t.access}</dt><dd>{card.zones.map((z) => z.name).join(" · ")}</dd></>}
-          </dl>
         {qr ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <figure className="keyQr"><img src={qr} alt="" /><figcaption>{card.serial}</figcaption></figure>
+          <div className="keyReader">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={qr} alt="" />
+            <small>{t.hint}</small>
+          </div>
         ) : <p className="keyState">{state === "revoked" ? t.revoked : t.expired}</p>}
         {state === "scheduled" && <p className="keyState soon">{t.scheduled.replace("{from}", when(card.validFrom, card.lang))}</p>}
-        </div>
-      </article>
+        <dl>
+          <dt>{t.from}</dt><dd>{when(card.validFrom, card.lang)}</dd>
+          <dt>{t.until}</dt><dd>{when(card.validUntil, card.lang)}</dd>
+          {card.zones.length > 0 && <><dt>{t.access}</dt><dd>{card.zones.map((z) => z.name).join(" · ")}</dd></>}
+        </dl>
+        <small className="keySerial">{card.serial}</small>
+      </section>
       {live && (
         <div className="keyWallets">
           {apple && <a className="keyApple" href={`/api/public/card/${token}/apple`}><span aria-hidden></span>{t.apple}</a>}
           {google && <a className="keyGoogle" href={`/api/public/card/${token}/google`}>{t.google}</a>}
           {!apple && !google && <p className="keyHint">{t.walletLater}</p>}
-          <p className="keyHint">{t.hint}</p>
         </div>
       )}
     </main>

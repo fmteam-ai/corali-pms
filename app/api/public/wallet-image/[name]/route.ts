@@ -6,6 +6,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ nam
   const { name } = await params;
   if (!(walletImageNames as readonly string[]).includes(name)) return new Response("Not found", { status: 404 });
   const images = await loadWalletImages(env().PMS_OWNER_ID);
-  if (!images) return new Response("Not found", { status: 404 });
-  return new Response(new Uint8Array(Buffer.from(images[name as (typeof walletImageNames)[number]], "base64")), { headers: { "Content-Type": name === "hero" ? "image/jpeg" : "image/png", "Cache-Control": "public, max-age=86400" } });
+  const data = images?.[name as (typeof walletImageNames)[number]];
+  if (!data) return new Response("Not found", { status: 404 });
+  return new Response(new Uint8Array(Buffer.from(data, "base64")), { headers: { "Content-Type": name === "hero" || name === "card" ? "image/jpeg" : "image/png", "Cache-Control": "public, max-age=86400" } });
 }

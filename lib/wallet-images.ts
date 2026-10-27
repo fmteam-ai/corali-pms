@@ -1,13 +1,13 @@
 // The photo on the digital key: the hotel uploads one picture in the PMS and it is cut to the sizes the wallets use
-// (Apple strip 375×123 / 750×246 PNG, Google hero 1032×336 JPEG) with the same dark gradient and logo as the built-in images.
+// (Apple strip 375×123 / 750×246 PNG, Google hero 1032×336 JPEG, card-shaped 1012×638 JPEG for the key page) with the same dark gradient and logo as the built-in images.
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { db } from "@/lib/db";
 
-export type WalletImages = { strip: string; strip2x: string; hero: string; version: string };
-export const walletImageNames = ["strip", "strip2x", "hero"] as const;
+export type WalletImages = { strip: string; strip2x: string; hero: string; card?: string; version: string };
+export const walletImageNames = ["strip", "strip2x", "hero", "card"] as const;
 const MAX_INPUT = 12 * 1024 * 1024;
 
 const stripShade = (w: number, h: number) => Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="a" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#0f2f37" stop-opacity=".78"/><stop offset=".45" stop-color="#0f2f37" stop-opacity=".35"/><stop offset=".7" stop-color="#0f2f37" stop-opacity="0"/></linearGradient><linearGradient id="b" x1="0" x2="0" y1="1" y2="0"><stop offset="0" stop-color="#0f2f37" stop-opacity=".55"/><stop offset=".6" stop-color="#0f2f37" stop-opacity="0"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#a)"/><rect width="100%" height="100%" fill="url(#b)"/></svg>`);
@@ -23,7 +23,8 @@ export async function makeWalletImages(input: Buffer): Promise<WalletImages> {
   const logo = await sharp(await readFile(path.join(process.cwd(), "public", "hotel-corali-logo.png"))).resize(250).png().toBuffer();
   const strip = async (w: number, h: number) => (await cut(w, h).composite([{ input: stripShade(w, h) }]).png({ compressionLevel: 9, palette: true, quality: 90 }).toBuffer()).toString("base64");
   const hero = (await cut(1032, 336).composite([{ input: heroShade }, { input: logo, left: 46, top: 38 }]).jpeg({ quality: 84, mozjpeg: true }).toBuffer()).toString("base64");
-  const out = { strip: await strip(375, 123), strip2x: await strip(750, 246), hero };
+  const card = (await cut(1012, 638).jpeg({ quality: 84, mozjpeg: true }).toBuffer()).toString("base64");
+  const out = { strip: await strip(375, 123), strip2x: await strip(750, 246), hero, card };
   return { ...out, version: createHash("sha256").update(out.hero).digest("hex").slice(0, 12) };
 }
 
@@ -37,6 +38,7 @@ export async function loadWalletImages(ownerId: string): Promise<WalletImages | 
 }
 
 /** Public address of an image: the hotel's photo when uploaded, otherwise the built-in harbour picture. */
-export function walletImageUrl(images: WalletImages | null, name: "strip2x" | "hero", origin = ""): string {
-  return images ? `${origin}/api/public/wallet-image/${name}?v=${images.version}` : `${origin}/wallet/${name === "hero" ? "hero" : "strip@2x"}.png`;
+export function walletImageUrl(images: WalletImages | null, name: "strip2x" | "hero" | "card", origin = ""): string {
+  if (images && images[name]) return `${origin}/api/public/wallet-image/${name}?v=${images.version}`;
+  return `${origin}/wallet/${name === "hero" ? "hero.png" : name === "card" ? "card.jpg" : "strip@2x.png"}`;
 }
