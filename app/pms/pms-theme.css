@@ -556,3 +556,20 @@ body:has(.pms){background:#f2f4f6}
 .apiDocs pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:var(--surface-2,#f4f6f8);padding:10px;border-radius:10px}
 .apiPage>.card{max-width:none;width:100%}.apiTable td:first-child{white-space:nowrap}
 @media(min-width:1100px){.apiPage{grid-template-columns:1fr 1fr}.apiPage>.apiDocs,.apiPage>.notice,.apiPage>.apiSecret{grid-column:1/-1}}
+.apPage{display:grid;gap:16px}.apPage .card h2{margin:0 0 6px}
+.apHead{display:grid;gap:8px}.apSwitch{display:flex;gap:8px;align-items:center;font-size:16px}.apModes{display:flex;gap:18px;flex-wrap:wrap}.apModes label{display:flex;gap:6px;align-items:center}
+.apTable{width:100%;border-collapse:collapse}.apTable th,.apTable td{padding:6px 8px;border-top:1px solid var(--line,#e3e8ec);text-align:left}.apTable input[type=number]{width:96px}
+.apRules{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-bottom:12px}.apRules fieldset{border:1px solid var(--line,#d6dde3);border-radius:12px;padding:10px 12px;display:grid;gap:8px}.apRules legend{font-weight:700;padding:0 6px}
+.apRow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.apRow input[type=number]{width:72px}.apRow label{display:flex;gap:6px;align-items:center}
+.apPreviewHead{justify-content:space-between}.apPreviewHead h2{margin:0}
+.apCal{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:6px;margin-top:10px}
+.apDay{display:grid;gap:2px;padding:6px 8px;border:1px solid var(--line,#d6dde3);border-radius:10px;font-size:12px}.apDay b{font-size:16px}.apDay.up{background:rgba(31,122,77,.08);border-color:rgba(31,122,77,.35)}.apDay.down{background:rgba(180,35,24,.07);border-color:rgba(180,35,24,.3)}
+.apDay.up span{color:#1f7a4d}.apDay.down span{color:#b42318}
+.asPage{display:grid;gap:14px}.asBar{display:grid;gap:10px}.asBar input{max-width:420px}
+.asCats{display:flex;gap:6px;flex-wrap:wrap}.asCats button{border:1px solid var(--line,#d6dde3);background:var(--surface,#fff);border-radius:999px;padding:6px 12px;cursor:pointer;font-size:13px;color:inherit}.asCats button.current{background:var(--primary);border-color:var(--primary);color:#fff}
+.asGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.asApp{display:grid;gap:10px;align-content:start}.asApp p{margin:0;font-size:14px;line-height:1.45}.asApp>a{justify-self:start;display:inline-flex;align-items:center;text-decoration:none}
+.asTop{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center}.asTop>div{display:grid}.asTop small{color:var(--muted,#667085);font-size:12px}
+.asIcon{font-size:26px;width:46px;height:46px;display:grid;place-items:center;border-radius:12px;background:var(--surface-2,#f1f4f6)}
+.asState{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:#eef1f4;color:#475467}.asState.st-on{background:#dcf3e6;color:#1f7a4d}.asState.st-partial{background:#fff3cd;color:#8a6100}
+.apPage>.card,.asPage .card{max-width:none;width:100%}

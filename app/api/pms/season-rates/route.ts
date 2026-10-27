@@ -45,7 +45,7 @@ async function handlePOST(request: Request) {
     const weekdays = JSON.stringify([...new Set(x.weekdays)].sort());
     const active = x.active ? 1 : 0, now = Date.now();
     const r = x.id
-      ? await db().query(`UPDATE rate_rules SET name=$1,starts_on=$2,ends_on=$3,room_type=$4,room_codes=$5,weekdays=$6,price_cents=$7,active=$8,updated_at=$9 WHERE owner_id=$10 AND id=$11 RETURNING id`, [x.name, x.startsOn, x.endsOn, roomType, JSON.stringify(codes), weekdays, x.priceCents, active, now, u.ownerId, x.id])
+      ? await db().query(`UPDATE rate_rules SET name=$1,starts_on=$2,ends_on=$3,room_type=$4,room_codes=$5,weekdays=$6,price_cents=$7,active=$8,updated_at=$9 WHERE owner_id=$10 AND id=$11 AND source<>'auto' RETURNING id`, [x.name, x.startsOn, x.endsOn, roomType, JSON.stringify(codes), weekdays, x.priceCents, active, now, u.ownerId, x.id])
       : await db().query(`INSERT INTO rate_rules(name,starts_on,ends_on,room_type,room_codes,weekdays,price_cents,active,updated_at,owner_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [x.name, x.startsOn, x.endsOn, roomType, JSON.stringify(codes), weekdays, x.priceCents, active, now, u.ownerId]);
     if (!r.rowCount) return Response.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
     return Response.json({ ok: true, id: Number(r.rows[0].id) });
@@ -60,7 +60,7 @@ async function handleDELETE(request: Request) {
   try {
     assertTrustedOrigin(request);
     const { id } = remove.parse(await request.json());
-    const r = await db().query(`DELETE FROM rate_rules WHERE owner_id=$1 AND id=$2`, [u.ownerId, id]);
+    const r = await db().query(`DELETE FROM rate_rules WHERE owner_id=$1 AND id=$2 AND source<>'auto'`, [u.ownerId, id]);
     return r.rowCount ? Response.json({ ok: true }) : Response.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
   } catch (e) {
     return fail(e);

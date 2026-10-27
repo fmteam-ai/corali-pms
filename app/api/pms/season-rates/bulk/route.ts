@@ -33,7 +33,7 @@ async function handlePOST(request: Request) {
       if (types.some((t) => !rooms.some((r) => r.room_type === t)) || wanted.some((code) => !typeOf.has(code))) throw Error("UNKNOWN_ROOM");
       // Rooms of a selected category are already covered by the category's price.
       const codes = wanted.filter((code) => !types.includes(typeOf.get(code)!));
-      const existing = (await c.query(`SELECT id,name,room_type,room_codes,weekdays,starts_on,ends_on,price_cents,active,updated_at FROM rate_rules WHERE owner_id=$1 AND price_cents IS NOT NULL AND active=1 AND starts_on<=$3 AND ends_on>=$2 FOR UPDATE`, [u.ownerId, x.startsOn, x.endsOn])).rows as SeasonRule[];
+      const existing = (await c.query(`SELECT id,name,room_type,room_codes,weekdays,starts_on,ends_on,price_cents,active,updated_at FROM rate_rules WHERE owner_id=$1 AND price_cents IS NOT NULL AND active=1 AND source<>'auto' AND starts_on<=$3 AND ends_on>=$2 FOR UPDATE`, [u.ownerId, x.startsOn, x.endsOn])).rows as SeasonRule[];
       const label = `${x.startsOn.split("-").reverse().join("/")}–${x.endsOn.split("-").reverse().join("/")}`;
       const plan = bulkPricePlan(existing, { roomTypes: types, roomCodes: codes, codesOfTypes: rooms.filter((r) => types.includes(String(r.room_type))).map((r) => String(r.code)) }, x.startsOn, x.endsOn, x.weekdays, x.priceCents, `Μαζική ενημέρωση ${label}`);
       if (plan.deleteIds.length) await c.query(`DELETE FROM rate_rules WHERE owner_id=$1 AND id=ANY($2::bigint[])`, [u.ownerId, plan.deleteIds]);

@@ -554,3 +554,8 @@
 .pms[data-theme="dark"] .apiTable .st-sent{color:hsl(150 59% 72%)}
 .pms[data-theme="dark"] .apiTable .st-failed{color:hsl(4 75% 72%)}
 .pms[data-theme="dark"] .apiTable .st-pending{color:hsl(40 75% 72%)}
+.pms[data-theme="dark"] .apDay.up span{color:hsl(150 59% 72%)}
+.pms[data-theme="dark"] .apDay.down span{color:hsl(4 75% 72%)}
+.pms[data-theme="dark"] .asState{background:hsl(200 18% 13%);color:hsl(216 7% 78%)}
+.pms[data-theme="dark"] .asState.st-on{background:hsl(146 24% 20%);color:hsl(150 59% 72%)}
+.pms[data-theme="dark"] .asState.st-partial{background:hsl(46 45% 20%);color:hsl(42 75% 72%)}

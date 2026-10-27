@@ -7,6 +7,7 @@ import {events,triggeredEvents,triggeredTemplates,scheduleFor,interpolate,eligib
 import {arrivalInstructions,normalizeArrivalSettings} from "./arrival-core.mjs";
 import {runAccessCards} from "./access-card-worker.mjs";
 import {runApiWebhooks} from "./api-webhook-worker.mjs";
+import {runAutoPricing} from "./auto-pricing-worker.mjs";
 if(!process.env.DATABASE_URL||!process.env.PMS_DOCUMENT_KEY||!process.env.BOOKING_ORIGIN)throw Error("Automation requires DATABASE_URL, PMS_DOCUMENT_KEY and BOOKING_ORIGIN");
 const owner=process.env.PMS_OWNER_ID??"hotel-corali",secret=process.env.PMS_DOCUMENT_KEY,pool=new pg.Pool({connectionString:process.env.DATABASE_URL,ssl:databaseSsl()}),now=Date.now();
 function key(){return createHash("sha256").update(secret).digest()}
@@ -45,4 +46,6 @@ try{await run();
  // Virtual access cards (PMS → Digital key): a failure here never stops the guest messages above.
  await runAccessCards({pool,owner,seal,email,origin:process.env.BOOKING_ORIGIN}).catch(e=>console.error("Access cards failed",e))
  // Open API webhooks (PMS → API): booking changes and folio charges / payments to the hotel's systems.
- await runApiWebhooks({pool,owner,unseal}).catch(e=>console.error("API webhooks failed",e))}finally{await pool.end()}
+ await runApiWebhooks({pool,owner,unseal}).catch(e=>console.error("API webhooks failed",e))
+ // Automatic pricing (PMS → Prices → Automatic pricing): hourly, inside the hotel's minimum / maximum.
+ await runAutoPricing({pool,owner}).catch(e=>console.error("Auto pricing failed",e))}finally{await pool.end()}

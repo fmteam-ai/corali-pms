@@ -10,7 +10,7 @@ export default async function SeasonRatesPage() {
   const { lang, t } = await getPmsT();
   const [rooms, rules, today] = await Promise.all([
     db().query(`SELECT code,room_type,base_rate_cents FROM rooms WHERE owner_id=$1 AND active=1 ORDER BY room_type,code`, [u.ownerId]),
-    db().query(`SELECT id,name,room_type,room_codes,weekdays,starts_on,ends_on,price_cents,active,updated_at FROM rate_rules WHERE owner_id=$1 AND price_cents IS NOT NULL ORDER BY starts_on,id`, [u.ownerId]),
+    db().query(`SELECT id,name,room_type,room_codes,weekdays,starts_on,ends_on,price_cents,active,updated_at FROM rate_rules WHERE owner_id=$1 AND price_cents IS NOT NULL AND source<>'auto' ORDER BY starts_on,id`, [u.ownerId]),
     db().query(`SELECT to_char(now() AT TIME ZONE 'Europe/Athens','YYYY-MM-DD') AS d`),
   ]);
   return (

@@ -1802,3 +1802,25 @@ CREATE TABLE IF NOT EXISTS api_event_cursor (
  folio_entry_id BIGINT NOT NULL DEFAULT 0,
  seeded_at BIGINT
 );
+
+-- v107: automatic pricing within the hotel's limits. Applied prices are one-night room-type season prices marked
+-- source='auto' (hidden from the season list; a manual one-night price for the type always wins).
+ALTER TABLE rate_rules ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';
+CREATE INDEX IF NOT EXISTS idx_rate_rules_owner_source ON rate_rules(owner_id,source);
+CREATE TABLE IF NOT EXISTS auto_pricing_settings (
+ owner_id TEXT PRIMARY KEY,
+ settings_json TEXT NOT NULL,
+ updated_at BIGINT NOT NULL,
+ last_run_at BIGINT,
+ last_summary TEXT
+);
+CREATE TABLE IF NOT EXISTS auto_price_days (
+ owner_id TEXT NOT NULL,
+ room_type TEXT NOT NULL,
+ stay_date TEXT NOT NULL,
+ base_cents BIGINT NOT NULL,
+ price_cents BIGINT NOT NULL,
+ occupancy_pct BIGINT NOT NULL,
+ reasons TEXT NOT NULL DEFAULT '',
+ PRIMARY KEY(owner_id,room_type,stay_date)
+);
