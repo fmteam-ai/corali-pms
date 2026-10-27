@@ -167,7 +167,7 @@ PMS → ⚙️ Γενικά → Corali TV: συμπληρώστε Wi-Fi, ώρε�
 Στις κρατήσεις με προκαταβολή, το Stripe αποθηκεύει την κάρτα (ο επισκέπτης ενημερώνεται στη φόρμα και στη σελίδα πληρωμής). Ο worker χρεώνει το υπόλοιπο όταν η άφιξη απέχει όσες ημέρες ορίζει η πολιτική πληρωμής (προεπιλογή 7· απενεργοποιείται από PMS → Πολιτική πληρωμής). Αν η χρέωση αποτύχει (ή δεν υπάρχει κάρτα), ο επισκέπτης λαμβάνει email με σύνδεσμο πληρωμής που ισχύει 48 ώρες, το ξενοδοχείο ειδοποιείται (PMS και email στη διεύθυνση «From» του SMTP) και, αν το υπόλοιπο δεν εξοφληθεί μέσα στις 48 ώρες, η κράτηση ακυρώνεται αυτόματα (με email στον επισκέπτη και στο ξενοδοχείο). Από την κράτηση στο PMS μπορείτε να καταργήσετε την αυτόματη ακύρωση. Cron **κάθε ώρα** (π.χ. `5 * * * *`), **σε ένα μόνο PMS instance**:
 
 ```bash
-cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-balance-collection.mjs >> /home/corali/logs/corali-balance.log 2>&1
+cd /home/corali/apps/corali-pms && /opt/cpanel/ea-nodejs22/bin/node --env-file=runtime.env scripts/run-balance-collection.mjs >> /home/corali/logs/corali-balance.log 2>&1
 ```
 
 Το Viva.com μπορεί να ρυθμιστεί στις Συνδέσεις· η ολοκλήρωση κράτησης είναι ανεξάρτητη από πάροχο (lib/booking-fulfillment.ts) ώστε να προστεθεί αργότερα ως επιλογή πληρωμής.
@@ -177,7 +177,7 @@ cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/
 Ρύθμιση στο PMS → Συνδέσεις → ΑΑΔΕ / myDATA: περιβάλλον (dev για δοκιμές, prod για παραγωγή), ΑΦΜ ξενοδοχείου, σειρές αποδείξεων/τιμολογίων, κατηγορία ΦΠΑ διαμονής (2 = 13%) και extras, και **κατηγορία «λοιπών φόρων» για το τέλος ανθεκτικότητας στην κλιματική κρίση** (υποχρεωτική όταν χρεώνεται το τέλος). Οι κωδικοί πρέπει να επιβεβαιωθούν από τον λογιστή πριν περάσετε σε prod. Τα παραστατικά (απόδειξη 11.2 για επισκέπτη, τιμολόγιο 2.1 για εταιρεία/πρακτορείο με ελληνικό ΑΦΜ) εκδίδονται από το folio της κράτησης. Ο διακομιστής πρέπει να επιτρέπει εξερχόμενες κλήσεις προς mydataapidev.aade.gr / mydatapi.aade.gr. Cron επαναποστολής ανά 10 λεπτά, **σε ένα μόνο PMS instance**:
 
 ```bash
-cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-mydata-queue.mjs >> /home/corali/logs/corali-mydata.log 2>&1
+cd /home/corali/apps/corali-pms && /opt/cpanel/ea-nodejs22/bin/node --env-file=runtime.env scripts/run-mydata-queue.mjs >> /home/corali/logs/corali-mydata.log 2>&1
 ```
 
 ### Social media (Facebook / Instagram)
@@ -185,7 +185,7 @@ cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/
 Στο PMS → Συνδέσεις → Facebook / Instagram: pageId, instagramAccountId, graphVersion (π.χ. v21.0), appSecret, pageAccessToken και verifyToken. Webhook του Meta app (Messenger & Instagram messaging): `https://booking.hotelcorali.gr/api/webhooks/meta` με το ίδιο verifyToken. Οι αναρτήσεις δημοσιεύονται μόνο μετά από έγκριση· cron ανά 5 λεπτά, **σε ένα μόνο PMS instance**:
 
 ```bash
-cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-social-publisher.mjs >> /home/corali/logs/corali-social.log 2>&1
+cd /home/corali/apps/corali-pms && /opt/cpanel/ea-nodejs22/bin/node --env-file=runtime.env scripts/run-social-publisher.mjs >> /home/corali/logs/corali-social.log 2>&1
 ```
 
 ### Channel Manager (Booking.com, Expedia, Airbnb)
@@ -193,7 +193,7 @@ cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/
 Ο συγχρονισμός γίνεται μέσω Channex (λογαριασμός και σύνδεση των OTA εκεί). Στο PMS → Συνδέσεις → Channel Manager συμπληρώστε property id, environment (production ή staging) και API key, και αντιστοιχίστε κάθε τύπο δωματίου με το room type id του Channex (μετά τον «Έλεγχο σύνδεσης Channex» εμφανίζεται λίστα). Cron **κάθε λεπτό** (`* * * * *`), **σε ένα μόνο PMS instance** — οι εκτελέσεις δεν επικαλύπτονται. Το Channex κρατά μια κράτηση OTA στη ροή μόνο ~30 λεπτά· αν το cron σταματήσει, ο έλεγχος σύνδεσης το δείχνει:
 
 ```bash
-cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-channel-sync.mjs >> /home/corali/logs/corali-channels.log 2>&1
+cd /home/corali/apps/corali-pms && /opt/cpanel/ea-nodejs22/bin/node --env-file=runtime.env scripts/run-channel-sync.mjs >> /home/corali/logs/corali-channels.log 2>&1
 ```
 
 Μετά την πρώτη ρύθμιση πατήστε «Πλήρης συγχρονισμός διαθεσιμότητας» και μετά «Έλεγχος σύνδεσης Channex» (όλα πρέπει να είναι ✅). Ο συγχρονισμός στέλνει μόνος του πλήρη διαθεσιμότητα κάθε ώρα. Οι περιορισμοί (min stay, stop sell, κλειστή άφιξη/αναχώρηση) στέλνονται από το PMS σε όποιον τύπο δωματίου έχει επιλεγμένο rate plan (στήλη «Rate plan» μετά τον έλεγχο σύνδεσης) — μην τους αλλάζετε στο Channex, θα αντικατασταθούν. Οι τιμές ορίζονται προς το παρόν στο Channex. Δοκιμή εισερχόμενων: Channex → Applications → «Booking CRS» → δημιουργία κράτησης· εμφανίζεται στο PMS μέσα σε ένα λεπτό. Αν χρησιμοποιείτε άλλον Channel Manager, αλλάζει μόνο ο adapter (scripts/run-channel-sync.mjs).
@@ -203,7 +203,7 @@ cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/
 Στο PMS → Στρατηγική εσόδων προσθέστε έως 5 ανταγωνιστές. Οι τιμές καταχωρούνται χειροκίνητα ή έρχονται από υπηρεσία rate-shopping με JSON API (endpoint https με {from} {to}, απάντηση `{"rates":[{"date":"2026-10-01","rate":145}]}`, token στη μεταβλητή `RATE_SHOPPER_TOKEN` του runtime.env). Οι σελίδες των OTA δεν γίνονται scrape. Ημερήσιο cron (π.χ. 06:10), **σε ένα μόνο PMS instance**:
 
 ```bash
-cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-rate-shopper.mjs >> /home/corali/logs/corali-rates.log 2>&1
+cd /home/corali/apps/corali-pms && /opt/cpanel/ea-nodejs22/bin/node --env-file=runtime.env scripts/run-rate-shopper.mjs >> /home/corali/logs/corali-rates.log 2>&1
 ```
 
 ### Corali TV πρίζες (Shelly, cron)
@@ -211,7 +211,7 @@ cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/
 Αν οι τηλεοράσεις παίρνουν ρεύμα από Shelly smart πρίζες (PMS → Corali TV → «Αυτόματο άναμμα τηλεόρασης»): server και auth key από την εφαρμογή Shelly (Ρυθμίσεις χρήστη → Authorization cloud key), Device ID κάθε πρίζας στη γραμμή του δωματίου. Η πρίζα ανάβει τη μέρα άφιξης από την ώρα που ορίζετε (και αμέσως με το check-in στο PMS) και σβήνει με το check-out. Η τηλεόραση πρέπει να ανάβει μόνη της όταν επανέρχεται το ρεύμα. Προσθέστε **σε ένα μόνο PMS instance** cron ανά 5 λεπτά:
 
 ```bash
-cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-tv-power.mjs >> /home/corali/logs/corali-tv-power.log 2>&1
+cd /home/corali/apps/corali-pms && /opt/cpanel/ea-nodejs22/bin/node --env-file=runtime.env scripts/run-tv-power.mjs >> /home/corali/logs/corali-tv-power.log 2>&1
 ```
 
 Ο worker αλλάζει μια πρίζα μόνο όταν αλλάζει η αυτόματη απόφαση (άφιξη/αναχώρηση), ώστε ένα χειροκίνητο «Άναμμα/Σβήσιμο» από το PMS να μένει μέχρι την επόμενη άφιξη ή αναχώρηση. Το Shelly Cloud δέχεται περίπου 1 εντολή το δευτερόλεπτο.
@@ -221,7 +221,7 @@ cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/
 Ημερομηνία γέννησης και αριθμός διαβατηρίου/ταυτότητας από το online pre-check-in διαγράφονται οριστικά 3 χρόνια μετά την τελευταία αναχώρηση του επισκέπτη. Προσθέστε **σε ένα μόνο PMS instance** ημερήσιο cron (π.χ. 03:15):
 
 ```bash
-cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-data-retention.mjs >> /home/corali/logs/corali-retention.log 2>&1
+cd /home/corali/apps/corali-pms && /opt/cpanel/ea-nodejs22/bin/node --env-file=runtime.env scripts/run-data-retention.mjs >> /home/corali/logs/corali-retention.log 2>&1
 ```
 
 Κάθε εκτέλεση καταγράφεται στο «Ιστορικό ενεργειών» (retention.purge). Η ίδια διαγραφή εκτελείται επίσης από το ημερήσιο birthday cron.
@@ -230,12 +230,14 @@ cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/
 
 PMS → Κρατήσεις → «Ψηφιακά κλειδιά». Οι κάρτες των κρατήσεων δημιουργούνται και στέλνονται από το ίδιο cron των αυτοματοποιημένων μηνυμάτων (παρακάτω) — δεν χρειάζεται νέο cron. Χρειάζονται: SMTP (για το email), Apple Developer Pass Type ID (.p12 + WWDR G4) για το Apple Wallet, Google Wallet issuer + service account (.json) για το Google Wallet. Οι κλειδαριές / συσκευές πόρτας ρωτούν `POST /api/public/access/verify` (booking domain) με το «κλειδί συσκευών» του PMS.
 
+> **Node.js στα cron:** χρησιμοποιείτε πάντα το Node.js 22 του cPanel (`/opt/cpanel/ea-nodejs22/bin/node`, ή όποιο `ea-nodejs22`/`alt-nodejs22` έχει ο server). Το `/usr/bin/node` σε πολλούς servers είναι παλιά έκδοση χωρίς `--env-file` και το cron αποτυγχάνει σιωπηλά (`bad option: --env-file`). Έλεγχος: `/opt/cpanel/ea-nodejs22/bin/node -v` (πρέπει v22+).
+
 ### Αυτοματοποιημένα μηνύματα (cron)
 
 Μετά τη ρύθμιση των παρόχων και την ενεργοποίηση από PMS → Αυτόματα μηνύματα, προσθέστε **σε ένα μόνο PMS instance** cPanel cron ανά λεπτό. Το cron χρειάζεται ακόμη κι αν οι προγραμματισμένοι αυτοματισμοί είναι απενεργοποιημένοι: στέλνει τα μηνύματα αποτυχίας πληρωμής και ακύρωσης κράτησης (email, και WhatsApp με εγκεκριμένο template).
 
 ```bash
-cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-message-automations.mjs >> /home/corali/logs/corali-automations.log 2>&1
+cd /home/corali/apps/corali-pms && /opt/cpanel/ea-nodejs22/bin/node --env-file=runtime.env scripts/run-message-automations.mjs >> /home/corali/logs/corali-automations.log 2>&1
 ```
 
 Χρησιμοποιήστε την πραγματική διαδρομή Node.js της εγκατάστασής σας. Ο worker δεν πρέπει να εκτελείται και στο booking instance. Η αποστολή confirmation καθυστερεί έως την επόμενη εκτέλεση (συνήθως ≤1 λεπτό). Πριν ενεργοποιήσετε WhatsApp, καταχωρίστε εγκεκριμένα Meta templates για κάθε ενεργό γεγονός και γλώσσα και βεβαιωθείτε ότι ο επισκέπτης έχει συναινέσει. Παρακολουθείτε το ιστορικό αποστολών στο PMS και τη λειτουργία του cron.
