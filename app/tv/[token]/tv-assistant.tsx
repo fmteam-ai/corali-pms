@@ -27,7 +27,7 @@ export function TvAssistant({ token, lang, texts, speech, phoneQr, gridRef, apiR
   const url = `/api/public/tv/${encodeURIComponent(token)}/assistant`;
 
   useEffect(() => {
-    try { setVoiceOn(localStorage.getItem("corali-tv-voice") !== "off"); } catch { /* storage off: voice on */ }
+    queueMicrotask(() => { try { setVoiceOn(localStorage.getItem("corali-tv-voice") !== "off"); } catch { /* storage off: voice on */ } });
     void fetch(`${url}?lang=${encodeURIComponent(lang)}`, { cache: "no-store" }).then((r) => r.json()).then((d) => { if (d?.ok && d.available) setMessages(d.messages); }).catch(() => {});
     return () => { try { voiceBridge()?.stop(); } catch { /* app gone */ } };
   }, [url, lang]);
@@ -77,7 +77,7 @@ export function TvAssistant({ token, lang, texts, speech, phoneQr, gridRef, apiR
 
   // The Android app hands the recognised words back here (null: nothing heard or cancelled).
   useEffect(() => {
-    (window as unknown as { coraliVoiceResult?: (t: string | null) => void }).coraliVoiceResult = (text) => { setListening(false); if (text) void ask(text); };
+    Object.assign(window, { coraliVoiceResult: (text: string | null) => { setListening(false); if (text) void ask(text); } });
   });
   useImperativeHandle(apiRef, () => ({
     listen,

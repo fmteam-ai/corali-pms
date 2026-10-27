@@ -196,15 +196,17 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
     return false;
   };
   useEffect(() => {
-    (window as unknown as { coraliBack?: () => boolean }).coraliBack = back;
-    // The remote's microphone / search key (Corali TV app): open the assistant and listen.
-    (window as unknown as { coraliMic?: () => boolean }).coraliMic = () => {
-      if (!data?.assistant) return false;
-      choose("assistant");
-      (tabsRef.current?.querySelector<HTMLButtonElement>('[data-key="assistant"]'))?.focus();
-      requestAnimationFrame(() => assistantApi.current?.listen());
-      return true;
-    };
+    Object.assign(window, {
+      coraliBack: back,
+      // The remote's microphone / search key (Corali TV app): open the assistant and listen.
+      coraliMic: () => {
+        if (!data?.assistant) return false;
+        choose("assistant");
+        (tabsRef.current?.querySelector<HTMLButtonElement>('[data-key="assistant"]'))?.focus();
+        requestAnimationFrame(() => assistantApi.current?.listen());
+        return true;
+      },
+    });
   });
   // TV remotes send arrow keys: left/right move between tabs; down enters the buttons of the open tab, which move
   // to the nearest button in the arrow's direction. While a channel plays, up/down switch channels.
