@@ -8,7 +8,7 @@ import { newOpaqueToken } from "@/lib/security/tokens";
 import { hotelToday } from "@/lib/tape-chart";
 import { fillInfo } from "@/lib/tv-info";
 import { screenMessages } from "@/lib/tv-messages";
-import { screenDnd } from "@/lib/tv-requests";
+import { guestTvRequests, screenDnd } from "@/lib/tv-requests";
 import { defaultTransferTime, transferDays, tvProblemTexts, tvRequestTexts, tvTransferTexts } from "@/lib/tv-requests-core";
 import { channelSource, tvChannelTexts } from "@/lib/tv-channels-core";
 import { tvAppTexts } from "@/lib/tv-apps-core";
@@ -112,6 +112,8 @@ export async function tvScreenData(token: string, langOverride?: string | null) 
     // Requests to reception (TV → PMS) only while a guest is staying in the room.
     requests: state.mode === "stay" ? {
       texts: tvRequestTexts[lang], dnd: await screenDnd(ownerId, Number(s.room_id)),
+      // The stay's own requests with their state; open ones can be cancelled from the TV.
+      mine: await guestTvRequests(ownerId, Number(s.room_id), state.stay.reference),
       // Transfer form: days the guest can choose, a sensible first time and the party size from the booking.
       problems: tvProblemTexts[lang],
       transfer: { texts: tvTransferTexts[lang], days: transferDays(today, state.stay.check_out), first: defaultTransferTime(hotelTime()), people: Math.max(1, Math.min(12, Number(state.stay.adults ?? 1) + Number(state.stay.children ?? 0))) },

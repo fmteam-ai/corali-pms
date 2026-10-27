@@ -110,7 +110,7 @@ export function TvRequests({ lang, initialRequests, initialDnd, canHandle }: { l
                   <td><b>{r.roomCode}</b></td>
                   <td>{l.icon} {l.text}{r.details && <small>{requestDetailsSummary(r.details, lang === "el" ? "el" : "en")}</small>}</td>
                   <td>{r.guestName ?? ""}</td>
-                  <td className="muted">{r.status === "info" ? t("tvr.info") : r.handledBy ? t("tvr.doneBy").replace("{name}", r.handledBy) : t("tvr.done")}{r.handledAt ? ` · ${time(r.handledAt)}` : ""}</td>
+                  <td className="muted">{r.status === "info" ? t("tvr.info") : r.status === "cancelled" ? t("tvr.cancelled") : r.handledBy ? t("tvr.doneBy").replace("{name}", r.handledBy) : t("tvr.done")}{r.handledAt ? ` · ${time(r.handledAt)}` : ""}</td>
                 </tr>
               ); })}
             </tbody>

@@ -94,3 +94,28 @@ export async function completeTvRequest(ownerId: string, id: number, userId: num
 export async function clearDnd(ownerId: string, roomId: number): Promise<void> {
   await db().query(`UPDATE tv_screens SET dnd_since=NULL WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId]);
 }
+
+export type GuestTvRequest = { id: number; kind: TvRequestRecordKind; status: string; createdAt: number; handledAt: number | null };
+
+/** The current stay's requests for its own screen (newest first; do-not-disturb switches left out). */
+export async function guestTvRequests(ownerId: string, roomId: number, reference: string): Promise<GuestTvRequest[]> {
+  const r = await db().query(
+    `SELECT q.id,q.kind,q.status,q.created_at,q.handled_at FROM tv_requests q JOIN bookings b ON b.id=q.booking_id AND b.owner_id=q.owner_id
+      WHERE q.owner_id=$1 AND q.room_id=$2 AND b.reference=$3 AND q.kind NOT IN ('dnd_on','dnd_off') ORDER BY q.created_at DESC LIMIT 8`,
+    [ownerId, roomId, reference],
+  );
+  return r.rows.map((x) => ({ id: Number(x.id), kind: String(x.kind) as TvRequestRecordKind, status: String(x.status), createdAt: Number(x.created_at), handledAt: x.handled_at === null ? null : Number(x.handled_at) }));
+}
+
+/** The guest cancels an open request from the TV (e.g. pressed by mistake); reception is told. False if not cancellable. */
+export async function cancelTvRequest(token: string, id: number): Promise<boolean | null> {
+  const s = await screen(token);
+  if (!s || !s.bookingId) return null;
+  return withTransaction(async (c) => {
+    const r = await c.query(`UPDATE tv_requests SET status='cancelled',handled_at=$1 WHERE owner_id=$2 AND room_id=$3 AND booking_id=$4 AND id=$5 AND status='open' RETURNING kind`, [Date.now(), s.ownerId, s.roomId, s.bookingId, id]);
+    if (!r.rowCount) return false;
+    const l = tvRequestLabels[String(r.rows[0].kind) as TvRequestRecordKind] ?? { icon: "", el: String(r.rows[0].kind), en: String(r.rows[0].kind) };
+    await pushNotification(c, s.ownerId, { kind: "tv_request", titleEl: `❌ Δωμάτιο ${s.roomCode}: ο πελάτης ακύρωσε «${l.el}»`, titleEn: `❌ Room ${s.roomCode}: the guest cancelled “${l.en}”`, link: "/pms/tv-requests" });
+    return true;
+  });
+}

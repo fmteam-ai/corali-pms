@@ -5,7 +5,7 @@ import { FaBan, FaBath, FaBed, FaTv, FaThLarge, FaBirthdayCake, FaCheck, FaGlass
 import { WiCloud, WiCloudy, WiDayCloudy, WiDaySunny, WiFog, WiRain, WiShowers, WiSnow, WiThunderstorm } from "react-icons/wi";
 import type { TvScreenData } from "@/lib/tv";
 import { messageSound } from "@/lib/tv-messages-core";
-import { tvProblems, tvRequestKinds, type TvRequestKind } from "@/lib/tv-requests-core";
+import { tvProblems, tvRequestKinds, tvRequestLabels, type TvRequestKind } from "@/lib/tv-requests-core";
 import "./tv.css";
 
 const locales = { el: "el-GR", en: "en-GB", fr: "fr-FR", de: "de-DE", it: "it-IT", es: "es-ES" } as const;
@@ -117,12 +117,17 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   const [playing, setPlaying] = useState<number | null>(null);
   const [problemOpen, setProblemOpen] = useState(false);
   const [appError, setAppError] = useState("");
+  // My requests: the id waiting for a second OK to cancel, and a reload of the screen data after a change.
+  const [cancelArm, setCancelArm] = useState<number | null>(null);
+  const reloadData = useRef<() => void>(() => {});
 
-  // Any remote/keyboard/touch use keeps the chosen tab; after 90 s without it the screen goes back home.
+  // Any remote/keyboard/touch use keeps the chosen tab; after 90 s without it the screen goes back home. The channel
+  // list stays (a guest returning from a channel expects the list, not the home screen).
   const choose = (key: string) => {
     setTab(key);
     if (idle.current) clearTimeout(idle.current);
-    if (key !== "home") idle.current = setTimeout(() => setTab("home"), HOME_AFTER_MS);
+    idle.current = null;
+    if (key !== "home" && key !== "channels") idle.current = setTimeout(() => setTab("home"), HOME_AFTER_MS);
   };
   useEffect(() => () => { if (idle.current) clearTimeout(idle.current); }, []);
   const message = data?.messages.find((m) => !closed.includes(m.id));
@@ -151,11 +156,19 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
     try {
       const r = await fetch(`/api/public/tv/${encodeURIComponent(token)}/request`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, ...extra }) });
       const d = await r.json();
-      if (d.ok) { result = d.recorded ? "sent" : "already"; setDnd(Boolean(d.dnd)); } else error = String(d.error ?? "");
+      if (d.ok) { result = d.recorded ? "sent" : "already"; setDnd(Boolean(d.dnd)); if (d.recorded) reloadData.current(); } else error = String(d.error ?? "");
     } catch { /* offline: show "not sent" */ }
     setReqState((s) => ({ ...s, [kind]: result }));
     setTimeout(() => setReqState((s) => (s[kind] === result ? { ...s, [kind]: undefined } : s)), 6_000);
     return result === "failed" ? error || "FAILED" : true;
+  };
+  // Cancelling one of my open requests takes two OKs on the same button (a request pressed by mistake is undone).
+  const cancelRequest = async (id: number) => {
+    choose("requests");
+    if (cancelArm !== id) { setCancelArm(id); return; }
+    setCancelArm(null);
+    try { await fetch(`/api/public/tv/${encodeURIComponent(token)}/cancel`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }); } catch { /* offline: the list shows the real state on the next refresh */ }
+    reloadData.current();
   };
   // Transfer: the form opens over the requests; OK on "Send" posts it with destination, day, time and people.
   const openTransfer = () => {
@@ -173,7 +186,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   };
   // BACK on the remote (the Corali TV app asks the page first): close the player / form, then go back home.
   const back = () => {
-    if (playing !== null) { setPlaying(null); return true; }
+    if (playing !== null) { const was = playing; setPlaying(null); choose("channels"); requestAnimationFrame(() => panelRef.current?.querySelectorAll<HTMLButtonElement>(".tvChannel")[was]?.focus()); return true; }
     if (transfer) { setTransfer(null); return true; }
     if (problemOpen) { setProblemOpen(false); return true; }
     if (tab !== "home") { choose("home"); (tabsRef.current?.querySelector<HTMLButtonElement>('[data-key="home"]'))?.focus(); return true; }
@@ -245,6 +258,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         if (d.ok) { setData(d); setMissing(false); }
       } catch { /* keep the last screen while offline */ }
     };
+    reloadData.current = () => void load();
     void load();
     const poll = setInterval(load, REFRESH_MS);
     const clock = setInterval(() => setNow(new Date()), 15_000);
@@ -300,7 +314,8 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
       {tab === "requests" && rq ? (
         <section className="tvInfo tvReq">
           <p className="tvReqIntro">{rq.texts.intro}</p>
-          <div className="tvReqGrid" ref={panelRef}>
+          <div className="tvReqPanel" ref={panelRef}>
+          <div className="tvReqGrid">
             <button type="button" className={`tvReqBtn tvReqDnd${dndOn ? " on" : ""}${reqState.dnd ? ` is-${reqState.dnd}` : ""}`} aria-pressed={dndOn} onClick={() => sendRequest("dnd", { on: !dndOn })}>
               <span className="tvReqIcon"><FaBan aria-hidden /></span>
               <b>{reqLabel("dnd", rq.texts.dnd)}</b>
@@ -313,6 +328,23 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
                 <b>{reqLabel(k, rq.texts[k])}</b>
               </button>
             ); })}
+          </div>
+          {rq.mine.length > 0 && (
+            <div className="tvMine">
+              <h3>{rq.texts.mine}</h3>
+              <ul>
+                {rq.mine.map((m) => { const known = (tvRequestKinds as readonly string[]).includes(m.kind); const I = known ? reqIcons[m.kind as TvRequestKind] : FaConciergeBell; return (
+                  <li key={m.id} className={`st-${m.status}`}>
+                    <span className="tvReqIcon"><I aria-hidden /></span>
+                    <b>{known ? rq.texts[m.kind as TvRequestKind] : tvRequestLabels[m.kind]?.en ?? m.kind}</b>
+                    <small>{new Date(m.createdAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" })}</small>
+                    <em>{m.status === "open" ? rq.texts.stOpen : m.status === "cancelled" ? rq.texts.stCancelled : rq.texts.stDone}</em>
+                    {m.status === "open" && <button type="button" className={cancelArm === m.id ? "armed" : ""} onBlur={() => setCancelArm((a) => (a === m.id ? null : a))} onClick={() => cancelRequest(m.id)}>{cancelArm === m.id ? rq.texts.confirmCancel : rq.texts.cancel}</button>}
+                  </li>
+                ); })}
+              </ul>
+            </div>
+          )}
           </div>
         </section>
       ) : tab === "apps" && apps.length > 0 ? (

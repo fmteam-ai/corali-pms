@@ -243,15 +243,15 @@
 
 /* TV channels */
 .tvChannels{align-content:start}
-.tvWifiNote{margin:.6vw 0 0;font-size:.95vw;line-height:1.35;color:var(--muted);text-align:center}
+.tvWifiNote{margin:.6vw 0 0;font-size:1vw;line-height:1.35;color:var(--gold);font-weight:700;text-align:center}
 .tvKeysHelp{display:flex;flex-wrap:wrap;align-items:center;gap:.6vw 1.6vw;margin-bottom:1vw;padding:.8vw 1.2vw;border-radius:.8vw;background:var(--glass);border:1px solid var(--line);font-size:1vw;color:#fff}
 .tvKeysHelp b{font-size:1.05vw;margin-right:.4vw}
 .tvKeysHelp span{display:inline-flex;align-items:center;gap:.5vw}
 .tvKeysHelp kbd{font:inherit;font-weight:700;padding:.15vw .6vw;border-radius:.4vw;background:var(--gold);color:var(--ink);white-space:nowrap}
 .tvChannelGrid{display:grid;grid-template-columns:repeat(6,1fr);gap:.9vw;align-content:start}
 .tvChannel{font:inherit;color:#fff;cursor:pointer;background:var(--glass);border:1px solid var(--line);border-radius:1vw;padding:1vw;display:grid;justify-items:center;gap:.5vw;text-align:center;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
-.tvChannelLogo{width:100%;height:6vw;display:grid;place-items:center;background:rgba(255,255,255,.92);border-radius:.6vw;color:var(--ink);font-size:2.6vw;overflow:hidden}
-.tvChannelLogo img{max-width:85%;max-height:80%;object-fit:contain}
+.tvChannelLogo{width:100%;height:6vw;flex:none;display:grid;place-items:center;background:rgba(255,255,255,.92);border-radius:.6vw;color:var(--ink);font-size:2.6vw;overflow:hidden}
+.tvChannelLogo img{display:block;width:72%;height:4.4vw;object-fit:contain}
 .tvChannel b{font-size:1.1vw}
 .tvChannel small{font-size:.85vw;color:var(--muted)}
 .tvChannel:focus-visible,.tvChannel:hover{outline:none;border-color:var(--gold);box-shadow:0 0 0 .22vw var(--gold);transform:translateY(-.2vw)}
@@ -263,7 +263,7 @@
 .tvPlayerBar b{font-size:1.6vw}
 .tvPlayerBar span{flex:1;font-size:1vw;color:rgba(255,255,255,.8)}
 .tvPlayerBar button{font:inherit;font-size:1vw;color:#fff;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);border-radius:.5vw;padding:.4vw 1vw}
-@media (max-width:800px){.tvChannelGrid{grid-template-columns:repeat(2,1fr)}.tvChannelLogo{height:60px;font-size:28px}.tvChannel b{font-size:15px}.tvChannel small{font-size:12px}.tvTransfer .tvMsgCard{max-width:none}.tvTransfer button{font-size:14px;padding:8px 12px}.tvTfRow>span{min-width:90px;font-size:13px}.tvTfValue{font-size:20px;min-width:56px}.tvTfHint,.tvTfError{font-size:13px}.tvPlayerBar b{font-size:16px}.tvPlayerBar span,.tvPlayerBar button{font-size:12px}.tvKeysHelp{font-size:12px;gap:6px 14px;padding:8px 12px}.tvKeysHelp b{font-size:13px}}
+@media (max-width:800px){.tvChannelGrid{grid-template-columns:repeat(2,1fr)}.tvChannelLogo{height:60px;font-size:28px}.tvChannelLogo img{height:44px}.tvChannel b{font-size:15px}.tvChannel small{font-size:12px}.tvTransfer .tvMsgCard{max-width:none}.tvTransfer button{font-size:14px;padding:8px 12px}.tvTfRow>span{min-width:90px;font-size:13px}.tvTfValue{font-size:20px;min-width:56px}.tvTfHint,.tvTfError{font-size:13px}.tvPlayerBar b{font-size:16px}.tvPlayerBar span,.tvPlayerBar button{font-size:12px}.tvKeysHelp{font-size:12px;gap:6px 14px;padding:8px 12px}.tvKeysHelp b{font-size:13px}}
 .tvProblemGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:.8vw}
 .tvProblemGrid button{padding:1vw 1.2vw;font-size:1.25vw}
 @media (max-width:800px){.tvProblemGrid{grid-template-columns:1fr 1fr}.tvProblemGrid button{font-size:14px;padding:10px}}
@@ -277,3 +277,21 @@
 .tvApp:focus-visible,.tvApp:hover{outline:none;border-color:#fff;box-shadow:0 0 0 .25vw var(--gold);transform:translateY(-.25vw)}
 .tvAppError{color:#ffb4a8}
 @media (max-width:800px){.tvAppGrid{grid-template-columns:1fr 1fr}.tvApp{height:80px}.tvApp b{font-size:18px}}
+/* My requests (Requests tab): state of each request of the stay; open ones can be cancelled */
+.tvReqPanel{display:grid;gap:1.1vw}
+.tvMine{background:var(--glass);border:1px solid var(--line);border-radius:1vw;padding:.9vw 1.2vw;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.tvMine h3{margin:0 0 .6vw;font-size:1.1vw;letter-spacing:.06em;text-transform:uppercase;color:var(--gold)}
+.tvMine ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,1fr);gap:.5vw 1.6vw}
+.tvMine li{display:grid;grid-template-columns:auto 1fr auto auto auto;align-items:center;gap:.8vw;padding:.45vw 0;border-bottom:1px solid var(--line)}
+.tvMine .tvReqIcon{width:2.3vw;height:2.3vw;font-size:1.05vw}
+.tvMine b{font-size:1.05vw;font-weight:600}
+.tvMine small{font-size:.9vw;color:var(--muted);font-variant-numeric:tabular-nums}
+.tvMine em{font-style:normal;font-size:.85vw;font-weight:700;padding:.2vw .7vw;border-radius:999px;white-space:nowrap}
+.tvMine .st-open em{background:var(--gold);color:var(--ink)}
+.tvMine .st-done em,.tvMine .st-info em{background:#2ea067;color:#fff}
+.tvMine .st-cancelled em{background:rgba(255,255,255,.18);color:#fff}
+.tvMine .st-cancelled b,.tvMine .st-cancelled .tvReqIcon{opacity:.55}
+.tvMine button{font:inherit;font-size:.9vw;font-weight:700;color:#fff;background:transparent;border:1px solid rgba(255,255,255,.45);border-radius:.5vw;padding:.3vw .9vw;cursor:pointer;white-space:nowrap}
+.tvMine button:focus-visible,.tvMine button:hover{outline:none;border-color:var(--gold);box-shadow:0 0 0 .2vw var(--gold)}
+.tvMine button.armed{background:#c0392b;border-color:#e74c3c}
+@media (max-width:800px){.tvMine ul{grid-template-columns:1fr}.tvMine h3{font-size:14px}.tvMine b{font-size:15px}.tvMine small,.tvMine em,.tvMine button{font-size:12px}.tvMine .tvReqIcon{width:30px;height:30px;font-size:14px}}
