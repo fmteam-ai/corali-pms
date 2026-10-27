@@ -1669,3 +1669,57 @@ CREATE TABLE IF NOT EXISTS "guest_announcements" (
   "created_at" BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS "idx_guest_announcements_owner" ON "guest_announcements" ("owner_id", "starts_at");
+
+-- v102: virtual access card (Apple / Google Wallet). One card per booking (sent the day before arrival, valid until
+-- check-out time) or issued by hand to a visitor; opens the room and the listed hotel areas (gym…). Door readers ask
+-- /api/access/verify; every answer is logged. The whole feature can be switched off in the PMS.
+CREATE TABLE IF NOT EXISTS "access_card_settings" (
+  "owner_id" TEXT PRIMARY KEY,
+  "settings_json" TEXT NOT NULL DEFAULT '{}',
+  "wallet_json" TEXT NOT NULL DEFAULT '{}',
+  "wallet_secrets_encrypted" TEXT,
+  "reader_key_hash" TEXT,
+  "updated_at" BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS "access_cards" (
+  "id" BIGSERIAL PRIMARY KEY,
+  "owner_id" TEXT NOT NULL,
+  "kind" TEXT NOT NULL DEFAULT 'booking',
+  "booking_id" BIGINT,
+  "room_id" BIGINT,
+  "holder_name" TEXT NOT NULL,
+  "email" TEXT NOT NULL DEFAULT '',
+  "lang" TEXT NOT NULL DEFAULT 'en',
+  "zones_json" TEXT NOT NULL DEFAULT '[]',
+  "valid_from" BIGINT NOT NULL,
+  "valid_until" BIGINT NOT NULL,
+  "until_locked" INTEGER NOT NULL DEFAULT 0,
+  "status" TEXT NOT NULL DEFAULT 'active',
+  "revoked_at" BIGINT,
+  "revoked_reason" TEXT NOT NULL DEFAULT '',
+  "serial" TEXT NOT NULL,
+  "token_hash" TEXT NOT NULL,
+  "token_encrypted" TEXT NOT NULL,
+  "sent_at" BIGINT,
+  "send_error" TEXT NOT NULL DEFAULT '',
+  "last_used_at" BIGINT,
+  "created_by" TEXT NOT NULL DEFAULT 'system',
+  "created_at" BIGINT NOT NULL,
+  "updated_at" BIGINT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_access_cards_token" ON "access_cards" ("token_hash");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_access_cards_serial" ON "access_cards" ("owner_id", "serial");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_access_cards_booking" ON "access_cards" ("owner_id", "booking_id") WHERE "booking_id" IS NOT NULL AND "status" = 'active';
+CREATE INDEX IF NOT EXISTS "idx_access_cards_owner" ON "access_cards" ("owner_id", "valid_until");
+CREATE TABLE IF NOT EXISTS "access_card_events" (
+  "id" BIGSERIAL PRIMARY KEY,
+  "owner_id" TEXT NOT NULL,
+  "card_id" BIGINT,
+  "zone" TEXT NOT NULL,
+  "room" TEXT NOT NULL DEFAULT '',
+  "allowed" INTEGER NOT NULL,
+  "reason" TEXT NOT NULL,
+  "reader" TEXT NOT NULL DEFAULT '',
+  "created_at" BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "idx_access_card_events_owner" ON "access_card_events" ("owner_id", "created_at");

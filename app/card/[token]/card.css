@@ -1,0 +1,19 @@
+.keyPage{min-height:100vh;margin:0;padding:24px 16px 40px;box-sizing:border-box;display:grid;justify-items:center;align-content:start;gap:18px;background:linear-gradient(160deg,#0f2f37,#173e47 60%,#1e5360);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#173e47}
+.keyPage *{box-sizing:border-box}
+.keyCard{width:min(380px,100%);background:#fff;border-radius:22px;padding:20px 20px 22px;box-shadow:0 18px 50px rgba(0,0,0,.35);display:grid;gap:14px;position:relative;overflow:hidden}
+.keyCard::before{content:"";position:absolute;inset:0 0 auto 0;height:6px;background:linear-gradient(90deg,#d9a441,#f7dca0 60%,#d9a441)}
+.keyCard header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.keyCard header img{height:40px;width:auto}
+.keyCard header span{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#a8741a}
+.keyHolder{display:grid;gap:2px}.keyHolder small{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#a8741a}.keyHolder b{font-size:24px;line-height:1.2;overflow-wrap:anywhere}
+.keyCard dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:15px}
+.keyCard dt{color:#6b7f88;font-weight:600}.keyCard dd{margin:0;font-weight:700;text-align:right}
+.keyRoom{font-size:22px}
+.keyQr{margin:4px 0 0;display:grid;justify-items:center;gap:4px}.keyQr img{width:220px;height:220px;max-width:100%}.keyQr figcaption{font-size:12px;color:#6b7f88;letter-spacing:.08em}
+.keyState{margin:0;padding:12px;border-radius:12px;background:#fdecea;color:#b3261e;font-weight:700;text-align:center}.keyState.soon{background:#fff4dc;color:#8a5a00}
+.st-revoked,.st-expired{filter:grayscale(.6)}
+.keyWallets{width:min(380px,100%);display:grid;gap:10px}
+.keyWallets a{display:flex;align-items:center;justify-content:center;gap:8px;min-height:50px;border-radius:12px;font-weight:700;font-size:16px;text-decoration:none}
+.keyApple{background:#000;color:#fff}.keyApple span{font-size:20px}
+.keyGoogle{background:#fff;color:#1f1f1f;border:1px solid #dadce0}
+.keyHint{margin:0;color:rgba(255,255,255,.85);text-align:center;font-size:14px;line-height:1.45}
