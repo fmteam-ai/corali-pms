@@ -543,3 +543,4 @@ body:has(.pms){background:#f2f4f6}
 .aiActionState{font-size:12px}
 .akPhoto{width:100%;max-width:520px;aspect-ratio:1032/336;object-fit:cover;border-radius:12px;border:1px solid var(--border)}
 .akFile{position:relative;overflow:hidden;cursor:pointer}.akFile input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.channelWebhook{display:grid;gap:4px}.channelWebhook input{width:100%;font-family:ui-monospace,monospace;font-size:12px}

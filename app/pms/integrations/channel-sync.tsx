@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 
-type Status = { roomTypes: { room_type: string; rooms: number }[]; mappings: { room_type: string; external_room_type_id: string; external_rate_plan_id: string }[]; outbox: { status: string; total: number; last: number | null; error: string | null }[]; imports: { revision_id: string; status: string; booking_ids: string; error: string | null; created_at: number }[]; lastRun: { at: number | null; okAt: number | null; error: string | null } | null };
+type Status = { webhook?: { url: string | null; lastAt: number | null }; roomTypes: { room_type: string; rooms: number }[]; mappings: { room_type: string; external_room_type_id: string; external_rate_plan_id: string }[]; outbox: { status: string; total: number; last: number | null; error: string | null }[]; imports: { revision_id: string; status: string; booking_ids: string; error: string | null; created_at: number }[]; lastRun: { at: number | null; okAt: number | null; error: string | null } | null };
 type Check = { items: { key: string; ok: boolean | null; detail: string }[]; channexRoomTypes: { id: string; title: string; rooms: number }[]; channexRatePlans: { id: string; title: string; roomTypeId: string }[] };
 
 export function ChannelSyncPanel({ initial, canWrite }: { initial: Status; canWrite: boolean }) {
@@ -46,6 +46,10 @@ export function ChannelSyncPanel({ initial, canWrite }: { initial: Status; canWr
       <p>Τελευταία εκτέλεση: {status.lastRun?.at ? new Date(status.lastRun.at).toLocaleString("el-GR") : "—"}{status.lastRun?.error ? ` · σφάλμα: ${status.lastRun.error.slice(0, 160)}` : ""}</p>
       <p>Ουρά διαθεσιμότητας: <b>{count("pending")}</b> σε αναμονή · <b>{count("sent")}</b> εστάλησαν · <b>{count("failed")}</b> αποτυχίες{failed?.error ? ` (${failed.error.slice(0, 120)})` : ""}</p>
       {canWrite && <button type="button" className="secondaryButton" onClick={() => post({ action: "full_sync" }, "Προγραμματίστηκε πλήρης αποστολή διαθεσιμότητας 500 ημερών.")}>Πλήρης συγχρονισμός διαθεσιμότητας</button>}
+      <h3>Webhook Channex (άμεσος συγχρονισμός)</h3>
+      <p>Με το webhook, μια νέα κράτηση από Booking.com / Expedia / Airbnb εισάγεται στο PMS σε λίγα δευτερόλεπτα (αντί για έως 1 λεπτό). Στο Channex → Settings → Webhooks προσθέστε αυτόν τον σύνδεσμο με event <b>booking</b> (και «Send data»: όχι απαραίτητο).</p>
+      {status.webhook?.url ? <p className="channelWebhook"><input readOnly value={status.webhook.url} onFocus={(e) => e.target.select()} /><small>Τελευταία κλήση: {status.webhook.lastAt ? new Date(status.webhook.lastAt).toLocaleString("el-GR") : "—"}</small></p> : <p>—</p>}
+      {canWrite && <button type="button" className="secondaryButton" onClick={() => { if (!status.webhook?.url || confirm("Ο παλιός σύνδεσμος θα σταματήσει να λειτουργεί. Συνέχεια;")) void post({ action: "webhook" }, "Ο σύνδεσμος webhook δημιουργήθηκε — αντιγράψτε τον στο Channex."); }}>{status.webhook?.url ? "Νέος σύνδεσμος webhook" : "Δημιουργία συνδέσμου webhook"}</button>}
       <h3>Τελευταίες εισαγωγές OTA</h3>
       {status.imports.length === 0 ? <p>—</p> : <ul>{status.imports.map((i) => <li key={i.revision_id}>{new Date(Number(i.created_at)).toLocaleString("el-GR")} · {i.revision_id} · {i.status}{i.error ? ` · ${i.error.slice(0, 120)}` : ""}</li>)}</ul>}
       <p className="notice" role="status">{msg}</p>

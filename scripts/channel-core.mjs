@@ -145,8 +145,9 @@ export function computeRestrictions({ dates, roomType, roomCodes, rateRules, min
   });
 }
 
-const RESTRICTION_FIELDS = ["min_stay_arrival", "min_stay_through", "stop_sell", "closed_to_arrival", "closed_to_departure"];
-export const restrictionKey = (v) => RESTRICTION_FIELDS.map((f) => String(v[f])).join("|");
+// "rate" is present only when rates are pushed (PMS → Integrations → Channel Manager → push rates).
+const RESTRICTION_FIELDS = ["min_stay_arrival", "min_stay_through", "stop_sell", "closed_to_arrival", "closed_to_departure", "rate"];
+export const restrictionKey = (v) => RESTRICTION_FIELDS.filter((f) => v[f] !== undefined).map((f) => String(v[f])).join("|");
 
 /** Consecutive dates with identical restrictions become one {date_from,date_to,...} value. */
 export function restrictionRanges(days) {
@@ -154,7 +155,36 @@ export function restrictionRanges(days) {
   for (const d of [...days].sort((a, b) => a.date.localeCompare(b.date))) {
     const last = out.at(-1);
     if (last && shiftDay(last.date_to, 1) === d.date && restrictionKey(last) === restrictionKey(d)) last.date_to = d.date;
-    else out.push({ date_from: d.date, date_to: d.date, ...Object.fromEntries(RESTRICTION_FIELDS.map((f) => [f, d[f]])) });
+    else out.push({ date_from: d.date, date_to: d.date, ...Object.fromEntries(RESTRICTION_FIELDS.filter((f) => d[f] !== undefined).map((f) => [f, d[f]])) });
   }
   return out;
+}
+
+// ── Rates ────────────────────────────────────────────────────────────────────────────────────────────────────────
+// The nightly price of a room type as the booking engine starts from it (lib/season-rates.ts nightlyPrice with no
+// specific room: season price for all rooms or the type, else the type's base rate), plus an optional OTA markup.
+
+const ruleApplies = (r, date) => (r.active === undefined || r.active === null || Number(r.active) === 1) && r.price_cents !== null && r.price_cents !== undefined && r.price_cents !== "" && r.starts_on <= date && r.ends_on >= date && (!jsonList(r.weekdays).length || jsonList(r.weekdays).map(Number).includes(weekday(date)));
+const ruleTarget = (r, roomType) => (jsonList(r.room_codes).length ? 0 : r.room_type ? (r.room_type === roomType ? 2 : 0) : 1);
+const ruleSpan = (r) => (Date.parse(`${r.ends_on}T00:00:00Z`) - Date.parse(`${r.starts_on}T00:00:00Z`)) / 86_400_000;
+
+/** Nightly price (cents) of a room type: the winning season price (type over all rooms, then shorter period, then latest edit), else the base. */
+export function typeNightlyCents(rules, date, roomType, baseCents) {
+  let best = null, bestKey = [];
+  for (const r of rules) {
+    if (!ruleApplies(r, date)) continue;
+    const target = ruleTarget(r, roomType);
+    if (!target) continue;
+    const key = [target, -ruleSpan(r), Number(r.updated_at ?? 0), Number(r.id) || 0];
+    const greater = !best || key.some((v, i) => key.slice(0, i).every((w, j) => w === bestKey[j]) && v > bestKey[i]);
+    if (greater) { best = r; bestKey = key; }
+  }
+  return Math.max(0, Math.round(best ? Number(best.price_cents) : Number(baseCents) || 0));
+}
+
+/** Channex rate string ("123.00") with the OTA markup in percent (−50 … +100); null when the type has no price. */
+export function otaRate(cents, markupPercent) {
+  const m = Math.max(-50, Math.min(100, Number(markupPercent) || 0));
+  const v = Math.round(cents * (1 + m / 100));
+  return v > 0 ? (v / 100).toFixed(2) : null;
 }

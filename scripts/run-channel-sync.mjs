@@ -10,7 +10,7 @@ import process from "node:process";
 import { createDecipheriv, createHash } from "node:crypto";
 import pg from "pg";
 import { databaseSsl } from "./database-config.mjs";
-import { AVAILABILITY_SQL, CHANNEX_HOSTS, availabilityRanges, computeRestrictions, feedHasMore, normalizeRevision, planRevision, restrictionKey, restrictionRanges, sellable } from "./channel-core.mjs";
+import { AVAILABILITY_SQL, CHANNEX_HOSTS, availabilityRanges, computeRestrictions, feedHasMore, normalizeRevision, planRevision, restrictionKey, restrictionRanges, sellable, typeNightlyCents, otaRate } from "./channel-core.mjs";
 
 if (!process.env.DATABASE_URL || !process.env.PMS_DOCUMENT_KEY) throw Error("DATABASE_URL and PMS_DOCUMENT_KEY are required");
 const owner = process.env.PMS_OWNER_ID ?? "hotel-corali";
@@ -188,19 +188,26 @@ try {
 
   // 3) Restrictions per mapped rate plan, today .. +500 days. Partial updates in Channex: only these fields change,
   //    rates set in Channex stay as they are.
-  let restrictionDays = 0;
+  let restrictionDays = 0, rateDays = 0;
   const plans = mappings.filter((m) => m.external_rate_plan_id);
+  // Rates go with the restrictions when the hotel switched them on (otherwise rates set in Channex are kept).
+  const pushRates = settings.pushRates === "yes", markup = Number(settings.rateMarkupPercent) || 0;
   if (plans.length) {
     const end = addDays(today, 500), from = addDays(today, -1);
     const [rateRules, minStayRules, restrictions, rooms] = await Promise.all([
       pool.query(`SELECT id,room_type,room_codes,starts_on,ends_on,minimum_stay,maximum_stay,closed,closed_to_arrival,closed_to_departure FROM rate_rules WHERE owner_id=$1 AND active=1 AND ends_on>=$2 AND starts_on<=$3 ORDER BY id`, [owner, from, end]),
       pool.query(`SELECT id,room_type,starts_on,ends_on,min_nights,active,updated_at FROM min_stay_rules WHERE owner_id=$1 AND active=1`, [owner]),
       pool.query(`SELECT starts_on,ends_on,minimum_stay,closed_arrival_weekdays,closed_departure_weekdays,room_codes,rate_plan_keys,stop_sell,active FROM booking_restrictions WHERE owner_id=$1 AND active=1 AND ends_on>=$2 AND starts_on<=$3`, [owner, from, end]),
-      pool.query(`SELECT code,room_type FROM rooms WHERE owner_id=$1 AND active=1`, [owner]),
+      pool.query(`SELECT code,room_type,base_rate_cents FROM rooms WHERE owner_id=$1 AND active=1`, [owner]),
     ]);
+    const seasonRules = pushRates ? (await pool.query(`SELECT id,room_type,room_codes,weekdays,starts_on,ends_on,price_cents,active,updated_at FROM rate_rules WHERE owner_id=$1 AND active=1 AND price_cents IS NOT NULL AND ends_on>=$2 AND starts_on<=$3`, [owner, today, end])).rows : [];
     const dates = []; for (let d = today; d <= end; d = addDays(d, 1)) dates.push(d);
     for (const m of plans) {
       const days = computeRestrictions({ dates, roomType: m.room_type, roomCodes: rooms.rows.filter((r) => r.room_type === m.room_type).map((r) => r.code), rateRules: rateRules.rows, minStayRules: minStayRules.rows, restrictions: restrictions.rows });
+      if (pushRates) {
+        const base = Math.max(0, ...rooms.rows.filter((r) => r.room_type === m.room_type).map((r) => Number(r.base_rate_cents) || 0));
+        for (const d of days) { const rate = otaRate(typeNightlyCents(seasonRules, d.date, m.room_type, base), markup); if (rate) d.rate = rate; }
+      }
       const sent = drift ? new Map() : new Map((await pool.query(`SELECT date,values_json FROM channel_restriction_state WHERE owner_id=$1 AND rate_plan_id=$2 AND date>=$3`, [owner, m.external_rate_plan_id, today])).rows.map((r) => [r.date, r.values_json]));
       const changed = days.filter((d) => sent.get(d.date) !== restrictionKey(d));
       if (!changed.length) continue;
@@ -214,6 +221,7 @@ try {
         );
         await pool.query(`DELETE FROM channel_restriction_state WHERE owner_id=$1 AND rate_plan_id=$2 AND date<$3`, [owner, m.external_rate_plan_id, today]);
         restrictionDays += changed.length;
+        if (pushRates) rateDays += changed.filter((d) => d.rate).length;
       } catch (error) {
         // Not stored as sent: the same dates are tried again next run.
         console.error("restrictions push failed", m.room_type, String(error));
@@ -224,7 +232,7 @@ try {
   }
 
   await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$2,NULL) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$2,last_error=NULL`, [owner, Date.now()]);
-  console.log(`Channel sync: ${due.length} availability range(s), ${restrictionDays} restriction day(s), ${imported} OTA revision(s) imported.`);
+  console.log(`Channel sync: ${due.length} availability range(s), ${restrictionDays} restriction day(s), ${rateDays} rate day(s), ${imported} OTA revision(s) imported.`);
 } catch (error) {
   await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_error) VALUES($1,$2,$3) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_error=$3`, [owner, Date.now(), String(error).slice(0, 500)]).catch(() => {});
   throw error;

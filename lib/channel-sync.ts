@@ -1,4 +1,7 @@
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { db } from "@/lib/db";
+import { documentKey, env } from "@/lib/env";
+import { decryptField, encryptField } from "@/lib/security/encryption";
 import { providerCredentials } from "@/lib/provider-connections";
 import { addDays, hotelToday } from "@/lib/tape-chart";
 import type { PoolClient } from "pg";
@@ -25,7 +28,8 @@ export async function channelStatus(ownerId: string) {
     db().query(`SELECT last_run_at,last_ok_at,last_error FROM channel_sync_state WHERE owner_id=$1`, [ownerId]),
   ]);
   const st = state.rows[0];
-  return { roomTypes: types.rows, mappings: mappings.rows, outbox: outbox.rows, imports: imports.rows, lastRun: st ? { at: st.last_run_at === null ? null : Number(st.last_run_at), okAt: st.last_ok_at === null ? null : Number(st.last_ok_at), error: st.last_error as string | null } : null };
+  const webhook = await channexWebhookInfo(ownerId);
+  return { webhook, roomTypes: types.rows, mappings: mappings.rows, outbox: outbox.rows, imports: imports.rows, lastRun: st ? { at: st.last_run_at === null ? null : Number(st.last_run_at), okAt: st.last_ok_at === null ? null : Number(st.last_ok_at), error: st.last_error as string | null } : null };
 }
 
 
@@ -113,4 +117,33 @@ export async function checkChannelConnection(ownerId: string): Promise<{ items: 
   const age = st?.last_ok_at ? Math.round((Date.now() - Number(st.last_ok_at)) / 60_000) : null;
   add("cron", age !== null && age <= 10, age === null ? "Ο συγχρονισμός (cron run-channel-sync.mjs) δεν έχει τρέξει ακόμη επιτυχώς." : `Τελευταία επιτυχής εκτέλεση πριν ${age}′${age > 10 ? " — ελέγξτε το cron (πρέπει να τρέχει κάθε λεπτό)" : ""}.${st?.last_error ? ` Τελευταίο σφάλμα: ${String(st.last_error).slice(0, 160)}` : ""}`);
   return { items, channexRoomTypes: remote, channexRatePlans: plans };
+}
+
+// ── Channex webhook ─────────────────────────────────────────────────────────────────────────────────────────────
+// Channex calls this link on booking events; the PMS then runs the channel sync at once instead of waiting for the
+// next cron minute. The secret token is made by the PMS (only its hash is compared).
+
+const tokenHash = (t: string) => createHash("sha256").update(t).digest("hex");
+export const channexWebhookUrl = (token: string) => `${env().BOOKING_ORIGIN}/api/webhooks/channex?token=${token}`;
+
+export async function newChannexWebhook(ownerId: string): Promise<string> {
+  const token = randomBytes(24).toString("base64url");
+  await db().query(`INSERT INTO channel_sync_state(owner_id,webhook_token_hash,webhook_token_encrypted) VALUES($1,$2,$3) ON CONFLICT(owner_id) DO UPDATE SET webhook_token_hash=$2,webhook_token_encrypted=$3`, [ownerId, tokenHash(token), encryptField(token, documentKey())]);
+  return channexWebhookUrl(token);
+}
+
+export async function channexWebhookInfo(ownerId: string): Promise<{ url: string | null; lastAt: number | null }> {
+  const r = (await db().query(`SELECT webhook_token_encrypted,last_webhook_at FROM channel_sync_state WHERE owner_id=$1`, [ownerId])).rows[0];
+  let url: string | null = null;
+  try { url = r?.webhook_token_encrypted ? channexWebhookUrl(decryptField(String(r.webhook_token_encrypted), documentKey())) : null; } catch { url = null; }
+  return { url, lastAt: r?.last_webhook_at ? Number(r.last_webhook_at) : null };
+}
+
+/** True when the token matches (and records the call). */
+export async function acceptChannexWebhook(ownerId: string, token: string): Promise<boolean> {
+  const r = (await db().query(`SELECT webhook_token_hash FROM channel_sync_state WHERE owner_id=$1`, [ownerId])).rows[0];
+  const stored = Buffer.from(String(r?.webhook_token_hash ?? "")), given = Buffer.from(tokenHash(token));
+  if (!r?.webhook_token_hash || stored.length !== given.length || !timingSafeEqual(stored, given)) return false;
+  await db().query(`UPDATE channel_sync_state SET last_webhook_at=$2 WHERE owner_id=$1`, [ownerId, Date.now()]);
+  return true;
 }

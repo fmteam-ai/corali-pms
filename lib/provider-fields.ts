@@ -7,7 +7,7 @@ export const providerFields = {
   mydata: { label: "ΑΑΔΕ / myDATA", settings: ["environment", "issuerVat", "branch", "receiptSeries", "invoiceSeries", "accommodationVatCategory", "extrasVatCategory", "climateTaxCategory"], secrets: ["username", "subscriptionKey", "providerToken"] },
   meta: { label: "Facebook / Instagram", settings: ["appId", "pageId", "instagramAccountId", "graphVersion"], secrets: ["appSecret", "pageAccessToken", "verifyToken"] },
   tiktok: { label: "TikTok", settings: ["clientKey"], secrets: ["clientSecret", "accessToken"] },
-  channelManager: { label: "Channel Manager (Channex)", settings: ["propertyCode", "providerName", "environment"], secrets: ["apiKey"] },
+  channelManager: { label: "Channel Manager (Channex)", settings: ["propertyCode", "providerName", "environment", "pushRates", "rateMarkupPercent"], secrets: ["apiKey"] },
   openai: { label: "OpenAI", settings: [], secrets: ["apiKey"] },
   anthropic: { label: "Anthropic (Claude) · AI assistant", settings: [], secrets: ["apiKey"] },
 } as const;

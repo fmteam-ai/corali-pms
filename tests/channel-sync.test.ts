@@ -76,3 +76,21 @@ test("restrictions sent to Channex follow the booking-engine rules", async () =>
   ] });
   assert.deepEqual(r.map((d) => [d.stop_sell, d.min_stay_through, d.closed_to_departure]), [[true, 1, false], [false, 1, false], [false, 4, false], [false, 1, true], [false, 1, false]]);
 });
+
+test("Channex rate follows the PMS season price for the room type (rules on single rooms are not used)", async () => {
+  const { typeNightlyCents, otaRate } = await import("../scripts/channel-core.mjs");
+  const { nightlyPrice } = await import("../lib/season-rates.ts");
+  const rules = [
+    { id: 1, room_type: null, room_codes: "[]", weekdays: "[]", starts_on: "2026-07-01", ends_on: "2026-08-31", price_cents: 12000, active: 1, updated_at: 1 },
+    { id: 2, room_type: "Double", room_codes: "[]", weekdays: "[]", starts_on: "2026-08-01", ends_on: "2026-08-15", price_cents: 15000, active: 1, updated_at: 1 },
+    { id: 3, room_type: null, room_codes: '["102"]', weekdays: "[]", starts_on: "2026-08-01", ends_on: "2026-08-31", price_cents: 99000, active: 1, updated_at: 2 },
+  ];
+  for (const [date, type] of [["2026-06-30", "Double"], ["2026-07-10", "Double"], ["2026-08-05", "Double"], ["2026-08-05", "Single"], ["2026-08-20", "Double"]]) {
+    assert.equal(typeNightlyCents(rules, date, type, 8000), nightlyPrice(rules.filter((r) => r.id !== 3), date, type, null, 8000), `${date} ${type}`);
+  }
+  assert.equal(typeNightlyCents(rules, "2026-08-05", "Double", 8000), 15000);
+  assert.equal(otaRate(15000, 0), "150.00");
+  assert.equal(otaRate(15000, 15), "172.50");
+  assert.equal(otaRate(10000, 500), "200.00");
+  assert.equal(otaRate(0, 10), null);
+});

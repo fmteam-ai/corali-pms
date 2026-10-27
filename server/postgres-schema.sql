@@ -1742,3 +1742,7 @@ CREATE TABLE IF NOT EXISTS "assistant_actions" (
 CREATE INDEX IF NOT EXISTS "idx_assistant_actions_owner" ON "assistant_actions" ("owner_id", "status", "created_at");
 -- v104: the hotel's own photo for the digital key (cut to the Apple strip and the Google hero sizes, PNG base64).
 ALTER TABLE access_card_settings ADD COLUMN IF NOT EXISTS wallet_images_json TEXT;
+-- v107: Channex webhook (booking events start a sync at once) with a PMS-made secret link; rates go to Channex.
+ALTER TABLE channel_sync_state ADD COLUMN IF NOT EXISTS webhook_token_hash TEXT;
+ALTER TABLE channel_sync_state ADD COLUMN IF NOT EXISTS webhook_token_encrypted TEXT;
+ALTER TABLE channel_sync_state ADD COLUMN IF NOT EXISTS last_webhook_at BIGINT;
