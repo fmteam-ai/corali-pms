@@ -1824,3 +1824,34 @@ CREATE TABLE IF NOT EXISTS auto_price_days (
  reasons TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(owner_id,room_type,stay_date)
 );
+
+-- v108: room air conditioners on a Shelly relay (e.g. 1PM Gen4) — power only while a guest is checked in, plus manual
+-- on/off from the PMS (held while the room's occupancy is unchanged; 3 hours for an empty room).
+CREATE TABLE IF NOT EXISTS room_ac_devices (
+ owner_id TEXT NOT NULL,
+ room_id BIGINT NOT NULL,
+ device_id TEXT NOT NULL,
+ channel BIGINT NOT NULL DEFAULT 0,
+ state BIGINT,
+ changed_at BIGINT,
+ error TEXT NOT NULL DEFAULT '',
+ override_on BIGINT,
+ override_occupied BIGINT,
+ override_until BIGINT,
+ override_by TEXT,
+ updated_at BIGINT NOT NULL,
+ PRIMARY KEY(owner_id,room_id)
+);
+ALTER TABLE room_ac_devices ADD COLUMN IF NOT EXISTS presence_device_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE room_ac_devices ADD COLUMN IF NOT EXISTS presence_now BIGINT;
+ALTER TABLE room_ac_devices ADD COLUMN IF NOT EXISTS presence_seen_at BIGINT;
+ALTER TABLE room_ac_devices ADD COLUMN IF NOT EXISTS presence_checked_at BIGINT;
+ALTER TABLE room_ac_devices ADD COLUMN IF NOT EXISTS occupied BIGINT;
+-- Short-lived provider tokens (e.g. Tuya Cloud access token), encrypted.
+CREATE TABLE IF NOT EXISTS provider_tokens (
+ owner_id TEXT NOT NULL,
+ provider_key TEXT NOT NULL,
+ token_encrypted TEXT NOT NULL,
+ expires_at BIGINT NOT NULL,
+ PRIMARY KEY(owner_id,provider_key)
+);

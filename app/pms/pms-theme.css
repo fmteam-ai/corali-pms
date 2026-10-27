@@ -573,3 +573,8 @@ body:has(.pms){background:#f2f4f6}
 .asIcon{font-size:26px;width:46px;height:46px;display:grid;place-items:center;border-radius:12px;background:var(--surface-2,#f1f4f6)}
 .asState{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:#eef1f4;color:#475467}.asState.st-on{background:#dcf3e6;color:#1f7a4d}.asState.st-partial{background:#fff3cd;color:#8a6100}
 .apPage>.card,.asPage .card{max-width:none;width:100%}
+.acPage{display:grid;gap:16px}.acPage>.card{max-width:none;width:100%}.acHead{display:grid;gap:8px}
+.acTable td{vertical-align:middle}.acTable tr.occ td:first-child{box-shadow:inset 3px 0 0 #1f7a4d}.acId{width:170px;font-family:ui-monospace,monospace;font-size:13px}
+.acHelp ol{margin:6px 0 0;padding-left:20px;display:grid;gap:6px}
+@media(max-width:800px){.acTable thead{display:none}.acTable tr{display:grid;padding:8px 0;border-top:1px solid var(--line,#e3e8ec)}.acTable td{border:0;padding:3px 4px}}
+.acPresence{display:grid;gap:6px;padding:10px 12px;border:1px dashed var(--line,#d6dde3);border-radius:12px}.acPresence input[type=number]{width:72px}

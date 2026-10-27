@@ -27,6 +27,7 @@ const CATALOG: Def[] = [
   { key: "accesscards", icon: "🔑", name: "Digital keys (Wallet)", category: "guest", el: "Ψηφιακό κλειδί δωματίου σε Apple / Google Wallet, αυτόματα την προηγούμενη της άφιξης.", en: "Room key in Apple / Google Wallet, sent automatically the day before arrival.", href: "/pms/access-cards", check: (s) => (s.json.get("accesscards")?.enabled ? "on" : "off") },
   { key: "tv", icon: "📺", name: "Corali TV", category: "devices", el: "Οθόνη καλωσορίσματος, κανάλια, μηνύματα και αιτήματα από την τηλεόραση.", en: "Welcome screen, channels, messages and requests on the room TV.", href: "/pms/tv", check: count("tvScreens") },
   { key: "shelly", icon: "🔌", name: "Shelly smart plugs", category: "devices", el: "Ενεργοποίηση / απενεργοποίηση τηλεοράσεων με έξυπνη πρίζα.", en: "Switch TVs on and off with a smart plug.", href: "/pms/tv", check: count("shelly") },
+  { key: "roomac", icon: "❄️", name: "A/C control (Shelly + Tuya)", category: "devices", el: "Το κλιματιστικό έχει ρεύμα μόνο με πελάτη στο δωμάτιο (check-in και, με αισθητήρα παρουσίας, όταν είναι μέσα).", en: "The A/C has power only with a guest in the room (checked in and, with a presence sensor, actually inside).", href: "/pms/room-ac", check: count("roomAc") },
   { key: "staff", icon: "🧹", name: "Corali Staff app", category: "devices", el: "Εφαρμογή προσωπικού: καθαριότητα, βλάβες, βάρδιες, ειδοποιήσεις.", en: "Staff app: housekeeping, defects, shifts, notifications.", href: "/pms/staff", check: count("staffPush") },
   { key: "claude", icon: "🤖", name: "AI assistant (Claude)", category: "ai", el: "Βοηθός PMS που προτείνει και εκτελεί ενέργειες με έγκριση, AI τιμολόγηση και μηνύματα.", en: "PMS assistant that proposes actions for approval, AI pricing and messages.", href: "/pms/integrations", check: provider("anthropic") },
   { key: "api", icon: "🛠️", name: "Open API & webhooks", category: "partners", el: "Κλειδιά API με δικαιώματα και webhooks για δικά σας συστήματα.", en: "Scoped API keys and webhooks for your own systems.", href: "/pms/api", check: (s) => ((s.counts.apiKeys ?? 0) + (s.counts.webhooks ?? 0) > 0 ? "on" : "off") },
@@ -42,7 +43,7 @@ const empty: Rows = { rows: [] };
 
 export async function appStore(ownerId: string): Promise<AppEntry[]> {
   const q = (sql: string) => safe(db().query(sql, [ownerId]), empty);
-  const [providers, auto, cards, widgets, autom, comp, depts, tvs, shelly, push, keys, hooks] = await Promise.all([
+  const [providers, auto, cards, widgets, autom, comp, depts, tvs, shelly, push, keys, hooks, roomAc] = await Promise.all([
     q(`SELECT provider_key,active FROM provider_connections WHERE owner_id=$1`),
     q(`SELECT settings_json FROM auto_pricing_settings WHERE owner_id=$1`),
     q(`SELECT settings_json FROM access_card_settings WHERE owner_id=$1`),
@@ -55,13 +56,14 @@ export async function appStore(ownerId: string): Promise<AppEntry[]> {
     q(`SELECT count(*) n FROM push_subscriptions WHERE owner_id=$1`),
     q(`SELECT scopes_json FROM api_keys WHERE owner_id=$1 AND revoked_at IS NULL`),
     q(`SELECT count(*) n FROM api_webhooks WHERE owner_id=$1 AND active=1`),
+    q(`SELECT count(*) n FROM room_ac_devices WHERE owner_id=$1`),
   ]);
   const parse = (r: { rows: Record<string, unknown>[] }) => { try { return JSON.parse(String(r.rows[0]?.settings_json ?? "{}")) as Record<string, unknown>; } catch { return {}; } };
   const scopes = keys.rows.map((k) => { try { return JSON.parse(String(k.scopes_json)) as string[]; } catch { return []; } });
   const s: Signals = {
     providers: new Map(providers.rows.map((p) => [String(p.provider_key), Number(p.active) === 1])),
     json: new Map([["autopricing", parse(auto)], ["accesscards", parse(cards)]]),
-    counts: { widgets: one(widgets), automations: one(autom), competitors: one(comp), departments: one(depts), tvScreens: one(tvs), shelly: one(shelly), staffPush: one(push), apiKeys: keys.rows.length, webhooks: one(hooks), posKeys: scopes.filter((x) => x.includes("folio.write")).length, accountingKeys: scopes.filter((x) => x.includes("accounting.read")).length },
+    counts: { widgets: one(widgets), automations: one(autom), competitors: one(comp), departments: one(depts), tvScreens: one(tvs), shelly: one(shelly), staffPush: one(push), apiKeys: keys.rows.length, webhooks: one(hooks), roomAc: one(roomAc), posKeys: scopes.filter((x) => x.includes("folio.write")).length, accountingKeys: scopes.filter((x) => x.includes("accounting.read")).length },
   };
   return CATALOG.map(({ check, ...a }) => ({ ...a, state: check(s) }));
 }

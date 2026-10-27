@@ -24,7 +24,7 @@ test("Shelly server, device id and settings are validated", () => {
   assert.equal(validDeviceId("e4b063f0c38c"), true);
   assert.equal(validDeviceId("bad id"), false);
   assert.deepEqual(normalizePowerSettings({ enabled: true, server: "shelly-77-eu.shelly.cloud", onTime: "25:00", autoOff: false }),
-    { enabled: true, server: "https://shelly-77-eu.shelly.cloud", onTime: "13:00", autoOn: true, autoOff: false });
+    { enabled: true, server: "https://shelly-77-eu.shelly.cloud", onTime: "13:00", autoOn: true, autoOff: false, acEnabled: false, acPresence: false, acAwayMinutes: 20 });
   assert.equal(normalizePowerSettings(null).enabled, false);
 });
 
@@ -48,4 +48,45 @@ test("Urgent wake through the plug: on when off, power-cycle a TV in standby, le
   assert.equal(wakeAction({ online: true, on: true, power: 72 }), "none");
   assert.equal(wakeAction({ online: true, on: true, power: null }), "none", "no power meter: do not cut the power");
   assert.equal(wakeAction({ online: false, on: false, power: null }), "none");
+});
+
+test("room A/C has power only while a guest is checked in, unless staff switched it by hand", async () => {
+  const { acTarget, acOverride, AC_MANUAL_EMPTY_MS } = await import("../scripts/tv-power-core.mjs");
+  const now = 1_800_000_000_000;
+  assert.equal(acTarget(true, null, now), true);
+  assert.equal(acTarget(false, null, now), false);
+  const offWhileIn = acOverride(false, true, now);
+  assert.equal(acTarget(true, offWhileIn, now + 3_600_000), false); // staff turned it off, guest still in
+  assert.equal(acTarget(false, offWhileIn, now + 3_600_000), false); // checked out: back to automatic (off)
+  const coolBeforeArrival = acOverride(true, false, now);
+  assert.equal(coolBeforeArrival.until, now + AC_MANUAL_EMPTY_MS);
+  assert.equal(acTarget(false, coolBeforeArrival, now + 60_000), true);
+  assert.equal(acTarget(false, coolBeforeArrival, now + AC_MANUAL_EMPTY_MS + 1), false); // expired
+  assert.equal(acTarget(true, coolBeforeArrival, now + 60_000), true); // guest arrived: automatic (on)
+});
+
+test("with a presence sensor the A/C is cut only after nobody was seen for the away time", async () => {
+  const { acTarget, acOverride, PRESENCE_STALE_MS } = await import("../scripts/tv-power-core.mjs");
+  const now = 1_800_000_000_000, away = 20 * 60_000;
+  assert.equal(acTarget(true, null, now, { seenAt: now - 5 * 60_000, checkedAt: now - 30_000, awayMs: away }), true);
+  assert.equal(acTarget(true, null, now, { seenAt: now - 25 * 60_000, checkedAt: now - 30_000, awayMs: away }), false);
+  assert.equal(acTarget(true, null, now, { seenAt: now - 25 * 60_000, checkedAt: now - PRESENCE_STALE_MS - 1, awayMs: away }), true, "old readings keep it on");
+  assert.equal(acTarget(false, null, now, { seenAt: now, checkedAt: now, awayMs: away }), false, "no guest, no A/C");
+  assert.equal(acTarget(true, acOverride(true, true, now - 60_000), now, { seenAt: 0, checkedAt: now, awayMs: away }), true, "staff choice wins");
+});
+
+test("Tuya presence data points and request signature", async () => {
+  const { presenceFromStatus, tuyaHeaders, tuyaSign } = await import("../scripts/tuya-core.mjs");
+  const { createHash, createHmac } = await import("node:crypto");
+  assert.equal(presenceFromStatus([{ code: "presence_state", value: "presence" }, { code: "illuminance_value", value: 80 }]), true);
+  assert.equal(presenceFromStatus([{ code: "presence_state", value: "none" }]), false);
+  assert.equal(presenceFromStatus([{ code: "human_motion_state", value: "small_move" }]), true);
+  assert.equal(presenceFromStatus([{ code: "presence", value: false }]), false);
+  assert.equal(presenceFromStatus([{ code: "battery", value: 90 }]), null);
+  assert.equal(presenceFromStatus(null), null);
+  const sts = ["GET", createHash("sha256").update("").digest("hex"), "", "/v1.0/token?grant_type=1"].join("\n");
+  assert.equal(tuyaSign({ accessId: "id", secret: "sec", t: "1700000000000", method: "GET", path: "/v1.0/token?grant_type=1" }), createHmac("sha256", "sec").update(`id1700000000000${sts}`).digest("hex").toUpperCase());
+  const h = tuyaHeaders({ accessId: "id", secret: "sec", token: "tok", method: "GET", path: "/x", t: "1" });
+  assert.equal(h.access_token, "tok");
+  assert.equal(h.sign_method, "HMAC-SHA256");
 });

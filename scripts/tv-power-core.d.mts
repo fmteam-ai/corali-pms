@@ -1,5 +1,5 @@
 export type PowerStay = { status: string; check_in: string; check_out: string };
-export type PowerSettings = { enabled: boolean; server: string; onTime: string; autoOn: boolean; autoOff: boolean };
+export type PowerSettings = { enabled: boolean; server: string; onTime: string; autoOn: boolean; autoOff: boolean; acEnabled: boolean; acPresence: boolean; acAwayMinutes: number };
 export declare function desiredPower(stays: PowerStay[], today: string, time: string, onTime: string): boolean;
 export declare function shellyServer(input: unknown): string;
 export declare function validDeviceId(id: unknown): boolean;
@@ -11,3 +11,9 @@ export type PlugState = { online: boolean; on: boolean | null; power: number | n
 export declare function deviceState(device: unknown, channel?: number): PlugState;
 export declare const STANDBY_WATTS: number;
 export declare function wakeAction(state: PlugState): "on" | "cycle" | "none";
+export type AcOverride = { on: boolean; occupied: boolean; until: number };
+export declare const AC_MANUAL_EMPTY_MS: number;
+export type AcPresence = { seenAt: number; checkedAt: number; awayMs: number };
+export declare const PRESENCE_STALE_MS: number;
+export declare function acTarget(occupied: boolean, override: AcOverride | null, now: number, presence?: AcPresence | null): boolean;
+export declare function acOverride(on: boolean, occupied: boolean, now: number): AcOverride;

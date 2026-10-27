@@ -10,6 +10,7 @@ export const providerFields = {
   channelManager: { label: "Channel Manager (Channex)", settings: ["propertyCode", "providerName", "environment", "pushRates", "rateMarkupPercent"], secrets: ["apiKey"] },
   openai: { label: "OpenAI", settings: [], secrets: ["apiKey"] },
   anthropic: { label: "Anthropic (Claude) · AI assistant", settings: [], secrets: ["apiKey"] },
+  tuya: { label: "Tuya / Smart Life · αισθητήρες παρουσίας", settings: ["dataCenter"], secrets: ["accessId", "accessSecret"] },
 } as const;
 export type ProviderKey = keyof typeof providerFields;
 export const providerKeySchema = z.enum(Object.keys(providerFields) as [ProviderKey, ...ProviderKey[]]);

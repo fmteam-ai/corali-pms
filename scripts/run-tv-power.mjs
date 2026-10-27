@@ -1,4 +1,5 @@
-// Corali TV power worker (PMS instance only, cPanel cron every 5 minutes). For each room with a Shelly plug, applies the
+// Corali TV and A/C power worker (PMS instance only, cPanel cron every 5 minutes). Room A/C relays first (see
+// room-ac-worker.mjs). For each room with a TV plug, applies the
 // automatic rule (on from the switch-on time of the arrival day while a stay is confirmed / checked in, off after
 // check-out) when that decision changed since the last automatic switch.
 import process from "node:process";
@@ -6,6 +7,7 @@ import { createDecipheriv, createHash } from "node:crypto";
 import pg from "pg";
 import { databaseSsl } from "./database-config.mjs";
 import { desiredPower, normalizePowerSettings, switchError, switchRequest } from "./tv-power-core.mjs";
+import { runRoomAc } from "./room-ac-worker.mjs";
 
 if (!process.env.DATABASE_URL || !process.env.PMS_DOCUMENT_KEY) throw Error("TV power requires DATABASE_URL and PMS_DOCUMENT_KEY");
 const owner = process.env.PMS_OWNER_ID ?? "hotel-corali";
@@ -27,6 +29,9 @@ try {
   let raw = null;
   try { raw = s ? JSON.parse(s.settings_json) : null; } catch { raw = null; }
   const settings = normalizePowerSettings(raw);
+  // Room air conditioners: power only while a guest is checked in / present (see room-ac-worker.mjs).
+  const ac = await runRoomAc({ pool, owner, unseal }).catch((e) => { console.error("A/C power failed", e); return null; });
+  if (ac) console.log(`A/C power: ${ac.rooms} rooms checked, ${ac.switched} switched${ac.failed ? `, ${ac.failed} failed` : ""}`);
   if (!settings.enabled || !settings.server || !s?.auth_key_encrypted) {
     console.log("TV power: automation off or Shelly not configured");
   } else {

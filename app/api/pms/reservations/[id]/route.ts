@@ -12,6 +12,7 @@ import { assertTrustedOrigin } from "@/lib/security/origin";
 import { cancellationPayload, queueGuestMessage } from "@/lib/guest-messages";
 import { hotelToday } from "@/lib/tape-chart";
 import { syncRoomPower } from "@/lib/tv-power";
+import { syncAc } from "@/lib/room-ac";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -77,6 +78,8 @@ async function handlePATCH(request: Request, context: { params: Promise<{ id: st
     });
     // Corali TV power (Shelly plug): on at check-in, off at check-out. Never delays or fails the reservation change.
     if((input.action==="check_in"||input.action==="check_out")&&updated?.room_id)void syncRoomPower(user.ownerId,Number(updated.room_id)).catch((e)=>console.error("TV power sync failed",e));
+    // Room A/C (Shelly relay): power only while the guest is checked in.
+    if((input.action==="check_in"||input.action==="check_out")&&updated?.room_id)void syncAc(user.ownerId,[Number(updated.room_id)]).catch((e)=>console.error("A/C power sync failed",e));
     // Housekeeping phones: the room is free to clean.
     if(input.action==="check_out"&&updated?.room_id)void alertCheckout(user.ownerId,Number(updated.room_id));
     return Response.json({ok:true,booking:updated});

@@ -34,7 +34,36 @@ export function normalizePowerSettings(raw) {
     onTime: HHMM.test(String(x.onTime ?? "")) ? String(x.onTime) : "13:00",
     autoOn: x.autoOn !== false && x.autoOn !== 0,
     autoOff: x.autoOff !== false && x.autoOff !== 0,
+    // Room air conditioners on their own Shelly relay (e.g. 1PM Gen4): power only while a guest is checked in.
+    acEnabled: x.acEnabled === true || x.acEnabled === 1,
+    // With a presence sensor (Tuya mmWave): cut the A/C when nobody has been in the room for this many minutes.
+    acPresence: x.acPresence === true || x.acPresence === 1,
+    acAwayMinutes: Number.isFinite(Number(x.acAwayMinutes)) && x.acAwayMinutes !== "" && x.acAwayMinutes !== null ? Math.min(240, Math.max(5, Math.round(Number(x.acAwayMinutes)))) : 20,
   };
+}
+
+/** Manual on/off from the PMS for an empty room lasts this long; for an occupied room, until check-in / check-out. */
+export const AC_MANUAL_EMPTY_MS = 3 * 3_600_000;
+
+/**
+ * Should the room's A/C have power? Only while a guest is checked in, unless staff switched it by hand from the PMS:
+ * that choice holds while the occupancy is the same as when it was made and the override has not expired.
+ * override: { on, occupied, until } or null; presence: { seenAt, checkedAt, awayMs } from the room's sensor, or null.
+ */
+export function acTarget(occupied, override, now, presence = null) {
+  if (override && override.until > now && override.occupied === occupied) return override.on;
+  if (!occupied) return false;
+  // Presence sensor: off when nobody was seen for awayMs. Old or missing readings never cut the guest's A/C.
+  if (presence && presence.checkedAt > now - PRESENCE_STALE_MS) return presence.seenAt >= now - presence.awayMs;
+  return true;
+}
+
+/** Sensor readings older than this are ignored (the A/C stays on). */
+export const PRESENCE_STALE_MS = 10 * 60_000;
+
+/** The manual override to store when staff switch a room's A/C from the PMS. */
+export function acOverride(on, occupied, now) {
+  return { on, occupied, until: now + (occupied ? 30 * 86_400_000 : AC_MANUAL_EMPTY_MS) };
 }
 
 export function switchRequest(server, authKey, id, channel, on) {
