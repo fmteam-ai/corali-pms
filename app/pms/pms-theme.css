@@ -534,3 +534,10 @@ body:has(.pms){background:#f2f4f6}
 .akCode{margin:0;padding:12px;border-radius:8px;background:#0f2f37;color:#e8f3f5;font-size:12px;overflow-x:auto;white-space:pre}
 @media(max-width:700px){.akForm .formGrid{grid-template-columns:1fr}.akCard{grid-template-columns:1fr}}
 .akCsr{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 12px;border-radius:8px;background:var(--surface-2)}.akCsr span{flex:1;min-width:200px;font-weight:600}
+/* AI assistant proposals (v104): approve / reject cards under the answer */
+.aiAction{justify-self:stretch;display:grid;gap:6px;padding:9px 11px;border-radius:10px;border:1px solid #f0c674;background:#fff8e6;font-size:13px}
+.aiAction>span:first-child{font-weight:600}
+.aiActionBtns{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.aiActionBtns button{padding:5px 12px;font-size:13px}
+.aiAction.st-done{border-color:#7cc49b;background:#effaf3}.aiAction.st-rejected{border-color:var(--border);background:var(--surface-2);opacity:.75}.aiAction.st-failed{border-color:#e6a0a0;background:#fdecea}
+.aiActionState{font-size:12px}

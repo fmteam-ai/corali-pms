@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { pmsLocale, pmsStatus, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 import { AiText } from "../ai-text";
@@ -296,9 +296,36 @@ export function Notifications({ t, lang, items }: { t: T; lang: PmsLang; items: 
   return items.length ? <ul className="wList">{items.slice(0, 8).map((n) => <li key={n.key} className={n.read ? "read" : undefined}>{n.link ? <Link href={n.link}>{n.title}</Link> : <span>{n.title}</span>}<small>{new Date(Number(n.created_at)).toLocaleString(pmsLocale(lang), { dateStyle: "short", timeStyle: "short" })}</small></li>)}</ul> : <p className="muted">{t("w.none")}</p>;
 }
 
-/** AI assistant for staff: questions about today's operations, guest reply drafts. Read-only. */
+type AiAction = { id: number; type: string; summary: string; status: string; result: string; allowed: boolean };
+
+/** A proposal of the assistant: what will happen, and Approve / Reject (Approve only for staff with the permission). */
+function AiActionCard({ t, lang, a, onChange }: { t: T; lang: PmsLang; a: AiAction; onChange: (a: AiAction) => void }) {
+  const [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  async function decide(approve: boolean) {
+    setBusy(true); setErr("");
+    try {
+      const r = await fetch("/api/pms/assistant/actions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: a.id, approve, lang }) });
+      const d = await r.json().catch(() => ({}));
+      if (d.actions?.[0]) onChange(d.actions[0]); else setErr(t(d.error === "FORBIDDEN" ? "ai.act.forbidden" : d.error === "NOT_PENDING" ? "ai.act.handled" : "ai.error"));
+    } finally { setBusy(false); }
+  }
+  return (
+    <div className={`aiAction st-${a.status}`}>
+      <span>{a.summary}</span>
+      {a.status === "pending" ? (
+        <span className="aiActionBtns">
+          {a.allowed ? <button type="button" className="primaryAction" disabled={busy} onClick={() => void decide(true)}>✓ {t("ai.act.approve")}</button> : <small className="muted">{t("ai.act.noPermission")}</small>}
+          <button type="button" className="secondaryButton" disabled={busy} onClick={() => void decide(false)}>{t("ai.act.reject")}</button>
+        </span>
+      ) : <b className="aiActionState">{t(a.status === "done" ? "ai.act.done" : a.status === "rejected" ? "ai.act.rejected" : a.status === "failed" ? "ai.act.failed" : "ai.act.running")}{a.status === "failed" && a.result ? ` · ${a.result}` : ""}</b>}
+      {err && <small className="error">{err}</small>}
+    </div>
+  );
+}
+
+/** AI assistant for staff: questions about today's operations, guest reply drafts, and actions it proposes for approval. */
 export function AiAssistant({ t, lang }: { t: T; lang: PmsLang }) {
-  const [turns, setTurns] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [turns, setTurns] = useState<{ role: "user" | "assistant"; content: string; actions?: AiAction[] }[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const suggestions = [t("ai.s.arrivals"), t("ai.s.occupancy"), t("ai.s.balances"), t("ai.s.reply"), t("ai.s.prices")];
@@ -308,16 +335,21 @@ export function AiAssistant({ t, lang }: { t: T; lang: PmsLang }) {
     const next = [...turns, { role: "user" as const, content: q.slice(0, 4000) }];
     setTurns(next); setText(""); setBusy(true);
     try {
-      const r = await fetch("/api/pms/assistant", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lang, messages: next }) });
+      const r = await fetch("/api/pms/assistant", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lang, messages: next.map(({ role, content }) => ({ role, content })) }) });
       const d = await r.json().catch(() => ({}));
-      setTurns([...next, { role: "assistant", content: r.ok && d.reply ? String(d.reply) : t("ai.error") }]);
+      setTurns([...next, { role: "assistant", content: r.ok && d.reply ? String(d.reply) : t("ai.error"), actions: Array.isArray(d.actions) ? d.actions : [] }]);
     } catch { setTurns([...next, { role: "assistant", content: t("ai.error") }]); } finally { setBusy(false); }
   }
   return (
     <div className="aiWidget">
       <div className="aiLog" aria-live="polite">
         {turns.length === 0 && <div className="aiEmpty"><span aria-hidden="true">💬</span><p>{t("ai.empty")}</p><div className="aiChips">{suggestions.map((s) => <button key={s} type="button" onClick={() => ask(s)}>{s}</button>)}</div></div>}
-        {turns.map((m, i) => <p key={i} className={`aiMsg ${m.role}`}>{m.role === "assistant" ? <AiText text={m.content} /> : m.content}</p>)}
+        {turns.map((m, i) => (
+          <Fragment key={i}>
+            <p className={`aiMsg ${m.role}`}>{m.role === "assistant" ? <AiText text={m.content} /> : m.content}</p>
+            {m.actions?.map((a) => <AiActionCard key={a.id} t={t} lang={lang} a={a} onChange={(x) => setTurns((all) => all.map((turn, j) => (j === i ? { ...turn, actions: turn.actions?.map((y) => (y.id === x.id ? x : y)) } : turn)))} />)}
+          </Fragment>
+        ))}
         {busy && <p className="aiMsg assistant aiTyping"><span /><span /><span /></p>}
       </div>
       <form onSubmit={(e) => { e.preventDefault(); void ask(text); }}>

@@ -1723,3 +1723,20 @@ CREATE TABLE IF NOT EXISTS "access_card_events" (
   "created_at" BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS "idx_access_card_events_owner" ON "access_card_events" ("owner_id", "created_at");
+
+-- v104: actions the PMS AI assistant proposes; they run only when a staff member with the right permission approves.
+CREATE TABLE IF NOT EXISTS "assistant_actions" (
+  "id" BIGSERIAL PRIMARY KEY,
+  "owner_id" TEXT NOT NULL,
+  "proposed_for" BIGINT NOT NULL,
+  "type" TEXT NOT NULL,
+  "payload_json" TEXT NOT NULL,
+  "summary_el" TEXT NOT NULL,
+  "summary_en" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'pending',
+  "result" TEXT NOT NULL DEFAULT '',
+  "decided_by" BIGINT,
+  "decided_at" BIGINT,
+  "created_at" BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "idx_assistant_actions_owner" ON "assistant_actions" ("owner_id", "status", "created_at");

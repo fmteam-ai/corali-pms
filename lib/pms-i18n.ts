@@ -1978,6 +1978,15 @@ const el = {
   "ak.appleCert": "Βήμα 2: πιστοποιητικό Pass Type ID από την Apple (.cer)",
   "ak.err.APPLE_CERTIFICATE_MISMATCH": "Το .cer δεν αντιστοιχεί στο κλειδί του PMS — φτιάξτε το πιστοποιητικό με το CSR που κατεβάσατε από εδώ.",
   "ak.err.APPLE_NO_KEY": "Δημιουργήστε πρώτα το αίτημα (CSR).",
+  "ai.act.approve": "Έγκριση",
+  "ai.act.reject": "Απόρριψη",
+  "ai.act.done": "✓ Εκτελέστηκε",
+  "ai.act.rejected": "Απορρίφθηκε",
+  "ai.act.failed": "⚠️ Απέτυχε",
+  "ai.act.running": "Εκτελείται…",
+  "ai.act.noPermission": "Χρειάζεται έγκριση από συνάδελφο με δικαίωμα",
+  "ai.act.forbidden": "Δεν έχετε δικαίωμα να εγκρίνετε αυτή την ενέργεια.",
+  "ai.act.handled": "Η ενέργεια έχει ήδη εγκριθεί ή απορριφθεί.",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -3952,6 +3961,15 @@ const en: Record<PmsKey, string> = {
   "ak.appleCert": "Step 2: Pass Type ID certificate from Apple (.cer)",
   "ak.err.APPLE_CERTIFICATE_MISMATCH": "The .cer does not match the PMS key — create the certificate with the CSR downloaded here.",
   "ak.err.APPLE_NO_KEY": "Create the request (CSR) first.",
+  "ai.act.approve": "Approve",
+  "ai.act.reject": "Reject",
+  "ai.act.done": "✓ Done",
+  "ai.act.rejected": "Rejected",
+  "ai.act.failed": "⚠️ Failed",
+  "ai.act.running": "Running…",
+  "ai.act.noPermission": "Needs approval by a colleague with permission",
+  "ai.act.forbidden": "You do not have permission to approve this action.",
+  "ai.act.handled": "This action was already approved or rejected.",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

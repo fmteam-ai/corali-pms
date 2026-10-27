@@ -548,3 +548,6 @@
 .pms[data-theme="dark"] .akState.st-active{background:hsl(143 19% 20%);color:hsl(145 46% 72%)}
 .pms[data-theme="dark"] .akState.st-scheduled{background:hsl(212 35% 20%);color:hsl(210 67% 72%)}
 .pms[data-theme="dark"] .akState.st-revoked{background:hsl(6 41% 20%);color:hsl(3 71% 72%)}
+.pms[data-theme="dark"] .aiAction{background:hsl(43 45% 20%)}
+.pms[data-theme="dark"] .aiAction.st-done{background:hsl(142 26% 20%)}
+.pms[data-theme="dark"] .aiAction.st-failed{border-color:hsl(0 35% 31%);background:hsl(6 41% 20%)}

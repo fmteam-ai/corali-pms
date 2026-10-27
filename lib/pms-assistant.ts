@@ -2,12 +2,15 @@
 // users allowed to see it); it cannot change anything. Claude when an Anthropic key is configured, otherwise the
 // built-in answers in lib/pms-assistant-core.
 import Anthropic from "@anthropic-ai/sdk";
+import { proposeActionsTool } from "@/lib/assistant-actions-core";
+import { proposeActions, type ProposedAction } from "@/lib/assistant-actions";
+import type { CurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { builtInAnswer, snapshotText, type PmsSnapshot, type StayRow } from "@/lib/pms-assistant-core";
 import { monthlyRows } from "@/lib/pricing-ai-core";
 import { loadDays } from "@/lib/pricing-ai";
 import { anthropicApiKey } from "@/lib/provider-connections";
-import { apiErrorText, responseText, withWebSearch } from "@/lib/web-research";
+import { apiErrorText, responseText, webSearchTool, withWebSearch, type WebSource } from "@/lib/web-research";
 import { hotelToday } from "@/lib/tape-chart";
 
 export const PMS_ASSISTANT_MODEL = "claude-opus-5-5";
@@ -44,7 +47,7 @@ export async function loadSnapshot(ownerId: string, financial: boolean): Promise
 const RULES = `You are the AI assistant inside the PMS (property management system) of Hotel Corali, a small family hotel in Piso Livadi, Paros, Greece. You help the owner and the front desk.
 - Answer in the language the staff member writes in (usually Greek or English). Be concise and practical; short lists are fine. Formatting: plain text with **bold** and "- " lists only (no tables).
 - Use only the data snapshot below; it is live data for today. If something isn't in it, say so and suggest where in the PMS to look (Reservations, Room plan, Reports, Payments, Housekeeping).
-- You cannot change bookings, prices or any data; tell staff which PMS screen does it.
+- You never change data yourself. When the staff member asks you to DO something you can do with the propose_actions tool (message a guest, message on room TVs, news/offer/happy hour to guests, report a defect, add a charge to a folio, set a period price, issue a digital key), call propose_actions with exact booking references / room codes from the data; staff approve it on a card under your answer. Propose only what was asked; for anything else tell staff which PMS screen does it. If a proposal is refused (unknown booking/room), say so and ask.
 - Pricing questions: use the PRICES & OCCUPANCY BY MONTH data (our current nightly rates per room category, occupancy on the books, last year's occupancy, rate-shopper competitor medians). For what other properties charge (e.g. similar hotels, studios and apartments in Piso Livadi, Logaras, Marpissa on Paros) use web search: Booking.com, Google Hotels, hotel websites. Give concrete € per night with the property names and where you found them; never invent prices; if dates that far ahead aren't published yet, use the same period of the current/last season as reference and say so. You may then propose prices per room category with short reasons, and point to Τιμές → Προτάσεις τιμολόγησης → «Πρόταση τιμών με AI» to apply them, or Τιμές → Τιμές περιόδου.
 - Don't search the web for anything about guests or bookings; web search is only for market, area and general information.
 - When asked, draft messages or emails to guests (warm, professional, in the guest's language); staff send them themselves.
@@ -59,7 +62,41 @@ async function pricingContext(ownerId: string, today: string): Promise<string> {
   return `PRICES & OCCUPANCY BY MONTH (room category: our average nightly rate now set | occupancy on the books | same month last year | rate-shopper competitor median)\n${rows.map((r) => `${r.month} ${r.roomType}: €${r.rateEur} | ${r.occupancy}% | ${r.lastYearOccupancy ?? "-"}% | ${r.compMedianEur === null ? "no rate-shopper data" : `€${r.compMedianEur} (${r.compNights} nights)`}`).join("\n") || "- no rooms"}`;
 }
 
-export async function staffAssistantReply(ownerId: string, financial: boolean, lang: "el" | "en", turns: StaffTurn[], pricing = true): Promise<{ reply: string; source: "ai" | "builtin" }> {
+/**
+ * Claude with web search and the propose_actions tool: proposals are stored (pending) for the staff member and the
+ * tool result tells Claude what was stored, so its answer can refer to the approval cards.
+ */
+async function withTools(client: Anthropic, params: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, "tools">, u: CurrentUser, web = true): Promise<{ text: string; sources: WebSource[]; actions: ProposedAction[] } | null> {
+  const messages = [...params.messages], sources = new Map<string, WebSource>(), actions: ProposedAction[] = [];
+  let text = "";
+  for (let round = 0; round < 6; round++) {
+    const response = await client.beta.messages.create({ ...params, messages, tools: web ? [webSearchTool(5), proposeActionsTool] : [proposeActionsTool] });
+    if (response.stop_reason === "refusal") return null;
+    const before = text.length;
+    for (const block of response.content) {
+      if (block.type === "web_search_tool_result" && Array.isArray(block.content)) for (const r of block.content) if (!sources.has(r.url)) sources.set(r.url, { title: r.title, url: r.url });
+      if (block.type === "text") text += block.text;
+    }
+    // Text from the next round (after the tool results) starts a new paragraph.
+    if (text.length > before && response.stop_reason === "tool_use") text += "\n\n";
+    if (response.stop_reason === "pause_turn") { messages.push({ role: "assistant", content: response.content }); continue; }
+    if (response.stop_reason !== "tool_use") break;
+    const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+    for (const block of response.content) {
+      if (block.type !== "tool_use" || block.name !== proposeActionsTool.name) continue;
+      const input = block.input as { actions?: unknown };
+      const list = Array.isArray(input?.actions) ? (input.actions as { type?: unknown }[]) : [];
+      const r = list.length ? await proposeActions(u, list) : { stored: [], errors: ["no actions given"] };
+      actions.push(...r.stored);
+      results.push({ type: "tool_result", tool_use_id: block.id, is_error: !r.stored.length, content: JSON.stringify({ proposed: r.stored.map((a) => ({ id: a.id, summary: a.summary, staff_can_approve: a.allowed })), refused: r.errors, note: "Pending: shown to the staff member with Approve / Reject buttons. Nothing has run yet." }) });
+    }
+    if (!results.length) break;
+    messages.push({ role: "assistant", content: response.content }, { role: "user", content: results });
+  }
+  return { text: text.trim(), sources: [...sources.values()].slice(0, 15), actions };
+}
+
+export async function staffAssistantReply(ownerId: string, financial: boolean, lang: "el" | "en", turns: StaffTurn[], pricing = true, user?: CurrentUser): Promise<{ reply: string; source: "ai" | "builtin"; actions?: ProposedAction[] }> {
   const snapshot = await loadSnapshot(ownerId, financial);
   const question = turns.filter((t) => t.role === "user").at(-1)?.content ?? "";
   const builtin = () => ({ reply: builtInAnswer(question, snapshot, lang), source: "builtin" as const });
@@ -86,14 +123,19 @@ export async function staffAssistantReply(ownerId: string, financial: boolean, l
       ],
       messages: turns.map((t) => ({ role: t.role, content: t.content })),
     };
-    let answer: Awaited<ReturnType<typeof withWebSearch>> = null;
+    let answer: { text: string; sources: WebSource[]; actions?: ProposedAction[] } | null = null;
     try {
-      answer = await withWebSearch(client, params, 5);
+      answer = user ? await withTools(client, params, user) : await withWebSearch(client, params, 5);
     } catch (error) {
       // Web search unavailable (not enabled, unsupported, …): answer without it and say why.
       const reason = apiErrorText(error);
       console.error("PMS assistant web search failed:", reason);
       if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.RateLimitError) throw error;
+      if (user) {
+        const r = await withTools(client, params, user, false);
+        if (!r) return failed();
+        return r.text || r.actions.length ? { reply: `${lang === "el" ? "ℹ️ Χωρίς αναζήτηση στο διαδίκτυο" : "ℹ️ Without web search"}: ${reason}\n\n${r.text}`, source: "ai", actions: r.actions } : failed(reason);
+      }
       const plain = await client.beta.messages.create(params);
       if (plain.stop_reason === "refusal") return failed();
       const text = responseText(plain);
@@ -102,7 +144,8 @@ export async function staffAssistantReply(ownerId: string, financial: boolean, l
     if (!answer) return failed();
     const sources = answer.sources.length ? `\n\n${lang === "el" ? "Πηγές" : "Sources"}:\n${answer.sources.slice(0, 6).map((x) => `• ${x.title || x.url} – ${x.url}`).join("\n")}` : "";
     const text = answer.text ? answer.text + sources : "";
-    return text ? { reply: text, source: "ai" } : failed();
+    if (!text && answer.actions?.length) return { reply: lang === "el" ? "Πρότεινα τις παρακάτω ενέργειες — εγκρίνετε ή απορρίψτε:" : "I proposed the actions below — approve or reject:", source: "ai", actions: answer.actions };
+    return text ? { reply: text, source: "ai", actions: answer.actions ?? [] } : failed();
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError) console.error("PMS assistant: invalid Anthropic API key");
     else if (error instanceof Anthropic.RateLimitError) console.error("PMS assistant: rate limited by the API");
