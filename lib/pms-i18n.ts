@@ -1987,6 +1987,13 @@ const el = {
   "ai.act.noPermission": "Χρειάζεται έγκριση από συνάδελφο με δικαίωμα",
   "ai.act.forbidden": "Δεν έχετε δικαίωμα να εγκρίνετε αυτή την ενέργεια.",
   "ai.act.handled": "Η ενέργεια έχει ήδη εγκριθεί ή απορριφθεί.",
+  "ak.photoTitle": "Φωτογραφία κάρτας",
+  "ak.photoHelp": "Η φωτογραφία που εμφανίζεται στην κάρτα (Apple Wallet, Google Wallet και σελίδα της κάρτας), με το λογότυπο του ξενοδοχείου. Ανεβάστε μια οριζόντια φωτογραφία (π.χ. η θέα από το μπαλκόνι) — κόβεται αυτόματα στα σωστά μεγέθη.",
+  "ak.photoUpload": "Ανέβασμα φωτογραφίας",
+  "ak.photoReset": "Επαναφορά προεπιλογής",
+  "ak.photoSaved": "Η φωτογραφία της κάρτας ενημερώθηκε. Οι κάρτες που ήδη υπάρχουν στο Google Wallet ενημερώνονται στην επόμενη αλλαγή τους· στο Apple Wallet όταν ο πελάτης την προσθέσει ξανά.",
+  "ak.err.BAD_IMAGE": "Η εικόνα δεν διαβάστηκε ή είναι πολύ μικρή (τουλάχιστον 600×200).",
+  "ak.err.IMAGE_TOO_LARGE": "Η εικόνα είναι πολύ μεγάλη (έως 12 MB).",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -3970,6 +3977,13 @@ const en: Record<PmsKey, string> = {
   "ai.act.noPermission": "Needs approval by a colleague with permission",
   "ai.act.forbidden": "You do not have permission to approve this action.",
   "ai.act.handled": "This action was already approved or rejected.",
+  "ak.photoTitle": "Card photo",
+  "ak.photoHelp": "The photo shown on the card (Apple Wallet, Google Wallet and the card page), with the hotel logo. Upload a landscape photo (e.g. the view from a balcony) — it is cut to the right sizes automatically.",
+  "ak.photoUpload": "Upload photo",
+  "ak.photoReset": "Back to the default",
+  "ak.photoSaved": "The card photo was updated. Cards already in Google Wallet take it with their next change; in Apple Wallet when the guest adds the card again.",
+  "ak.err.BAD_IMAGE": "The image could not be read or is too small (at least 600×200).",
+  "ak.err.IMAGE_TOO_LARGE": "The image is too large (up to 12 MB).",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

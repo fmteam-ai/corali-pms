@@ -8,6 +8,7 @@ import { newKeyAndCsr } from "@/lib/cms";
 import { decryptField, encryptField } from "@/lib/security/encryption";
 import { hotelToday } from "@/lib/tape-chart";
 import { accessDecision, bookingValidity, cardEmail, cardLang, cardState, effectiveCard, normalizeCardSettings } from "../scripts/access-card-core.mjs";
+import { loadWalletImages } from "@/lib/wallet-images";
 import { appleReady, describeAppleCertificate, googleReady, googleUpdate, type PassCard, type WalletConfig, type WalletSecrets } from "@/lib/wallet-passes";
 
 export type CardSettings = ReturnType<typeof normalizeCardSettings>;
@@ -44,6 +45,7 @@ export async function publicCardConfig(ownerId: string) {
     appleCsr: c.secrets.appleCsr ?? "",
     has: { appleKey: Boolean(c.secrets.applePrivateKey), appleCert: Boolean(c.secrets.appleCert), appleWwdr: Boolean(c.secrets.appleWwdr), googleServiceAccount: Boolean(c.secrets.googleServiceAccount), readerKey: Boolean(c.readerKeyHash) },
     apple, appleError, googleAccount,
+    photo: await loadWalletImages(ownerId).then((p) => (p ? `data:image/jpeg;base64,${p.hero}` : null)),
     appleReady: appleReady(c.wallet, c.secrets) && !appleError, googleReady: googleReady(c.wallet, c.secrets),
   };
 }
@@ -199,7 +201,7 @@ async function pushToWallets(ownerId: string, id: number) {
   const c = await cardConfig(ownerId);
   if (!googleReady(c.wallet, c.secrets)) return;
   const card = await passCard(ownerId, await rowById(ownerId, id), c.settings);
-  await googleUpdate(c.wallet, c.secrets, card, String(env().BOOKING_ORIGIN)).catch((e) => console.error("Google Wallet update failed", e));
+  await googleUpdate(c.wallet, c.secrets, card, String(env().BOOKING_ORIGIN), await loadWalletImages(ownerId)).catch((e) => console.error("Google Wallet update failed", e));
 }
 
 /** Reception edits a card: a new end (extended stay), start, areas or room. A booking card's end then stays as set. */
@@ -238,7 +240,7 @@ export async function cardForToken(token: string) {
   if (!row) return null;
   const c = await cardConfig(String(row.owner_id));
   const card = await passCard(String(row.owner_id), row, c.settings);
-  return { card, state: cardState({ ...card, status: card.revoked ? "revoked" : "active" }, Date.now()), wallet: c.wallet, secrets: c.secrets, enabled: c.settings.enabled };
+  return { card, state: cardState({ ...card, status: card.revoked ? "revoked" : "active" }, Date.now()), wallet: c.wallet, secrets: c.secrets, enabled: c.settings.enabled, photo: await loadWalletImages(String(row.owner_id)) };
 }
 
 /**

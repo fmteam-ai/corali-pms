@@ -10,7 +10,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   if (!appleReady(found.wallet, found.secrets)) return new Response("Apple Wallet is not set up", { status: 503 });
   if (!(await allowAttempt(`card-apple:${token}`, 20, 60 * 60_000, 60 * 60_000))) return new Response("Too many requests", { status: 429 });
   try {
-    const pkpass = await applePass(found.wallet, found.secrets, found.card);
+    const pkpass = await applePass(found.wallet, found.secrets, found.card, found.photo);
     return new Response(new Uint8Array(pkpass), { headers: { "Content-Type": "application/vnd.apple.pkpass", "Content-Disposition": `attachment; filename="hotel-corali-key.pkpass"`, "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("Apple Wallet pass failed", e);

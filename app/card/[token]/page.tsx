@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import QRCode from "qrcode";
 import { cardForToken } from "@/lib/access-cards";
-import { appleReady, googleReady } from "@/lib/wallet-passes";
+import { walletImageUrl } from "@/lib/wallet-images";
+import { appleReady, googleReady, stayDates } from "@/lib/wallet-passes";
 import { cardTexts, when } from "../../../scripts/access-card-core.mjs";
 import "./card.css";
 
@@ -21,23 +22,29 @@ export default async function CardPage({ params }: { params: Promise<{ token: st
   return (
     <main className="keyPage" lang={card.lang}>
       <article className={`keyCard st-${state}`}>
-        <header>
+        {/* Hotel-key look (as in the Wallet): the harbour photo with logo and stay dates, then the room number. */}
+        <div className="keyHero" style={found.photo ? { backgroundImage: `url(${walletImageUrl(found.photo, "strip2x")})` } : undefined}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/hotel-corali-logo.png" alt="Hotel Corali" />
-          <span>{t.title}</span>
-        </header>
-        <div className="keyHolder"><small>{t.guest}</small><b>{card.holder}</b></div>
-        <dl>
-          {card.roomCode && <><dt>{t.room}</dt><dd className="keyRoom">{card.roomCode}</dd></>}
-          <dt>{t.from}</dt><dd>{when(card.validFrom, card.lang)}</dd>
-          <dt>{t.until}</dt><dd>{when(card.validUntil, card.lang)}</dd>
-          {card.zones.length > 0 && <><dt>{t.access}</dt><dd>{card.zones.map((z) => z.name).join(" · ")}</dd></>}
-        </dl>
+          <img className="keyLogo" src="/wallet/logo@2x.png" alt="Hotel Corali" />
+          <span className="keyDates"><small>PISO LIVADI · PAROS</small><b>{stayDates(card)}</b></span>
+          <span className="keyHeroName">{t.title}</span>
+        </div>
+        <div className="keyBody">
+          <div className="keyMain">
+            {card.roomCode ? <div><small>{t.room}</small><b className="keyRoom">{card.roomCode}</b></div> : null}
+            <div className="keyHolder"><small>{t.guest}</small><b>{card.holder}</b></div>
+          </div>
+          <dl>
+            <dt>{t.from}</dt><dd>{when(card.validFrom, card.lang)}</dd>
+            <dt>{t.until}</dt><dd>{when(card.validUntil, card.lang)}</dd>
+            {card.zones.length > 0 && <><dt>{t.access}</dt><dd>{card.zones.map((z) => z.name).join(" · ")}</dd></>}
+          </dl>
         {qr ? (
           // eslint-disable-next-line @next/next/no-img-element
           <figure className="keyQr"><img src={qr} alt="" /><figcaption>{card.serial}</figcaption></figure>
         ) : <p className="keyState">{state === "revoked" ? t.revoked : t.expired}</p>}
         {state === "scheduled" && <p className="keyState soon">{t.scheduled.replace("{from}", when(card.validFrom, card.lang))}</p>}
+        </div>
       </article>
       {live && (
         <div className="keyWallets">

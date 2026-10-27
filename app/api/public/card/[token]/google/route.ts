@@ -11,7 +11,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   if (!googleReady(found.wallet, found.secrets)) return new Response("Google Wallet is not set up", { status: 503 });
   if (!(await allowAttempt(`card-google:${token}`, 20, 60 * 60_000, 60 * 60_000))) return new Response("Too many requests", { status: 429 });
   try {
-    return Response.redirect(await googleSaveUrl(found.wallet, found.secrets, found.card, String(env().BOOKING_ORIGIN)), 302);
+    return Response.redirect(await googleSaveUrl(found.wallet, found.secrets, found.card, String(env().BOOKING_ORIGIN), found.photo), 302);
   } catch (e) {
     console.error("Google Wallet link failed", e);
     return new Response("Pass unavailable", { status: 503 });

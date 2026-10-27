@@ -541,3 +541,5 @@ body:has(.pms){background:#f2f4f6}
 .aiActionBtns button{padding:5px 12px;font-size:13px}
 .aiAction.st-done{border-color:#7cc49b;background:#effaf3}.aiAction.st-rejected{border-color:var(--border);background:var(--surface-2);opacity:.75}.aiAction.st-failed{border-color:#e6a0a0;background:#fdecea}
 .aiActionState{font-size:12px}
+.akPhoto{width:100%;max-width:520px;aspect-ratio:1032/336;object-fit:cover;border-radius:12px;border:1px solid var(--border)}
+.akFile{position:relative;overflow:hidden;cursor:pointer}.akFile input{position:absolute;inset:0;opacity:0;cursor:pointer}

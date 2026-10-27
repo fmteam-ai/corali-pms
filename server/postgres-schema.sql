@@ -1740,3 +1740,5 @@ CREATE TABLE IF NOT EXISTS "assistant_actions" (
   "created_at" BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS "idx_assistant_actions_owner" ON "assistant_actions" ("owner_id", "status", "created_at");
+-- v104: the hotel's own photo for the digital key (cut to the Apple strip and the Google hero sizes, PNG base64).
+ALTER TABLE access_card_settings ADD COLUMN IF NOT EXISTS wallet_images_json TEXT;

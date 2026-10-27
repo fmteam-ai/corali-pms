@@ -143,6 +143,17 @@ export function AccessCards({ lang, canIssue, canSetup }: { lang: PmsLang; canIs
           </div>
 
           <div className="card akForm">
+            <h2>{t("ak.photoTitle")}</h2>
+            <p className="muted">{t("ak.photoHelp")}</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="akPhoto" src={c.photo ?? "/wallet/hero.png"} alt="" />
+            {canSetup && <div className="actions">
+              <label className="secondaryButton akFile">{t("ak.photoUpload")}<input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" disabled={busy} onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; if (f.size > 12 * 1024 * 1024) { setMsg(t("ak.err.IMAGE_TOO_LARGE")); return; } await post({ action: "wallet_photo", image: await readFile(f, "base64") }, "ak.photoSaved"); }} /></label>
+              {c.photo && <button type="button" className="secondaryButton" disabled={busy} onClick={() => void post({ action: "wallet_photo", image: "" }, "ak.photoSaved")}>{t("ak.photoReset")}</button>}
+            </div>}
+          </div>
+
+          <div className="card akForm">
             <h2>Apple Wallet</h2>
             <p className="muted">{t("ak.appleHelp")}</p>
             <div className="akCsr">
