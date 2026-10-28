@@ -1,0 +1,18 @@
+export type CampaignContent = Partial<Record<"el" | "en" | "fr" | "de" | "it" | "es", { subject: string; body: string }>>;
+export type CampaignAudience = { stayFrom: string; stayTo: string; countries: string[]; languages: string[]; minStays: number };
+export declare const campaignLanguages: string[];
+export declare const MAX_CAMPAIGN_RATE: number;
+export declare function normalizeContent(v: unknown): CampaignContent;
+export declare function pickContent(content: CampaignContent, lang: string): { subject: string; body: string } | null;
+export declare function normalizeAudience(v: unknown): CampaignAudience;
+export declare function firstName(name: unknown): string;
+export declare function fill(text: string, name: string): string;
+export declare function normalizeEmail(e: unknown): string;
+export declare function normalizePhone(p: unknown): string;
+export declare function audienceQuery(owner: string, audience: unknown, channel: "email" | "whatsapp", today: string): { sql: string; params: unknown[] };
+export declare function unsubscribeToken(secret: string, recipientId: number | string): string;
+export declare function validUnsubscribeToken(secret: string, recipientId: number | string, token: unknown): boolean;
+export declare function renderCampaignEmail(x: { content: CampaignContent; lang: string; name: string; imageUrl?: string; unsubscribeUrl: string; logoUrl?: string; hotelName?: string }): { subject: string; text: string; html: string } | null;
+export declare function whatsappLanguage(codes: string, lang: string): string;
+export declare function batchSize(rate: unknown): number;
+export declare const campaignPresets: Record<string, { icon: string } & Record<"el" | "en" | "fr" | "de" | "it" | "es", { subject: string; body: string }>>;

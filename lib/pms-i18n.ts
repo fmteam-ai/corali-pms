@@ -2185,6 +2185,9 @@ const el = {
   "tv.question": "Ερώτηση",
   "tv.questionAdd": "Προσθήκη ερώτησης",
   "tv.questionsReset": "Επαναφορά αρχικών ερωτήσεων",
+  "nav.campaigns": "Μαζικά μηνύματα",
+  "campaigns.title": "Μαζικά μηνύματα σε πελάτες",
+  "campaigns.subtitle": "Ευχές για τις γιορτές, νέα σεζόν και προσφορές με email και WhatsApp σε όσους έχουν μείνει στο ξενοδοχείο — μόνο με τη συγκατάθεσή τους και με δυνατότητα διαγραφής.",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -4366,6 +4369,9 @@ const en: Record<PmsKey, string> = {
   "tv.question": "Question",
   "tv.questionAdd": "Add question",
   "tv.questionsReset": "Restore default questions",
+  "nav.campaigns": "Bulk messages",
+  "campaigns.title": "Bulk messages to guests",
+  "campaigns.subtitle": "Holiday greetings, new season and offers by e-mail and WhatsApp to past guests — only with their consent and with an unsubscribe option.",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

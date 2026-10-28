@@ -600,3 +600,15 @@ body:has(.pms){background:#f2f4f6}
 .ptSwitch{display:grid;gap:6px;border-left:4px solid #b9c4c9}.ptSwitch.on{border-left-color:#1f7a4d}
 .tvQuestions{display:grid;gap:8px}.tvQuestion{display:flex;gap:8px;align-items:center}.tvQuestion input{flex:1;min-width:0}
 .tvQuestionNo{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#eef2f4;font-weight:700;font-size:13px;flex:none}
+.cmPage{display:grid;gap:14px}.cmPage>.card{max-width:none;width:100%}
+.cmReady{display:flex;gap:18px;flex-wrap:wrap;font-weight:600}.cmReady .ok{color:#1f7a4d}.cmReady .no{color:#b42318}
+.cmEditor{display:grid;gap:12px}.cmEditor h3{margin:10px 0 0;font-size:16px}.cmEditor label{display:grid;gap:4px}.cmEditor label.inline{display:inline-flex}
+.cmGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}.cmField{display:grid;gap:6px}.cmField>span{font-weight:600;font-size:14px}.cmChecks{display:flex;flex-wrap:wrap;gap:6px 16px}
+.cmCount{font-size:15px}.cmPresets{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.cmPresets>span{font-weight:600}
+.cmFile{cursor:pointer}.cmThumb{height:64px;border-radius:8px;border:1px solid var(--line,#e3e8ec)}
+.cmActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px solid var(--line,#e3e8ec);padding-top:12px}.cmTest{display:inline-flex;gap:6px;align-items:center}.cmTest input{width:200px}
+.cmItem{display:grid;gap:8px}.cmHead{display:flex;justify-content:space-between;gap:10px;align-items:center}.cmHead>div{display:grid;gap:2px}
+.cmBadge{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:#eef2f4;white-space:nowrap}.cmBadge.st-scheduled{background:#e7f0fb;color:#1d4f91}.cmBadge.st-sending{background:#fff3cd;color:#7a5b00}.cmBadge.st-sent{background:#dcf3e6;color:#1f7a4d}.cmBadge.st-cancelled{background:#fde7e5;color:#b42318}
+.cmBar{height:8px;border-radius:999px;background:#eef2f4;overflow:hidden}.cmBar span{display:block;height:100%;background:linear-gradient(90deg,#173e47,#2f7d8a)}
+.cmFailures{display:grid;gap:2px;max-height:240px;overflow:auto;background:#f8fafb;border-radius:10px;padding:8px 10px}
+.cmUnsub{display:grid;gap:8px}.cmUnsub h3{margin:0;font-size:16px}.cmUnsubList{margin:0;padding:0;list-style:none;display:grid;gap:3px;max-height:260px;overflow:auto}

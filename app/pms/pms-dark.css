@@ -587,3 +587,12 @@
 .pms[data-theme="dark"] .ptPwd code{background:hsl(200 18% 9%)}
 .pms[data-theme="dark"] .ptSwitch{border-left:4px solid hsl(200 13% 31%)}
 .pms[data-theme="dark"] .tvQuestionNo{background:hsl(200 18% 13%)}
+.pms[data-theme="dark"] .cmReady .ok{color:hsl(150 59% 72%)}
+.pms[data-theme="dark"] .cmReady .no{color:hsl(4 75% 72%)}
+.pms[data-theme="dark"] .cmBadge{background:hsl(200 18% 13%)}
+.pms[data-theme="dark"] .cmBadge.st-scheduled{background:hsl(213 36% 20%);color:hsl(214 67% 72%)}
+.pms[data-theme="dark"] .cmBadge.st-sending{background:hsl(46 45% 20%);color:hsl(45 75% 72%)}
+.pms[data-theme="dark"] .cmBadge.st-sent{background:hsl(146 24% 20%);color:hsl(150 59% 72%)}
+.pms[data-theme="dark"] .cmBadge.st-cancelled{background:hsl(5 43% 20%);color:hsl(4 75% 72%)}
+.pms[data-theme="dark"] .cmBar{background:hsl(200 18% 13%)}
+.pms[data-theme="dark"] .cmFailures{background:hsl(200 14% 20%)}

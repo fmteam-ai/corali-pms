@@ -2072,3 +2072,52 @@ CREATE TABLE IF NOT EXISTS partner_settings (
 );
 -- Prepared for a later "Partners" tab on Corali TV (and partner offers in the TV assistant): off until the hotel turns it on.
 ALTER TABLE partner_settings ADD COLUMN IF NOT EXISTS show_on_tv INTEGER NOT NULL DEFAULT 0;
+-- v116: bulk messages to past guests (PMS → Bulk messages): e-mail and WhatsApp (approved Meta marketing template),
+-- only to guests who agreed to marketing; every e-mail has an unsubscribe link. The cron worker sends a few per minute.
+CREATE TABLE IF NOT EXISTS campaigns (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ name TEXT NOT NULL,
+ send_email INTEGER NOT NULL DEFAULT 1,
+ send_whatsapp INTEGER NOT NULL DEFAULT 0,
+ audience_json TEXT NOT NULL DEFAULT '{}',
+ content_json TEXT NOT NULL DEFAULT '{}',
+ image_data TEXT,
+ whatsapp_template TEXT NOT NULL DEFAULT '',
+ whatsapp_languages TEXT NOT NULL DEFAULT '',
+ rate_per_minute INTEGER NOT NULL DEFAULT 20,
+ status TEXT NOT NULL DEFAULT 'draft',
+ scheduled_at BIGINT,
+ started_at BIGINT,
+ finished_at BIGINT,
+ created_by BIGINT,
+ created_at BIGINT NOT NULL,
+ updated_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_campaigns_owner ON campaigns(owner_id,status,scheduled_at);
+CREATE TABLE IF NOT EXISTS campaign_recipients (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ campaign_id BIGINT NOT NULL,
+ channel TEXT NOT NULL,
+ address TEXT NOT NULL,
+ name TEXT NOT NULL DEFAULT '',
+ lang TEXT NOT NULL DEFAULT 'en',
+ status TEXT NOT NULL DEFAULT 'pending',
+ attempts INTEGER NOT NULL DEFAULT 0,
+ error TEXT NOT NULL DEFAULT '',
+ provider_reference TEXT NOT NULL DEFAULT '',
+ sent_at BIGINT,
+ updated_at BIGINT NOT NULL,
+ UNIQUE(campaign_id,channel,address)
+);
+CREATE INDEX IF NOT EXISTS idx_campaign_recipients_queue ON campaign_recipients(owner_id,campaign_id,channel,status);
+CREATE TABLE IF NOT EXISTS marketing_unsubscribes (
+ owner_id TEXT NOT NULL,
+ channel TEXT NOT NULL,
+ address TEXT NOT NULL,
+ source TEXT NOT NULL DEFAULT 'link',
+ campaign_id BIGINT,
+ created_at BIGINT NOT NULL,
+ PRIMARY KEY(owner_id,channel,address)
+);

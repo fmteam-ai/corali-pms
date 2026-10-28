@@ -19,6 +19,7 @@ const CATALOG: Def[] = [
   { key: "smtp", icon: "✉️", name: "Email (SMTP)", category: "messaging", el: "Επιβεβαιώσεις, υπενθυμίσεις, ψηφιακά κλειδιά και μηνύματα πελατών.", en: "Confirmations, reminders, digital keys and guest messages.", href: "/pms/integrations", check: provider("smtp") },
   { key: "whatsapp", icon: "💬", name: "WhatsApp Business", category: "messaging", el: "Αυτόματα μηνύματα και συνομιλίες με πελάτες στο WhatsApp.", en: "Automatic messages and guest chats on WhatsApp.", href: "/pms/integrations", check: provider("whatsapp") },
   { key: "automations", icon: "⏰", name: "Message automations", category: "messaging", el: "Μηνύματα πριν την άφιξη, check-in, υπόλοιπο, αξιολόγηση, γενέθλια.", en: "Pre-arrival, check-in, balance, review and birthday messages.", href: "/pms/automations", check: count("automations") },
+  { key: "campaigns", icon: "💌", name: "Bulk messages", category: "messaging", el: "Ευχές και προσφορές με email / WhatsApp σε παλιούς πελάτες, με συγκατάθεση και διαγραφή από τη λίστα.", en: "Greetings and offers by e-mail / WhatsApp to past guests, with consent and unsubscribe.", href: "/pms/campaigns", check: count("campaigns") },
   { key: "meta", icon: "📣", name: "Facebook / Instagram", category: "messaging", el: "Δημοσιεύσεις με έγκριση και μηνύματα (DM) που γίνονται κρατήσεις.", en: "Approved posts and DMs that become bookings.", href: "/pms/social", check: provider("meta") },
   { key: "tiktok", icon: "🎵", name: "TikTok", category: "messaging", el: "Δημοσίευση βίντεο από το PMS με έγκριση.", en: "Video posts from the PMS with approval.", href: "/pms/social", check: provider("tiktok") },
   { key: "autopricing", icon: "📈", name: "Automatic pricing", category: "revenue", el: "Τιμές που ακολουθούν τη ζήτηση, μέσα στα όρια ελάχιστης / μέγιστης τιμής σας.", en: "Prices that follow demand, inside your minimum / maximum.", href: "/pms/pricing/auto", check: (s) => (s.json.get("autopricing")?.enabled ? (s.json.get("autopricing")?.mode === "auto" ? "on" : "partial") : "off") },
@@ -44,7 +45,7 @@ const empty: Rows = { rows: [] };
 
 export async function appStore(ownerId: string): Promise<AppEntry[]> {
   const q = (sql: string) => safe(db().query(sql, [ownerId]), empty);
-  const [providers, auto, cards, widgets, autom, comp, depts, tvs, shelly, push, keys, hooks, roomAc, partners] = await Promise.all([
+  const [providers, auto, cards, widgets, autom, comp, depts, tvs, shelly, push, keys, hooks, roomAc, partners, campaigns] = await Promise.all([
     q(`SELECT provider_key,active FROM provider_connections WHERE owner_id=$1`),
     q(`SELECT settings_json FROM auto_pricing_settings WHERE owner_id=$1`),
     q(`SELECT settings_json FROM access_card_settings WHERE owner_id=$1`),
@@ -59,13 +60,14 @@ export async function appStore(ownerId: string): Promise<AppEntry[]> {
     q(`SELECT count(*) n FROM api_webhooks WHERE owner_id=$1 AND active=1`),
     q(`SELECT count(*) n FROM room_ac_devices WHERE owner_id=$1`),
     q(`SELECT count(*) n FROM partners p WHERE owner_id=$1 AND active=1 AND deleted_at IS NULL AND EXISTS(SELECT 1 FROM partner_settings s WHERE s.owner_id=p.owner_id AND s.enabled=1)`),
+    q(`SELECT count(*) n FROM campaigns WHERE owner_id=$1 AND status<>'draft'`),
   ]);
   const parse = (r: { rows: Record<string, unknown>[] }) => { try { return JSON.parse(String(r.rows[0]?.settings_json ?? "{}")) as Record<string, unknown>; } catch { return {}; } };
   const scopes = keys.rows.map((k) => { try { return JSON.parse(String(k.scopes_json)) as string[]; } catch { return []; } });
   const s: Signals = {
     providers: new Map(providers.rows.map((p) => [String(p.provider_key), Number(p.active) === 1])),
     json: new Map([["autopricing", parse(auto)], ["accesscards", parse(cards)]]),
-    counts: { widgets: one(widgets), automations: one(autom), competitors: one(comp), departments: one(depts), tvScreens: one(tvs), shelly: one(shelly), staffPush: one(push), apiKeys: keys.rows.length, webhooks: one(hooks), roomAc: one(roomAc), partners: one(partners), posKeys: scopes.filter((x) => x.includes("folio.write")).length, accountingKeys: scopes.filter((x) => x.includes("accounting.read")).length },
+    counts: { widgets: one(widgets), automations: one(autom), competitors: one(comp), departments: one(depts), tvScreens: one(tvs), shelly: one(shelly), staffPush: one(push), apiKeys: keys.rows.length, webhooks: one(hooks), roomAc: one(roomAc), partners: one(partners), campaigns: one(campaigns), posKeys: scopes.filter((x) => x.includes("folio.write")).length, accountingKeys: scopes.filter((x) => x.includes("accounting.read")).length },
   };
   return CATALOG.map(({ check, ...a }) => ({ ...a, state: check(s) }));
 }
