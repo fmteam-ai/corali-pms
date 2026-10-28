@@ -104,3 +104,23 @@ test("map cards: places and beaches named in the reply, in order, without accent
   assert.equal(mentionedSpots("Café Λιμάνι, Λογαράς, Πούντα, Ταβέρνα Θάλασσα", spots, 2).length, 2);
   assert.match(spots[0].directions, /travelmode=walking$/);
 });
+
+test("Google's 12-hour Greek hours become 24-hour", async () => {
+  const { to24h, todayLine } = await import("../lib/tv-nearby-core.ts");
+  assert.equal(to24h("12:00–11:30 μ.μ."), "12:00–23:30");
+  assert.equal(to24h("1:00–11:00 μ.μ."), "13:00–23:00");
+  assert.equal(to24h("9:00 π.μ. – 11:00 μ.μ."), "09:00–23:00");
+  assert.equal(to24h("12:00 μ.μ. – 12:00 π.μ."), "12:00–00:00");
+  assert.equal(to24h("9:00 π.μ. – 1:00 π.μ."), "09:00–01:00");
+  assert.equal(to24h("8:00 π.μ. – 2:00 μ.μ., 6:00 – 11:00 μ.μ."), "08:00–14:00, 18:00–23:00");
+  assert.equal(to24h("09:00–21:00"), "09:00–21:00");
+  assert.equal(to24h("Κλειστά"), "Κλειστά");
+  assert.equal(to24h("Ανοιχτά 24 ώρες"), "Ανοιχτά 24 ώρες");
+  assert.equal(todayLine(["Δευτέρα: 12:00–11:30 μ.μ."], 1), "12:00–23:30");
+});
+
+test("the assistant gets each place's address and is told not to guess the area", () => {
+  const t = nearbyText([{ name: "Souvlaki Tzanis", kind: "fast_food", meters: 927, walkMin: 15, routed: true, cuisine: "", hours: "", address: "Μάρπησσα 844 00" }], 2, 12, "google");
+  assert.match(t, /Souvlaki Tzanis \(927 m walking route, 15 min on foot, address: Μάρπησσα 844 00\)/);
+  assert.match(t, /never guess the area/);
+});

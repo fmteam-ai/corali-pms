@@ -116,7 +116,22 @@ const priceLevels: Record<string, string> = { PRICE_LEVEL_FREE: "free", PRICE_LE
 const typeKind: Record<string, NearbyKind> = { ice_cream_shop: "ice_cream", atm: "atm", bank: "atm", night_club: "bar", coffee_shop: "cafe", gas_station: "fuel", laundry: "laundry", travel_agency: "travel", tour_agency: "travel", fast_food_restaurant: "fast_food" };
 
 /** Google's weekday lines start on Monday; JS getDay() starts on Sunday. */
-export const todayLine = (lines: unknown, jsDay: number): string => (Array.isArray(lines) ? String(lines[(jsDay + 6) % 7] ?? "") : "").replace(/^[^:]+:\s*/, "").slice(0, 80);
+export const todayLine = (lines: unknown, jsDay: number): string => to24h((Array.isArray(lines) ? String(lines[(jsDay + 6) % 7] ?? "") : "").replace(/^[^:]+:\s*/, "")).slice(0, 80);
+
+const pm = /^(μ\.?μ\.?|pm|p\.m\.)$/i, am = /^(π\.?μ\.?|am|a\.m\.)$/i;
+/**
+ * Google's Greek hours mix 12-hour times ("12:00–11:30 μ.μ.", "9:00 π.μ. – 1:00 π.μ."): the first time takes the
+ * second one's π.μ./μ.μ. when it has none. Everything becomes 24-hour ("12:00–23:30", "09:00–01:00").
+ */
+export function to24h(text: string): string {
+  return text.replace(/\u202f|\u2009/g, " ").split(/,\s*/).map((range) => {
+    const m = /^\s*(\d{1,2}):(\d{2})\s*([^\d–-]*?)\s*[–-]\s*(\d{1,2}):(\d{2})\s*(\S*)\s*$/.exec(range);
+    if (!m) return range.trim();
+    const conv = (h: number, mi: string, suf: string) => { let hh = h; if (pm.test(suf)) hh = h === 12 ? 12 : h + 12; else if (am.test(suf)) hh = h === 12 ? 0 : h; return `${String(hh).padStart(2, "0")}:${mi}`; };
+    const s2 = m[6] ?? "", s1 = m[3]?.trim() || s2;
+    return `${conv(Number(m[1]), m[2], s1)}–${conv(Number(m[4]), m[5], s2)}`;
+  }).join(", ");
+}
 
 export function parseGooglePlaces(json: unknown, kind: NearbyKind, lat: number, lon: number, radiusKm: number, jsDay: number): NearbyPlace[] {
   const list = (json as { places?: unknown[] } | null)?.places;
@@ -150,10 +165,11 @@ export function nearbyText(places: NearbyPlace[], radiusKm: number, perKind = 12
   if (!places.length) return `NEARBY PLACES: (no data from OpenStreetMap right now — you may search the web; say distances are approximate)`;
   const groups = (Object.keys(kindLabels) as NearbyKind[]).map((k) => {
     const ps = places.filter((p) => p.kind === k).slice(0, perKind);
-    return ps.length ? `${kindLabels[k]}: ${ps.map((p) => `${p.name} (${p.routed ? `${p.meters} m walking route, ${p.walkMin} min on foot` : `~${p.meters} m straight line, ~${p.walkMin} min walk`}${p.rating ? `, ★${p.rating.toFixed(1)} (${p.ratings} reviews)` : ""}${p.price ? `, ${p.price}` : ""}${p.cuisine ? `, ${p.cuisine}` : ""}${p.hours ? `, ${source === "google" ? "today" : "hours"} ${p.hours}` : ""})`).join(" · ")}` : "";
+    return ps.length ? `${kindLabels[k]}: ${ps.map((p) => `${p.name} (${p.routed ? `${p.meters} m walking route, ${p.walkMin} min on foot` : `~${p.meters} m straight line, ~${p.walkMin} min walk`}${p.rating ? `, ★${p.rating.toFixed(1)} (${p.ratings} reviews)` : ""}${p.price ? `, ${p.price}` : ""}${p.cuisine ? `, ${p.cuisine}` : ""}${p.address ? `, address: ${p.address}` : ""}${p.hours ? `, ${source === "google" ? "today" : "hours"} ${p.hours}` : ""})`).join(" · ")}` : "";
   }).filter(Boolean);
   return `NEARBY PLACES (${source === "google" ? "Google Maps" : "OpenStreetMap"}, within ${clampRadiusKm(radiusKm)} km of the hotel; distances are walking routes from the hotel unless marked straight line — use them as given, do not change them)
 ${groups.join("\n")}
+Say where a place is (village / area) only from its address here — never guess the area.
 Never recommend or name other accommodation (hotels, rooms to let, studios, villas, apartments, Airbnb) — not from this list, not from the web.
 When the guest asks for something near the hotel or within walking distance, recommend from this list first and always say both the distance and the walking time (e.g. "350 m, 5 minutes on foot")${source === "google" ? "; prefer well-rated places and mention the rating and today's hours when useful" : ""}. You may search the web for reviews / opening times; the list may miss a few places and some may be closed out of season — say so if unsure.`;
 }
