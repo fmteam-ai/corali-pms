@@ -13,7 +13,7 @@ import type { PowerSettings, RoomPowerState } from "@/lib/tv-power";
 const langNames: Record<TvLanguage, string> = { el: "Ελληνικά", en: "English", fr: "Français", de: "Deutsch", it: "Italiano", es: "Español" };
 const ONLINE_MS = 10 * 60_000;
 
-export function TvManager({ lang, initialSettings, initialScreens, initialPower, canEdit }: { lang: PmsLang; initialSettings: TvSettings; initialScreens: TvScreenRow[]; initialPower: { settings: PowerSettings; hasKey: boolean }; canEdit: boolean }) {
+export function TvManager({ lang, initialSettings, initialScreens, initialPower, places, canEdit }: { places: { google: boolean; today: number; month: number }; lang: PmsLang; initialSettings: TvSettings; initialScreens: TvScreenRow[]; initialPower: { settings: PowerSettings; hasKey: boolean }; canEdit: boolean }) {
   const t = pmsT(lang);
   const [settings, setSettings] = useState(initialSettings);
   const [screens, setScreens] = useState(initialScreens);
@@ -111,6 +111,8 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
           <label className="inline">{t("tv.assistantLimit")} <input type="number" min={5} max={200} value={settings.assistantDailyLimit} disabled={!canEdit} onChange={(e) => set({ assistantDailyLimit: Number(e.target.value) || 40 })} style={{ width: 80 }} /></label>
           <label className="inline">{t("tv.assistantDetail")} <select value={settings.assistantDetail} disabled={!canEdit} onChange={(e) => set({ assistantDetail: e.target.value === "short" ? "short" : "detailed" })}><option value="detailed">{t("tv.assistantDetailed")}</option><option value="short">{t("tv.assistantShort")}</option></select></label>
           <label className="inline">{t("tv.nearbyRadius")} <input type="number" min={0.3} max={5} step={0.1} value={settings.nearbyRadiusKm} disabled={!canEdit} onChange={(e) => set({ nearbyRadiusKm: Number(e.target.value) || 1 })} style={{ width: 70 }} /> km</label>
+          <label className="inline tvNearbyHide">{t("tv.nearbyHide")} <input value={settings.nearbyHide} maxLength={1000} disabled={!canEdit} placeholder={t("tv.nearbyHidePh")} onChange={(e) => set({ nearbyHide: e.target.value })} /></label>
+          <small className="muted">{places.google ? t("tv.nearbyGoogle").replace("{today}", String(places.today)).replace("{month}", String(places.month)) : t("tv.nearbyOsm")}</small>
         </div>
         <small>{t("tv.assistantHelp")}</small>
         <div className="tvLangTabs" role="tablist">{tvLanguages.map((l) => <button type="button" role="tab" aria-selected={textLang === l} className={textLang === l ? "active" : ""} key={l} onClick={() => setTextLang(l)}>{langNames[l]}</button>)}</div>

@@ -39,3 +39,34 @@ test("Overpass → named places within the radius, nearest first, no duplicates"
   assert.match(nearbyText([], 1), /no data/);
   assert.deepEqual(parseOverpass(null, H.lat, H.lon, 1), []);
 });
+
+test("Google Places → places with rating, price and today's hours; no lodging, no closed", async () => {
+  const { parseGooglePlaces, googleNearbyBody, lodgingTypes, mergePlaces, todayLine } = await import("../lib/tv-nearby-core.ts");
+  const week = ["Δευτέρα: 12:00–23:30", "Τρίτη: 12:00–23:30", "Τετάρτη: Κλειστά", "Πέμπτη: 12:00–23:30", "Παρασκευή: 12:00–01:00", "Σάββατο: 12:00–01:00", "Κυριακή: 13:00–23:00"];
+  const json = { places: [
+    { displayName: { text: "Ταβέρνα Θάλασσα" }, location: { latitude: H.lat + 0.002, longitude: H.lon }, primaryType: "greek_restaurant", types: ["greek_restaurant", "restaurant"], rating: 4.7, userRatingCount: 812, priceLevel: "PRICE_LEVEL_MODERATE", regularOpeningHours: { weekdayDescriptions: week }, businessStatus: "OPERATIONAL" },
+    { displayName: { text: "Corali Rival Hotel Restaurant" }, location: { latitude: H.lat + 0.001, longitude: H.lon }, primaryType: "restaurant", types: ["restaurant", "lodging"], businessStatus: "OPERATIONAL" },
+    { displayName: { text: "Closed Grill" }, location: { latitude: H.lat + 0.001, longitude: H.lon }, primaryType: "restaurant", businessStatus: "CLOSED_PERMANENTLY" },
+  ] };
+  const ps = parseGooglePlaces(json, "restaurant", H.lat, H.lon, 1, 5); // Friday
+  assert.equal(ps.length, 1);
+  assert.equal(ps[0].rating, 4.7);
+  assert.equal(ps[0].price, "€€");
+  assert.equal(ps[0].hours, "12:00–01:00");
+  assert.equal(todayLine(week, 0), "13:00–23:00"); // Sunday
+  const body = googleNearbyBody(["cafe"], H.lat, H.lon, 1);
+  assert.deepEqual(body.excludedTypes, lodgingTypes);
+  assert.equal(body.locationRestriction.circle.radius, 1000);
+  assert.equal(mergePlaces([[{ ...ps[0] }], [{ ...ps[0], kind: "bar" }]]).length, 1);
+  assert.match(nearbyText(ps, 1, 12, "google"), /Google Maps.*\n.*★4\.7 \(812 reviews\), €€/);
+});
+
+test("other accommodation and the hotel's hide list are filtered (both sources)", async () => {
+  const { filterPlaces, hideList, looksLikeLodging } = await import("../lib/tv-nearby-core.ts");
+  for (const n of ["Hotel Kalypso", "Maria Rooms", "Anna Studios", "Villa Thea", "Ενοικιαζόμενα Δωμάτια Ελένη", "Ξενοδοχείο Αστέρι", "Sunset Apartments", "Pension Irini"]) assert.equal(looksLikeLodging(n), true, n);
+  for (const n of ["Ταβέρνα Θάλασσα", "Café Roomba", "Studiolo Pizza"]) assert.equal(looksLikeLodging(n), false, n);
+  const p = (name: string) => ({ name, kind: "restaurant" as const, meters: 100, walkMin: 2, cuisine: "", hours: "" });
+  assert.deepEqual(filterPlaces([p("Ταβέρνα Α"), p("Maria Rooms"), p("Bar Κακό")], hideList("κακό, , x")).map((x) => x.name), ["Ταβέρνα Α"]);
+  const osm = parseOverpass({ elements: [{ type: "node", lat: H.lat, lon: H.lon, tags: { amenity: "restaurant", tourism: "hotel", name: "Hotel Restaurant" } }] }, H.lat, H.lon, 1);
+  assert.equal(osm.length, 0);
+});

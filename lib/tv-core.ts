@@ -35,6 +35,8 @@ export type TvSettings = {
   assistantDetail: "short" | "detailed";
   /** Radius (km) around the hotel for the nearby places the assistant knows (OpenStreetMap). */
   nearbyRadiusKm: number;
+  /** Names / words never suggested near the hotel (comma separated); other accommodation is always hidden. */
+  nearbyHide: string;
   /** Beaches and the winds they are sheltered from (the assistant suggests calm ones on windy days). */
   beaches: TvBeach[];
   /** On a windy day: suggest only the nearest sheltered beaches, or all suitable ones of the island. */
@@ -84,6 +86,7 @@ export const defaultTvSettings: TvSettings = {
   assistantDailyLimit: 40,
   assistantDetail: "detailed",
   nearbyRadiusKm: 1,
+  nearbyHide: "",
   beaches: normalizeBeaches(undefined),
   beachMode: "all",
   assistantQuestions: normalizeTvQuestions(undefined),
@@ -139,6 +142,7 @@ export function normalizeTvSettings(raw: unknown): TvSettings {
     beaches: normalizeBeaches(r.beaches),
     beachMode: r.beachMode === "near" ? "near" : "all",
     assistantDetail: r.assistantDetail === "short" ? "short" : "detailed",
+    nearbyHide: typeof r.nearbyHide === "string" ? r.nearbyHide.slice(0, 1000) : "",
     nearbyRadiusKm: Math.min(5, Math.max(0.3, Math.round((Number(r.nearbyRadiusKm) || 1) * 10) / 10)),
     assistantQuestions: normalizeTvQuestions(r.assistantQuestions),
     assistantDailyLimit: Number.isFinite(Number(r.assistantDailyLimit)) && r.assistantDailyLimit !== null && r.assistantDailyLimit !== "" ? Math.min(200, Math.max(5, Math.round(Number(r.assistantDailyLimit)))) : 40,

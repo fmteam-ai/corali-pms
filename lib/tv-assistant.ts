@@ -14,7 +14,8 @@ import { createTvRequest } from "@/lib/tv-requests";
 import { tvRequestTexts } from "@/lib/tv-requests-core";
 import { webSearchTool } from "@/lib/web-research";
 import { roomClimate } from "@/lib/room-ac";
-import { HOTEL_LAT, HOTEL_LON, nearbyText, overpassQuery, parseOverpass, type NearbyPlace } from "@/lib/tv-nearby-core";
+import { HOTEL_LAT, HOTEL_LON, hideList, nearbyText } from "@/lib/tv-nearby-core";
+import { nearbyPlaces } from "@/lib/nearby-places";
 import { beachesForWind, compass, windNames, windyDay, type BeachMode, type TvBeach } from "@/lib/tv-beaches";
 
 // Wind (and waves) for Piso Livadi from Open-Meteo, for beach advice; cached 30 minutes, null when unreachable.
@@ -41,17 +42,6 @@ async function windForecast(): Promise<Wind | null> {
   return value;
 }
 
-let nearbyCache: { at: number; radius: number; places: NearbyPlace[] } | null = null;
-/** Named places around the hotel from OpenStreetMap (refreshed every 12 hours; a failure keeps the last list). */
-async function nearbyPlaces(radiusKm: number): Promise<NearbyPlace[]> {
-  if (nearbyCache && nearbyCache.radius === radiusKm && Date.now() - nearbyCache.at < 12 * 3_600_000) return nearbyCache.places;
-  try {
-    const r = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "HotelCorali-TV/1.0 (booking.hotelcorali.gr)" }, body: `data=${encodeURIComponent(overpassQuery(HOTEL_LAT, HOTEL_LON, radiusKm))}`, signal: AbortSignal.timeout(15_000) });
-    const places = r.ok ? parseOverpass(await r.json(), HOTEL_LAT, HOTEL_LON, radiusKm) : [];
-    if (places.length || !nearbyCache) nearbyCache = { at: Date.now(), radius: radiusKm, places };
-  } catch { if (!nearbyCache) nearbyCache = { at: Date.now() - 11 * 3_600_000, radius: radiusKm, places: [] }; }
-  return nearbyCache.places;
-}
 
 /** Wind now and the next days, and the hotel's beaches sorted for today's wind. */
 function beachContext(wind: Wind | null, beaches: TvBeach[], mode: BeachMode): string {
@@ -126,6 +116,7 @@ How to answer:
 - Answer in the guest's language (given below) unless they speak another one; then use theirs.
 - Your answer is read on a TV from a distance and may be read aloud: warm, concrete and easy to follow; the length follows ANSWER LENGTH in the context below. Plain text only: no markdown, no tables, no links, no emoji lists.
 - Use the hotel information below. For the area (restaurants, beaches, buses, ferries, weather, opening hours) you may search the web; prefer Piso Livadi and nearby, say when something is a suggestion and never invent prices or timetables.
+- Never recommend or name other accommodation (hotels, rooms to let, studios, villas, apartments, Airbnb), even if the guest asks: say reception is happy to help.
 - Never invent hotel facilities, prices or policies. If you don't know, say so and suggest calling reception (phone below) or the Requests tab.
 - Beaches: choose by the wind (WIND AND SEA below) and only from the hotel's beach list, following BEACH ADVICE there. Mention exposed beaches only as windy (good for windsurf / kite) or to avoid with children. For tomorrow use tomorrow's forecast. On calm days any beach is fine — suggest by distance and taste.
 - When the guest asks for something reception or a hotel department can do, use propose_action (one at a time) and tell them to press Confirm on the screen; mention the price for paid items. For appointments first call free_times for the day and propose an available time. Taxi / transfer and technical problems: point them to the Requests tab on the TV.
@@ -142,7 +133,8 @@ async function context(sc: Screen): Promise<{ text: string; itemIds: Set<number>
   const orders = (portal?.orders ?? []).slice(0, 8).map((o) => `- ${o.title} ${euro(o.amountCents)} (${o.status}${o.date ? `, ${o.date} ${o.time}` : ""})`);
   const news = (portal?.announcements ?? []).slice(0, 6).map((a) => `- ${a.title}: ${a.body.slice(0, 200)}`);
   const beaches = beachContext(await windForecast(), settings.beaches, settings.beachMode);
-  const nearby = nearbyText(await nearbyPlaces(settings.nearbyRadiusKm), settings.nearbyRadiusKm);
+  const near = await nearbyPlaces(sc.ownerId, settings.nearbyRadiusKm, hideList(settings.nearbyHide)).catch(() => ({ source: "osm" as const, places: [] }));
+  const nearby = nearbyText(near.places, settings.nearbyRadiusKm, 12, near.source);
   const climate = await roomClimate(sc.ownerId, sc.roomId).catch(() => null);
   const text = `GUEST AND STAY
 - Language: ${languageNames[lang]}. Name: ${firstName(String(b.guest_name))}. Room ${sc.roomCode}. Stay ${b.check_in} → ${b.check_out} (check-out by ${settings.checkOutTime}). Guests: ${Number(b.adults ?? 1)} adult(s)${Number(b.children ?? 0) ? `, ${Number(b.children)} child(ren)` : ""}.

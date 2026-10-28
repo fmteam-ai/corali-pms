@@ -2121,3 +2121,10 @@ CREATE TABLE IF NOT EXISTS marketing_unsubscribes (
  created_at BIGINT NOT NULL,
  PRIMARY KEY(owner_id,channel,address)
 );
+-- v118: Google Places calls of the TV assistant per day (PMS → Integrations → Google Places has a daily limit).
+CREATE TABLE IF NOT EXISTS places_api_usage (
+ owner_id TEXT NOT NULL,
+ day TEXT NOT NULL,
+ calls INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(owner_id,day)
+);

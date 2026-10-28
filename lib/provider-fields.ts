@@ -10,6 +10,7 @@ export const providerFields = {
   channelManager: { label: "Channel Manager (Channex)", settings: ["propertyCode", "providerName", "environment", "pushRates", "rateMarkupPercent"], secrets: ["apiKey"] },
   openai: { label: "OpenAI", settings: [], secrets: ["apiKey"] },
   anthropic: { label: "Anthropic (Claude) · AI assistant", settings: [], secrets: ["apiKey"] },
+  googlePlaces: { label: "Google Places · μαγαζιά κοντά στο ξενοδοχείο (βοηθός TV)", settings: ["dailyLimit"], secrets: ["apiKey"] },
   tuya: { label: "Tuya / Smart Life · αισθητήρες παρουσίας", settings: ["dataCenter"], secrets: ["accessId", "accessSecret"] },
 } as const;
 export type ProviderKey = keyof typeof providerFields;

@@ -8,6 +8,7 @@ import { assertTrustedOrigin } from "@/lib/security/origin";
 import { providerFields, providerKeySchema } from "@/lib/provider-fields";
 import { listProviders, providerCredentials, sealProviderSecrets, unsealProviderSecrets, validateProviderFields } from "@/lib/provider-connections";
 import { testVivaCredentials, testWhatsAppCredentials } from "@/lib/provider-tests";
+import { googleSearch } from "@/lib/nearby-places";
 
 const saveInput = z.object({
   providerKey: providerKeySchema,
@@ -43,7 +44,7 @@ async function handlePUT(request:Request) {
         whatsapp:{secrets:["accessToken","verifyToken","appSecret"],settings:["phoneNumberId","businessAccountId"]},
         smtp:{secrets:["password"],settings:["host","username","from"]},mydata:{secrets:["subscriptionKey"],settings:[]},
         meta:{secrets:["appSecret","pageAccessToken"],settings:["pageId"]},tiktok:{secrets:["clientSecret"],settings:["clientKey"]},
-        channelManager:{secrets:["apiKey"],settings:["propertyCode"]},openai:{secrets:["apiKey"],settings:[]},anthropic:{secrets:["apiKey"],settings:[]},
+        channelManager:{secrets:["apiKey"],settings:["propertyCode"]},openai:{secrets:["apiKey"],settings:[]},anthropic:{secrets:["apiKey"],settings:[]},googlePlaces:{secrets:["apiKey"],settings:[]},
       };
       const needed=required[input.providerKey];
       if (input.active && (needed.secrets.some(key => !secrets[key])||needed.settings.some(key => !input.settings[key]))) throw new Error("CREDENTIALS_REQUIRED");
@@ -67,7 +68,7 @@ async function handlePOST(request:Request) {
   try {
     assertTrustedOrigin(request);
     const {providerKey} = testInput.parse(await request.json());
-    if (!["stripe","smtp","viva","whatsapp"].includes(providerKey)) return Response.json({ok:false,error:"TEST_NOT_AVAILABLE"},{status:501});
+    if (!["stripe","smtp","viva","whatsapp","googlePlaces"].includes(providerKey)) return Response.json({ok:false,error:"TEST_NOT_AVAILABLE"},{status:501});
     const connection=await providerCredentials(user.ownerId,providerKey);
     if (!connection?.active) return Response.json({ok:false,error:"NOT_ACTIVE"},{status:409});
     let success=false;
@@ -82,6 +83,11 @@ async function handlePOST(request:Request) {
         await nodemailer.createTransport({host,port:Number(port||587),secure:Number(port||587)===465,auth:{user:username,pass:connection.secrets.password},connectionTimeout:8000,greetingTimeout:8000}).verify();
       } else if(providerKey==="viva") {
         if(!await testVivaCredentials(connection))throw new Error("VIVA_TEST_FAILED");
+      } else if(providerKey==="googlePlaces") {
+        if(!connection.secrets.apiKey)throw new Error("MISSING_KEY");
+        await db().query(`INSERT INTO places_api_usage(owner_id,day,calls) VALUES($1,$2,1) ON CONFLICT(owner_id,day) DO UPDATE SET calls=places_api_usage.calls+1`,[user.ownerId,new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Athens"}).format(new Date())]);
+        const r=await googleSearch(connection.secrets.apiKey,["restaurant"],1,1);
+        if(!r.ok)throw new Error("GOOGLE_TEST_FAILED");
       } else if(providerKey==="whatsapp") {
         if(!await testWhatsAppCredentials(connection))throw new Error("WHATSAPP_TEST_FAILED");
       }

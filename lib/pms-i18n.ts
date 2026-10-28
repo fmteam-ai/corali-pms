@@ -2197,6 +2197,10 @@ const el = {
   "tv.assistantDetailed": "Αναλυτικές (περισσότερες επιλογές με αποστάσεις)",
   "tv.assistantShort": "Σύντομες (2–3 επιλογές)",
   "tv.nearbyRadius": "Μαγαζιά κοντά στο ξενοδοχείο σε ακτίνα",
+  "tv.nearbyHide": "Να μην προτείνονται:",
+  "tv.nearbyHidePh": "ονόματα ή λέξεις, χωρισμένα με κόμμα",
+  "tv.nearbyGoogle": "Πηγή: Google Maps (βαθμολογίες, ωράρια) · κλήσεις σήμερα {today}, αυτόν τον μήνα {month} · άλλα καταλύματα δεν εμφανίζονται ποτέ.",
+  "tv.nearbyOsm": "Πηγή: OpenStreetMap (δωρεάν). Για βαθμολογίες και ωράρια βάλτε κλειδί στο PMS → Ενσωματώσεις → Google Places. Άλλα καταλύματα δεν εμφανίζονται ποτέ.",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -4390,6 +4394,10 @@ const en: Record<PmsKey, string> = {
   "tv.assistantDetailed": "Detailed (more options with distances)",
   "tv.assistantShort": "Short (2–3 options)",
   "tv.nearbyRadius": "Nearby places within",
+  "tv.nearbyHide": "Never suggest:",
+  "tv.nearbyHidePh": "names or words, comma separated",
+  "tv.nearbyGoogle": "Source: Google Maps (ratings, hours) · calls today {today}, this month {month} · other accommodation is never shown.",
+  "tv.nearbyOsm": "Source: OpenStreetMap (free). For ratings and hours add a key in PMS → Integrations → Google Places. Other accommodation is never shown.",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };
