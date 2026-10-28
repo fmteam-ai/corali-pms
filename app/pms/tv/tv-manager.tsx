@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 import type { TvScreenRow } from "@/lib/tv";
 import { tvLanguages, type TvLanguage, type TvSettings } from "@/lib/tv-core";
@@ -146,10 +146,12 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
           </div>
         </div>
         <small>{t("tv.assistantHelp")}</small>
+        <Fold title={t("tv.welcomeTitle")}>
         <div className="tvLangTabs" role="tablist">{tvLanguages.map((l) => <button type="button" role="tab" aria-selected={textLang === l} className={textLang === l ? "active" : ""} key={l} onClick={() => setTextLang(l)}>{langNames[l]}</button>)}</div>
         <label>{t("tv.welcome")}<textarea rows={3} maxLength={600} value={settings.welcome[textLang] ?? ""} disabled={!canEdit} onChange={(e) => set({ welcome: { ...settings.welcome, [textLang]: e.target.value } })} /></label>
         <label>{t("tv.wifiNote")}<input value={settings.wifiNote[textLang] ?? ""} maxLength={200} disabled={!canEdit} onChange={(e) => set({ wifiNote: { ...settings.wifiNote, [textLang]: e.target.value } })} /></label>
         <label>{t("tv.tips")}<textarea rows={5} maxLength={1500} value={settings.tips[textLang] ?? ""} disabled={!canEdit} onChange={(e) => set({ tips: { ...settings.tips, [textLang]: e.target.value } })} /><small>{t("tv.tipsHelp")}</small></label>
+        </Fold>
         <h3>{t("tv.infoTitle")}</h3>
         <small>{t("tv.infoHelp")}</small>
         {settings.info.map((x, i) => (
@@ -168,7 +170,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
             <button type="button" className="secondaryButton" onClick={() => confirm(t("tv.infoResetConfirm")) && setInfo(defaultInfoSections.map((x) => ({ ...x, title: { ...x.title }, body: { ...x.body } })))}>{t("tv.infoReset")}</button>
           </div>
         )}
-        <h3>{t("tv.questionsTitle")}</h3>
+        <Fold title={t("tv.questionsTitle")} count={settings.assistantQuestions.length}>
         <small>{t("tv.questionsHelp")}</small>
         <div className="tvLangTabs" role="tablist">{tvLanguages.map((l) => <button type="button" role="tab" aria-selected={textLang === l} className={textLang === l ? "active" : ""} key={l} onClick={() => setTextLang(l)}>{langNames[l]}</button>)}</div>
         <div className="tvQuestions">
@@ -186,7 +188,8 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
             <button type="button" className="secondaryButton" onClick={() => confirm(t("tv.infoResetConfirm")) && set({ assistantQuestions: defaultTvQuestions.map((q) => ({ ...q })) })}>{t("tv.questionsReset")}</button>
           </div>
         )}
-        <h3>{t("tv.beachesTitle")}</h3>
+        </Fold>
+        <Fold title={t("tv.beachesTitle")} count={settings.beaches.length}>
         <small>{t("tv.beachesHelp")}</small>
         <p className={`notice tvBeachStatus${settings.beaches.every((b) => b.lat !== undefined) ? " ok" : ""}`}>{t("tv.beachStatus").replace("{n}", String(settings.beaches.filter((b) => b.lat !== undefined).length)).replace("{total}", String(settings.beaches.length))}</p>
         <div className="tvGoogleDist">
@@ -223,6 +226,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
             <button type="button" className="secondaryButton" onClick={() => confirm(t("tv.infoResetConfirm")) && set({ beaches: defaultBeaches.map((b) => ({ ...b, sheltered: [...b.sheltered] })) })}>{t("tv.infoReset")}</button>
           </div>
         )}
+        </Fold>
         <h3>{t("tv.appsTitle")}</h3>
         <small>{t("tv.appsHelp")}</small>
         <div className="tvAppsEdit">
@@ -237,7 +241,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
           </div>
         ))}
         {canEdit && <button type="button" className="secondaryButton" disabled={settings.apps.length >= MAX_TV_APPS} onClick={() => setApps([...settings.apps, { key: `custom:new${Date.now()}`, name: "", packages: [], color: "#173e47" }])}>+ {t("tv.appAdd")} ({t("tv.appCustom")})</button>}
-        <h3>{t("tv.channelsTitle")}</h3>
+        <Fold title={t("tv.channelsTitle")} count={settings.channels.length}>
         <small>{t("tv.channelsHelp")}</small>
         <div className="tvChannelEdit">
           {settings.channels.map((c, i) => (
@@ -253,10 +257,11 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
           ))}
           {canEdit && <button type="button" className="secondaryButton" disabled={settings.channels.length >= MAX_TV_CHANNELS} onClick={() => setChannels([...settings.channels, { name: "", url: "", logo: "", category: "news" }])}>+ {t("tv.channelAdd")}</button>}
         </div>
+        </Fold>
         {canEdit && <button type="button" disabled={busy} onClick={() => post({ action: "settings", settings }, t("tv.saved"))}>{t("tv.save")}</button>}
       </div>
 
-      <h2>{t("tv.screens")}</h2>
+      <Fold title={t("tv.screens")} count={screens.length} big>
       <p className="muted">{t("tv.screensHelp")}</p>
       <div className="tableWrap"><table><thead><tr><th>{t("tv.room")}</th><th>{t("tv.link")}</th><th>{t("tv.status")}</th><th>{t("tv.roomWifi")}</th><th>{t("tv.plug")}</th><th>{t("tv.active")}</th><th /></tr></thead>
         <tbody>{screens.map((s) => {
@@ -290,6 +295,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
             </tr>
           );
         })}</tbody></table></div>
+      </Fold>
       <p className="notice" role="status">{msg}</p>
 
       <div className="hubCard">
@@ -322,5 +328,18 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         <ol>{["tv.setup1", "tv.setup2", "tv.setup3", "tv.setup4", "tv.setup5", "tv.setup6"].map((k) => <li key={k}>{t(k as Parameters<typeof t>[0])}</li>)}</ol>
       </details>
     </div>
+  );
+}
+
+/** A section that opens and closes with an arrow; closed by default, remembered per browser. */
+function Fold({ title, count, big, children }: { title: string; count?: number; big?: boolean; children: ReactNode }) {
+  const key = `corali.tv.fold.${title}`;
+  const ref = useRef<HTMLDetailsElement>(null);
+  useEffect(() => { try { if (ref.current && localStorage.getItem(key) === "1") ref.current.open = true; } catch { /* private mode */ } }, [key]);
+  return (
+    <details ref={ref} className={`tvFold${big ? " big" : ""}`} onToggle={(e) => { try { localStorage.setItem(key, e.currentTarget.open ? "1" : "0"); } catch { /* private mode */ } }}>
+      <summary>{big ? <h2>{title}</h2> : <h3>{title}</h3>}{count !== undefined && <span className="tvFoldCount">{count}</span>}</summary>
+      <div className="tvFoldBody">{children}</div>
+    </details>
   );
 }

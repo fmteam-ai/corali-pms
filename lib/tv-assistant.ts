@@ -51,13 +51,13 @@ function beachContext(wind: Wind | null, beaches: TvBeach[], mode: BeachMode): s
   const lines = wind
     ? [`- Now: ${name(wind.dir)} ${wind.bf} Bf, gusts ${wind.gustBf} Bf${sea(wind.waves)}${windyDay(wind.bf) ? " — windy (meltemi strength)" : ""}.`, ...wind.days.map((d) => `- ${d.date}: mostly ${name(d.dir)}, up to ${d.bf} Bf, gusts ${d.gustBf} Bf${sea(d.waves)}.`)]
     : ["- (forecast unavailable right now — you may search the web for the wind in Paros)"];
-  const dist = (b: TvBeach) => `${b.km ? `${b.km} km, ` : ""}${b.walkMin ? `${b.walkMin} min on foot, ` : ""}~${b.minutes} min by car`;
+  const dist = (b: TvBeach) => [b.km ? `${b.km} km` : "", b.walkMin ? `${b.walkMin} min on foot` : "", b.minutes ? `${b.minutes} min by car` : ""].filter(Boolean).join(", ") || "distance not given";
   const list = (bs: TvBeach[]) => bs.map((b) => `${b.name} (${dist(b)}${b.note ? `; ${b.note}` : ""})`).join(" · ") || "(none)";
   const today = wind ? beachesForWind(beaches, compass(wind.dir)) : null;
   return `WIND AND SEA (Open-Meteo, Piso Livadi)
 ${lines.join("\n")}
 
-BEACHES (hotel's list: distance from the hotel in km and minutes by car; "sheltered from" = calm when the wind blows from there)
+BEACHES (hotel's list, set by the hotel: distance from the hotel in km, minutes on foot and minutes by car; "sheltered from" = calm when the wind blows from there). Use these numbers EXACTLY as written — never estimate, round or swap them, and never say "by car" for minutes on foot. When minutes on foot are given, give the walking time (e.g. "4 minutes on foot"); add the car time only if it is given.
 ${beaches.map((b) => `- ${b.name}: ${dist(b)}, sheltered from ${b.sheltered.join(", ") || "—"}${b.note ? `. ${b.note}` : ""}`).join("\n") || "- (none listed)"}
 ${today ? `For the wind now (${compass(wind!.dir)}): sheltered → ${list(today.sheltered)}; exposed → ${list(today.exposed)}` : ""}
 BEACH ADVICE: from 4–5 Beaufort, and always with the meltemi (north / north-east summer wind), ${mode === "all" ? "name ALL beaches of the list sheltered from that direction — the whole island, not only the nearest — grouped by area, nearest first (e.g. near the hotel: …; south: …; Parikia side: …; Naoussa: …), giving for every beach its distance from the hotel (km, minutes on foot when given, and minutes by car) and why in a few words. For this question you may use up to ~170 words." : "suggest the two or three nearest beaches sheltered from that direction with their distance from the hotel (km, minutes on foot when given, and minutes by car) and say why in a few words (e.g. \"with today's north wind Logaras is calm\")."}`;

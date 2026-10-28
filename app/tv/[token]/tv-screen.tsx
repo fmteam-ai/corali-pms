@@ -120,6 +120,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   const [appError, setAppError] = useState("");
   // My requests: the id waiting for a second OK to cancel, and a reload of the screen data after a change.
   const [cancelArm, setCancelArm] = useState<number | null>(null);
+  const [sendArm, setSendArm] = useState<string | null>(null);
   const reloadData = useRef<() => void>(() => {});
   const assistantApi = useRef<AssistantApi | null>(null);
 
@@ -164,6 +165,14 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
     setTimeout(() => setReqState((s) => (s[kind] === result ? { ...s, [kind]: undefined } : s)), 6_000);
     return result === "failed" ? error || "FAILED" : true;
   };
+  // Sending a request also takes two OKs on the same button, so a button pressed by mistake never reaches reception.
+  const armed = (key: string) => {
+    if (sendArm === key) { setSendArm(null); return true; }
+    setSendArm(key);
+    setTimeout(() => setSendArm((a) => (a === key ? null : a)), 8_000);
+    return false;
+  };
+  const disarm = (key: string) => () => setSendArm((a) => (a === key ? null : a));
   // Cancelling one of my open requests takes two OKs on the same button (a request pressed by mistake is undone).
   const cancelRequest = async (id: number) => {
     choose("requests");
@@ -355,16 +364,16 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
           <p className="tvReqIntro">{rq.texts.intro}</p>
           <div className="tvReqPanel" ref={panelRef}>
           <div className="tvReqGrid">
-            <button type="button" className={`tvReqBtn tvReqDnd${dndOn ? " on" : ""}${reqState.dnd ? ` is-${reqState.dnd}` : ""}`} aria-pressed={dndOn} onClick={() => sendRequest("dnd", { on: !dndOn })}>
+            <button type="button" className={`tvReqBtn tvReqDnd${dndOn ? " on" : ""}${reqState.dnd ? ` is-${reqState.dnd}` : ""}${sendArm === "dnd" ? " armed" : ""}`} aria-pressed={dndOn} onBlur={disarm("dnd")} onClick={() => { if (armed("dnd")) void sendRequest("dnd", { on: !dndOn }); }}>
               <span className="tvReqIcon"><FaBan aria-hidden /></span>
-              <b>{reqLabel("dnd", rq.texts.dnd)}</b>
+              <b>{sendArm === "dnd" ? rq.texts.confirmSend : reqLabel("dnd", rq.texts.dnd)}</b>
               <small>{rq.texts.dndHint}</small>
               <span className="tvSwitch" aria-hidden><i />{dndOn ? rq.texts.dndOn : rq.texts.dndOff}</span>
             </button>
             {tvRequestKinds.map((k) => { const I = reqIcons[k]; const st = reqState[k]; return (
-              <button type="button" key={k} data-req={k} className={`tvReqBtn${st ? ` is-${st}` : ""}`} onClick={() => (k === "taxi" && rq.transfer ? openTransfer() : k === "problem" && rq.problems ? setProblemOpen(true) : sendRequest(k))}>
+              <button type="button" key={k} data-req={k} className={`tvReqBtn${st ? ` is-${st}` : ""}${sendArm === k ? " armed" : ""}`} onBlur={disarm(k)} onClick={() => (k === "taxi" && rq.transfer ? openTransfer() : k === "problem" && rq.problems ? setProblemOpen(true) : armed(k) && sendRequest(k))}>
                 <span className="tvReqIcon">{st === "sent" || st === "already" ? <FaCheck aria-hidden /> : <I aria-hidden />}</span>
-                <b>{reqLabel(k, rq.texts[k])}</b>
+                <b>{sendArm === k ? rq.texts.confirmSend : reqLabel(k, rq.texts[k])}</b>
               </button>
             ); })}
           </div>
@@ -476,7 +485,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
               <p className="tvTfHint">{rq.problems.intro}</p>
               <div className="tvProblemGrid">
                 {tvProblems.map((k, i) => (
-                  <button type="button" key={k} autoFocus={i === 0} onClick={async () => { setProblemOpen(false); await sendRequest("problem", { problem: k }); requestAnimationFrame(() => panelRef.current?.querySelector<HTMLButtonElement>('[data-req="problem"]')?.focus()); }}>{rq.problems![k]}</button>
+                  <button type="button" key={k} autoFocus={i === 0} className={sendArm === `problem:${k}` ? "armed" : ""} onBlur={disarm(`problem:${k}`)} onClick={async () => { if (!armed(`problem:${k}`)) return; setProblemOpen(false); await sendRequest("problem", { problem: k }); requestAnimationFrame(() => panelRef.current?.querySelector<HTMLButtonElement>('[data-req="problem"]')?.focus()); }}>{sendArm === `problem:${k}` ? rq.texts.confirmSend : rq.problems![k]}</button>
                 ))}
               </div>
               <footer className="tvTfActions"><button type="button" onClick={() => setProblemOpen(false)}>{rq.problems.cancel}</button></footer>
