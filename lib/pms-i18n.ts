@@ -2159,9 +2159,9 @@ const el = {
   "tv.assistantLimit": "Ερωτήσεις ανά δωμάτιο την ημέρα",
   "tv.assistantHelp": "Καρτέλα «Βοηθός»: ο πελάτης πατάει 🎤 και μιλάει από το μικρόφωνο του τηλεχειριστηρίου (εφαρμογή Corali TV 1.5+) ή διαλέγει έτοιμη ερώτηση. Απαντά για το ξενοδοχείο, τη διαμονή και την Πάρο, και μπορεί να στείλει αιτήματα ή παραγγελίες μόνο αφού ο πελάτης πατήσει «Επιβεβαίωση». Χρειάζεται κλειδί Anthropic (Συνδέσεις). Η συζήτηση σβήνει με την επόμενη διαμονή.",
   "tv.beachesTitle": "🏖️ Παραλίες για τον βοηθό (ανάλογα με τον αέρα)",
-  "tv.beachesHelp": "Ο βοηθός διαβάζει την πρόγνωση ανέμου (κατεύθυνση, μποφόρ, ριπές, κύμα) και με βοριά / μελτέμι προτείνει τις κοντινότερες προστατευμένες παραλίες. Σημειώστε από ποιους ανέμους προστατεύεται κάθε παραλία (π.χ. Λογαράς: Βοριάς, Μαΐστρος). Η αρχική λίστα είναι ενδεικτική — ελέγξτε την με τη δική σας γνώση.",
+  "tv.beachesHelp": "Ο βοηθός διαβάζει την πρόγνωση ανέμου (κατεύθυνση, μποφόρ, ριπές, κύμα) και με βοριά / μελτέμι προτείνει τις προστατευμένες παραλίες (όλες της Πάρου ή μόνο τις πιο κοντινές, όπως ορίσετε παρακάτω). Σημειώστε από ποιους ανέμους προστατεύεται κάθε παραλία (π.χ. Λογαράς: Βοριάς, Μαΐστρος). Η αρχική λίστα είναι ενδεικτική — ελέγξτε την με τη δική σας γνώση.",
   "tv.beachName": "Παραλία",
-  "tv.beachMinutes": "Λεπτά από το ξενοδοχείο",
+  "tv.beachMinutes": "Λεπτά με αυτοκίνητο",
   "tv.beachSheltered": "Προστατευμένη από",
   "tv.beachNote": "Σημείωση (π.χ. ρηχά νερά, ταβέρνα, windsurf)",
   "tv.beachAdd": "Παραλία",
@@ -2188,6 +2188,15 @@ const el = {
   "nav.campaigns": "Μαζικά μηνύματα",
   "campaigns.title": "Μαζικά μηνύματα σε πελάτες",
   "campaigns.subtitle": "Ευχές για τις γιορτές, νέα σεζόν και προσφορές με email και WhatsApp σε όσους έχουν μείνει στο ξενοδοχείο — μόνο με τη συγκατάθεσή τους και με δυνατότητα διαγραφής.",
+  "tv.beachMode": "Με αέρα ο βοηθός προτείνει:",
+  "tv.beachModeAll": "Όλες τις κατάλληλες παραλίες της Πάρου (ανά περιοχή)",
+  "tv.beachModeNear": "Μόνο τις 2–3 πιο κοντινές",
+  "tv.beachAddParos": "Προσθήκη όλων των παραλιών της Πάρου που λείπουν",
+  "tv.beachKm": "Χλμ",
+  "tv.assistantDetail": "Απαντήσεις:",
+  "tv.assistantDetailed": "Αναλυτικές (περισσότερες επιλογές με αποστάσεις)",
+  "tv.assistantShort": "Σύντομες (2–3 επιλογές)",
+  "tv.nearbyRadius": "Μαγαζιά κοντά στο ξενοδοχείο σε ακτίνα",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -4345,7 +4354,7 @@ const en: Record<PmsKey, string> = {
   "tv.beachesTitle": "🏖️ Beaches for the assistant (by wind)",
   "tv.beachesHelp": "The assistant reads the wind forecast (direction, Beaufort, gusts, waves) and on north / meltemi days suggests the nearest sheltered beaches. Mark which winds each beach is sheltered from. The starting list is a suggestion — check it with your local knowledge.",
   "tv.beachName": "Beach",
-  "tv.beachMinutes": "Minutes from the hotel",
+  "tv.beachMinutes": "Minutes by car",
   "tv.beachSheltered": "Sheltered from",
   "tv.beachNote": "Note (e.g. shallow water, taverna, windsurf)",
   "tv.beachAdd": "Beach",
@@ -4372,6 +4381,15 @@ const en: Record<PmsKey, string> = {
   "nav.campaigns": "Bulk messages",
   "campaigns.title": "Bulk messages to guests",
   "campaigns.subtitle": "Holiday greetings, new season and offers by e-mail and WhatsApp to past guests — only with their consent and with an unsubscribe option.",
+  "tv.beachMode": "On windy days the assistant suggests:",
+  "tv.beachModeAll": "All suitable beaches of Paros (by area)",
+  "tv.beachModeNear": "Only the 2–3 nearest",
+  "tv.beachAddParos": "Add the missing Paros beaches",
+  "tv.beachKm": "Km",
+  "tv.assistantDetail": "Answers:",
+  "tv.assistantDetailed": "Detailed (more options with distances)",
+  "tv.assistantShort": "Short (2–3 options)",
+  "tv.nearbyRadius": "Nearby places within",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

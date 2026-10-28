@@ -3,7 +3,7 @@
 import { normalizeTvApps, type TvApp } from "./tv-apps-core.ts";
 import { normalizeTvChannels, type TvChannel } from "./tv-channels-core.ts";
 import { normalizeInfoSections, type TvInfoSection } from "./tv-info.ts";
-import { normalizeBeaches, type TvBeach } from "./tv-beaches.ts";
+import { normalizeBeaches, type BeachMode, type TvBeach } from "./tv-beaches.ts";
 import { normalizeTvQuestions, type TvQuestion } from "./tv-questions.ts";
 
 export const tvLanguages = ["el", "en", "fr", "de", "it", "es"] as const;
@@ -31,8 +31,14 @@ export type TvSettings = {
   assistant: boolean;
   /** Questions a stay may ask per day (cost control). */
   assistantDailyLimit: number;
+  /** Length of the assistant answers: short (TV-friendly) or detailed (several options with distances). */
+  assistantDetail: "short" | "detailed";
+  /** Radius (km) around the hotel for the nearby places the assistant knows (OpenStreetMap). */
+  nearbyRadiusKm: number;
   /** Beaches and the winds they are sheltered from (the assistant suggests calm ones on windy days). */
   beaches: TvBeach[];
+  /** On a windy day: suggest only the nearest sheltered beaches, or all suitable ones of the island. */
+  beachMode: BeachMode;
   /** Ready questions on the assistant tab, per language (PMS-editable). */
   assistantQuestions: TvQuestion[];
 };
@@ -76,7 +82,10 @@ export const defaultTvSettings: TvSettings = {
   apps: [],
   assistant: false,
   assistantDailyLimit: 40,
+  assistantDetail: "detailed",
+  nearbyRadiusKm: 1,
   beaches: normalizeBeaches(undefined),
+  beachMode: "all",
   assistantQuestions: normalizeTvQuestions(undefined),
 };
 
@@ -128,6 +137,9 @@ export function normalizeTvSettings(raw: unknown): TvSettings {
     apps: normalizeTvApps(r.apps),
     assistant: r.assistant === true,
     beaches: normalizeBeaches(r.beaches),
+    beachMode: r.beachMode === "near" ? "near" : "all",
+    assistantDetail: r.assistantDetail === "short" ? "short" : "detailed",
+    nearbyRadiusKm: Math.min(5, Math.max(0.3, Math.round((Number(r.nearbyRadiusKm) || 1) * 10) / 10)),
     assistantQuestions: normalizeTvQuestions(r.assistantQuestions),
     assistantDailyLimit: Number.isFinite(Number(r.assistantDailyLimit)) && r.assistantDailyLimit !== null && r.assistantDailyLimit !== "" ? Math.min(200, Math.max(5, Math.round(Number(r.assistantDailyLimit)))) : 40,
   };

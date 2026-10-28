@@ -5,7 +5,7 @@ import type { TvScreenRow } from "@/lib/tv";
 import { tvLanguages, type TvLanguage, type TvSettings } from "@/lib/tv-core";
 import { defaultInfoSections, MAX_INFO_SECTIONS, type TvInfoSection } from "@/lib/tv-info";
 import { defaultTvQuestions, MAX_TV_QUESTIONS, type TvQuestion } from "@/lib/tv-questions";
-import { defaultBeaches, windDirections, windNames, type TvBeach } from "@/lib/tv-beaches";
+import { MAX_BEACHES, missingParosBeaches, defaultBeaches, windDirections, windNames, type TvBeach } from "@/lib/tv-beaches";
 import { channelSource, MAX_TV_CHANNELS, tvChannelCategories, type TvChannel } from "@/lib/tv-channels-core";
 import { MAX_TV_APPS, tvAppCatalog, type TvApp } from "@/lib/tv-apps-core";
 import type { PowerSettings, RoomPowerState } from "@/lib/tv-power";
@@ -109,6 +109,8 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         <div className="tvAdminChecks tvAssistantSet">
           <label className="inline"><input type="checkbox" checked={settings.assistant} disabled={!canEdit} onChange={(e) => set({ assistant: e.target.checked })} /> <b>{t("tv.assistant")}</b></label>
           <label className="inline">{t("tv.assistantLimit")} <input type="number" min={5} max={200} value={settings.assistantDailyLimit} disabled={!canEdit} onChange={(e) => set({ assistantDailyLimit: Number(e.target.value) || 40 })} style={{ width: 80 }} /></label>
+          <label className="inline">{t("tv.assistantDetail")} <select value={settings.assistantDetail} disabled={!canEdit} onChange={(e) => set({ assistantDetail: e.target.value === "short" ? "short" : "detailed" })}><option value="detailed">{t("tv.assistantDetailed")}</option><option value="short">{t("tv.assistantShort")}</option></select></label>
+          <label className="inline">{t("tv.nearbyRadius")} <input type="number" min={0.3} max={5} step={0.1} value={settings.nearbyRadiusKm} disabled={!canEdit} onChange={(e) => set({ nearbyRadiusKm: Number(e.target.value) || 1 })} style={{ width: 70 }} /> km</label>
         </div>
         <small>{t("tv.assistantHelp")}</small>
         <div className="tvLangTabs" role="tablist">{tvLanguages.map((l) => <button type="button" role="tab" aria-selected={textLang === l} className={textLang === l ? "active" : ""} key={l} onClick={() => setTextLang(l)}>{langNames[l]}</button>)}</div>
@@ -153,10 +155,12 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         )}
         <h3>{t("tv.beachesTitle")}</h3>
         <small>{t("tv.beachesHelp")}</small>
+        <label className="inline tvBeachMode">{t("tv.beachMode")} <select value={settings.beachMode} disabled={!canEdit} onChange={(e) => set({ beachMode: e.target.value === "near" ? "near" : "all" })}><option value="all">{t("tv.beachModeAll")}</option><option value="near">{t("tv.beachModeNear")}</option></select></label>
         <div className="tvBeaches">
           {settings.beaches.map((b, i) => (
             <div className="tvBeach" key={i}>
               <input aria-label={t("tv.beachName")} placeholder={t("tv.beachName")} value={b.name} maxLength={60} disabled={!canEdit} onChange={(e) => editBeach(i, { name: e.target.value })} />
+              <label className="inline">{t("tv.beachKm")} <input type="number" min={0} max={100} step={0.1} value={b.km} disabled={!canEdit} onChange={(e) => editBeach(i, { km: Number(e.target.value) || 0 })} /></label>
               <label className="inline">{t("tv.beachMinutes")} <input type="number" min={0} max={180} value={b.minutes} disabled={!canEdit} onChange={(e) => editBeach(i, { minutes: Number(e.target.value) || 0 })} /></label>
               <div className="tvWinds" role="group" aria-label={t("tv.beachSheltered")}>
                 <span>{t("tv.beachSheltered")}:</span>
@@ -169,7 +173,8 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         </div>
         {canEdit && (
           <div className="tvInfoAdd">
-            <button type="button" className="secondaryButton" disabled={settings.beaches.length >= 20} onClick={() => set({ beaches: [...settings.beaches, { name: "", minutes: 10, sheltered: [], note: "" }] })}>+ {t("tv.beachAdd")}</button>
+            <button type="button" className="secondaryButton" disabled={settings.beaches.length >= MAX_BEACHES} onClick={() => set({ beaches: [...settings.beaches, { name: "", minutes: 10, km: 5, sheltered: [], note: "" }] })}>+ {t("tv.beachAdd")}</button>
+            <button type="button" className="secondaryButton" disabled={!missingParosBeaches(settings.beaches).length} onClick={() => set({ beaches: [...settings.beaches, ...missingParosBeaches(settings.beaches)].slice(0, MAX_BEACHES) })}>🏝️ {t("tv.beachAddParos")} ({missingParosBeaches(settings.beaches).length})</button>
             <button type="button" className="secondaryButton" onClick={() => confirm(t("tv.infoResetConfirm")) && set({ beaches: defaultBeaches.map((b) => ({ ...b, sheltered: [...b.sheltered] })) })}>{t("tv.infoReset")}</button>
           </div>
         )}
