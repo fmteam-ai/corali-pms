@@ -152,7 +152,10 @@ export function parseGooglePlaces(json: unknown, kind: NearbyKind, lat: number, 
 }
 
 /** Today's hours for places that carry their week (the list is cached for a day or more). */
-export const withToday = (places: NearbyPlace[], jsDay: number): NearbyPlace[] => places.map((p) => (p.week ? { ...p, hours: todayLine(p.week, jsDay) } : p));
+/** Delivery / take-away only for places that serve food (Google also marks pharmacies and supermarkets). */
+export const FOOD_KINDS: NearbyKind[] = ["restaurant", "cafe", "bar", "fast_food", "ice_cream", "bakery"];
+const foodOnly = (p: NearbyPlace): NearbyPlace => { if (FOOD_KINDS.includes(p.kind) || (p.delivery === undefined && p.takeout === undefined)) return p; const { delivery: _d, takeout: _t, ...rest } = p; void _d; void _t; return rest; };
+export const withToday = (places: NearbyPlace[], jsDay: number): NearbyPlace[] => places.map((p) => foodOnly(p.week ? { ...p, hours: todayLine(p.week, jsDay) } : p));
 
 /** Merge per-group results: nearest first, no duplicates by name. */
 export function mergePlaces(groups: NearbyPlace[][]): NearbyPlace[] {
@@ -170,7 +173,7 @@ export function nearbyText(places: NearbyPlace[], radiusKm: number, perKind = 12
   return `NEARBY PLACES (${source === "google" ? "Google Maps" : "OpenStreetMap"}, within ${clampRadiusKm(radiusKm)} km of the hotel; distances are walking routes from the hotel unless marked straight line — use them as given, do not change them)
 ${groups.join("\n")}
 Say where a place is (village / area) only from its address here — never guess the area.
-Delivery: "delivery: yes" comes from Google Maps and may be out of date — suggest calling to confirm; with no delivery mark it is unknown, not no. The hotel's partner businesses that deliver to the hotel (HOTEL PARTNERS below) come first for delivery questions.
+Delivery: only food places (restaurants, cafés, bars, fast food, bakeries) have a delivery mark; for a delivery question name ONLY places marked "delivery: yes" and partners that deliver — never pharmacies, supermarkets or other shops. "delivery: yes" comes from Google Maps and may be out of date — suggest calling to confirm; with no delivery mark it is unknown, not no. The hotel's partner businesses that deliver to the hotel (HOTEL PARTNERS below) come first for delivery questions.
 Never recommend or name other accommodation (hotels, rooms to let, studios, villas, apartments, Airbnb) — not from this list, not from the web.
 When the guest asks for something near the hotel or within walking distance, recommend from this list first, nearest first (in order of distance), and always say both the distance and the walking time (e.g. "350 m, 5 minutes on foot")${source === "google" ? "; prefer well-rated places and mention the rating and today's hours when useful" : ""}. You may search the web for reviews / opening times; the list may miss a few places and some may be closed out of season — say so if unsure.`;
 }
@@ -181,12 +184,15 @@ When the guest asks for something near the hotel or within walking distance, rec
 export type Spot = { name: string; icon: string; lat: number; lon: number; line: string; directions: string; meters: number };
 
 const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+const GENERIC = /^(φαρμακει[οα]|pharmacy|σουπερ ?μαρκετ|supermarket|mini ?market|μινι ?μαρκετ|φουρνος|bakery|καφε|cafe|περιπτερο|atm|ταβερνα|εστιατοριο|restaurant|bar|πρατηριο καυσιμων)$/;
 
 /** Places / beaches named in the assistant's reply (at most `max`), nearest to the hotel first. */
 export function mentionedSpots(reply: string, spots: Spot[], max = 8): Spot[] {
   const text = fold(reply), seen = new Set<string>();
   return spots
-    .map((s) => { const base = fold(s.name.split(" (")[0].split("/")[0].trim()); return { s, at: base.length >= 4 ? text.indexOf(base) : -1 }; })
+    .map((s) => { const base = fold(s.name.split(" (")[0].split("/")[0].trim()); // A generic name ("Φαρμακείο", "Mini Market") counts only with its distance next to it, not when the word just appears.
+      const at = base.length >= 4 ? text.indexOf(base) : -1;
+      return { s, at: at >= 0 && GENERIC.test(base) && !text.slice(at, at + base.length + 40).includes(String(s.meters)) ? -1 : at }; })
     .filter((x) => x.at >= 0 && !seen.has(x.s.name) && seen.add(x.s.name))
     .sort((a, b) => a.at - b.at)
     .slice(0, max)

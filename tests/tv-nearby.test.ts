@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clampRadiusKm, metersBetween, nearbyText, overpassQuery, parseOverpass, walkMinutes } from "../lib/tv-nearby-core.ts";
+import { clampRadiusKm, mentionedSpots, metersBetween, nearbyText, overpassQuery, parseOverpass, walkMinutes, withToday, type NearbyPlace } from "../lib/tv-nearby-core.ts";
 
 const H = { lat: 37.0405, lon: 25.2555 };
 
@@ -138,4 +138,19 @@ test("delivery: from Google and from the hotel's partners (delivery ones first)"
   assert.ok(t.indexOf("Taverna Thalassa") < t.indexOf("Sunset Bar"));
   assert.match(t, /delivers to the hotel, pick-up, hotel-guest offer −10%: −10% για πελάτες/);
   assert.equal(partnersText([]), "");
+});
+
+test("delivery only for food places; generic names need their distance for a card", () => {
+  const places = [
+    { name: "Mango Souvlaki", kind: "fast_food", meters: 213, walkMin: 3, cuisine: "", hours: "", delivery: true },
+    { name: "Φαρμακείο", kind: "pharmacy", meters: 910, walkMin: 15, cuisine: "", hours: "", delivery: true, takeout: true },
+  ] as NearbyPlace[];
+  const out = withToday(places, 1);
+  assert.equal(out[0].delivery, true);
+  assert.equal(out[1].delivery, undefined);
+  assert.equal(out[1].takeout, undefined);
+  const spot = (name: string, meters: number) => ({ name, icon: "📍", lat: 37, lon: 25.2, line: "", directions: "", meters });
+  const spots = [spot("Mango Souvlaki", 213), spot("Φαρμακείο", 910)];
+  assert.deepEqual(mentionedSpots("Το Mango Souvlaki κάνει delivery. Για φαρμακείο ρωτήστε τη ρεσεψιόν.", spots).map((s) => s.name), ["Mango Souvlaki"]);
+  assert.deepEqual(mentionedSpots("Το πλησιέστερο φαρμακείο, 910 μέτρα.", spots).map((s) => s.name), ["Φαρμακείο"]);
 });
