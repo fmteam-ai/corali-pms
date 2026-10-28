@@ -1,6 +1,8 @@
 // Beaches for the TV assistant (pure; unit tested): the hotel's list with the winds each beach is sheltered from, and
 // the wind as Greek sailors name it, so the assistant can send guests to a calm beach on a meltemi day.
 
+import { validCoord } from "./beach-distance-core.ts";
+
 export const windDirections = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
 export type WindDirection = (typeof windDirections)[number];
 
@@ -16,7 +18,7 @@ export function compass(deg: number): WindDirection {
   return windDirections[Math.round(d / 45) % 8];
 }
 
-export type TvBeach = { name: string; minutes: number; km: number; sheltered: WindDirection[]; note: string };
+export type TvBeach = { name: string; minutes: number; km: number; sheltered: WindDirection[]; note: string; lat?: number; lon?: number; found?: string };
 
 /**
  * Starting list around Piso Livadi (east Paros). A beach is "sheltered" from a wind that blows from the land side or
@@ -24,9 +26,9 @@ export type TvBeach = { name: string; minutes: number; km: number; sheltered: Wi
  */
 export const defaultBeaches: TvBeach[] = [
   { name: "Πίσω Λιβάδι", minutes: 2, km: 0.2, sheltered: ["N", "NW", "W"], note: "Η παραλία του χωριού, μπροστά στο ξενοδοχείο." },
-  { name: "Λογαράς", minutes: 5, km: 1, sheltered: ["N", "NW", "W"], note: "Αμμώδης, ρηχά νερά, ταβέρνες· καλή επιλογή με μελτέμι." },
+  { name: "Λογαράς", minutes: 1, km: 0.3, sheltered: ["N", "NW", "W"], note: "Αμμώδης, ρηχά νερά, ταβέρνες· καλή επιλογή με μελτέμι." },
   { name: "Δρυός / Λολαντώνης", minutes: 15, km: 8, sheltered: ["N", "NW", "W"], note: "Νοτιοανατολικά, μικροί κόλποι." },
-  { name: "Φάραγγας", minutes: 20, km: 17, sheltered: ["N", "NE", "NW"], note: "Νότια παραλία, συνήθως ήρεμη με βοριά." },
+  { name: "Φάραγγας", minutes: 18, km: 14, sheltered: ["N", "NE", "NW"], note: "Νότια παραλία, συνήθως ήρεμη με βοριά." },
   { name: "Αλυκή / Πίσω Αλυκή", minutes: 25, km: 20, sheltered: ["N", "NE", "NW"], note: "Νότια, κοντά στο χωριό Αλυκή." },
   { name: "Κρυός (κόλπος Παροικιάς)", minutes: 30, km: 18, sheltered: ["N", "NE", "E"], note: "Απέναντι από την Παροικιά, με καΐκι από το λιμάνι." },
   { name: "Χρυσή Ακτή", minutes: 10, km: 5, sheltered: ["W", "SW", "NW"], note: "Με βοριά/μελτέμι έχει δυνατό αέρα — ιδανική για windsurf." },
@@ -78,7 +80,8 @@ export function normalizeBeaches(v: unknown): TvBeach[] {
     const minutes = Math.min(180, Math.max(0, Math.round(Number(r.minutes) || 0)));
     // Lists saved before v117 have no km: a known beach takes the indicative distance until the hotel changes it.
     const km = r.km === undefined ? knownKm(name) : Math.min(100, Math.max(0, Math.round((Number(r.km) || 0) * 10) / 10));
-    return [{ name, minutes, km, sheltered, note: typeof r.note === "string" ? r.note.trim().slice(0, 200) : "" }];
+    const place = validCoord(r.lat, r.lon) ? { lat: Number(r.lat), lon: Number(r.lon), found: typeof r.found === "string" ? r.found.slice(0, 160) : "" } : {};
+    return [{ name, minutes, km, sheltered, note: typeof r.note === "string" ? r.note.trim().slice(0, 200) : "", ...place }];
   });
 }
 

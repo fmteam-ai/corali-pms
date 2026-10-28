@@ -133,7 +133,7 @@ async function context(sc: Screen): Promise<{ text: string; itemIds: Set<number>
   const orders = (portal?.orders ?? []).slice(0, 8).map((o) => `- ${o.title} ${euro(o.amountCents)} (${o.status}${o.date ? `, ${o.date} ${o.time}` : ""})`);
   const news = (portal?.announcements ?? []).slice(0, 6).map((a) => `- ${a.title}: ${a.body.slice(0, 200)}`);
   const beaches = beachContext(await windForecast(), settings.beaches, settings.beachMode);
-  const near = await nearbyPlaces(sc.ownerId, settings.nearbyRadiusKm, hideList(settings.nearbyHide)).catch(() => ({ source: "osm" as const, places: [] }));
+  const near = await nearbyPlaces(sc.ownerId, settings.nearbyRadiusKm, hideList(settings.nearbyHide), { lat: settings.hotelLat, lon: settings.hotelLon }).catch(() => ({ source: "osm" as const, places: [] }));
   const nearby = nearbyText(near.places, settings.nearbyRadiusKm, 12, near.source);
   const climate = await roomClimate(sc.ownerId, sc.roomId).catch(() => null);
   const text = `GUEST AND STAY

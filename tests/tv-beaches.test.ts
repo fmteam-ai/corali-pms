@@ -26,7 +26,7 @@ test("on a north wind the sheltered beaches come first, nearest first", () => {
 test("the hotel's beach list is cleaned; missing list → defaults", () => {
   assert.equal(normalizeTvSettings({}).beaches.length, defaultBeaches.length);
   const b = normalizeBeaches([{ name: "  Λογαράς ", minutes: 5.4, sheltered: ["N", "X", "NW"], note: "ok" }, { name: "" }]);
-  assert.deepEqual(b, [{ name: "Λογαράς", minutes: 5, km: 1, sheltered: ["N", "NW"], note: "ok" }]);
+  assert.deepEqual(b, [{ name: "Λογαράς", minutes: 5, km: 0.3, sheltered: ["N", "NW"], note: "ok" }]);
   assert.deepEqual(normalizeBeaches([]), []);
 });
 
@@ -42,7 +42,7 @@ test("the rest of Paros can be added without duplicates; beach mode defaults to 
 });
 
 test("a saved list without km takes the indicative distance of known beaches", () => {
-  assert.equal(normalizeBeaches([{ name: "Λογαράς", minutes: 5, sheltered: ["N"] }])[0].km, 1);
+  assert.equal(normalizeBeaches([{ name: "Λογαράς", minutes: 5, sheltered: ["N"] }])[0].km, 0.3);
   assert.equal(normalizeBeaches([{ name: "Άγνωστη", minutes: 5, sheltered: [] }])[0].km, 0);
   assert.equal(normalizeBeaches([{ name: "Λογαράς", minutes: 5, km: 1.5, sheltered: [] }])[0].km, 1.5);
 });

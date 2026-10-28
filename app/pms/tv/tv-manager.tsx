@@ -63,6 +63,20 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
       return d;
     } finally { setBusy(false); }
   }
+  const googleError = (e: string) => t(({ NO_GOOGLE_KEY: "tv.gNoKey", DAILY_LIMIT: "tv.gLimit", NOT_FOUND: "tv.gNotFound", GOOGLE_DENIED: "tv.gDenied", ROUTES_DENIED: "tv.gRoutesDenied", NO_HOTEL: "tv.gNoHotel" } as Record<string, PmsKey>)[e] ?? "tv.failed");
+  const [hotelQuery, setHotelQuery] = useState("Hotel Corali, Πίσω Λιβάδι, Πάρος");
+  async function locateHotel() {
+    const d = await call({ action: "locateHotel", query: hotelQuery });
+    if (!d.ok) { setMsg(googleError(d.error)); return; }
+    set({ hotelLat: d.hotel.lat, hotelLon: d.hotel.lon, hotelFound: d.hotel.label });
+    setMsg(t("tv.gHotelFound"));
+  }
+  async function beachDistances() {
+    const d = await call({ action: "beachDistances", beaches: settings.beaches, hotelLat: settings.hotelLat, hotelLon: settings.hotelLon });
+    if (!d.ok) { setMsg(googleError(d.error)); return; }
+    set({ beaches: d.beaches });
+    setMsg(`${t("tv.gDistancesDone")}${d.notFound.length ? ` ${t("tv.gSomeNotFound")} ${d.notFound.join(", ")}` : ""}`);
+  }
   async function savePower() {
     const d = await call({ action: "powerSettings", settings: power, authKey });
     if (!d.ok) { setMsg(t("tv.failed")); return; }
@@ -157,11 +171,19 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         )}
         <h3>{t("tv.beachesTitle")}</h3>
         <small>{t("tv.beachesHelp")}</small>
+        <div className="tvGoogleDist">
+          <label className="inline">{t("tv.gHotel")} <input value={hotelQuery} maxLength={150} disabled={!canEdit} onChange={(e) => setHotelQuery(e.target.value)} /></label>
+          {canEdit && <button type="button" className="secondaryButton" disabled={busy} onClick={() => void locateHotel()}>📍 {t("tv.gLocate")}</button>}
+          <small className="muted">{settings.hotelFound ? `✓ ${settings.hotelFound}` : t("tv.gHotelDefault")} ({settings.hotelLat.toFixed(5)}, {settings.hotelLon.toFixed(5)})</small>
+          {canEdit && <button type="button" className="primaryAction" disabled={busy || !settings.beaches.length} onClick={() => void beachDistances()}>🗺️ {t("tv.gDistances")}</button>}
+          <small className="muted">{t("tv.gDistancesHelp")}</small>
+        </div>
         <label className="inline tvBeachMode">{t("tv.beachMode")} <select value={settings.beachMode} disabled={!canEdit} onChange={(e) => set({ beachMode: e.target.value === "near" ? "near" : "all" })}><option value="all">{t("tv.beachModeAll")}</option><option value="near">{t("tv.beachModeNear")}</option></select></label>
         <div className="tvBeaches">
           {settings.beaches.map((b, i) => (
             <div className="tvBeach" key={i}>
-              <input aria-label={t("tv.beachName")} placeholder={t("tv.beachName")} value={b.name} maxLength={60} disabled={!canEdit} onChange={(e) => editBeach(i, { name: e.target.value })} />
+              <input aria-label={t("tv.beachName")} placeholder={t("tv.beachName")} value={b.name} maxLength={60} disabled={!canEdit} onChange={(e) => editBeach(i, { name: e.target.value, lat: undefined, lon: undefined, found: undefined })} />
+              {b.found ? <small className="tvBeachFound" title={b.found}>📍 {b.found}</small> : null}
               <label className="inline">{t("tv.beachKm")} <input type="number" min={0} max={100} step={0.1} value={b.km} disabled={!canEdit} onChange={(e) => editBeach(i, { km: Number(e.target.value) || 0 })} /></label>
               <label className="inline">{t("tv.beachMinutes")} <input type="number" min={0} max={180} value={b.minutes} disabled={!canEdit} onChange={(e) => editBeach(i, { minutes: Number(e.target.value) || 0 })} /></label>
               <div className="tvWinds" role="group" aria-label={t("tv.beachSheltered")}>

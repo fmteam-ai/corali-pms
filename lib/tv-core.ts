@@ -3,6 +3,7 @@
 import { normalizeTvApps, type TvApp } from "./tv-apps-core.ts";
 import { normalizeTvChannels, type TvChannel } from "./tv-channels-core.ts";
 import { normalizeInfoSections, type TvInfoSection } from "./tv-info.ts";
+import { validCoord } from "./beach-distance-core.ts";
 import { normalizeBeaches, type BeachMode, type TvBeach } from "./tv-beaches.ts";
 import { normalizeTvQuestions, type TvQuestion } from "./tv-questions.ts";
 
@@ -37,6 +38,10 @@ export type TvSettings = {
   nearbyRadiusKm: number;
   /** Names / words never suggested near the hotel (comma separated); other accommodation is always hidden. */
   nearbyHide: string;
+  /** Hotel position on the map (distances to beaches and nearby places); found with Google Maps in the PMS. */
+  hotelLat: number;
+  hotelLon: number;
+  hotelFound: string;
   /** Beaches and the winds they are sheltered from (the assistant suggests calm ones on windy days). */
   beaches: TvBeach[];
   /** On a windy day: suggest only the nearest sheltered beaches, or all suitable ones of the island. */
@@ -87,6 +92,9 @@ export const defaultTvSettings: TvSettings = {
   assistantDetail: "detailed",
   nearbyRadiusKm: 1,
   nearbyHide: "",
+  hotelLat: 37.0405,
+  hotelLon: 25.2555,
+  hotelFound: "",
   beaches: normalizeBeaches(undefined),
   beachMode: "all",
   assistantQuestions: normalizeTvQuestions(undefined),
@@ -142,6 +150,7 @@ export function normalizeTvSettings(raw: unknown): TvSettings {
     beaches: normalizeBeaches(r.beaches),
     beachMode: r.beachMode === "near" ? "near" : "all",
     assistantDetail: r.assistantDetail === "short" ? "short" : "detailed",
+    ...(validCoord(r.hotelLat, r.hotelLon) ? { hotelLat: Number(r.hotelLat), hotelLon: Number(r.hotelLon), hotelFound: typeof r.hotelFound === "string" ? r.hotelFound.slice(0, 160) : "" } : { hotelLat: 37.0405, hotelLon: 25.2555, hotelFound: "" }),
     nearbyHide: typeof r.nearbyHide === "string" ? r.nearbyHide.slice(0, 1000) : "",
     nearbyRadiusKm: Math.min(5, Math.max(0.3, Math.round((Number(r.nearbyRadiusKm) || 1) * 10) / 10)),
     assistantQuestions: normalizeTvQuestions(r.assistantQuestions),

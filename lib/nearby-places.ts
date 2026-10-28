@@ -3,7 +3,7 @@
 // hotel's daily limit (then OpenStreetMap is used), so the free monthly allowance is never exceeded by surprise.
 import { db } from "@/lib/db";
 import { providerCredentials } from "@/lib/provider-connections";
-import { filterPlaces, GOOGLE_FIELD_MASK, googleGroups, googleNearbyBody, HOTEL_LAT, HOTEL_LON, mergePlaces, overpassQuery, parseGooglePlaces, parseOverpass, type NearbyPlace } from "@/lib/tv-nearby-core";
+import { filterPlaces, GOOGLE_FIELD_MASK, googleGroups, googleNearbyBody, mergePlaces, overpassQuery, parseGooglePlaces, parseOverpass, type NearbyPlace } from "@/lib/tv-nearby-core";
 
 type Source = "google" | "osm";
 let cache: { at: number; key: string; source: Source; places: NearbyPlace[] } | null = null;
@@ -14,7 +14,7 @@ const athensWeekday = () => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].in
 export const googleDailyLimit = (v: unknown) => Math.min(500, Math.max(6, Math.round(Number(v) || 50)));
 
 /** Reserves n Google calls for today; false when the daily limit would be passed. */
-async function reserveGoogleCalls(ownerId: string, n: number, limit: number): Promise<boolean> {
+export async function reserveGoogleCalls(ownerId: string, n: number, limit: number): Promise<boolean> {
   const r = await db().query(
     `INSERT INTO places_api_usage(owner_id,day,calls) VALUES($1,$2,$3) ON CONFLICT(owner_id,day) DO UPDATE SET calls=places_api_usage.calls+$3 WHERE places_api_usage.calls+$3<=$4 RETURNING calls`,
     [ownerId, athensDay(), n, limit],
@@ -28,39 +28,41 @@ export async function placesUsage(ownerId: string): Promise<{ today: number; mon
   return { today: Number(r?.today ?? 0), month: Number(r?.month ?? 0) };
 }
 
-export async function googleSearch(apiKey: string, types: string[], radiusKm: number, maxResults = 20): Promise<Response> {
+export type At = { lat: number; lon: number };
+
+export async function googleSearch(apiKey: string, types: string[], radiusKm: number, at: At, maxResults = 20): Promise<Response> {
   return fetch("https://places.googleapis.com/v1/places:searchNearby", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": GOOGLE_FIELD_MASK },
-    body: JSON.stringify({ ...googleNearbyBody(types, HOTEL_LAT, HOTEL_LON, radiusKm), maxResultCount: maxResults }),
+    body: JSON.stringify({ ...googleNearbyBody(types, at.lat, at.lon, radiusKm), maxResultCount: maxResults }),
     signal: AbortSignal.timeout(15_000),
   });
 }
 
-async function fromGoogle(ownerId: string, apiKey: string, limit: number, radiusKm: number): Promise<NearbyPlace[] | null> {
+async function fromGoogle(ownerId: string, apiKey: string, limit: number, radiusKm: number, at: At): Promise<NearbyPlace[] | null> {
   if (!(await reserveGoogleCalls(ownerId, googleGroups.length, limit))) return null;
   const day = athensWeekday();
   const groups = await Promise.all(googleGroups.map(async (g) => {
-    const r = await googleSearch(apiKey, g.types, radiusKm).catch(() => null);
-    return r?.ok ? parseGooglePlaces(await r.json(), g.kind, HOTEL_LAT, HOTEL_LON, radiusKm, day) : null;
+    const r = await googleSearch(apiKey, g.types, radiusKm, at).catch(() => null);
+    return r?.ok ? parseGooglePlaces(await r.json(), g.kind, at.lat, at.lon, radiusKm, day) : null;
   }));
   return groups.every((g) => g === null) ? null : mergePlaces(groups.map((g) => g ?? []));
 }
 
-async function fromOsm(radiusKm: number): Promise<NearbyPlace[]> {
-  const r = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "HotelCorali-TV/1.0 (booking.hotelcorali.gr)" }, body: `data=${encodeURIComponent(overpassQuery(HOTEL_LAT, HOTEL_LON, radiusKm))}`, signal: AbortSignal.timeout(15_000) });
-  return r.ok ? parseOverpass(await r.json(), HOTEL_LAT, HOTEL_LON, radiusKm) : [];
+async function fromOsm(radiusKm: number, at: At): Promise<NearbyPlace[]> {
+  const r = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "HotelCorali-TV/1.0 (booking.hotelcorali.gr)" }, body: `data=${encodeURIComponent(overpassQuery(at.lat, at.lon, radiusKm))}`, signal: AbortSignal.timeout(15_000) });
+  return r.ok ? parseOverpass(await r.json(), at.lat, at.lon, radiusKm) : [];
 }
 
 /** The list for the assistant (no other accommodation, nothing on the hotel's hide list). A failure keeps the last list. */
-export async function nearbyPlaces(ownerId: string, radiusKm: number, hide: string[]): Promise<{ source: Source; places: NearbyPlace[] }> {
+export async function nearbyPlaces(ownerId: string, radiusKm: number, hide: string[], at: At): Promise<{ source: Source; places: NearbyPlace[] }> {
   const g = await providerCredentials(ownerId, "googlePlaces").catch(() => null);
   const apiKey = g?.active ? g.secrets.apiKey : "";
-  const key = `${apiKey ? "g" : "o"}:${radiusKm}`;
+  const key = `${apiKey ? "g" : "o"}:${radiusKm}:${at.lat},${at.lon}`;
   if (!cache || cache.key !== key || Date.now() - cache.at >= REFRESH_MS) {
     try {
-      const google = apiKey ? await fromGoogle(ownerId, apiKey, googleDailyLimit(g?.settings.dailyLimit), radiusKm) : null;
-      const next = google ? { source: "google" as const, places: google } : { source: "osm" as const, places: await fromOsm(radiusKm) };
+      const google = apiKey ? await fromGoogle(ownerId, apiKey, googleDailyLimit(g?.settings.dailyLimit), radiusKm, at) : null;
+      const next = google ? { source: "google" as const, places: google } : { source: "osm" as const, places: await fromOsm(radiusKm, at) };
       if (next.places.length || !cache || cache.key !== key) cache = { at: Date.now(), key, ...next };
       else cache.at = Date.now() - REFRESH_MS + 3_600_000; // try again in an hour
     } catch {

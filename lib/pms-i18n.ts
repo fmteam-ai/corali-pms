@@ -2201,6 +2201,20 @@ const el = {
   "tv.nearbyHidePh": "ονόματα ή λέξεις, χωρισμένα με κόμμα",
   "tv.nearbyGoogle": "Πηγή: Google Maps (βαθμολογίες, ωράρια) · κλήσεις σήμερα {today}, αυτόν τον μήνα {month} · άλλα καταλύματα δεν εμφανίζονται ποτέ.",
   "tv.nearbyOsm": "Πηγή: OpenStreetMap (δωρεάν). Για βαθμολογίες και ωράρια βάλτε κλειδί στο PMS → Ενσωματώσεις → Google Places. Άλλα καταλύματα δεν εμφανίζονται ποτέ.",
+  "tv.gHotel": "Θέση ξενοδοχείου (αναζήτηση στο Google Maps):",
+  "tv.gLocate": "Εντοπισμός",
+  "tv.gHotelDefault": "Ενδεικτική θέση — πατήστε «Εντοπισμός»",
+  "tv.gHotelFound": "Βρέθηκε η θέση του ξενοδοχείου ✓ — πατήστε «Αποθήκευση».",
+  "tv.gDistances": "Υπολογισμός αποστάσεων με Google Maps",
+  "tv.gDistancesHelp": "Βρίσκει κάθε παραλία στον χάρτη (📍) και βάζει την πραγματική απόσταση οδικώς και τα λεπτά με αυτοκίνητο από το ξενοδοχείο. Ελέγξτε τι βρέθηκε και πατήστε «Αποθήκευση». Χρειάζεται κλειδί Google Places με ενεργά τα Places API (New) και Routes API.",
+  "tv.gDistancesDone": "Οι αποστάσεις υπολογίστηκαν ✓ — ελέγξτε και πατήστε «Αποθήκευση».",
+  "tv.gSomeNotFound": "Δεν βρέθηκαν στον χάρτη (αλλάξτε το όνομα και ξαναδοκιμάστε):",
+  "tv.gNoKey": "Χρειάζεται κλειδί στο PMS → Ενσωματώσεις → Google Places.",
+  "tv.gLimit": "Συμπληρώθηκε το ημερήσιο όριο κλήσεων Google — δοκιμάστε αύριο ή αυξήστε το όριο.",
+  "tv.gNotFound": "Δεν βρέθηκε — γράψτε πιο συγκεκριμένα (π.χ. όνομα ξενοδοχείου, χωριό).",
+  "tv.gDenied": "Το Google αρνήθηκε το κλειδί: ενεργοποιήστε το Places API (New) στο Google Cloud.",
+  "tv.gRoutesDenied": "Το Google αρνήθηκε τον υπολογισμό διαδρομών: ενεργοποιήστε το Routes API στο Google Cloud για το ίδιο κλειδί.",
+  "tv.gNoHotel": "Πρώτα εντοπίστε το ξενοδοχείο.",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -4398,6 +4412,20 @@ const en: Record<PmsKey, string> = {
   "tv.nearbyHidePh": "names or words, comma separated",
   "tv.nearbyGoogle": "Source: Google Maps (ratings, hours) · calls today {today}, this month {month} · other accommodation is never shown.",
   "tv.nearbyOsm": "Source: OpenStreetMap (free). For ratings and hours add a key in PMS → Integrations → Google Places. Other accommodation is never shown.",
+  "tv.gHotel": "Hotel position (Google Maps search):",
+  "tv.gLocate": "Locate",
+  "tv.gHotelDefault": "Approximate position — press Locate",
+  "tv.gHotelFound": "Hotel position found ✓ — press Save.",
+  "tv.gDistances": "Calculate distances with Google Maps",
+  "tv.gDistancesHelp": "Finds each beach on the map (📍) and fills in the real driving distance and minutes from the hotel. Check what was found and press Save. Needs the Google Places key with Places API (New) and Routes API enabled.",
+  "tv.gDistancesDone": "Distances calculated ✓ — check and press Save.",
+  "tv.gSomeNotFound": "Not found on the map (change the name and try again):",
+  "tv.gNoKey": "Add a key in PMS → Integrations → Google Places.",
+  "tv.gLimit": "The daily Google call limit is reached — try tomorrow or raise the limit.",
+  "tv.gNotFound": "Not found — be more specific (e.g. hotel name, village).",
+  "tv.gDenied": "Google refused the key: enable Places API (New) in Google Cloud.",
+  "tv.gRoutesDenied": "Google refused routes: enable Routes API in Google Cloud for the same key.",
+  "tv.gNoHotel": "Locate the hotel first.",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

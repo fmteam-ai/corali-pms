@@ -1,5 +1,8 @@
 import { randomInt } from "node:crypto";
 import { z } from "zod";
+import { beachDistances, locateHotel } from "@/lib/beach-distances";
+import { validCoord } from "@/lib/beach-distance-core";
+import { normalizeBeaches } from "@/lib/tv-beaches";
 import { audited } from "@/lib/audit";
 import { requireApiUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -19,6 +22,8 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("powerDevice"), roomId: z.number().int().positive(), deviceId: z.string().trim().max(64).refine((v) => v === "" || validDeviceId(v)), channel: z.number().int().min(0).max(3).default(0) }),
   z.object({ action: z.literal("power"), roomId: z.number().int().positive(), on: z.boolean() }),
   z.object({ action: z.literal("powerStatus") }),
+  z.object({ action: z.literal("locateHotel"), query: z.string().trim().max(150).default("") }),
+  z.object({ action: z.literal("beachDistances"), beaches: z.array(z.record(z.string(), z.unknown())).max(60), hotelLat: z.number(), hotelLon: z.number() }),
 ]);
 
 export async function GET() {
@@ -37,6 +42,13 @@ async function handlePOST(request: Request) {
       const settings = normalizeTvSettings(x.settings);
       await db().query(`INSERT INTO tv_settings(owner_id,settings_json,updated_by,updated_at) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id) DO UPDATE SET settings_json=$2,updated_by=$3,updated_at=$4`, [u.ownerId, JSON.stringify(settings), u.id, Date.now()]);
       return Response.json({ ok: true, settings });
+    }
+    if (x.action === "locateHotel") {
+      try { return Response.json({ ok: true, hotel: await locateHotel(u.ownerId, x.query) }); } catch (e) { return Response.json({ ok: false, error: e instanceof Error ? e.message : "FAILED" }); }
+    }
+    if (x.action === "beachDistances") {
+      if (!validCoord(x.hotelLat, x.hotelLon)) return Response.json({ ok: false, error: "NO_HOTEL" });
+      try { return Response.json({ ok: true, ...(await beachDistances(u.ownerId, normalizeBeaches(x.beaches), { lat: x.hotelLat, lon: x.hotelLon })) }); } catch (e) { return Response.json({ ok: false, error: e instanceof Error ? e.message : "FAILED" }); }
     }
     if (x.action === "powerSettings") {
       const power = await savePowerSettings(u.ownerId, u.id, x.settings, x.authKey);

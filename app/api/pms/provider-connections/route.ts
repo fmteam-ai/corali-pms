@@ -86,7 +86,7 @@ async function handlePOST(request:Request) {
       } else if(providerKey==="googlePlaces") {
         if(!connection.secrets.apiKey)throw new Error("MISSING_KEY");
         await db().query(`INSERT INTO places_api_usage(owner_id,day,calls) VALUES($1,$2,1) ON CONFLICT(owner_id,day) DO UPDATE SET calls=places_api_usage.calls+1`,[user.ownerId,new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Athens"}).format(new Date())]);
-        const r=await googleSearch(connection.secrets.apiKey,["restaurant"],1,1);
+        const r=await googleSearch(connection.secrets.apiKey,["restaurant"],1,{lat:37.0405,lon:25.2555},1);
         if(!r.ok)throw new Error("GOOGLE_TEST_FAILED");
       } else if(providerKey==="whatsapp") {
         if(!await testWhatsAppCredentials(connection))throw new Error("WHATSAPP_TEST_FAILED");
