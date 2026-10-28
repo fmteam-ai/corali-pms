@@ -2177,6 +2177,9 @@ const el = {
   "ac.minutesAc": "λεπτά (με πελάτη)",
   "ac.batteryMin": "Μπαταρία αισθητήρα κάτω από",
   "ac.readNow": "Ανάγνωση τώρα",
+  "nav.partners": "Συνεργαζόμενες επιχειρήσεις",
+  "partners.title": "Συνεργαζόμενες επιχειρήσεις",
+  "partners.subtitle": "Μπαρ, εστιατόρια, fast food, ενοικιάσεις και άλλες επιχειρήσεις: κατάλογος, παραγγελίες από την εφαρμογή του πελάτη, προσφορές με έγκριση και προμήθεια.",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -4350,6 +4353,9 @@ const en: Record<PmsKey, string> = {
   "ac.minutesAc": "minutes (guest in)",
   "ac.batteryMin": "Sensor battery below",
   "ac.readNow": "Read now",
+  "nav.partners": "Partner businesses",
+  "partners.title": "Partner businesses",
+  "partners.subtitle": "Bars, restaurants, fast food, rentals and more: catalogue, orders from the guest app, approved offers and commission.",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

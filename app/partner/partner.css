@@ -1,0 +1,20 @@
+.pa{--ink:#173e47;--line:#dfe7ea;max-width:720px;margin:0 auto;padding:12px 14px 40px;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1d2b30;background:#f6f8f8;min-height:100vh}
+.paLogin{display:grid;gap:12px;justify-items:center;padding-top:40px}.paLogin img{width:200px}.paLogin form{display:grid;gap:10px;width:100%;max-width:340px}
+.pa label{display:grid;gap:4px;font-size:13px;font-weight:600}.pa input,.pa select,.pa textarea{font:inherit;font-size:15px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;width:100%;box-sizing:border-box}
+.pa button{font:inherit;font-size:14px;padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}.pa button:disabled{opacity:.5}
+.pa .paPrimary{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:700}.pa .paDanger{color:#b42318;border-color:#f1c2bd}.pa .paLink{border:0;background:none;text-decoration:underline;padding:4px 0;justify-self:start}
+.paTop{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}.paTop div:first-child{display:grid}.paTop small{color:#667085}.paTopActions{display:flex;gap:6px}
+.paTabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;position:sticky;top:0;background:#f6f8f8;padding:6px 0;z-index:2}.paTabs button{font-size:12.5px;padding:8px 4px}.paTabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.paList{display:grid;gap:10px}.paCard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;gap:8px}.paCard h2,.paCard h3{margin:0;font-size:16px}.paCard ul{margin:0;padding:0;list-style:none;display:grid;gap:3px}.paCard li{display:flex;justify-content:space-between;gap:8px;font-size:14px}
+.paCard.st-placed{border-color:#c9a227;box-shadow:0 0 0 2px rgba(201,162,39,.25)}.paCard.off{opacity:.55}
+.paRow{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}.paBadge{font-size:12px;font-weight:700;padding:3px 8px;border-radius:999px;background:#eef2f4}.paBadge.st-placed{background:#fff3cd;color:#7a5b00}.paBadge.st-completed{background:#dcf3e6;color:#1f7a4d}
+.paActions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.paActions input{flex:1;min-width:160px}
+.paForm{display:grid;gap:10px}.paTwo{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pa .paCheck{display:flex;flex-direction:row;align-items:center;gap:8px}.pa .paCheck input{width:auto}
+.paMsg{margin:6px 0;padding:8px 10px;border-radius:10px;background:#eef6f8;font-size:14px}.paHint{color:#667085;font-size:13px;margin:0}.paNote{margin:0;font-size:14px;background:#fffbea;padding:6px 8px;border-radius:8px}
+.paGood{display:grid;gap:8px;padding:10px;border-radius:12px;background:#e8f6ee;border:1px solid #9fd4b3}.paGood b{color:#1f7a4d;font-size:16px}.paBad{color:#b42318;font-weight:600;margin:0}
+.paScan{display:grid;gap:6px}.paScan video{width:100%;border-radius:12px;background:#000;max-height:50vh;object-fit:cover}
+.paTop{margin:-12px -14px 12px;padding:14px 16px;background:linear-gradient(135deg,#173e47,#0f2a31);color:#fff;border-radius:0 0 18px 18px;box-shadow:0 6px 18px rgba(15,42,49,.18)}
+.paTop small{color:#cfe2e5!important}.paBrand{display:flex!important;gap:10px;align-items:center}.paBrand img{width:40px;height:40px;border-radius:10px}.paBrand div{display:grid}
+.paTop button{background:rgba(255,255,255,.12)!important;border-color:rgba(255,255,255,.25)!important;color:#fff!important}
+.paTabs button{display:grid;place-items:center;gap:2px;min-height:52px;font-weight:600}.paCard{box-shadow:0 1px 2px rgba(16,24,40,.04)}
+.paLogin h1{margin:0;font-size:24px;color:#173e47}.paLogin form{background:#fff;padding:20px;border-radius:16px;border:1px solid var(--line);box-shadow:0 8px 24px rgba(16,24,40,.06)}

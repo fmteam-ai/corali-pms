@@ -30,6 +30,8 @@ const nextConfig: NextConfig = {
       },
       // Corali Staff: voice commands need the microphone (this page only; the last matching header wins).
       { source: "/staff", headers: [{ key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=()" }] },
+      // Partner app: the camera scans the guest pass QR (this page only).
+      { source: "/partner", headers: [{ key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" }] },
     ];
   },
 };

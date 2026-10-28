@@ -30,6 +30,7 @@ const CATALOG: Def[] = [
   { key: "roomac", icon: "❄️", name: "A/C control (Shelly + Tuya)", category: "devices", el: "Το κλιματιστικό έχει ρεύμα μόνο με πελάτη στο δωμάτιο (check-in και, με αισθητήρα παρουσίας, όταν είναι μέσα).", en: "The A/C has power only with a guest in the room (checked in and, with a presence sensor, actually inside).", href: "/pms/room-ac", check: count("roomAc") },
   { key: "staff", icon: "🧹", name: "Corali Staff app", category: "devices", el: "Εφαρμογή προσωπικού: καθαριότητα, βλάβες, βάρδιες, ειδοποιήσεις.", en: "Staff app: housekeeping, defects, shifts, notifications.", href: "/pms/staff", check: count("staffPush") },
   { key: "claude", icon: "🤖", name: "AI assistant (Claude)", category: "ai", el: "Βοηθός PMS που προτείνει και εκτελεί ενέργειες με έγκριση, AI τιμολόγηση και μηνύματα.", en: "PMS assistant that proposes actions for approval, AI pricing and messages.", href: "/pms/integrations", check: provider("anthropic") },
+  { key: "partners", icon: "🤝", name: "Partner businesses", category: "partners", el: "Μπαρ, εστιατόρια, ενοικιάσεις κ.ά.: κατάλογος και παραγγελίες από την εφαρμογή του πελάτη, προσφορές με έγκριση, κάρτα πελάτη, προμήθεια.", en: "Bars, restaurants, rentals and more: catalogue and orders from the guest app, approved offers, guest pass, commission.", href: "/pms/partners", check: count("partners") },
   { key: "api", icon: "🛠️", name: "Open API & webhooks", category: "partners", el: "Κλειδιά API με δικαιώματα και webhooks για δικά σας συστήματα.", en: "Scoped API keys and webhooks for your own systems.", href: "/pms/api", check: (s) => ((s.counts.apiKeys ?? 0) + (s.counts.webhooks ?? 0) > 0 ? "on" : "off") },
   { key: "pos", icon: "🍽️", name: "POS εστιατορίου / μπαρ", category: "partners", el: "Χρεώσεις στο δωμάτιο από το ταμείο (POST /api/v1/bookings/{δωμάτιο}/charges).", en: "Room charges from the till (POST /api/v1/bookings/{room}/charges).", href: "/pms/api", check: count("posKeys") },
   { key: "accounting", icon: "📚", name: "Λογιστικό πρόγραμμα", category: "partners", el: "Κινήσεις και παραστατικά για το λογιστήριο (Epsilon, SoftOne, Entersoft κ.ά.) μέσω API.", en: "Transactions and documents for accounting software (Epsilon, SoftOne, Entersoft…) through the API.", href: "/pms/api", check: count("accountingKeys") },
@@ -43,7 +44,7 @@ const empty: Rows = { rows: [] };
 
 export async function appStore(ownerId: string): Promise<AppEntry[]> {
   const q = (sql: string) => safe(db().query(sql, [ownerId]), empty);
-  const [providers, auto, cards, widgets, autom, comp, depts, tvs, shelly, push, keys, hooks, roomAc] = await Promise.all([
+  const [providers, auto, cards, widgets, autom, comp, depts, tvs, shelly, push, keys, hooks, roomAc, partners] = await Promise.all([
     q(`SELECT provider_key,active FROM provider_connections WHERE owner_id=$1`),
     q(`SELECT settings_json FROM auto_pricing_settings WHERE owner_id=$1`),
     q(`SELECT settings_json FROM access_card_settings WHERE owner_id=$1`),
@@ -57,13 +58,14 @@ export async function appStore(ownerId: string): Promise<AppEntry[]> {
     q(`SELECT scopes_json FROM api_keys WHERE owner_id=$1 AND revoked_at IS NULL`),
     q(`SELECT count(*) n FROM api_webhooks WHERE owner_id=$1 AND active=1`),
     q(`SELECT count(*) n FROM room_ac_devices WHERE owner_id=$1`),
+    q(`SELECT count(*) n FROM partners p WHERE owner_id=$1 AND active=1 AND deleted_at IS NULL AND EXISTS(SELECT 1 FROM partner_settings s WHERE s.owner_id=p.owner_id AND s.enabled=1)`),
   ]);
   const parse = (r: { rows: Record<string, unknown>[] }) => { try { return JSON.parse(String(r.rows[0]?.settings_json ?? "{}")) as Record<string, unknown>; } catch { return {}; } };
   const scopes = keys.rows.map((k) => { try { return JSON.parse(String(k.scopes_json)) as string[]; } catch { return []; } });
   const s: Signals = {
     providers: new Map(providers.rows.map((p) => [String(p.provider_key), Number(p.active) === 1])),
     json: new Map([["autopricing", parse(auto)], ["accesscards", parse(cards)]]),
-    counts: { widgets: one(widgets), automations: one(autom), competitors: one(comp), departments: one(depts), tvScreens: one(tvs), shelly: one(shelly), staffPush: one(push), apiKeys: keys.rows.length, webhooks: one(hooks), roomAc: one(roomAc), posKeys: scopes.filter((x) => x.includes("folio.write")).length, accountingKeys: scopes.filter((x) => x.includes("accounting.read")).length },
+    counts: { widgets: one(widgets), automations: one(autom), competitors: one(comp), departments: one(depts), tvScreens: one(tvs), shelly: one(shelly), staffPush: one(push), apiKeys: keys.rows.length, webhooks: one(hooks), roomAc: one(roomAc), partners: one(partners), posKeys: scopes.filter((x) => x.includes("folio.write")).length, accountingKeys: scopes.filter((x) => x.includes("accounting.read")).length },
   };
   return CATALOG.map(({ check, ...a }) => ({ ...a, state: check(s) }));
 }

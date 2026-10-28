@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project="$(cd "$(dirname "$0")/.." && pwd)"
-output="$project/corali-pms-cpanel-v113-root.tar.gz"
+output="$project/corali-pms-cpanel-v114-root.tar.gz"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 
@@ -31,9 +31,9 @@ cp scripts/init-postgres.mjs scripts/create-admin.mjs scripts/create-admin.sh \
 for pkg in nodemailer; do
   [ -f "$stage/node_modules/$pkg/package.json" ] || cp -a "$(readlink -f "node_modules/$pkg")" "$stage/node_modules/$pkg"
 done
-cp app.js .env.example DEPLOY-CPANEL.md QA-v113.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md INSTALL-CPANEL.sh \
+cp app.js .env.example DEPLOY-CPANEL.md QA-v114.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md INSTALL-CPANEL.sh \
   ROLLBACK-CPANEL.sh package.json "$stage/"
-printf 'v113\n' > "$stage/DEPLOY_VERSION.txt"
+printf 'v114\n' > "$stage/DEPLOY_VERSION.txt"
 
 find "$stage" -type d -exec chmod 755 {} +
 find "$stage" -type f -exec chmod 644 {} +

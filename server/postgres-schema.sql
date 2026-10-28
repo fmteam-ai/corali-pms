@@ -1920,3 +1920,153 @@ CREATE TABLE IF NOT EXISTS guest_push_subscriptions (
  failures INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_guest_push_booking ON guest_push_subscriptions(owner_id,booking_id);
+
+-- v114: partner businesses (bars, restaurants, fast food, car rentals …). Added in the PMS; each has its own
+-- partner app (/partner) to manage orders, its catalogue and offers (offers need the hotel's approval). Guests see
+-- them in "My booking" and order; payment is at the business (cash / POS) or with a payment link it sends. The hotel
+-- keeps a commission per business.
+CREATE TABLE IF NOT EXISTS partners (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ name TEXT NOT NULL,
+ category TEXT NOT NULL DEFAULT 'other',
+ description_el TEXT NOT NULL DEFAULT '',
+ description_en TEXT NOT NULL DEFAULT '',
+ phone TEXT NOT NULL DEFAULT '',
+ email TEXT NOT NULL DEFAULT '',
+ address TEXT NOT NULL DEFAULT '',
+ website TEXT NOT NULL DEFAULT '',
+ menu_url TEXT NOT NULL DEFAULT '',
+ hours TEXT NOT NULL DEFAULT '',
+ delivery BIGINT NOT NULL DEFAULT 0,
+ pickup BIGINT NOT NULL DEFAULT 1,
+ accepts_cash BIGINT NOT NULL DEFAULT 1,
+ accepts_pos BIGINT NOT NULL DEFAULT 1,
+ accepts_link BIGINT NOT NULL DEFAULT 0,
+ commission_percent NUMERIC(5,2) NOT NULL DEFAULT 0,
+ logo_data TEXT,
+ active BIGINT NOT NULL DEFAULT 1,
+ sort_order BIGINT NOT NULL DEFAULT 0,
+ created_at BIGINT NOT NULL,
+ updated_at BIGINT NOT NULL,
+ deleted_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_partners_owner ON partners(owner_id,active);
+CREATE TABLE IF NOT EXISTS partner_items (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ partner_id BIGINT NOT NULL,
+ section TEXT NOT NULL DEFAULT '',
+ name_el TEXT NOT NULL DEFAULT '',
+ name_en TEXT NOT NULL DEFAULT '',
+ description TEXT NOT NULL DEFAULT '',
+ price_cents BIGINT NOT NULL,
+ active BIGINT NOT NULL DEFAULT 1,
+ sort_order BIGINT NOT NULL DEFAULT 0,
+ updated_at BIGINT NOT NULL,
+ deleted_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_partner_items ON partner_items(owner_id,partner_id);
+CREATE TABLE IF NOT EXISTS partner_offers (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ partner_id BIGINT NOT NULL,
+ title_el TEXT NOT NULL DEFAULT '',
+ title_en TEXT NOT NULL DEFAULT '',
+ body_el TEXT NOT NULL DEFAULT '',
+ body_en TEXT NOT NULL DEFAULT '',
+ discount_percent NUMERIC(5,2),
+ code TEXT,
+ starts_on TEXT NOT NULL,
+ ends_on TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'pending',
+ reject_reason TEXT NOT NULL DEFAULT '',
+ decided_by BIGINT,
+ decided_at BIGINT,
+ created_by BIGINT,
+ created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_partner_offers ON partner_offers(owner_id,status,partner_id);
+CREATE TABLE IF NOT EXISTS partner_users (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ partner_id BIGINT NOT NULL,
+ email TEXT NOT NULL,
+ display_name TEXT NOT NULL DEFAULT '',
+ password_hash TEXT NOT NULL,
+ active BIGINT NOT NULL DEFAULT 1,
+ last_login_at BIGINT,
+ created_at BIGINT NOT NULL,
+ UNIQUE(owner_id,email)
+);
+CREATE TABLE IF NOT EXISTS partner_sessions (
+ token_hash TEXT PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ partner_user_id BIGINT NOT NULL,
+ expires_at BIGINT NOT NULL,
+ created_at BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS partner_orders (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ partner_id BIGINT NOT NULL,
+ booking_id BIGINT NOT NULL,
+ items_json TEXT NOT NULL,
+ subtotal_cents BIGINT NOT NULL,
+ discount_cents BIGINT NOT NULL DEFAULT 0,
+ offer_id BIGINT,
+ code TEXT,
+ total_cents BIGINT NOT NULL,
+ commission_percent NUMERIC(5,2) NOT NULL DEFAULT 0,
+ commission_cents BIGINT NOT NULL DEFAULT 0,
+ fulfilment TEXT NOT NULL,
+ wanted_at TEXT NOT NULL DEFAULT '',
+ note TEXT NOT NULL DEFAULT '',
+ pay_method TEXT NOT NULL,
+ payment_link TEXT NOT NULL DEFAULT '',
+ paid BIGINT NOT NULL DEFAULT 0,
+ status TEXT NOT NULL DEFAULT 'placed',
+ partner_note TEXT NOT NULL DEFAULT '',
+ lang TEXT NOT NULL DEFAULT 'en',
+ created_at BIGINT NOT NULL,
+ updated_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_partner_orders_partner ON partner_orders(owner_id,partner_id,status,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_partner_orders_booking ON partner_orders(owner_id,booking_id);
+CREATE TABLE IF NOT EXISTS partner_push_subscriptions (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ partner_user_id BIGINT NOT NULL,
+ endpoint TEXT NOT NULL UNIQUE,
+ p256dh TEXT NOT NULL,
+ auth TEXT NOT NULL,
+ created_at BIGINT NOT NULL,
+ failures INTEGER NOT NULL DEFAULT 0
+);
+ALTER TABLE partner_offers ADD COLUMN IF NOT EXISTS guests_only BIGINT NOT NULL DEFAULT 1;
+-- Guest pass: a business checks that a visitor is a hotel guest (QR / 6-digit code that changes every minute) and
+-- records the use of a hotel-guests offer (counts for the commission report).
+CREATE TABLE IF NOT EXISTS partner_redemptions (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ partner_id BIGINT NOT NULL,
+ booking_id BIGINT NOT NULL,
+ offer_id BIGINT,
+ amount_cents BIGINT,
+ commission_cents BIGINT NOT NULL DEFAULT 0,
+ partner_user_id BIGINT,
+ created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_partner_redemptions ON partner_redemptions(owner_id,partner_id,created_at DESC);
+-- Uses per booking (NULL = as often as wanted during the stay).
+ALTER TABLE partner_offers ADD COLUMN IF NOT EXISTS max_uses BIGINT DEFAULT 1;
+-- Optional daily hours of an offer (e.g. happy hour 18:00–20:00); empty = all day.
+ALTER TABLE partner_offers ADD COLUMN IF NOT EXISTS time_from TEXT NOT NULL DEFAULT '';
+ALTER TABLE partner_offers ADD COLUMN IF NOT EXISTS time_to TEXT NOT NULL DEFAULT '';
+-- The whole partner feature is switched on in PMS → Partner businesses (off by default): while off, guests see no
+-- partners and the partner app does not sign in.
+CREATE TABLE IF NOT EXISTS partner_settings (
+ owner_id TEXT PRIMARY KEY,
+ enabled INTEGER NOT NULL DEFAULT 0,
+ updated_at BIGINT NOT NULL DEFAULT 0
+);

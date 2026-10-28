@@ -7,6 +7,7 @@ import {guestLanguages,guestText} from "@/lib/guest-i18n";
 import {GuestOrders} from "./guest-orders";
 import {GuestPortal} from "./guest-portal";
 import {GuestApp} from "./guest-app";
+import {GuestPartners} from "./guest-partners";
 import {GUEST_APP_STORAGE} from "@/lib/guest-app-core";
 type Policy={nonRefundable:boolean;deadline:string;freeCancellation:boolean;canCancel:boolean;refundCents:number;paidCents:number;canChangeDates:boolean;blocked:null|string};
 type Data={policy:Policy;booking:{reference:string;guest_name:string;check_in:string;check_out:string;status:string;room_code:string;room_type:string;total_cents:number;balance_cents:number};messages:Array<{id:number;sender:string;body:string;created_at:number}>};
@@ -49,6 +50,7 @@ export function ManageBooking({token:initialToken}:{token:string}){
    {p.canCancel&&<div className="cancelBox"><h3>{t.cancelTitle}</h3><p>{p.freeCancellation?t.cancelFree.replace("{date}",format(p.deadline)).replace("{amount}",money(p.refundCents)):t.cancelNoRefund.replace("{amount}",money(p.paidCents))}</p>{!confirmCancel?<button type="button" className="secondaryButton danger" onClick={()=>setConfirmCancel(true)}>{t.cancelTitle}</button>:<div className="actions"><span>{t.cancelSure}</span><button type="button" className="danger" disabled={busy} onClick={cancel}>{t.cancelConfirm}</button><button type="button" className="linkButton" onClick={()=>setConfirmCancel(false)}>✕</button></div>}</div>}
   </section>}
   <GuestPortal token={token} lang={lang} part="services"/>
+  <GuestPartners token={token} lang={lang}/>
   <GuestOrders token={token} lang={lang}/>
   <h2>{t.messages}</h2><div className="thread">{data.messages.map(m=><div className={`bubble ${m.sender}`} key={m.id}><b>{m.sender==="guest"?t.you:"Hotel Corali"}</b><p>{m.body}</p></div>)}</div>{messageError&&<p role="alert" className="error">{t.messageError}</p>}<form action={send} className="messageComposer"><textarea name="body" required maxLength={4000} placeholder={t.write}/><button disabled={busy}>{t.send}</button></form>
   <p>{signOut}</p></section></main>
