@@ -1,5 +1,6 @@
 // Automatic handling of a new guest message (runs after the response): when "AI automatic replies" is on and the
 // question is simple and safe, the AI answers and reception is told; otherwise reception answers as usual.
+import { pushHotelMessage } from "@/lib/guest-push";
 import { bookingLanguage } from "@/lib/booking-i18n";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -12,6 +13,8 @@ const replyFooter: Record<string, string> = { el: "Μπορείτε να απα�
 
 /** Email the guest a copy of a hotel reply (manual or automatic), with the way back to "My booking". */
 export async function emailGuestReply(ownerId: string, bookingId: number, body: string) {
+  // Guests with the app on their phone get it as a notification too.
+  await pushHotelMessage(ownerId, bookingId, body);
   try {
     if (!(await emailConfigured())) return false;
     const b = (await db().query(`SELECT reference,guest_email,guest_language FROM bookings WHERE owner_id=$1 AND id=$2`, [ownerId, bookingId])).rows[0];

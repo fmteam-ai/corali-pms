@@ -908,3 +908,4 @@ table.numeric tr.selected td{background:#fff8e6}
 .gpOrders li{grid-template-columns:1fr auto auto auto}
 .gOrderList i.st-done{background:#e7eef4;color:#173e47}
 @media(max-width:600px){.gpOrders li{grid-template-columns:1fr auto}.gpOrders li i,.gpOrders li button{justify-self:start}}
+.guestApp{margin:18px 0;padding:16px 18px;border:1px solid #d5e3e6;border-radius:16px;background:#f2f8f9;display:grid;gap:10px;justify-items:start}.guestApp h2{margin:0;font-size:18px}.guestApp .hint{margin:0}.guestAppOn{margin:0;font-weight:600;color:#1f7a4d}

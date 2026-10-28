@@ -5,6 +5,7 @@ import { db, withTransaction } from "@/lib/db";
 import { ensureFolio, recalcBooking } from "@/lib/folio-db";
 import { announcementVisible, appointmentSlots, endTime, guestCanCancel, isOpen, pick, portalTexts, slotFree, stayDays, type AnnouncementKind, type DepartmentIcon, type DepartmentMode, type GuestLang } from "@/lib/guest-portal-core";
 import { pushNotification } from "@/lib/pms-notifications";
+import { pushAnnouncementAfter, pushHotelMessageAfter } from "@/lib/guest-push";
 import { hotelToday } from "@/lib/tape-chart";
 import { personalize } from "@/lib/tv-messages-core";
 
@@ -189,6 +190,7 @@ export async function cancelDeptOrder(ownerId: string, orderId: number, by: { bo
       const reason = "staffId" in by && by.reason.trim() ? ` ${by.reason.trim()}` : "";
       const msg = String(o.lang) === "el" ? `Η παραγγελία «${o.title_guest}» ακυρώθηκε και το ποσό ${euro(Number(o.amount_cents))} αφαιρέθηκε από τον λογαριασμό σας.${reason}` : `Your order “${o.title_guest}” was cancelled and ${euro(Number(o.amount_cents))} was removed from your account.${reason}`;
       await c.query(`INSERT INTO booking_messages(owner_id,booking_id,sender,body,read_at,email_notified,created_at) VALUES($1,$2,'hotel',$3,$4,0,$4)`, [ownerId, b.id, msg.slice(0, 4000), Date.now()]);
+      pushHotelMessageAfter(ownerId, Number(b.id), msg);
     }
   });
 }
@@ -226,6 +228,8 @@ export async function createAnnouncement(ownerId: string, userId: number, x: Ann
       const text = [pick(x.titleEl, x.titleEn, lang), pick(x.bodyEl, x.bodyEn, lang)].filter(Boolean).map((s) => personalize(s, name)).join("\n\n");
       await c.query(`INSERT INTO booking_messages(owner_id,booking_id,sender,body,read_at,email_notified,created_at) VALUES($1,$2,'hotel',$3,NULL,0,$4)`, [ownerId, x.bookingId, text.slice(0, 4000), Date.now()]);
     }
+    // Guests with the app get it on the phone (one booking, or every guest in house).
+    if (x.startsAt <= Date.now() + 60_000) pushAnnouncementAfter(ownerId, x.bookingId, x);
     return Number(r.rows[0].id);
   });
 }

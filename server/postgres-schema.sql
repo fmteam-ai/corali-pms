@@ -1905,3 +1905,18 @@ CREATE TABLE IF NOT EXISTS room_climate (
  updated_at BIGINT NOT NULL,
  PRIMARY KEY(owner_id,room_id)
 );
+
+-- v113: guest app (installable "My booking") — Web Push subscriptions per booking (removed after check-out).
+CREATE TABLE IF NOT EXISTS guest_push_subscriptions (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ booking_id BIGINT NOT NULL,
+ endpoint TEXT NOT NULL UNIQUE,
+ p256dh TEXT NOT NULL,
+ auth TEXT NOT NULL,
+ lang TEXT NOT NULL DEFAULT 'en',
+ created_at BIGINT NOT NULL,
+ last_sent_at BIGINT,
+ failures INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_guest_push_booking ON guest_push_subscriptions(owner_id,booking_id);

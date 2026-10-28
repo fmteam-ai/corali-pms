@@ -1,5 +1,6 @@
 // Guest orders in the database: what a guest can order now (with live prices), placing an order, and reception's
 // confirm (charged to the folio; an upgrade also moves the booking) or decline. The guest sees the answer in "My booking".
+import { pushHotelMessageAfter } from "@/lib/guest-push";
 import type { PoolClient } from "pg";
 import { db, withTransaction } from "@/lib/db";
 import { enqueueAvailability } from "@/lib/channel-sync";
@@ -112,6 +113,7 @@ export async function listOrders(ownerId: string) {
 
 async function tellGuest(c: Q, ownerId: string, b: Booking, text: string) {
   await c.query(`INSERT INTO booking_messages(owner_id,booking_id,sender,body,read_at,email_notified,created_at) VALUES($1,$2,'hotel',$3,$4,0,$4)`, [ownerId, b.id, text.slice(0, 4000), Date.now()]);
+  pushHotelMessageAfter(ownerId, Number(b.id), text);
 }
 
 /** Reception confirms: charged to the folio; an upgrade moves the booking to a free room of the new category. */

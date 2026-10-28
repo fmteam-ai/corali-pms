@@ -130,3 +130,17 @@ export async function cancelBooking(token: string) {
     return { booking: after, refundCents: policy.refundCents };
   });
 }
+
+/**
+ * Guest app on the phone: a sign-in that lasts until the day after check-out (noon), so the app opens straight into
+ * the booking. Made only from a valid token of the same booking; cancelled / past stays get none.
+ */
+export async function rememberGuest(token: string): Promise<{ token: string; expiresAt: number } | null> {
+  const b = token.length >= 32 && token.length <= 200 ? await bookingForToken(db(), token) : null;
+  if (!b || !["confirmed", "checked_in"].includes(String(b.status))) return null;
+  const expiresAt = Date.parse(`${b.check_out}T10:00:00Z`) + 86_400_000;
+  if (expiresAt <= Date.now()) return null;
+  const long = newOpaqueToken();
+  await db().query(`INSERT INTO booking_manage_tokens(owner_id,booking_id,token_hash,status,expires_at,created_by,created_at) VALUES($1,$2,$3,'active',$4,'guest-app',$5)`, [env().PMS_OWNER_ID, b.id, hashToken(long), expiresAt, Date.now()]);
+  return { token: long, expiresAt };
+}

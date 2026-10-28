@@ -6,6 +6,8 @@ import {flag,languageCountry} from "@/lib/dial-codes";
 import {guestLanguages,guestText} from "@/lib/guest-i18n";
 import {GuestOrders} from "./guest-orders";
 import {GuestPortal} from "./guest-portal";
+import {GuestApp} from "./guest-app";
+import {GUEST_APP_STORAGE} from "@/lib/guest-app-core";
 type Policy={nonRefundable:boolean;deadline:string;freeCancellation:boolean;canCancel:boolean;refundCents:number;paidCents:number;canChangeDates:boolean;blocked:null|string};
 type Data={policy:Policy;booking:{reference:string;guest_name:string;check_in:string;check_out:string;status:string;room_code:string;room_type:string;total_cents:number;balance_cents:number};messages:Array<{id:number;sender:string;body:string;created_at:number}>};
 type Quote={nights:number;newTotalCents:number;differenceCents:number;newBalanceCents:number;refundDueCents:number;lastMinute:boolean};
@@ -15,7 +17,9 @@ export function ManageBooking({token:initialToken}:{token:string}){
  const[token,setToken]=useState(initialToken),[data,setData]=useState<Data|null>(null),[error,setError]=useState(false),[lang,setLang]=useState<BookingLanguage>("en"),[busy,setBusy]=useState(false),[messageError,setMessageError]=useState(false),t=guestText[lang];
  const[login,setLogin]=useState({reference:"",email:""}),[loginError,setLoginError]=useState("");
  const[change,setChange]=useState<{checkIn:string;checkOut:string}|null>(null),[quote,setQuote]=useState<Quote|null>(null),[notice,setNotice]=useState(""),[payUrl,setPayUrl]=useState<string|null>(null),[confirmCancel,setConfirmCancel]=useState(false);
- useEffect(()=>{queueMicrotask(()=>{const p=new URLSearchParams(location.search);setLang(bookingLanguage(p.get("lang")??navigator.language));const ref=p.get("ref");if(ref)setLogin(l=>({...l,reference:ref}))})},[]);
+ useEffect(()=>{queueMicrotask(()=>{const p=new URLSearchParams(location.search);setLang(bookingLanguage(p.get("lang")??navigator.language));const ref=p.get("ref");if(ref)setLogin(l=>({...l,reference:ref}));
+  // The app on the phone (home screen) opens straight into the booking with the sign-in it remembered.
+  if(!p.get("token"))try{const saved=JSON.parse(localStorage.getItem(GUEST_APP_STORAGE)??"null");if(saved?.token&&Number(saved.expiresAt)>Date.now()){setToken(String(saved.token));if(!p.get("lang")&&saved.lang)setLang(bookingLanguage(String(saved.lang)))}else if(saved)localStorage.removeItem(GUEST_APP_STORAGE)}catch{/* storage off */}})},[]);
  const load=useCallback(async()=>{try{const r=await fetch(`/api/public/manage-booking?token=${encodeURIComponent(token)}&lang=${lang}`,{cache:"no-store"}),d=await r.json();if(r.ok){setData(d);setError(false)}else setError(true)}catch{setError(true)}},[token,lang]);
  useEffect(()=>{if(token){const id=setTimeout(load,0);return()=>clearTimeout(id)}},[token,load]);
  const money=(c:number)=>new Intl.NumberFormat(bookingLocale[lang],{style:"currency",currency:"EUR"}).format(Number(c)/100);
@@ -27,13 +31,14 @@ export function ManageBooking({token:initialToken}:{token:string}){
  async function applyChange(){if(!change||!quote)return;setBusy(true);setNotice("");try{const r=await fetch("/api/public/manage-booking/change",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token,...change,lang,confirm:true,expectedTotalCents:quote.newTotalCents})});const d=await r.json().catch(()=>({}));if(r.ok){setNotice(`${t.changed}${d.refundDueCents>0?` ${t.refundDue.replace("{amount}",money(d.refundDueCents))}`:""}`);setPayUrl(d.payUrl);setChange(null);setQuote(null);await load()}else{setNotice(errorText(d.error));if(d.error==="PRICE_CHANGED")setQuote(null)}}finally{setBusy(false)}}
  async function cancel(){setBusy(true);setNotice("");try{const r=await fetch("/api/public/manage-booking/cancel",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token,confirm:true})});const d=await r.json().catch(()=>({}));if(r.ok){setNotice(`${t.cancelDone}${d.refundCents>0?` ${t.refundDue.replace("{amount}",money(d.refundCents))}`:""}`);setConfirmCancel(false);await load()}else setNotice(t.changeError)}finally{setBusy(false)}}
  const picker=<label className="languagePicker"><span className="sr-only">Language</span><select aria-label="Language" value={lang} onChange={e=>setLang(bookingLanguage(e.target.value))}>{guestLanguages.map(x=><option value={x.code} key={x.code}>{flag(languageCountry[x.code])} {x.name}</option>)}</select></label>;
- const signOut=<button type="button" className="linkButton" onClick={()=>{setToken("");setData(null);setError(false);history.replaceState(null,"",`/manage-booking?lang=${lang}`)}}>{t.otherBooking}</button>;
+ const signOut=<button type="button" className="linkButton" onClick={()=>{try{localStorage.removeItem(GUEST_APP_STORAGE)}catch{/* storage off */}setToken("");setData(null);setError(false);history.replaceState(null,"",`/manage-booking?lang=${lang}`)}}>{t.otherBooking}</button>;
  if(!token||error)return <main className="shell"><form className="card loginForm manageLogin" onSubmit={signIn}>{logo}{picker}<h1>{t.manage}</h1>{error&&<p className="error">{t.invalidLink}</p>}<p>{t.loginIntro}</p><label>{t.bookingNumber}<input value={login.reference} onChange={e=>setLogin({...login,reference:e.target.value})} required minLength={3} maxLength={40} autoComplete="off"/></label><label>{t.emailLabel}<input type="email" value={login.email} onChange={e=>setLogin({...login,email:e.target.value})} required maxLength={200} autoComplete="email"/></label>{loginError&&<p className="error" role="alert">{loginError}</p>}<button className="primary" disabled={busy}>{t.signIn}</button></form></main>;
  if(!data)return <main className="shell">{picker}<p>{t.loading}</p></main>;
  const b=data.booking,p=data.policy,today=new Date().toISOString().slice(0,10);
  const addDays=(d:string,n:number)=>new Date(Date.parse(`${d}T00:00:00Z`)+n*86400000).toISOString().slice(0,10);
  return <main className="shell"><section className="card manageCard">{logo}{picker}<h1>{t.yourBooking}</h1><p><b>{b.reference}</b> · {b.guest_name}</p><dl><dt>{t.room}</dt><dd>{b.room_code} · {b.room_type}</dd><dt>{t.in}</dt><dd>{format(b.check_in)}</dd><dt>{t.out}</dt><dd>{format(b.check_out)}</dd><dt>{t.status}</dt><dd>{t[b.status]??b.status}</dd><dt>{t.balance}</dt><dd>{money(b.balance_cents)}</dd></dl>
   <GuestPortal token={token} lang={lang} part="news"/>
+  <GuestApp token={token} lang={lang} onRefresh={load}/>
   {notice&&<p className="notice" role="status">{notice}</p>}
   {payUrl&&Number(b.balance_cents)>0&&<p><a className="primary payLink" href={payUrl}>{t.payNow} · {money(b.balance_cents)}</a></p>}
   {!p.blocked&&<section className="selfService"><h2>{t.selfServiceTitle}</h2>
