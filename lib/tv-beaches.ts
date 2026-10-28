@@ -18,7 +18,7 @@ export function compass(deg: number): WindDirection {
   return windDirections[Math.round(d / 45) % 8];
 }
 
-export type TvBeach = { name: string; minutes: number; km: number; sheltered: WindDirection[]; note: string; lat?: number; lon?: number; found?: string };
+export type TvBeach = { name: string; minutes: number; km: number; sheltered: WindDirection[]; note: string; lat?: number; lon?: number; found?: string; walkMin?: number };
 
 /**
  * Starting list around Piso Livadi (east Paros). A beach is "sheltered" from a wind that blows from the land side or
@@ -81,7 +81,8 @@ export function normalizeBeaches(v: unknown): TvBeach[] {
     // Lists saved before v117 have no km: a known beach takes the indicative distance until the hotel changes it.
     const km = r.km === undefined ? knownKm(name) : Math.min(100, Math.max(0, Math.round((Number(r.km) || 0) * 10) / 10));
     const place = validCoord(r.lat, r.lon) ? { lat: Number(r.lat), lon: Number(r.lon), found: typeof r.found === "string" ? r.found.slice(0, 160) : "" } : {};
-    return [{ name, minutes, km, sheltered, note: typeof r.note === "string" ? r.note.trim().slice(0, 200) : "", ...place }];
+    const walk = Number(r.walkMin) > 0 ? { walkMin: Math.min(240, Math.round(Number(r.walkMin))) } : {};
+    return [{ name, minutes, km, sheltered, note: typeof r.note === "string" ? r.note.trim().slice(0, 200) : "", ...place, ...walk }];
   });
 }
 

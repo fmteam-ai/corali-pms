@@ -6,7 +6,7 @@ export const HOTEL_LAT = 37.0405;
 export const HOTEL_LON = 25.2555;
 
 export type NearbyKind = "restaurant" | "cafe" | "bar" | "fast_food" | "ice_cream" | "bakery" | "supermarket" | "pharmacy" | "health" | "atm" | "shop" | "beauty" | "car_rental" | "fuel" | "laundry" | "travel" | "sight";
-export type NearbyPlace = { name: string; kind: NearbyKind; meters: number; walkMin: number; cuisine: string; hours: string; rating?: number; ratings?: number; price?: string; phone?: string; lat?: number; lon?: number; address?: string; website?: string; mapsUrl?: string; week?: string[] };
+export type NearbyPlace = { name: string; kind: NearbyKind; meters: number; walkMin: number; cuisine: string; hours: string; rating?: number; ratings?: number; price?: string; phone?: string; lat?: number; lon?: number; routed?: boolean; address?: string; website?: string; mapsUrl?: string; week?: string[] };
 
 const kindLabels: Record<NearbyKind, string> = {
   restaurant: "Restaurants / taverns", cafe: "Cafés", bar: "Bars", fast_food: "Fast food / souvlaki", ice_cream: "Ice cream", bakery: "Bakeries / pastry",
@@ -150,10 +150,10 @@ export function nearbyText(places: NearbyPlace[], radiusKm: number, perKind = 12
   if (!places.length) return `NEARBY PLACES: (no data from OpenStreetMap right now — you may search the web; say distances are approximate)`;
   const groups = (Object.keys(kindLabels) as NearbyKind[]).map((k) => {
     const ps = places.filter((p) => p.kind === k).slice(0, perKind);
-    return ps.length ? `${kindLabels[k]}: ${ps.map((p) => `${p.name} (${p.meters} m, ~${p.walkMin} min walk${p.rating ? `, ★${p.rating.toFixed(1)} (${p.ratings} reviews)` : ""}${p.price ? `, ${p.price}` : ""}${p.cuisine ? `, ${p.cuisine}` : ""}${p.hours ? `, ${source === "google" ? "today" : "hours"} ${p.hours}` : ""})`).join(" · ")}` : "";
+    return ps.length ? `${kindLabels[k]}: ${ps.map((p) => `${p.name} (${p.routed ? `${p.meters} m walking route, ${p.walkMin} min on foot` : `~${p.meters} m straight line, ~${p.walkMin} min walk`}${p.rating ? `, ★${p.rating.toFixed(1)} (${p.ratings} reviews)` : ""}${p.price ? `, ${p.price}` : ""}${p.cuisine ? `, ${p.cuisine}` : ""}${p.hours ? `, ${source === "google" ? "today" : "hours"} ${p.hours}` : ""})`).join(" · ")}` : "";
   }).filter(Boolean);
-  return `NEARBY PLACES (${source === "google" ? "Google Maps" : "OpenStreetMap"}, within ${clampRadiusKm(radiusKm)} km of the hotel; metres in a straight line, minutes on foot)
+  return `NEARBY PLACES (${source === "google" ? "Google Maps" : "OpenStreetMap"}, within ${clampRadiusKm(radiusKm)} km of the hotel; distances are walking routes from the hotel unless marked straight line — use them as given, do not change them)
 ${groups.join("\n")}
 Never recommend or name other accommodation (hotels, rooms to let, studios, villas, apartments, Airbnb) — not from this list, not from the web.
-When the guest asks for something near the hotel or within walking distance, recommend from this list first and say the distance (metres and minutes on foot)${source === "google" ? "; prefer well-rated places and mention the rating and today's hours when useful" : ""}. You may search the web for reviews / opening times; the list may miss a few places and some may be closed out of season — say so if unsure.`;
+When the guest asks for something near the hotel or within walking distance, recommend from this list first and always say both the distance and the walking time (e.g. "350 m, 5 minutes on foot")${source === "google" ? "; prefer well-rated places and mention the rating and today's hours when useful" : ""}. You may search the web for reviews / opening times; the list may miss a few places and some may be closed out of season — say so if unsure.`;
 }

@@ -2215,6 +2215,12 @@ const el = {
   "tv.gDenied": "Το Google αρνήθηκε το κλειδί: ενεργοποιήστε το Places API (New) στο Google Cloud.",
   "tv.gRoutesDenied": "Το Google αρνήθηκε τον υπολογισμό διαδρομών: ενεργοποιήστε το Routes API στο Google Cloud για το ίδιο κλειδί.",
   "tv.gNoHotel": "Πρώτα εντοπίστε το ξενοδοχείο.",
+  "tv.gCheckMap": "Έλεγχος στον χάρτη",
+  "tv.gCoords": "Ακριβής θέση (συντεταγμένες):",
+  "tv.gCoordsHelp": "Για απόλυτη ακρίβεια: στο Google Maps κάντε δεξί κλικ ακριβώς πάνω στο ξενοδοχείο (στην είσοδο), πατήστε τους αριθμούς που εμφανίζονται πρώτοι για να αντιγραφούν και επικολλήστε τους εδώ. Από αυτό το σημείο μετρώνται όλες οι αποστάσεις. Πατήστε «Αποθήκευση».",
+  "tv.gCoordsManual": "Θέση από συντεταγμένες",
+  "tv.gCoordsBad": "Μη έγκυρες συντεταγμένες — επικολλήστε π.χ. 37.04021, 25.25612 (μέσα στην Πάρο).",
+  "tv.beachWalk": "Λεπτά με τα πόδια",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -4426,6 +4432,12 @@ const en: Record<PmsKey, string> = {
   "tv.gDenied": "Google refused the key: enable Places API (New) in Google Cloud.",
   "tv.gRoutesDenied": "Google refused routes: enable Routes API in Google Cloud for the same key.",
   "tv.gNoHotel": "Locate the hotel first.",
+  "tv.gCheckMap": "Check on the map",
+  "tv.gCoords": "Exact position (coordinates):",
+  "tv.gCoordsHelp": "For exact distances: in Google Maps right-click exactly on the hotel (its entrance), click the numbers shown first to copy them and paste them here. All distances are measured from this point. Press Save.",
+  "tv.gCoordsManual": "Position from coordinates",
+  "tv.gCoordsBad": "Invalid coordinates — paste e.g. 37.04021, 25.25612 (inside Paros).",
+  "tv.beachWalk": "Minutes on foot",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

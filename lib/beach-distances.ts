@@ -47,6 +47,13 @@ export async function beachDistances(ownerId: string, beaches: TvBeach[], hotel:
     if (r.status === 403) throw Error("ROUTES_DENIED");
     const m = r.ok ? parseMatrix(await r.json()) : new Map();
     placed.forEach((x, j) => { const d = m.get(j); if (d) out[x.i] = { ...out[x.i], km: d.km, minutes: d.minutes }; });
+    // On foot too, for the beaches within 3 km by road.
+    const near = placed.filter((x) => out[x.i].km > 0 && out[x.i].km <= 3);
+    if (near.length && (await reserveGoogleCalls(ownerId, 1, Math.max(limit, needed + 1)))) {
+      const w = await fetch("https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": MATRIX_FIELD_MASK }, body: JSON.stringify(matrixBody(hotel, near.map((x) => ({ lat: x.b.lat!, lon: x.b.lon! })), "WALK")), signal: AbortSignal.timeout(20_000) }).catch(() => null);
+      const wm = w?.ok ? parseMatrix(await w.json()) : new Map();
+      near.forEach((x, j) => { const d = wm.get(j); if (d) out[x.i] = { ...out[x.i], walkMin: d.minutes }; });
+    }
   }
   return { beaches: out, notFound, calls: needed };
 }

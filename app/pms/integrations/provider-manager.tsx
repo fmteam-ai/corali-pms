@@ -26,7 +26,7 @@ export function ProviderManager({initial,editable}:{initial:ProviderView[];edita
     <label><input type="checkbox" name="active" defaultChecked={current.active}/> Ενεργή ρύθμιση</label>
     <p>Η ενεργοποίηση αποθηκεύει τη ρύθμιση. Η υπηρεσία χρησιμοποιείται μόνο όπου υπάρχει υλοποιημένη σύνδεση και επιτυχής έλεγχος.</p>
     {editable&&<button>Αποθήκευση</button>}
-  </form>{editable&&["stripe","smtp","viva","whatsapp","googlePlaces"].includes(selected)&&current.active&&<button type="button" onClick={test}>Έλεγχος σύνδεσης</button>}{current.lastTestAt&&<p>Τελευταίος έλεγχος: {new Date(Number(current.lastTestAt)).toLocaleString("el-GR")} · {current.lastTestResult}</p>}<p className="notice" role="status">{message}</p></article></div>
+  </form>{editable&&["stripe","smtp","viva","whatsapp","googlePlaces"].includes(selected)&&current.active&&<button type="button" className="secondaryButton" onClick={test}>Έλεγχος σύνδεσης</button>}{current.lastTestAt&&<p>Τελευταίος έλεγχος: {new Date(Number(current.lastTestAt)).toLocaleString("el-GR")} · {current.lastTestResult}</p>}<p className="notice" role="status">{message}</p></article></div>
 }
 
 const noteLangs=["el","en","fr","de","it","es"] as const;

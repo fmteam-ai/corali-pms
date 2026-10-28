@@ -24,8 +24,8 @@ test("route matrix → driving km and minutes per destination; no route skipped"
   assert.equal(body.destinations.length, 2);
   assert.equal(body.travelMode, "DRIVE");
   const m = parseMatrix([{ originIndex: 0, destinationIndex: 0, distanceMeters: 320, duration: "62s", condition: "ROUTE_EXISTS" }, { originIndex: 0, destinationIndex: 1, distanceMeters: 14180, duration: "1090s" }, { originIndex: 0, destinationIndex: 2, condition: "ROUTE_NOT_FOUND" }]);
-  assert.deepEqual(m.get(0), { km: 0.3, minutes: 1 });
-  assert.deepEqual(m.get(1), { km: 14.2, minutes: 18 });
+  assert.deepEqual(m.get(0), { km: 0.3, meters: 320, minutes: 1 });
+  assert.deepEqual(m.get(1), { km: 14.2, meters: 14180, minutes: 18 });
   assert.equal(m.has(2), false);
   assert.equal(parseMatrix({ error: 1 }).size, 0);
 });
@@ -39,4 +39,17 @@ test("beach points and hotel position are kept only inside Paros", () => {
   assert.equal(normalizeBeaches([{ name: "X", lat: 40, lon: 20 }])[0].lat, undefined);
   assert.equal(normalizeTvSettings({ hotelLat: 37.041, hotelLon: 25.2551, hotelFound: "Hotel Corali" }).hotelLat, 37.041);
   assert.equal(normalizeTvSettings({ hotelLat: 50, hotelLon: 1 }).hotelLat, 37.0405);
+});
+
+test("coordinates pasted from Google Maps; walking matrix; beach walking minutes", async () => {
+  const { parseCoords } = await import("../lib/beach-distance-core.ts");
+  assert.deepEqual(parseCoords("37.0402134, 25.2561987"), { lat: 37.040213, lon: 25.256199 });
+  assert.deepEqual(parseCoords(" 37.0402 25.2561 "), { lat: 37.0402, lon: 25.2561 });
+  assert.equal(parseCoords("51.5, -0.12"), null);
+  assert.equal(parseCoords("abc"), null);
+  const w = matrixBody({ lat: 37.04, lon: 25.25 }, [{ lat: 37.03, lon: 25.25 }], "WALK");
+  assert.equal(w.travelMode, "WALK");
+  assert.equal("routingPreference" in w, false);
+  assert.equal(normalizeBeaches([{ name: "Λογαράς", minutes: 1, km: 0.3, sheltered: [], walkMin: 4 }])[0].walkMin, 4);
+  assert.equal(normalizeBeaches([{ name: "Λογαράς", minutes: 1, km: 0.3, sheltered: [] }])[0].walkMin, undefined);
 });

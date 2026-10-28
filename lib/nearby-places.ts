@@ -1,8 +1,9 @@
 // Places near the hotel for the TV assistant and the guest app: Google Places (New) when PMS → Integrations → Google Places has a key,
 // else OpenStreetMap. Google calls are counted per day and stop at the
 // hotel's daily limit (then OpenStreetMap is used), so the free monthly allowance is never exceeded by surprise.
-// Refreshed once a day: 12 categories ≈ 360 Google calls a month, shared by the TVs and "My booking".
+// Refreshed once a day: 12 category searches + a few walking route matrices, shared by the TVs and "My booking".
 import { db } from "@/lib/db";
+import { MATRIX_FIELD_MASK, matrixBody, parseMatrix } from "@/lib/beach-distance-core";
 import { providerCredentials } from "@/lib/provider-connections";
 import { filterPlaces, GOOGLE_FIELD_MASK, googleGroups, googleNearbyBody, mergePlaces, overpassQuery, withToday, parseGooglePlaces, parseOverpass, type NearbyPlace } from "@/lib/tv-nearby-core";
 
@@ -46,7 +47,28 @@ async function fromGoogle(ownerId: string, apiKey: string, limit: number, radius
     const r = await googleSearch(apiKey, g.types, radiusKm, at).catch(() => null);
     return r?.ok ? parseGooglePlaces(await r.json(), g.kind, at.lat, at.lon, radiusKm, day) : null;
   }));
-  return groups.every((g) => g === null) ? null : mergePlaces(groups.map((g) => g ?? []));
+  if (groups.every((g) => g === null)) return null;
+  return walkingDistances(ownerId, apiKey, limit, mergePlaces(groups.map((g) => g ?? [])), at);
+}
+
+/**
+ * Real walking distance and time from the hotel (Routes API route matrix, 25 places per call, nearest 12 of each kind).
+ * Without Routes API on the key, or past the daily limit, the straight-line distance stays (walk time × 1.3 for streets).
+ */
+async function walkingDistances(ownerId: string, apiKey: string, limit: number, places: NearbyPlace[], at: At): Promise<NearbyPlace[]> {
+  const perKind = new Map<string, number>();
+  const pick = places.map((p, i) => ({ p, i })).filter(({ p }) => { const n = (perKind.get(p.kind) ?? 0) + 1; perKind.set(p.kind, n); return n <= 12 && p.lat !== undefined && p.lon !== undefined; });
+  const batches: typeof pick[] = [];
+  for (let i = 0; i < pick.length; i += 25) batches.push(pick.slice(i, i + 25));
+  if (!batches.length || !(await reserveGoogleCalls(ownerId, batches.length, limit))) return places;
+  const out = [...places];
+  for (const batch of batches) {
+    const r = await fetch("https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", { method: "POST", headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": MATRIX_FIELD_MASK }, body: JSON.stringify(matrixBody(at, batch.map(({ p }) => ({ lat: p.lat!, lon: p.lon! })), "WALK")), signal: AbortSignal.timeout(20_000) }).catch(() => null);
+    if (!r?.ok) break;
+    const m = parseMatrix(await r.json());
+    batch.forEach(({ i }, j) => { const d = m.get(j); if (d) out[i] = { ...out[i], meters: d.meters, walkMin: d.minutes, routed: true }; });
+  }
+  return out.sort((a, b) => a.meters - b.meters);
 }
 
 async function fromOsm(radiusKm: number, at: At): Promise<NearbyPlace[]> {
@@ -62,7 +84,7 @@ async function fromOsm(radiusKm: number, at: At): Promise<NearbyPlace[]> {
 export async function nearbyPlaces(ownerId: string, radiusKm: number, hide: string[], at: At): Promise<{ source: Source; places: NearbyPlace[] }> {
   const g = await providerCredentials(ownerId, "googlePlaces").catch(() => null);
   const apiKey = g?.active ? g.secrets.apiKey : "";
-  const key = `${apiKey ? "g" : "o"}:${radiusKm}:${at.lat},${at.lon}`;
+  const key = `v2:${apiKey ? "g" : "o"}:${radiusKm}:${at.lat},${at.lon}`;
   const now = Date.now();
   const row = (await db().query(`SELECT cache_key,source,places_json,fetched_at FROM nearby_places_cache WHERE owner_id=$1`, [ownerId])).rows[0];
   let source: Source = row?.source === "google" ? "google" : "osm";

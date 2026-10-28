@@ -5,6 +5,7 @@ import type { TvScreenRow } from "@/lib/tv";
 import { tvLanguages, type TvLanguage, type TvSettings } from "@/lib/tv-core";
 import { defaultInfoSections, MAX_INFO_SECTIONS, type TvInfoSection } from "@/lib/tv-info";
 import { defaultTvQuestions, MAX_TV_QUESTIONS, type TvQuestion } from "@/lib/tv-questions";
+import { parseCoords } from "@/lib/beach-distance-core";
 import { MAX_BEACHES, missingParosBeaches, defaultBeaches, windDirections, windNames, type TvBeach } from "@/lib/tv-beaches";
 import { channelSource, MAX_TV_CHANNELS, tvChannelCategories, type TvChannel } from "@/lib/tv-channels-core";
 import { MAX_TV_APPS, tvAppCatalog, type TvApp } from "@/lib/tv-apps-core";
@@ -174,7 +175,9 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         <div className="tvGoogleDist">
           <label className="inline">{t("tv.gHotel")} <input value={hotelQuery} maxLength={150} disabled={!canEdit} onChange={(e) => setHotelQuery(e.target.value)} /></label>
           {canEdit && <button type="button" className="secondaryButton" disabled={busy} onClick={() => void locateHotel()}>📍 {t("tv.gLocate")}</button>}
-          <small className="muted">{settings.hotelFound ? `✓ ${settings.hotelFound}` : t("tv.gHotelDefault")} ({settings.hotelLat.toFixed(5)}, {settings.hotelLon.toFixed(5)})</small>
+          <small className="muted">{settings.hotelFound ? `✓ ${settings.hotelFound}` : t("tv.gHotelDefault")} · <a href={`https://www.google.com/maps?q=${settings.hotelLat},${settings.hotelLon}`} target="_blank" rel="noreferrer">{t("tv.gCheckMap")} ↗</a></small>
+          <label className="inline">{t("tv.gCoords")} <input key={`${settings.hotelLat},${settings.hotelLon}`} defaultValue={`${settings.hotelLat}, ${settings.hotelLon}`} disabled={!canEdit} placeholder="37.04021, 25.25612" onBlur={(e) => { const c = parseCoords(e.target.value); if (c) { if (c.lat !== settings.hotelLat || c.lon !== settings.hotelLon) set({ hotelLat: c.lat, hotelLon: c.lon, hotelFound: t("tv.gCoordsManual") }); } else { setMsg(t("tv.gCoordsBad")); e.target.value = `${settings.hotelLat}, ${settings.hotelLon}`; } }} /></label>
+          <small className="muted">{t("tv.gCoordsHelp")}</small>
           {canEdit && <button type="button" className="primaryAction" disabled={busy || !settings.beaches.length} onClick={() => void beachDistances()}>🗺️ {t("tv.gDistances")}</button>}
           <small className="muted">{t("tv.gDistancesHelp")}</small>
         </div>
@@ -186,6 +189,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
               {b.found ? <small className="tvBeachFound" title={b.found}>📍 {b.found}</small> : null}
               <label className="inline">{t("tv.beachKm")} <input type="number" min={0} max={100} step={0.1} value={b.km} disabled={!canEdit} onChange={(e) => editBeach(i, { km: Number(e.target.value) || 0 })} /></label>
               <label className="inline">{t("tv.beachMinutes")} <input type="number" min={0} max={180} value={b.minutes} disabled={!canEdit} onChange={(e) => editBeach(i, { minutes: Number(e.target.value) || 0 })} /></label>
+              <label className="inline">{t("tv.beachWalk")} <input type="number" min={0} max={240} value={b.walkMin ?? ""} placeholder="—" disabled={!canEdit} onChange={(e) => editBeach(i, { walkMin: Number(e.target.value) || undefined })} /></label>
               <div className="tvWinds" role="group" aria-label={t("tv.beachSheltered")}>
                 <span>{t("tv.beachSheltered")}:</span>
                 {windDirections.map((d) => <button type="button" key={d} title={windNames[d].el} aria-pressed={b.sheltered.includes(d)} className={b.sheltered.includes(d) ? "on" : ""} disabled={!canEdit} onClick={() => editBeach(i, { sheltered: b.sheltered.includes(d) ? b.sheltered.filter((x) => x !== d) : windDirections.filter((x) => x === d || b.sheltered.includes(x)) })}>{windNames[d].el}</button>)}

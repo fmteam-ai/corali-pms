@@ -34,7 +34,7 @@ test("Overpass → named places within the radius, nearest first, no duplicates"
   assert.equal(ps[1].kind, "bakery");
   assert.equal(ps[2].cuisine, "greek, seafood");
   const text = nearbyText(ps, 1);
-  assert.match(text, /Restaurants \/ taverns: Taverna Far \(\d+ m, ~\d+ min walk, greek, seafood\)/);
+  assert.match(text, /Restaurants \/ taverns: Taverna Far \(~\d+ m straight line, ~\d+ min walk, greek, seafood\)/);
   assert.match(text, /within 1 km/);
   assert.match(nearbyText([], 1), /no data/);
   assert.deepEqual(parseOverpass(null, H.lat, H.lon, 1), []);
@@ -84,4 +84,12 @@ test("Google places carry map point, address, website, Maps link and the week; t
   assert.equal(withToday([p], 6)[0].hours, "10:00–14:00");
   assert.equal(googleGroups.length, 12);
   assert.ok(googleGroups.some((g) => g.kind === "car_rental") && googleGroups.some((g) => g.kind === "health"));
+});
+
+test("walking-route places are told as routes, others as straight line", async () => {
+  const p = { name: "Souvlaki Tzanis", kind: "fast_food" as const, cuisine: "", hours: "" };
+  const t = nearbyText([{ ...p, meters: 980, walkMin: 13, routed: true }, { ...p, name: "Other", meters: 300, walkMin: 5 }], 2);
+  assert.match(t, /Souvlaki Tzanis \(980 m walking route, 13 min on foot/);
+  assert.match(t, /Other \(~300 m straight line, ~5 min walk/);
+  assert.match(t, /always say both the distance and the walking time/);
 });

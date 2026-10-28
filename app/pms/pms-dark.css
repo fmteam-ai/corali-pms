@@ -492,6 +492,16 @@
 .pms[data-theme="dark"] .gPartners .gpQty button{border:1px solid hsl(200 17% 29%);background:hsl(200 18% 9%)}
 .pms[data-theme="dark"] .gPassQr{background:hsl(200 18% 9%)}
 .pms[data-theme="dark"] .gPassCard .gOrderBtn{color:hsl(191 51% 72%)}
+.pms[data-theme="dark"] .gnCard{border:1px solid hsl(41 25% 28%);background:hsl(200 18% 9%)}
+.pms[data-theme="dark"] .gnIcon{background:hsl(200 18% 12%)}
+.pms[data-theme="dark"] .gnDist{color:hsl(191 51% 72%)}
+.pms[data-theme="dark"] .gnRating{color:hsl(36 71% 72%)}
+.pms[data-theme="dark"] .gnHours,
+.pms[data-theme="dark"] .gnAddr{color:hsl(202 7% 78%)}
+.pms[data-theme="dark"] .gnHours.closed{color:hsl(4 75% 72%)}
+.pms[data-theme="dark"] .gnActions a,
+.pms[data-theme="dark"] .gnActions button{border:1px solid hsl(188 30% 28%);background:hsl(200 18% 9%);color:hsl(191 51% 72%)}
+.pms[data-theme="dark"] .gnMapCard{background:hsl(200 18% 9%)}
 .pmsTop[data-theme="dark"] .pmsTopbar{background:hsl(200 18% 9%)}
 .pms[data-theme="dark"] .tableWrap td{border-bottom:1px solid hsl(200 20% 26%)}
 .pms[data-theme="dark"] .tableWrap tbody tr:hover td{background:hsl(180 14% 20%)}
