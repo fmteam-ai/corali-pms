@@ -1884,3 +1884,24 @@ CREATE TABLE IF NOT EXISTS tv_assistant_actions (
  decided_at BIGINT
 );
 CREATE INDEX IF NOT EXISTS idx_tv_assistant_actions_booking ON tv_assistant_actions(owner_id,booking_id,id);
+
+-- v112: room temperature / humidity sensors (Tuya Wi-Fi) with three alerts: damp room, A/C not cooling / heating
+-- with a guest in, low battery.
+CREATE TABLE IF NOT EXISTS room_climate (
+ owner_id TEXT NOT NULL,
+ room_id BIGINT NOT NULL,
+ device_id TEXT NOT NULL,
+ temp NUMERIC(5,1),
+ humidity BIGINT,
+ battery BIGINT,
+ read_at BIGINT,
+ checked_at BIGINT,
+ error TEXT NOT NULL DEFAULT '',
+ humid_since BIGINT,
+ hot_since BIGINT,
+ alerted_humid_at BIGINT,
+ alerted_temp_at BIGINT,
+ alerted_battery_at BIGINT,
+ updated_at BIGINT NOT NULL,
+ PRIMARY KEY(owner_id,room_id)
+);

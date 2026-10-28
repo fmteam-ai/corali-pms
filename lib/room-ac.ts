@@ -6,8 +6,10 @@ import { documentKey } from "@/lib/env";
 import { decryptField, encryptField } from "@/lib/security/encryption";
 import { acOverride, deviceState, normalizePowerSettings, statusRequest, type PlugState } from "../scripts/tv-power-core.mjs";
 import { runRoomAc } from "../scripts/room-ac-worker.mjs";
+import type { ClimateSettings } from "../scripts/room-climate-core.mjs";
+import { runRoomClimate } from "../scripts/room-climate-worker.mjs";
 
-export type AcRoom = { roomId: number; code: string; roomType: string; guest: string | null; occupied: boolean; deviceId: string; channel: number; state: boolean | null; changedAt: number | null; error: string; overrideOn: boolean | null; overrideUntil: number | null; presenceDeviceId: string; presenceNow: boolean | null; presenceSeenAt: number | null; presenceCheckedAt: number | null };
+export type AcRoom = { roomId: number; code: string; roomType: string; guest: string | null; occupied: boolean; deviceId: string; channel: number; state: boolean | null; changedAt: number | null; error: string; overrideOn: boolean | null; overrideUntil: number | null; presenceDeviceId: string; presenceNow: boolean | null; presenceSeenAt: number | null; presenceCheckedAt: number | null; climateDeviceId: string; temp: number | null; humidity: number | null; battery: number | null; climateReadAt: number | null; climateError: string };
 
 async function cloud(ownerId: string) {
   const r = (await db().query(`SELECT settings_json,auth_key_encrypted FROM tv_power_settings WHERE owner_id=$1`, [ownerId])).rows[0];
@@ -17,20 +19,20 @@ async function cloud(ownerId: string) {
   return { settings, ready: Boolean(settings.server && r?.auth_key_encrypted), key: () => decryptField(String(r.auth_key_encrypted), documentKey()) };
 }
 
-export type AcStatus = { enabled: boolean; cloudReady: boolean; presence: boolean; awayMinutes: number; tuyaReady: boolean; rooms: AcRoom[] };
+export type AcStatus = { enabled: boolean; cloudReady: boolean; presence: boolean; awayMinutes: number; tuyaReady: boolean; climate: ClimateSettings; rooms: AcRoom[] };
 
 export async function acRooms(ownerId: string): Promise<AcStatus> {
   const c = await cloud(ownerId);
   const tuya = (await db().query(`SELECT active FROM provider_connections WHERE owner_id=$1 AND provider_key='tuya'`, [ownerId])).rows[0];
   const r = await db().query(
-    `SELECT r.id,r.code,r.room_type,a.device_id,a.channel,a.state,a.changed_at,a.error,a.override_on,a.override_until,a.presence_device_id,a.presence_now,a.presence_seen_at,a.presence_checked_at,
+    `SELECT r.id,r.code,r.room_type,a.device_id,a.channel,a.state,a.changed_at,a.error,a.override_on,a.override_until,a.presence_device_id,a.presence_now,a.presence_seen_at,a.presence_checked_at,cl.device_id climate_device_id,cl.temp,cl.humidity,cl.battery,cl.read_at climate_read_at,cl.error climate_error,
             (SELECT b.guest_name FROM bookings b WHERE b.owner_id=r.owner_id AND b.room_id=r.id AND b.status='checked_in' ORDER BY b.check_in DESC LIMIT 1) AS guest
-       FROM rooms r LEFT JOIN room_ac_devices a ON a.owner_id=r.owner_id AND a.room_id=r.id WHERE r.owner_id=$1 AND r.active=1 ORDER BY r.code`,
+       FROM rooms r LEFT JOIN room_ac_devices a ON a.owner_id=r.owner_id AND a.room_id=r.id LEFT JOIN room_climate cl ON cl.owner_id=r.owner_id AND cl.room_id=r.id WHERE r.owner_id=$1 AND r.active=1 ORDER BY r.code`,
     [ownerId],
   );
   const now = Date.now();
   return {
-    enabled: c.settings.acEnabled, cloudReady: c.ready, presence: c.settings.acPresence, awayMinutes: c.settings.acAwayMinutes, tuyaReady: Number(tuya?.active) === 1,
+    enabled: c.settings.acEnabled, cloudReady: c.ready, climate: c.settings.climate, presence: c.settings.acPresence, awayMinutes: c.settings.acAwayMinutes, tuyaReady: Number(tuya?.active) === 1,
     rooms: r.rows.map((x) => ({
       roomId: Number(x.id), code: String(x.code), roomType: String(x.room_type), guest: x.guest ? String(x.guest) : null, occupied: Boolean(x.guest),
       deviceId: String(x.device_id ?? ""), channel: Number(x.channel ?? 0), state: x.state === null || x.state === undefined ? null : Number(x.state) === 1,
@@ -38,6 +40,7 @@ export async function acRooms(ownerId: string): Promise<AcStatus> {
       overrideOn: x.override_until && Number(x.override_until) > now ? Number(x.override_on) === 1 : null, overrideUntil: x.override_until && Number(x.override_until) > now ? Number(x.override_until) : null,
       presenceDeviceId: String(x.presence_device_id ?? ""), presenceNow: x.presence_now === null || x.presence_now === undefined ? null : Number(x.presence_now) === 1,
       presenceSeenAt: x.presence_seen_at ? Number(x.presence_seen_at) : null, presenceCheckedAt: x.presence_checked_at ? Number(x.presence_checked_at) : null,
+      climateDeviceId: String(x.climate_device_id ?? ""), temp: x.temp === null || x.temp === undefined ? null : Number(x.temp), humidity: x.humidity === null || x.humidity === undefined ? null : Number(x.humidity), battery: x.battery === null || x.battery === undefined ? null : Number(x.battery), climateReadAt: x.climate_read_at ? Number(x.climate_read_at) : null, climateError: String(x.climate_error ?? ""),
     })),
   };
 }
@@ -112,4 +115,40 @@ export async function setAcEnabled(ownerId: string, userId: number, x: { enabled
     [ownerId, JSON.stringify(settings), userId, Date.now()],
   );
   if (x.enabled) await syncAc(ownerId, null);
+}
+
+/** Link a room's temperature / humidity sensor (empty id removes it) and read it at once. */
+export async function setClimateDevice(ownerId: string, roomId: number, deviceId: string): Promise<void> {
+  if (!deviceId) { await db().query(`DELETE FROM room_climate WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId]); return; }
+  await db().query(
+    `INSERT INTO room_climate(owner_id,room_id,device_id,updated_at) VALUES($1,$2,$3,$4)
+     ON CONFLICT(owner_id,room_id) DO UPDATE SET device_id=$3,temp=NULL,humidity=NULL,battery=NULL,read_at=NULL,checked_at=NULL,error='',humid_since=NULL,hot_since=NULL,updated_at=$4`,
+    [ownerId, roomId, deviceId, Date.now()],
+  );
+  await readClimateNow(ownerId);
+}
+
+/** Read every sensor now (the cron reads them every ~10 minutes). */
+export async function readClimateNow(ownerId: string) {
+  const key = documentKey();
+  return runRoomClimate({ pool: db(), owner: ownerId, unseal: (v) => decryptField(v, key), seal: (v) => encryptField(v, key), force: true });
+}
+
+export async function saveClimateSettings(ownerId: string, userId: number, raw: unknown): Promise<void> {
+  const r = (await db().query(`SELECT settings_json FROM tv_power_settings WHERE owner_id=$1`, [ownerId])).rows[0];
+  let cur: Record<string, unknown> = {};
+  try { cur = r ? JSON.parse(String(r.settings_json)) : {}; } catch { cur = {}; }
+  const next = normalizePowerSettings({ ...cur, climate: raw });
+  await db().query(
+    `INSERT INTO tv_power_settings(owner_id,settings_json,auth_key_encrypted,updated_by,updated_at) VALUES($1,$2,'',$3,$4)
+     ON CONFLICT(owner_id) DO UPDATE SET settings_json=$2,updated_by=$3,updated_at=$4`,
+    [ownerId, JSON.stringify(next), userId, Date.now()],
+  );
+}
+
+/** Latest reading of a room's sensor (for the TV assistant), or null when none / older than an hour. */
+export async function roomClimate(ownerId: string, roomId: number): Promise<{ temp: number | null; humidity: number | null } | null> {
+  const r = (await db().query(`SELECT temp,humidity,read_at FROM room_climate WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId])).rows[0];
+  if (!r?.read_at || Number(r.read_at) < Date.now() - 3_600_000) return null;
+  return { temp: r.temp === null ? null : Number(r.temp), humidity: r.humidity === null ? null : Number(r.humidity) };
 }

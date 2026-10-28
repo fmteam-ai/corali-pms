@@ -2165,6 +2165,18 @@ const el = {
   "tv.beachSheltered": "Προστατευμένη από",
   "tv.beachNote": "Σημείωση (π.χ. ρηχά νερά, ταβέρνα, windsurf)",
   "tv.beachAdd": "Παραλία",
+  "ac.climate": "Θερμοκρασία / υγρασία (Tuya ID)",
+  "ac.climateId": "ID αισθητήρα",
+  "ac.climateTitle": "🌡️ Αισθητήρες θερμοκρασίας & υγρασίας — ειδοποιήσεις",
+  "ac.climateHelp": "Οι αισθητήρες διαβάζονται κάθε ~10 λεπτά (Tuya Cloud). Ειδοποιήσεις στο PMS: υγρό δωμάτιο, δωμάτιο με πελάτη που μένει ζεστό/κρύο ενώ το κλιματιστικό έχει ρεύμα (ανοίγει και βλάβη συντήρησης), χαμηλή μπαταρία.",
+  "ac.humMax": "Υγρασία πάνω από",
+  "ac.for": "για",
+  "ac.hours": "ώρες",
+  "ac.tempRange": "Θερμοκρασία εκτός",
+  "ac.after": "ενώ το κλιματιστικό έχει ρεύμα πάνω από",
+  "ac.minutesAc": "λεπτά (με πελάτη)",
+  "ac.batteryMin": "Μπαταρία αισθητήρα κάτω από",
+  "ac.readNow": "Ανάγνωση τώρα",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -4326,6 +4338,18 @@ const en: Record<PmsKey, string> = {
   "tv.beachSheltered": "Sheltered from",
   "tv.beachNote": "Note (e.g. shallow water, taverna, windsurf)",
   "tv.beachAdd": "Beach",
+  "ac.climate": "Temperature / humidity (Tuya ID)",
+  "ac.climateId": "Sensor ID",
+  "ac.climateTitle": "🌡️ Temperature & humidity sensors — alerts",
+  "ac.climateHelp": "Sensors are read every ~10 minutes (Tuya Cloud). PMS alerts: damp room, occupied room that stays hot/cold while the A/C has power (also opens a maintenance notice), low battery.",
+  "ac.humMax": "Humidity above",
+  "ac.for": "for",
+  "ac.hours": "hours",
+  "ac.tempRange": "Temperature outside",
+  "ac.after": "while the A/C has had power for over",
+  "ac.minutesAc": "minutes (guest in)",
+  "ac.batteryMin": "Sensor battery below",
+  "ac.readNow": "Read now",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

@@ -5,3 +5,4 @@ export declare function tuyaHeaders(x: Creds & { token?: string; method: string;
 export declare function presenceFromStatus(status: unknown): boolean | null;
 export declare function tuyaToken(fetchFn: typeof fetch, host: string, creds: Creds): Promise<{ token: string; expiresAt: number }>;
 export declare function tuyaPresence(fetchFn: typeof fetch, host: string, creds: Creds, token: string, ids: string[]): Promise<Record<string, boolean | null>>;
+export declare function tuyaStatus(fetchFn: typeof fetch, host: string, creds: Creds, token: string, ids: string[]): Promise<Record<string, unknown>>;

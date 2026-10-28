@@ -24,7 +24,7 @@ test("Shelly server, device id and settings are validated", () => {
   assert.equal(validDeviceId("e4b063f0c38c"), true);
   assert.equal(validDeviceId("bad id"), false);
   assert.deepEqual(normalizePowerSettings({ enabled: true, server: "shelly-77-eu.shelly.cloud", onTime: "25:00", autoOff: false }),
-    { enabled: true, server: "https://shelly-77-eu.shelly.cloud", onTime: "13:00", autoOn: true, autoOff: false, acEnabled: false, acPresence: false, acAwayMinutes: 20 });
+    { enabled: true, server: "https://shelly-77-eu.shelly.cloud", onTime: "13:00", autoOn: true, autoOff: false, acEnabled: false, acPresence: false, acAwayMinutes: 20, climate: { humidityMax: 70, humidityHours: 3, tempMax: 28, tempMin: 17, tempMinutes: 60, batteryMin: 20 } });
   assert.equal(normalizePowerSettings(null).enabled, false);
 });
 

@@ -582,3 +582,5 @@ body:has(.pms){background:#f2f4f6}
 .tvBeach input[type=number]{width:64px}.tvWinds{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:12px}.tvWinds span{margin-right:4px;color:var(--muted,#667085)}
 .tvWinds button{border:1px solid var(--line,#d6dde3);background:var(--surface,#fff);color:inherit;border-radius:999px;padding:3px 8px;font-size:12px;cursor:pointer}.tvWinds button.on{background:#1f7a4d;border-color:#1f7a4d;color:#fff}
 @media(max-width:900px){.tvBeach{grid-template-columns:1fr auto}.tvBeach .tvWinds,.tvBeach>input:nth-of-type(2){grid-column:1/-1}}
+.acClimate{display:grid;gap:8px}.acClimate h3{margin:0}.acClimate input[type=number]{width:64px}
+.pms .acClimate label{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0;font-weight:500}.pms .acClimate label input[type=number]{width:72px;min-width:0}

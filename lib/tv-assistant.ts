@@ -13,6 +13,7 @@ import { beaufort, currentStay, firstName, pickText, tvLanguage, type TvLanguage
 import { createTvRequest } from "@/lib/tv-requests";
 import { tvRequestTexts } from "@/lib/tv-requests-core";
 import { webSearchTool } from "@/lib/web-research";
+import { roomClimate } from "@/lib/room-ac";
 import { beachesForWind, compass, windNames, windyDay, type TvBeach } from "@/lib/tv-beaches";
 
 // Wind (and waves) for Piso Livadi from Open-Meteo, for beach advice; cached 30 minutes, null when unreachable.
@@ -126,9 +127,10 @@ async function context(sc: Screen): Promise<{ text: string; itemIds: Set<number>
   const orders = (portal?.orders ?? []).slice(0, 8).map((o) => `- ${o.title} ${euro(o.amountCents)} (${o.status}${o.date ? `, ${o.date} ${o.time}` : ""})`);
   const news = (portal?.announcements ?? []).slice(0, 6).map((a) => `- ${a.title}: ${a.body.slice(0, 200)}`);
   const beaches = beachContext(await windForecast(), settings.beaches);
+  const climate = await roomClimate(sc.ownerId, sc.roomId).catch(() => null);
   const text = `GUEST AND STAY
 - Language: ${languageNames[lang]}. Name: ${firstName(String(b.guest_name))}. Room ${sc.roomCode}. Stay ${b.check_in} → ${b.check_out} (check-out by ${settings.checkOutTime}). Guests: ${Number(b.adults ?? 1)} adult(s)${Number(b.children ?? 0) ? `, ${Number(b.children)} child(ren)` : ""}.
-- Now: ${hotelToday()} ${hotelTime()} (hotel time, Europe/Athens).
+- Now: ${hotelToday()} ${hotelTime()} (hotel time, Europe/Athens).${climate?.temp != null ? `\n- Room sensor now: ${climate.temp}°C${climate.humidity != null ? `, humidity ${climate.humidity}%` : ""} (if the guest finds it hot or cold, suggest the A/C remote; if it does not help, offer "Please contact me" / a technical problem on the Requests tab).` : ""}
 - Reception phone: ${settings.receptionPhone || "(press 'Please contact me' on the Requests tab)"}. Wi-Fi: ${settings.wifiSsid || "see the home screen"}${settings.wifiPassword ? ` / password ${settings.wifiPassword}` : ""}.
 
 HOTEL INFORMATION (as on the TV)

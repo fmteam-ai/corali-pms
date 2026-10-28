@@ -1,5 +1,5 @@
 export type PowerStay = { status: string; check_in: string; check_out: string };
-export type PowerSettings = { enabled: boolean; server: string; onTime: string; autoOn: boolean; autoOff: boolean; acEnabled: boolean; acPresence: boolean; acAwayMinutes: number };
+export type PowerSettings = { enabled: boolean; server: string; onTime: string; autoOn: boolean; autoOff: boolean; acEnabled: boolean; acPresence: boolean; acAwayMinutes: number; climate: import("./room-climate-core.mjs").ClimateSettings };
 export declare function desiredPower(stays: PowerStay[], today: string, time: string, onTime: string): boolean;
 export declare function shellyServer(input: unknown): string;
 export declare function validDeviceId(id: unknown): boolean;

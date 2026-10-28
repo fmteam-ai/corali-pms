@@ -8,7 +8,7 @@ import { TUYA_HOSTS, tuyaPresence, tuyaToken } from "./tuya-core.mjs";
 const parse = (v) => { try { return JSON.parse(String(v)); } catch { return null; } };
 
 /** Tuya Cloud credentials from PMS → Integrations (null when not set up or switched off). */
-async function tuyaCreds(pool, owner, unseal) {
+export async function tuyaCreds(pool, owner, unseal) {
   const r = (await pool.query(`SELECT active,settings_json,secrets_encrypted FROM provider_connections WHERE owner_id=$1 AND provider_key='tuya'`, [owner])).rows[0];
   if (!r || !Number(r.active)) return null;
   const settings = parse(r.settings_json) ?? {}, secrets = parse(unseal(String(r.secrets_encrypted))) ?? {};
@@ -16,7 +16,7 @@ async function tuyaCreds(pool, owner, unseal) {
   return { host: TUYA_HOSTS[settings.dataCenter] ?? TUYA_HOSTS.eu, accessId: String(secrets.accessId), secret: String(secrets.accessSecret) };
 }
 
-async function cachedToken(pool, owner, tuya, seal, unseal) {
+export async function cachedToken(pool, owner, tuya, seal, unseal) {
   const row = (await pool.query(`SELECT token_encrypted,expires_at FROM provider_tokens WHERE owner_id=$1 AND provider_key='tuya'`, [owner])).rows[0];
   if (row && Number(row.expires_at) > Date.now()) { try { return unseal(String(row.token_encrypted)); } catch { /* new token below */ } }
   const t = await tuyaToken(fetch, tuya.host, tuya);

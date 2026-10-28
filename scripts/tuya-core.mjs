@@ -47,13 +47,19 @@ export async function tuyaToken(fetchFn, host, creds) {
   return { token: String(r.access_token), expiresAt: Date.now() + (Number(r.expire_time) || 7200) * 1000 - 120_000 };
 }
 
-/** Presence per device id (true / false / null when unknown), 20 devices per request. */
-export async function tuyaPresence(fetchFn, host, creds, token, ids) {
+/** Raw data points per device id, 20 devices per request. */
+export async function tuyaStatus(fetchFn, host, creds, token, ids) {
   const out = {};
   for (let i = 0; i < ids.length; i += 20) {
     const part = ids.slice(i, i + 20);
     const r = await call(fetchFn, host, creds, "GET", `/v1.0/iot-03/devices/status?device_ids=${part.join(",")}`, token);
-    for (const d of Array.isArray(r) ? r : []) out[String(d.id)] = presenceFromStatus(d.status);
+    for (const d of Array.isArray(r) ? r : []) out[String(d.id)] = d.status;
   }
   return out;
+}
+
+/** Presence per device id (true / false / null when unknown). */
+export async function tuyaPresence(fetchFn, host, creds, token, ids) {
+  const raw = await tuyaStatus(fetchFn, host, creds, token, ids);
+  return Object.fromEntries(Object.entries(raw).map(([id, st]) => [id, presenceFromStatus(st)]));
 }

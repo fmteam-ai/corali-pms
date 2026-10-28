@@ -2,6 +2,8 @@
 // Shelly Cloud Control API v2: POST https://<server>/v2/devices/api/set/switch?auth_key=… {id,channel,on}
 // and POST …/v2/devices/api/get?auth_key=… {ids,select:["status"]}. The cloud allows about 1 request per second.
 
+import { normalizeClimateSettings } from "./room-climate-core.mjs";
+
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /**
@@ -39,6 +41,8 @@ export function normalizePowerSettings(raw) {
     // With a presence sensor (Tuya mmWave): cut the A/C when nobody has been in the room for this many minutes.
     acPresence: x.acPresence === true || x.acPresence === 1,
     acAwayMinutes: Number.isFinite(Number(x.acAwayMinutes)) && x.acAwayMinutes !== "" && x.acAwayMinutes !== null ? Math.min(240, Math.max(5, Math.round(Number(x.acAwayMinutes)))) : 20,
+    // Room temperature / humidity sensors: alert thresholds.
+    climate: normalizeClimateSettings(x.climate),
   };
 }
 
