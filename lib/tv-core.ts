@@ -90,7 +90,7 @@ export const defaultTvSettings: TvSettings = {
   assistant: false,
   assistantDailyLimit: 40,
   assistantDetail: "detailed",
-  nearbyRadiusKm: 1,
+  nearbyRadiusKm: 2,
   nearbyHide: "",
   hotelLat: 37.0405,
   hotelLon: 25.2555,
@@ -152,7 +152,7 @@ export function normalizeTvSettings(raw: unknown): TvSettings {
     assistantDetail: r.assistantDetail === "short" ? "short" : "detailed",
     ...(validCoord(r.hotelLat, r.hotelLon) ? { hotelLat: Number(r.hotelLat), hotelLon: Number(r.hotelLon), hotelFound: typeof r.hotelFound === "string" ? r.hotelFound.slice(0, 160) : "" } : { hotelLat: 37.0405, hotelLon: 25.2555, hotelFound: "" }),
     nearbyHide: typeof r.nearbyHide === "string" ? r.nearbyHide.slice(0, 1000) : "",
-    nearbyRadiusKm: Math.min(5, Math.max(0.3, Math.round((Number(r.nearbyRadiusKm) || 1) * 10) / 10)),
+    nearbyRadiusKm: Math.min(5, Math.max(0.3, Math.round((Number(r.nearbyRadiusKm) || 2) * 10) / 10)),
     assistantQuestions: normalizeTvQuestions(r.assistantQuestions),
     assistantDailyLimit: Number.isFinite(Number(r.assistantDailyLimit)) && r.assistantDailyLimit !== null && r.assistantDailyLimit !== "" ? Math.min(200, Math.max(5, Math.round(Number(r.assistantDailyLimit)))) : 40,
   };

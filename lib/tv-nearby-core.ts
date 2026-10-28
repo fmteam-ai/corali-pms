@@ -5,12 +5,13 @@
 export const HOTEL_LAT = 37.0405;
 export const HOTEL_LON = 25.2555;
 
-export type NearbyKind = "restaurant" | "cafe" | "bar" | "fast_food" | "ice_cream" | "bakery" | "supermarket" | "pharmacy" | "atm" | "shop" | "beauty" | "sight";
-export type NearbyPlace = { name: string; kind: NearbyKind; meters: number; walkMin: number; cuisine: string; hours: string; rating?: number; ratings?: number; price?: string; phone?: string };
+export type NearbyKind = "restaurant" | "cafe" | "bar" | "fast_food" | "ice_cream" | "bakery" | "supermarket" | "pharmacy" | "health" | "atm" | "shop" | "beauty" | "car_rental" | "fuel" | "laundry" | "travel" | "sight";
+export type NearbyPlace = { name: string; kind: NearbyKind; meters: number; walkMin: number; cuisine: string; hours: string; rating?: number; ratings?: number; price?: string; phone?: string; lat?: number; lon?: number; address?: string; website?: string; mapsUrl?: string; week?: string[] };
 
 const kindLabels: Record<NearbyKind, string> = {
   restaurant: "Restaurants / taverns", cafe: "Cafés", bar: "Bars", fast_food: "Fast food / souvlaki", ice_cream: "Ice cream", bakery: "Bakeries / pastry",
-  supermarket: "Supermarkets / mini markets", pharmacy: "Pharmacies", atm: "ATM / bank", shop: "Shops", beauty: "Hairdresser / beauty", sight: "Sights",
+  supermarket: "Supermarkets / mini markets", pharmacy: "Pharmacies", health: "Doctors / health", atm: "ATM / bank", shop: "Shops", beauty: "Hairdresser / beauty",
+  car_rental: "Car / bike rental", fuel: "Petrol stations", laundry: "Laundry", travel: "Travel agencies / tickets", sight: "Sights",
 };
 
 /** Straight-line distance in metres. */
@@ -23,11 +24,11 @@ export function metersBetween(lat1: number, lon1: number, lat2: number, lon2: nu
 /** Walking minutes: straight line × 1.3 for the streets, 4.8 km/h. */
 export const walkMinutes = (meters: number) => Math.max(1, Math.round((meters * 1.3) / 80));
 
-export const clampRadiusKm = (v: unknown) => Math.min(5, Math.max(0.3, Math.round((Number(v) || 1) * 10) / 10));
+export const clampRadiusKm = (v: unknown) => Math.min(5, Math.max(0.3, Math.round((Number(v) || 2) * 10) / 10));
 
 export function overpassQuery(lat: number, lon: number, radiusKm: number): string {
   const a = `(around:${Math.round(clampRadiusKm(radiusKm) * 1000)},${lat},${lon})`;
-  return `[out:json][timeout:20];(nwr${a}[name][amenity~"^(restaurant|cafe|bar|pub|fast_food|ice_cream|pharmacy|atm|bank)$"];nwr${a}[name][shop~"^(bakery|pastry|supermarket|convenience|kiosk|deli|butcher|greengrocer|beverages|wine|clothes|shoes|gift|souvenir|jewelry|beauty|hairdresser|art|books)$"];nwr${a}[name][tourism~"^(attraction|museum|viewpoint)$"];);out center tags 300;`;
+  return `[out:json][timeout:20];(nwr${a}[name][amenity~"^(restaurant|cafe|bar|pub|fast_food|ice_cream|pharmacy|atm|bank|doctors|clinic|dentist|hospital|car_rental|bicycle_rental|fuel)$"];nwr${a}[name][shop~"^(bakery|pastry|supermarket|convenience|kiosk|deli|butcher|greengrocer|beverages|wine|clothes|shoes|gift|souvenir|jewelry|beauty|hairdresser|art|books|laundry|dry_cleaning|travel_agency)$"];nwr${a}[name][tourism~"^(attraction|museum|viewpoint)$"];);out center tags 300;`;
 }
 
 // ───────────────────────────── never other accommodation ─────────────────────────────
@@ -55,6 +56,11 @@ function kindOf(t: Record<string, string>): NearbyKind | null {
   if (a === "ice_cream") return "ice_cream";
   if (a === "pharmacy") return "pharmacy";
   if (a === "atm" || a === "bank") return "atm";
+  if (a === "doctors" || a === "clinic" || a === "dentist" || a === "hospital") return "health";
+  if (a === "car_rental" || a === "bicycle_rental") return "car_rental";
+  if (a === "fuel") return "fuel";
+  if (s === "laundry" || s === "dry_cleaning") return "laundry";
+  if (s === "travel_agency") return "travel";
   if (s === "bakery" || s === "pastry") return "bakery";
   if (s === "supermarket" || s === "convenience" || s === "kiosk" || s === "greengrocer" || s === "butcher" || s === "deli" || s === "beverages" || s === "wine") return "supermarket";
   if (s === "beauty" || s === "hairdresser") return "beauty";
@@ -77,7 +83,8 @@ export function parseOverpass(json: unknown, lat: number, lon: number, radiusKm:
     const key = `${kind}:${name.toLowerCase()}`;
     if (meters > max || seen.has(key)) continue;
     seen.add(key);
-    out.push({ name, kind, meters, walkMin: walkMinutes(meters), cuisine: (t.cuisine ?? "").replace(/;/g, ", ").replace(/_/g, " ").slice(0, 60), hours: (t.opening_hours ?? "").slice(0, 80) });
+    out.push({ name, kind, meters, walkMin: walkMinutes(meters), cuisine: (t.cuisine ?? "").replace(/;/g, ", ").replace(/_/g, " ").slice(0, 60), hours: (t.opening_hours ?? "").slice(0, 80), lat: la, lon: lo,
+      ...(t.phone ? { phone: t.phone.slice(0, 40) } : {}), ...(t.website && /^https?:\/\//.test(t.website) ? { website: t.website.slice(0, 300) } : {}), ...(t["addr:street"] ? { address: [t["addr:street"], t["addr:housenumber"]].filter(Boolean).join(" ").slice(0, 120) } : {}) });
   }
   return out.sort((a, b) => a.meters - b.meters);
 }
@@ -90,17 +97,23 @@ export const googleGroups: { kind: NearbyKind; types: string[] }[] = [
   { kind: "cafe", types: ["cafe", "coffee_shop"] },
   { kind: "bar", types: ["bar", "night_club"] },
   { kind: "bakery", types: ["bakery", "ice_cream_shop"] },
-  { kind: "supermarket", types: ["supermarket", "grocery_store", "convenience_store"] },
-  { kind: "pharmacy", types: ["pharmacy", "atm"] },
+  { kind: "supermarket", types: ["supermarket", "grocery_store", "convenience_store", "liquor_store"] },
+  { kind: "pharmacy", types: ["pharmacy", "drugstore"] },
+  { kind: "health", types: ["doctor", "hospital", "dentist", "medical_lab", "physiotherapist"] },
+  { kind: "atm", types: ["atm", "bank"] },
+  { kind: "shop", types: ["clothing_store", "gift_shop", "jewelry_store", "shoe_store", "book_store", "store", "market"] },
+  { kind: "beauty", types: ["beauty_salon", "hair_care", "spa", "nail_salon"] },
+  { kind: "car_rental", types: ["car_rental"] },
+  { kind: "travel", types: ["travel_agency", "tour_agency", "gas_station", "laundry"] },
 ];
-export const GOOGLE_FIELD_MASK = "places.displayName,places.location,places.primaryType,places.types,places.rating,places.userRatingCount,places.priceLevel,places.regularOpeningHours.weekdayDescriptions,places.nationalPhoneNumber,places.businessStatus";
+export const GOOGLE_FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.googleMapsUri,places.location,places.primaryType,places.types,places.rating,places.userRatingCount,places.priceLevel,places.regularOpeningHours.weekdayDescriptions,places.nationalPhoneNumber,places.businessStatus";
 
 export function googleNearbyBody(types: string[], lat: number, lon: number, radiusKm: number, lang = "el") {
   return { includedTypes: types, excludedTypes: lodgingTypes, maxResultCount: 20, rankPreference: "DISTANCE", languageCode: lang, locationRestriction: { circle: { center: { latitude: lat, longitude: lon }, radius: Math.round(clampRadiusKm(radiusKm) * 1000) } } };
 }
 
 const priceLevels: Record<string, string> = { PRICE_LEVEL_FREE: "free", PRICE_LEVEL_INEXPENSIVE: "€", PRICE_LEVEL_MODERATE: "€€", PRICE_LEVEL_EXPENSIVE: "€€€", PRICE_LEVEL_VERY_EXPENSIVE: "€€€€" };
-const typeKind: Record<string, NearbyKind> = { ice_cream_shop: "ice_cream", atm: "atm", night_club: "bar", coffee_shop: "cafe" };
+const typeKind: Record<string, NearbyKind> = { ice_cream_shop: "ice_cream", atm: "atm", bank: "atm", night_club: "bar", coffee_shop: "cafe", gas_station: "fuel", laundry: "laundry", travel_agency: "travel", tour_agency: "travel", fast_food_restaurant: "fast_food" };
 
 /** Google's weekday lines start on Monday; JS getDay() starts on Sunday. */
 export const todayLine = (lines: unknown, jsDay: number): string => (Array.isArray(lines) ? String(lines[(jsDay + 6) % 7] ?? "") : "").replace(/^[^:]+:\s*/, "").slice(0, 80);
@@ -109,16 +122,22 @@ export function parseGooglePlaces(json: unknown, kind: NearbyKind, lat: number, 
   const list = (json as { places?: unknown[] } | null)?.places;
   if (!Array.isArray(list)) return [];
   const max = clampRadiusKm(radiusKm) * 1000;
-  return (list as { displayName?: { text?: string }; location?: { latitude: number; longitude: number }; primaryType?: string; types?: string[]; rating?: number; userRatingCount?: number; priceLevel?: string; regularOpeningHours?: { weekdayDescriptions?: string[] }; nationalPhoneNumber?: string; businessStatus?: string }[]).flatMap((p) => {
+  return (list as { id?: string; formattedAddress?: string; websiteUri?: string; googleMapsUri?: string; displayName?: { text?: string }; location?: { latitude: number; longitude: number }; primaryType?: string; types?: string[]; rating?: number; userRatingCount?: number; priceLevel?: string; regularOpeningHours?: { weekdayDescriptions?: string[] }; nationalPhoneNumber?: string; businessStatus?: string }[]).flatMap((p) => {
     const name = (p.displayName?.text ?? "").trim().slice(0, 80);
     if (!name || !p.location || (p.businessStatus && p.businessStatus !== "OPERATIONAL")) return [];
     if ((p.types ?? []).some((t) => lodgingTypes.includes(t)) || lodgingTypes.includes(p.primaryType ?? "")) return [];
     const meters = metersBetween(lat, lon, p.location.latitude, p.location.longitude);
     if (meters > max) return [];
     return [{ name, kind: typeKind[p.primaryType ?? ""] ?? kind, meters, walkMin: walkMinutes(meters), cuisine: (p.primaryType ?? "").replace(/_/g, " ").replace(/ restaurant$/, "").slice(0, 40), hours: todayLine(p.regularOpeningHours?.weekdayDescriptions, jsDay),
-      ...(typeof p.rating === "number" ? { rating: p.rating, ratings: Number(p.userRatingCount ?? 0) } : {}), ...(p.priceLevel && priceLevels[p.priceLevel] ? { price: priceLevels[p.priceLevel] } : {}), ...(p.nationalPhoneNumber ? { phone: p.nationalPhoneNumber } : {}) }];
+      ...(typeof p.rating === "number" ? { rating: p.rating, ratings: Number(p.userRatingCount ?? 0) } : {}), ...(p.priceLevel && priceLevels[p.priceLevel] ? { price: priceLevels[p.priceLevel] } : {}), ...(p.nationalPhoneNumber ? { phone: p.nationalPhoneNumber } : {}),
+      lat: p.location.latitude, lon: p.location.longitude, ...(p.formattedAddress ? { address: p.formattedAddress.replace(/,\s*(Ελλάδα|Greece)$/, "").slice(0, 120) } : {}),
+      ...(p.websiteUri && /^https?:\/\//.test(p.websiteUri) ? { website: p.websiteUri.slice(0, 300) } : {}), ...(p.googleMapsUri && p.googleMapsUri.startsWith("https://") ? { mapsUrl: p.googleMapsUri.slice(0, 300) } : {}),
+      ...(Array.isArray(p.regularOpeningHours?.weekdayDescriptions) ? { week: p.regularOpeningHours!.weekdayDescriptions!.slice(0, 7).map((x) => String(x).slice(0, 80)) } : {}) }];
   });
 }
+
+/** Today's hours for places that carry their week (the list is cached for a day or more). */
+export const withToday = (places: NearbyPlace[], jsDay: number): NearbyPlace[] => places.map((p) => (p.week ? { ...p, hours: todayLine(p.week, jsDay) } : p));
 
 /** Merge per-group results: nearest first, no duplicates by name. */
 export function mergePlaces(groups: NearbyPlace[][]): NearbyPlace[] {

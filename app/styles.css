@@ -926,3 +926,10 @@ table.numeric tr.selected td{background:#fff8e6}
 .gPassQr{width:220px;height:220px;border-radius:14px;background:#fff;padding:8px;box-sizing:border-box}.gPassCode{font:800 38px/1 ui-monospace,monospace;letter-spacing:.12em;color:#f2c46d}.gPassTimer{font-variant-numeric:tabular-nums}
 .gPassCard .gOrderBtn{background:#f2c46d;color:#173e47}
 .unsubCard{max-width:520px;margin:40px auto;display:grid;gap:14px;justify-items:center;text-align:center}.unsubLogo{width:180px}.unsubCard h1{margin:0}
+.gNearby .gpTabs{flex-wrap:wrap}.gnList{display:grid;gap:10px}.gnCard{display:grid;gap:6px;padding:12px 14px;border:1px solid #e3ddd0;border-radius:14px;background:#fff}
+.gnHead{display:flex;gap:10px;align-items:center}.gnHead>div{display:grid;gap:2px;flex:1;min-width:0}.gnHead small{color:#61788a}.gnIcon{width:40px;height:40px;border-radius:10px;background:#f3f6f7;display:grid;place-items:center;font-size:20px;flex:none}
+.gnDist{font-size:13px;font-weight:700;color:#173e47;text-align:right;white-space:nowrap}.gnRating{color:#b7791f;font-weight:700}
+.gnHours,.gnAddr{color:#4a5f6b}.gnHours.closed{color:#b42318}.gnActions{display:flex;flex-wrap:wrap;gap:6px}.gnActions a,.gnActions button{font:inherit;font-size:13px;padding:6px 10px;border:1px solid #cfe2e5;border-radius:999px;background:#fff;color:#173e47;text-decoration:none;font-weight:600;cursor:pointer}
+.gnSource{color:#8a9aa3;font-size:11px}.gnMapOverlay{position:fixed;inset:0;z-index:50;background:rgba(10,30,36,.6);display:grid;place-items:center;padding:12px}
+.gnMapCard{width:min(640px,100%);background:#fff;border-radius:16px;overflow:hidden;display:grid}.gnMapHead{display:flex;justify-content:space-between;gap:8px;padding:12px 14px}.gnMapCard iframe{width:100%;height:min(60vh,420px);border:0}.gnMapCard .gnActions{padding:10px 14px}
+@media(max-width:600px){.gnHead{flex-wrap:wrap}.gnDist{width:100%;text-align:left}}

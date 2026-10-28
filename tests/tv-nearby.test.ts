@@ -13,7 +13,7 @@ test("distance and walking time", () => {
 });
 
 test("radius is clamped and used in the Overpass query", () => {
-  assert.equal(clampRadiusKm(0), 1);
+  assert.equal(clampRadiusKm(0), 2);
   assert.equal(clampRadiusKm(0.1), 0.3);
   assert.equal(clampRadiusKm(20), 5);
   assert.match(overpassQuery(H.lat, H.lon, 1), /around:1000,37\.0405,25\.2555/);
@@ -69,4 +69,19 @@ test("other accommodation and the hotel's hide list are filtered (both sources)"
   assert.deepEqual(filterPlaces([p("Ταβέρνα Α"), p("Maria Rooms"), p("Bar Κακό")], hideList("κακό, , x")).map((x) => x.name), ["Ταβέρνα Α"]);
   const osm = parseOverpass({ elements: [{ type: "node", lat: H.lat, lon: H.lon, tags: { amenity: "restaurant", tourism: "hotel", name: "Hotel Restaurant" } }] }, H.lat, H.lon, 1);
   assert.equal(osm.length, 0);
+});
+
+test("Google places carry map point, address, website, Maps link and the week; today's hours follow the day", async () => {
+  const { parseGooglePlaces, withToday, googleGroups } = await import("../lib/tv-nearby-core.ts");
+  const week = ["Δευτέρα: 09:00–21:00", "Τρίτη: 09:00–21:00", "Τετάρτη: 09:00–21:00", "Πέμπτη: 09:00–21:00", "Παρασκευή: 09:00–21:00", "Σάββατο: 10:00–14:00", "Κυριακή: Κλειστά"];
+  const [p] = parseGooglePlaces({ places: [{ id: "abc", displayName: { text: "Φαρμακείο Πίσω Λιβαδιού" }, location: { latitude: H.lat + 0.002, longitude: H.lon }, primaryType: "pharmacy", types: ["pharmacy"], formattedAddress: "Πίσω Λιβάδι 844 00, Ελλάδα", websiteUri: "https://pharmacy.example", googleMapsUri: "https://maps.google.com/?cid=1", nationalPhoneNumber: "22840 41234", regularOpeningHours: { weekdayDescriptions: week }, businessStatus: "OPERATIONAL" }] }, "pharmacy", H.lat, H.lon, 2, 1);
+  assert.equal(p.address, "Πίσω Λιβάδι 844 00");
+  assert.equal(p.website, "https://pharmacy.example");
+  assert.equal(p.mapsUrl, "https://maps.google.com/?cid=1");
+  assert.equal(p.lat, H.lat + 0.002);
+  assert.equal(p.hours, "09:00–21:00");
+  assert.equal(withToday([p], 0)[0].hours, "Κλειστά");
+  assert.equal(withToday([p], 6)[0].hours, "10:00–14:00");
+  assert.equal(googleGroups.length, 12);
+  assert.ok(googleGroups.some((g) => g.kind === "car_rental") && googleGroups.some((g) => g.kind === "health"));
 });

@@ -1,13 +1,13 @@
-// Places near the hotel for the TV assistant: Google Places (New) when PMS → Integrations → Google Places has a key,
-// else OpenStreetMap. Refreshed every 12 hours and shared by all TVs; Google calls are counted per day and stop at the
+// Places near the hotel for the TV assistant and the guest app: Google Places (New) when PMS → Integrations → Google Places has a key,
+// else OpenStreetMap. Google calls are counted per day and stop at the
 // hotel's daily limit (then OpenStreetMap is used), so the free monthly allowance is never exceeded by surprise.
+// Refreshed once a day: 12 categories ≈ 360 Google calls a month, shared by the TVs and "My booking".
 import { db } from "@/lib/db";
 import { providerCredentials } from "@/lib/provider-connections";
-import { filterPlaces, GOOGLE_FIELD_MASK, googleGroups, googleNearbyBody, mergePlaces, overpassQuery, parseGooglePlaces, parseOverpass, type NearbyPlace } from "@/lib/tv-nearby-core";
+import { filterPlaces, GOOGLE_FIELD_MASK, googleGroups, googleNearbyBody, mergePlaces, overpassQuery, withToday, parseGooglePlaces, parseOverpass, type NearbyPlace } from "@/lib/tv-nearby-core";
 
 type Source = "google" | "osm";
-let cache: { at: number; key: string; source: Source; places: NearbyPlace[] } | null = null;
-const REFRESH_MS = 12 * 3_600_000;
+const REFRESH_MS = 24 * 3_600_000;
 const athensDay = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(new Date());
 const athensWeekday = () => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Athens", weekday: "short" }).format(new Date()));
 
@@ -54,20 +54,37 @@ async function fromOsm(radiusKm: number, at: At): Promise<NearbyPlace[]> {
   return r.ok ? parseOverpass(await r.json(), at.lat, at.lon, radiusKm) : [];
 }
 
-/** The list for the assistant (no other accommodation, nothing on the hotel's hide list). A failure keeps the last list. */
+/**
+ * The shared list for the TV assistant and "My booking" (no other accommodation, nothing on the hotel's hide list).
+ * Kept in the database for a day (one refresh = one call per category); one server refreshes at a time and a
+ * failure keeps the last list.
+ */
 export async function nearbyPlaces(ownerId: string, radiusKm: number, hide: string[], at: At): Promise<{ source: Source; places: NearbyPlace[] }> {
   const g = await providerCredentials(ownerId, "googlePlaces").catch(() => null);
   const apiKey = g?.active ? g.secrets.apiKey : "";
   const key = `${apiKey ? "g" : "o"}:${radiusKm}:${at.lat},${at.lon}`;
-  if (!cache || cache.key !== key || Date.now() - cache.at >= REFRESH_MS) {
-    try {
-      const google = apiKey ? await fromGoogle(ownerId, apiKey, googleDailyLimit(g?.settings.dailyLimit), radiusKm, at) : null;
-      const next = google ? { source: "google" as const, places: google } : { source: "osm" as const, places: await fromOsm(radiusKm, at) };
-      if (next.places.length || !cache || cache.key !== key) cache = { at: Date.now(), key, ...next };
-      else cache.at = Date.now() - REFRESH_MS + 3_600_000; // try again in an hour
-    } catch {
-      if (!cache || cache.key !== key) cache = { at: Date.now() - REFRESH_MS + 3_600_000, key, source: "osm", places: [] };
+  const now = Date.now();
+  const row = (await db().query(`SELECT cache_key,source,places_json,fetched_at FROM nearby_places_cache WHERE owner_id=$1`, [ownerId])).rows[0];
+  let source: Source = row?.source === "google" ? "google" : "osm";
+  let places: NearbyPlace[] = row ? (() => { try { return JSON.parse(String(row.places_json)); } catch { return []; } })() : [];
+  const fresh = row && row.cache_key === key && now - Number(row.fetched_at) < REFRESH_MS;
+  if (!fresh) {
+    const claim = await db().query(
+      `INSERT INTO nearby_places_cache(owner_id,cache_key,source,places_json,fetched_at,refreshing_until) VALUES($1,'','osm','[]',0,$2) ON CONFLICT(owner_id) DO UPDATE SET refreshing_until=$2 WHERE nearby_places_cache.refreshing_until<$3::bigint RETURNING owner_id`,
+      [ownerId, now + 90_000, now],
+    );
+    if (claim.rowCount) {
+      try {
+        const google = apiKey ? await fromGoogle(ownerId, apiKey, googleDailyLimit(g?.settings.dailyLimit), radiusKm, at) : null;
+        const next = google ? { source: "google" as const, places: google } : { source: "osm" as const, places: await fromOsm(radiusKm, at) };
+        if (next.places.length || row?.cache_key !== key) {
+          ({ source, places } = next);
+          await db().query(`UPDATE nearby_places_cache SET cache_key=$2,source=$3,places_json=$4,fetched_at=$5,refreshing_until=0 WHERE owner_id=$1`, [ownerId, key, source, JSON.stringify(places), now]);
+        } else await db().query(`UPDATE nearby_places_cache SET fetched_at=$2,refreshing_until=0 WHERE owner_id=$1`, [ownerId, now - REFRESH_MS + 3_600_000]);
+      } catch {
+        await db().query(`UPDATE nearby_places_cache SET refreshing_until=$2 WHERE owner_id=$1`, [ownerId, now + 3_600_000]);
+      }
     }
   }
-  return { source: cache.source, places: filterPlaces(cache.places, hide) };
+  return { source, places: filterPlaces(withToday(places, athensWeekday()), hide) };
 }

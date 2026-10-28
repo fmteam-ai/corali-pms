@@ -2128,3 +2128,12 @@ CREATE TABLE IF NOT EXISTS places_api_usage (
  calls INTEGER NOT NULL DEFAULT 0,
  PRIMARY KEY(owner_id,day)
 );
+-- v120: places near the hotel (Google Places or OpenStreetMap), shared by the TV assistant and "My booking", refreshed daily.
+CREATE TABLE IF NOT EXISTS nearby_places_cache (
+ owner_id TEXT PRIMARY KEY,
+ cache_key TEXT NOT NULL DEFAULT '',
+ source TEXT NOT NULL DEFAULT 'osm',
+ places_json TEXT NOT NULL DEFAULT '[]',
+ fetched_at BIGINT NOT NULL DEFAULT 0,
+ refreshing_until BIGINT NOT NULL DEFAULT 0
+);
