@@ -69,15 +69,20 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
   async function locateHotel() {
     const d = await call({ action: "locateHotel", query: hotelQuery });
     if (!d.ok) { setMsg(googleError(d.error)); return; }
-    set({ hotelLat: d.hotel.lat, hotelLon: d.hotel.lon, hotelFound: d.hotel.label });
-    setMsg(t("tv.gHotelFound"));
+    await post({ action: "settings", settings: { ...settings, hotelLat: d.hotel.lat, hotelLon: d.hotel.lon, hotelFound: d.hotel.label } }, t("tv.gHotelFound"));
   }
   async function beachDistances() {
     const d = await call({ action: "beachDistances", beaches: settings.beaches, hotelLat: settings.hotelLat, hotelLon: settings.hotelLon });
     if (!d.ok) { setMsg(googleError(d.error)); return; }
-    set({ beaches: d.beaches });
-    setMsg(`${t("tv.gDistancesDone")}${d.notFound.length ? ` ${t("tv.gSomeNotFound")} ${d.notFound.join(", ")}` : ""}`);
+    await post({ action: "settings", settings: { ...settings, beaches: d.beaches } }, `${t("tv.gDistancesDone")}${d.notFound.length ? ` ${t("tv.gSomeNotFound")} ${d.notFound.join(", ")}` : ""}`);
   }
+  const [near, setNear] = useState<{ source: string; note: string; fetchedAt: number; places: { name: string; kind: string; meters: number; walkMin: number; routed?: boolean; rating?: number }[]; usage: { today: number; month: number } } | null>(null);
+  async function nearbyPreview(refresh: boolean) {
+    const d = await call({ action: "nearbyPreview", refresh });
+    if (!d.ok) { setMsg(t("tv.failed")); return; }
+    setNear(d);
+  }
+  const noteText = (n: string) => (n === "ROUTES_HTTP_403" ? t("tv.gRoutesDenied") : n.startsWith("ROUTES_HTTP") || n === "ROUTES_NETWORK" ? `${t("tv.nearRoutesFailed")} (${n})` : n === "ROUTES_DAILY_LIMIT" ? t("tv.gLimit") : n === "GOOGLE_FAILED_OR_LIMIT" ? t("tv.nearGoogleFailed") : n);
   async function savePower() {
     const d = await call({ action: "powerSettings", settings: power, authKey });
     if (!d.ok) { setMsg(t("tv.failed")); return; }
@@ -128,6 +133,17 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
           <label className="inline">{t("tv.nearbyRadius")} <input type="number" min={0.3} max={5} step={0.1} value={settings.nearbyRadiusKm} disabled={!canEdit} onChange={(e) => set({ nearbyRadiusKm: Number(e.target.value) || 2 })} style={{ width: 70 }} /> km</label>
           <label className="inline tvNearbyHide">{t("tv.nearbyHide")} <input value={settings.nearbyHide} maxLength={1000} disabled={!canEdit} placeholder={t("tv.nearbyHidePh")} onChange={(e) => set({ nearbyHide: e.target.value })} /></label>
           <small className="muted">{places.google ? t("tv.nearbyGoogle").replace("{today}", String(places.today)).replace("{month}", String(places.month)) : t("tv.nearbyOsm")}</small>
+          <div className="tvNearCheck">
+            <button type="button" className="secondaryButton" disabled={busy} onClick={() => void nearbyPreview(false)}>🔎 {t("tv.nearCheck")}</button>
+            {canEdit && <button type="button" className="secondaryButton" disabled={busy} onClick={() => void nearbyPreview(true)}>🔄 {t("tv.nearRefresh")}</button>}
+            {near && (
+              <div className="tvNearList">
+                <small>{near.source === "google" ? "Google Maps" : "OpenStreetMap"} · {near.fetchedAt ? new Date(near.fetchedAt).toLocaleString(lang === "el" ? "el-GR" : "en-GB") : "—"} · {t("tv.nearCalls").replace("{today}", String(near.usage.today))}</small>
+                {near.note && <p className="notice">{noteText(near.note)}</p>}
+                <table className="apTable"><tbody>{near.places.slice(0, 40).map((p) => <tr key={`${p.kind}${p.name}`}><td>{p.name}</td><td>{p.meters} m</td><td>{p.walkMin}′</td><td>{p.routed ? <span className="tvOk">✓ {t("tv.nearRouted")}</span> : <span className="tvWarn">{t("tv.nearStraight")}</span>}</td></tr>)}</tbody></table>
+              </div>
+            )}
+          </div>
         </div>
         <small>{t("tv.assistantHelp")}</small>
         <div className="tvLangTabs" role="tablist">{tvLanguages.map((l) => <button type="button" role="tab" aria-selected={textLang === l} className={textLang === l ? "active" : ""} key={l} onClick={() => setTextLang(l)}>{langNames[l]}</button>)}</div>
@@ -172,6 +188,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         )}
         <h3>{t("tv.beachesTitle")}</h3>
         <small>{t("tv.beachesHelp")}</small>
+        <p className={`notice tvBeachStatus${settings.beaches.every((b) => b.lat !== undefined) ? " ok" : ""}`}>{t("tv.beachStatus").replace("{n}", String(settings.beaches.filter((b) => b.lat !== undefined).length)).replace("{total}", String(settings.beaches.length))}</p>
         <div className="tvGoogleDist">
           <label className="inline">{t("tv.gHotel")} <input value={hotelQuery} maxLength={150} disabled={!canEdit} onChange={(e) => setHotelQuery(e.target.value)} /></label>
           {canEdit && <button type="button" className="secondaryButton" disabled={busy} onClick={() => void locateHotel()}>📍 {t("tv.gLocate")}</button>}

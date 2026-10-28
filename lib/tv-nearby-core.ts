@@ -157,3 +157,24 @@ ${groups.join("\n")}
 Never recommend or name other accommodation (hotels, rooms to let, studios, villas, apartments, Airbnb) — not from this list, not from the web.
 When the guest asks for something near the hotel or within walking distance, recommend from this list first and always say both the distance and the walking time (e.g. "350 m, 5 minutes on foot")${source === "google" ? "; prefer well-rated places and mention the rating and today's hours when useful" : ""}. You may search the web for reviews / opening times; the list may miss a few places and some may be closed out of season — say so if unsure.`;
 }
+
+// ───────────────────────────── map cards on the TV ─────────────────────────────
+
+/** A place or beach the assistant may mention, with what the TV card shows. */
+export type Spot = { name: string; icon: string; lat: number; lon: number; line: string; directions: string };
+
+const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
+/** Places / beaches named in the assistant's reply, in the order they appear (at most `max`). */
+export function mentionedSpots(reply: string, spots: Spot[], max = 4): Spot[] {
+  const text = fold(reply), seen = new Set<string>();
+  return spots
+    .map((s) => { const base = fold(s.name.split(" (")[0].split("/")[0].trim()); return { s, at: base.length >= 4 ? text.indexOf(base) : -1 }; })
+    .filter((x) => x.at >= 0 && !seen.has(x.s.name) && seen.add(x.s.name))
+    .sort((a, b) => a.at - b.at)
+    .slice(0, max)
+    .map((x) => x.s);
+}
+
+export const directionsUrl = (from: { lat: number; lon: number }, to: { lat: number; lon: number }, walk: boolean) =>
+  `https://www.google.com/maps/dir/?api=1&origin=${from.lat},${from.lon}&destination=${to.lat},${to.lon}&travelmode=${walk ? "walking" : "driving"}`;

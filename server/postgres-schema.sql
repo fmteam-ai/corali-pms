@@ -2137,3 +2137,6 @@ CREATE TABLE IF NOT EXISTS nearby_places_cache (
  fetched_at BIGINT NOT NULL DEFAULT 0,
  refreshing_until BIGINT NOT NULL DEFAULT 0
 );
+-- v122: automatic Google calls (daily refresh) counted apart from calls started by hand; why walking routes failed.
+ALTER TABLE places_api_usage ADD COLUMN IF NOT EXISTS auto_calls INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE nearby_places_cache ADD COLUMN IF NOT EXISTS note TEXT NOT NULL DEFAULT '';

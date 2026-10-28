@@ -93,3 +93,14 @@ test("walking-route places are told as routes, others as straight line", async (
   assert.match(t, /Other \(~300 m straight line, ~5 min walk/);
   assert.match(t, /always say both the distance and the walking time/);
 });
+
+test("map cards: places and beaches named in the reply, in order, without accents / case trouble", async () => {
+  const { mentionedSpots, directionsUrl } = await import("../lib/tv-nearby-core.ts");
+  const s = (name: string) => ({ name, icon: "📍", lat: 37, lon: 25, line: "", directions: directionsUrl({ lat: 37.04, lon: 25.25 }, { lat: 37, lon: 25 }, true) });
+  const spots = [s("Ταβέρνα Θάλασσα"), s("Πούντα (μετά τον Λογαρά)"), s("Λογαράς"), s("Bar"), s("Café Λιμάνι")];
+  const got = mentionedSpots("Σήμερα προτείνω τον ΛΟΓΑΡΑΣ και την πουντα, μετά φαγητό στην ταβερνα θαλασσα.", spots);
+  assert.deepEqual(got.map((x) => x.name), ["Λογαράς", "Πούντα (μετά τον Λογαρά)", "Ταβέρνα Θάλασσα"]);
+  assert.equal(mentionedSpots("ένα Bar εδώ", spots).length, 0); // names under 4 letters are ignored
+  assert.equal(mentionedSpots("Café Λιμάνι, Λογαράς, Πούντα, Ταβέρνα Θάλασσα", spots, 2).length, 2);
+  assert.match(spots[0].directions, /travelmode=walking$/);
+});

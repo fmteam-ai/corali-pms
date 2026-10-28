@@ -1,9 +1,11 @@
 "use client";
+import QRCode from "qrcode";
 import { useEffect, useImperativeHandle, useRef, useState, type Ref, type RefObject } from "react";
 import { FaCheck, FaKeyboard, FaMicrophone, FaRedo, FaTimes, FaVolumeMute, FaVolumeUp } from "react-icons/fa";
 import type { TvScreenData } from "@/lib/tv";
 
 type Texts = NonNullable<TvScreenData["assistant"]>["texts"];
+type Spot = { name: string; icon: string; lat: number; lon: number; line: string; directions: string };
 type Message = { id: number; role: "user" | "assistant"; content: string; action: { id: number; summary: string; status: string } | null };
 /** Voice bridge of the Corali TV Android app (1.5+). Absent in a plain browser or older app versions. */
 type VoiceBridge = { available: () => boolean; listen: (locale: string) => boolean; speak: (text: string, locale: string) => void; stop: () => void };
@@ -20,6 +22,7 @@ export function TvAssistant({ token, lang, texts, speech, gridRef, apiRef, onAct
   const [note, setNote] = useState("");
   const [voiceOn, setVoiceOn] = useState(true);
   const [deciding, setDeciding] = useState<number | null>(null);
+  const [spots, setSpots] = useState<Spot[]>([]);
   const logRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const bridge = voiceBridge();
@@ -38,12 +41,12 @@ export function TvAssistant({ token, lang, texts, speech, gridRef, apiRef, onAct
     const q = question.trim();
     if (!q || busy) return;
     onActivity();
-    setNote(""); setBusy(true); setTyping(false); setDraft("");
+    setNote(""); setBusy(true); setTyping(false); setDraft(""); setSpots([]);
     setMessages((m) => [...m, { id: -Date.now(), role: "user", content: q, action: null }]);
     try {
       const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "ask", question: q, lang }) });
       const d = await r.json();
-      if (d.ok) { setMessages(d.messages); say(d.reply); }
+      if (d.ok) { setMessages(d.messages); setSpots(d.spots ?? []); say(d.reply); }
       else { setMessages((m) => m.filter((x) => x.id >= 0)); setNote(d.error === "LIMIT" ? texts.limit : d.error === "NO_STAY" ? texts.noStay : texts.failed); }
     } catch {
       setMessages((m) => m.filter((x) => x.id >= 0)); setNote(texts.failed);
@@ -72,7 +75,7 @@ export function TvAssistant({ token, lang, texts, speech, gridRef, apiRef, onAct
   const clear = async () => {
     onActivity();
     await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "clear" }) }).catch(() => {});
-    setMessages([]); setNote("");
+    setMessages([]); setNote(""); setSpots([]);
   };
 
   // The Android app hands the recognised words back here (null: nothing heard or cancelled).
@@ -100,6 +103,7 @@ export function TvAssistant({ token, lang, texts, speech, gridRef, apiRef, onAct
           {listening && <div className="tvAsMsg user listening"><p><FaMicrophone aria-hidden /> {texts.listening}</p></div>}
         </div>
         {note && <p className="tvAsNote">{note}</p>}
+        {spots.length > 0 && <div className="tvAsSpots">{spots.map((p) => <SpotCard key={p.name} spot={p} scan={texts.scan} />)}</div>}
         <div className="tvAsControls" ref={gridRef}>
           {pending && (
             <div className="tvAsPending">
@@ -125,5 +129,21 @@ export function TvAssistant({ token, lang, texts, speech, gridRef, apiRef, onAct
         </div>
       </div>
     </section>
+  );
+}
+
+/** A place the assistant named: small map, distance and a QR that opens the directions on the guest's phone. */
+function SpotCard({ spot, scan }: { spot: Spot; scan: string }) {
+  const [qr, setQr] = useState("");
+  useEffect(() => { void QRCode.toDataURL(spot.directions, { margin: 1, width: 180, errorCorrectionLevel: "M" }).then(setQr).catch(() => setQr("")); }, [spot.directions]);
+  return (
+    <div className="tvAsSpot">
+      <iframe title={spot.name} src={`https://maps.google.com/maps?q=${spot.lat},${spot.lon}&z=15&output=embed`} loading="lazy" tabIndex={-1} />
+      <div className="tvAsSpotInfo">
+        <b>{spot.icon} {spot.name}</b>
+        <small>{spot.line}</small>
+      </div>
+      {qr && <figure className="tvAsSpotQr"><img src={qr} alt="QR" /><figcaption>{scan}</figcaption></figure>}
+    </div>
   );
 }

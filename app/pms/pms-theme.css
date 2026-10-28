@@ -616,3 +616,5 @@ body:has(.pms){background:#f2f4f6}
 .tvNearbyHide input{width:340px;max-width:100%}
 .tvGoogleDist{display:grid;gap:6px;padding:10px 12px;border:1px dashed var(--line,#d6dee2);border-radius:12px;margin:6px 0}.tvGoogleDist input{width:320px;max-width:100%}.tvGoogleDist .primaryAction{justify-self:start}
 .tvBeachFound{display:block;font-size:11px;color:#1f7a4d;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tvNearCheck{display:grid;gap:6px;justify-items:start}.tvNearList{display:grid;gap:6px;width:100%;max-height:420px;overflow:auto}.tvOk{color:#1f7a4d;font-weight:600}.tvWarn{color:#b45309;font-weight:600}
+.tvBeachStatus.ok{border-color:#9fd4b3;background:#e8f6ee}

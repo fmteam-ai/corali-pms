@@ -607,3 +607,6 @@
 .pms[data-theme="dark"] .cmBar{background:hsl(200 18% 13%)}
 .pms[data-theme="dark"] .cmFailures{background:hsl(200 14% 20%)}
 .pms[data-theme="dark"] .tvBeachFound{color:hsl(150 59% 72%)}
+.pms[data-theme="dark"] .tvOk{color:hsl(150 59% 72%)}
+.pms[data-theme="dark"] .tvWarn{color:hsl(26 75% 72%)}
+.pms[data-theme="dark"] .tvBeachStatus.ok{border-color:hsl(143 35% 32%);background:hsl(146 22% 20%)}
