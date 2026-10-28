@@ -5,7 +5,7 @@ import { FaCheck, FaKeyboard, FaMicrophone, FaRedo, FaTimes, FaVolumeMute, FaVol
 import type { TvScreenData } from "@/lib/tv";
 
 type Texts = NonNullable<TvScreenData["assistant"]>["texts"];
-type Spot = { name: string; icon: string; lat: number; lon: number; line: string; directions: string };
+type Spot = { name: string; icon: string; lat: number; lon: number; line: string; directions: string; meters: number };
 type Message = { id: number; role: "user" | "assistant"; content: string; action: { id: number; summary: string; status: string } | null };
 /** Voice bridge of the Corali TV Android app (1.5+). Absent in a plain browser or older app versions. */
 type VoiceBridge = { available: () => boolean; listen: (locale: string) => boolean; speak: (text: string, locale: string) => void; stop: () => void };
@@ -23,6 +23,7 @@ export function TvAssistant({ token, lang, texts, speech, gridRef, apiRef, onAct
   const [voiceOn, setVoiceOn] = useState(true);
   const [deciding, setDeciding] = useState<number | null>(null);
   const [spots, setSpots] = useState<Spot[]>([]);
+  const [openSpot, setOpenSpot] = useState<Spot | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const bridge = voiceBridge();
@@ -84,7 +85,7 @@ export function TvAssistant({ token, lang, texts, speech, gridRef, apiRef, onAct
   });
   useImperativeHandle(apiRef, () => ({
     listen,
-    back: () => { if (typing) { setTyping(false); inputRef.current?.blur(); return true; } try { bridge?.stop(); } catch { /* nothing playing */ } return false; },
+    back: () => { if (openSpot) { const name = openSpot.name; setOpenSpot(null); requestAnimationFrame(() => gridRef.current?.querySelector<HTMLButtonElement>(`.tvAsSpot[data-name="${CSS.escape(name)}"]`)?.focus()); return true; } if (typing) { setTyping(false); inputRef.current?.blur(); return true; } try { bridge?.stop(); } catch { /* nothing playing */ } return false; },
   }));
 
   const pending = [...messages].reverse().find((m) => m.action?.status === "pending")?.action ?? null;
@@ -103,8 +104,8 @@ export function TvAssistant({ token, lang, texts, speech, gridRef, apiRef, onAct
           {listening && <div className="tvAsMsg user listening"><p><FaMicrophone aria-hidden /> {texts.listening}</p></div>}
         </div>
         {note && <p className="tvAsNote">{note}</p>}
-        {spots.length > 0 && <div className="tvAsSpots">{spots.map((p) => <SpotCard key={p.name} spot={p} scan={texts.scan} />)}</div>}
         <div className="tvAsControls" ref={gridRef}>
+          {spots.length > 0 && <div className="tvAsSpots" data-strip="">{spots.map((p) => <SpotCard key={p.name} spot={p} scan={texts.scan} onOpen={() => { setOpenSpot(p); onActivity(); }} />)}</div>}
           {pending && (
             <div className="tvAsPending">
               <b>{pending.summary}</b>
@@ -128,22 +129,46 @@ export function TvAssistant({ token, lang, texts, speech, gridRef, apiRef, onAct
           </div>
         </div>
       </div>
+      {openSpot && <SpotBig spot={openSpot} scan={texts.scan} onClose={() => setOpenSpot(null)} />}
     </section>
   );
 }
 
 /** A place the assistant named: small map, distance and a QR that opens the directions on the guest's phone. */
-function SpotCard({ spot, scan }: { spot: Spot; scan: string }) {
+function useQr(url: string, width: number) {
   const [qr, setQr] = useState("");
-  useEffect(() => { void QRCode.toDataURL(spot.directions, { margin: 1, width: 180, errorCorrectionLevel: "M" }).then(setQr).catch(() => setQr("")); }, [spot.directions]);
+  useEffect(() => { void QRCode.toDataURL(url, { margin: 1, width, errorCorrectionLevel: "M" }).then(setQr).catch(() => setQr("")); }, [url, width]);
+  return qr;
+}
+
+function SpotCard({ spot, scan, onOpen }: { spot: Spot; scan: string; onOpen: () => void }) {
+  const qr = useQr(spot.directions, 180);
   return (
-    <div className="tvAsSpot">
+    <button type="button" className="tvAsSpot" data-name={spot.name} onClick={onOpen} onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" })}>
       <iframe title={spot.name} src={`https://maps.google.com/maps?q=${spot.lat},${spot.lon}&z=15&output=embed`} loading="lazy" tabIndex={-1} />
-      <div className="tvAsSpotInfo">
+      <span className="tvAsSpotInfo">
         <b>{spot.icon} {spot.name}</b>
         <small>{spot.line}</small>
+      </span>
+      {qr && <span className="tvAsSpotQr"><img src={qr} alt="QR" /><small>{scan}</small></span>}
+    </button>
+  );
+}
+
+/** OK on a card: big map and a big QR; Back closes. */
+function SpotBig({ spot, scan, onClose }: { spot: Spot; scan: string; onClose: () => void }) {
+  const qr = useQr(spot.directions, 360);
+  return (
+    <div className="tvAsBig" role="dialog" aria-label={spot.name} onClick={onClose}>
+      <div className="tvAsBigCard">
+        <iframe title={spot.name} src={`https://maps.google.com/maps?q=${spot.lat},${spot.lon}&z=16&output=embed`} tabIndex={-1} />
+        <div className="tvAsBigSide">
+          <b>{spot.icon} {spot.name}</b>
+          <span>{spot.line}</span>
+          {qr && <img src={qr} alt="QR" />}
+          <small>{scan}</small>
+        </div>
       </div>
-      {qr && <figure className="tvAsSpotQr"><img src={qr} alt="QR" /><figcaption>{scan}</figcaption></figure>}
     </div>
   );
 }

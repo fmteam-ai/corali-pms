@@ -14,7 +14,8 @@ import { createTvRequest } from "@/lib/tv-requests";
 import { tvRequestTexts } from "@/lib/tv-requests-core";
 import { webSearchTool } from "@/lib/web-research";
 import { roomClimate } from "@/lib/room-ac";
-import { directionsUrl, HOTEL_LAT, HOTEL_LON, hideList, mentionedSpots, nearbyText, type Spot } from "@/lib/tv-nearby-core";
+import { directionsUrl, HOTEL_LAT, HOTEL_LON, hideList, mentionedSpots, nearbyText, partnersText, type Spot } from "@/lib/tv-nearby-core";
+import { guestPartners, partnersEnabled } from "@/lib/partners";
 import { nearbyPlaces } from "@/lib/nearby-places";
 import { beachesForWind, compass, windNames, windyDay, type BeachMode, type TvBeach } from "@/lib/tv-beaches";
 
@@ -135,6 +136,7 @@ async function context(sc: Screen): Promise<{ text: string; itemIds: Set<number>
   const beaches = beachContext(await windForecast(), settings.beaches, settings.beachMode);
   const near = await nearbyPlaces(sc.ownerId, settings.nearbyRadiusKm, hideList(settings.nearbyHide), { lat: settings.hotelLat, lon: settings.hotelLon }).catch(() => ({ source: "osm" as const, places: [] }));
   const nearby = nearbyText(near.places, settings.nearbyRadiusKm, 12, near.source);
+  const partners = partnersText((await partnersEnabled(sc.ownerId).catch(() => false)) ? await guestPartners(sc.ownerId, lang).catch(() => []) : []);
   const climate = await roomClimate(sc.ownerId, sc.roomId).catch(() => null);
   const text = `GUEST AND STAY
 - Language: ${languageNames[lang]}. Name: ${firstName(String(b.guest_name))}. Room ${sc.roomCode}. Stay ${b.check_in} → ${b.check_out} (check-out by ${settings.checkOutTime}). Guests: ${Number(b.adults ?? 1)} adult(s)${Number(b.children ?? 0) ? `, ${Number(b.children)} child(ren)` : ""}.
@@ -159,11 +161,13 @@ ${beaches}
 
 ${nearby}
 
-ANSWER LENGTH: ${settings.assistantDetail === "short" ? "short — usually 1–4 sentences, at most ~90 words; for recommendations give the two or three best options." : "detailed — for recommendations (restaurants, breakfast, cafés, beaches, sights, activities, shopping, nightlife) give 4–6 good options, each with what it is known for, the area and the distance from the hotel (km and minutes by car or on foot) and, when useful, price level or best time; group them (e.g. in Piso Livadi / nearby / Naoussa / Parikia). Up to ~200 words. Simple factual questions (breakfast time, Wi-Fi, check-out) stay short, in 1–3 sentences, then add one useful tip."}`;
+${partners}
+
+ANSWER LENGTH: ${settings.assistantDetail === "short" ? "short — usually 1–4 sentences, at most ~90 words; for recommendations give the two or three best options." : "detailed — for recommendations (restaurants, breakfast, cafés, beaches, sights, activities, shopping, nightlife) give 4–6 good options, nearest to the hotel first, each with what it is known for, the area and the distance from the hotel (km and minutes by car or on foot) and, when useful, price level or best time; group them (e.g. in Piso Livadi / nearby / Naoussa / Parikia). Up to ~200 words. Simple factual questions (breakfast time, Wi-Fi, check-out) stay short, in 1–3 sentences, then add one useful tip."}`;
   const hotel = { lat: settings.hotelLat, lon: settings.hotelLon };
   const spots: Spot[] = [
-    ...near.places.filter((p) => p.lat !== undefined && p.lon !== undefined).map((p) => ({ name: p.name, icon: "📍", lat: p.lat!, lon: p.lon!, line: `${p.meters} m · ${p.walkMin}′ 🚶${p.rating ? ` · ★${p.rating.toFixed(1)}` : ""}${p.hours ? ` · ${p.hours}` : ""}`, directions: directionsUrl(hotel, { lat: p.lat!, lon: p.lon! }, p.meters <= 1500) })),
-    ...settings.beaches.filter((b) => b.lat !== undefined && b.lon !== undefined).map((b) => ({ name: b.name, icon: "🏖️", lat: b.lat!, lon: b.lon!, line: `${b.km} km${b.walkMin ? ` · ${b.walkMin}′ 🚶` : ""} · ${b.minutes}′ 🚗`, directions: directionsUrl(hotel, { lat: b.lat!, lon: b.lon! }, Boolean(b.walkMin && b.walkMin <= 20)) })),
+    ...near.places.filter((p) => p.lat !== undefined && p.lon !== undefined).map((p) => ({ name: p.name, icon: "📍", lat: p.lat!, lon: p.lon!, line: `${p.meters} m · ${p.walkMin}′ 🚶${p.rating ? ` · ★${p.rating.toFixed(1)}` : ""}${p.hours ? ` · ${p.hours}` : ""}`, directions: directionsUrl(hotel, { lat: p.lat!, lon: p.lon! }, p.meters <= 1500), meters: p.meters })),
+    ...settings.beaches.filter((b) => b.lat !== undefined && b.lon !== undefined).map((b) => ({ name: b.name, icon: "🏖️", lat: b.lat!, lon: b.lon!, line: `${b.km} km${b.walkMin ? ` · ${b.walkMin}′ 🚶` : ""} · ${b.minutes}′ 🚗`, directions: directionsUrl(hotel, { lat: b.lat!, lon: b.lon! }, Boolean(b.walkMin && b.walkMin <= 20)), meters: Math.round(b.km * 1000) })),
   ];
   return { text, itemIds, spots };
 }

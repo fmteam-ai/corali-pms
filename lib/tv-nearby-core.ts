@@ -6,7 +6,7 @@ export const HOTEL_LAT = 37.0405;
 export const HOTEL_LON = 25.2555;
 
 export type NearbyKind = "restaurant" | "cafe" | "bar" | "fast_food" | "ice_cream" | "bakery" | "supermarket" | "pharmacy" | "health" | "atm" | "shop" | "beauty" | "car_rental" | "fuel" | "laundry" | "travel" | "sight";
-export type NearbyPlace = { name: string; kind: NearbyKind; meters: number; walkMin: number; cuisine: string; hours: string; rating?: number; ratings?: number; price?: string; phone?: string; lat?: number; lon?: number; routed?: boolean; address?: string; website?: string; mapsUrl?: string; week?: string[] };
+export type NearbyPlace = { name: string; kind: NearbyKind; meters: number; walkMin: number; cuisine: string; hours: string; rating?: number; ratings?: number; price?: string; phone?: string; lat?: number; lon?: number; routed?: boolean; delivery?: boolean; takeout?: boolean; address?: string; website?: string; mapsUrl?: string; week?: string[] };
 
 const kindLabels: Record<NearbyKind, string> = {
   restaurant: "Restaurants / taverns", cafe: "Cafés", bar: "Bars", fast_food: "Fast food / souvlaki", ice_cream: "Ice cream", bakery: "Bakeries / pastry",
@@ -106,7 +106,7 @@ export const googleGroups: { kind: NearbyKind; types: string[] }[] = [
   { kind: "car_rental", types: ["car_rental"] },
   { kind: "travel", types: ["travel_agency", "tour_agency", "gas_station", "laundry"] },
 ];
-export const GOOGLE_FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.googleMapsUri,places.location,places.primaryType,places.types,places.rating,places.userRatingCount,places.priceLevel,places.regularOpeningHours.weekdayDescriptions,places.nationalPhoneNumber,places.businessStatus";
+export const GOOGLE_FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.googleMapsUri,places.location,places.primaryType,places.types,places.rating,places.userRatingCount,places.priceLevel,places.regularOpeningHours.weekdayDescriptions,places.nationalPhoneNumber,places.businessStatus,places.delivery,places.takeout";
 
 export function googleNearbyBody(types: string[], lat: number, lon: number, radiusKm: number, lang = "el") {
   return { includedTypes: types, excludedTypes: lodgingTypes, maxResultCount: 20, rankPreference: "DISTANCE", languageCode: lang, locationRestriction: { circle: { center: { latitude: lat, longitude: lon }, radius: Math.round(clampRadiusKm(radiusKm) * 1000) } } };
@@ -137,7 +137,7 @@ export function parseGooglePlaces(json: unknown, kind: NearbyKind, lat: number, 
   const list = (json as { places?: unknown[] } | null)?.places;
   if (!Array.isArray(list)) return [];
   const max = clampRadiusKm(radiusKm) * 1000;
-  return (list as { id?: string; formattedAddress?: string; websiteUri?: string; googleMapsUri?: string; displayName?: { text?: string }; location?: { latitude: number; longitude: number }; primaryType?: string; types?: string[]; rating?: number; userRatingCount?: number; priceLevel?: string; regularOpeningHours?: { weekdayDescriptions?: string[] }; nationalPhoneNumber?: string; businessStatus?: string }[]).flatMap((p) => {
+  return (list as { delivery?: boolean; takeout?: boolean; id?: string; formattedAddress?: string; websiteUri?: string; googleMapsUri?: string; displayName?: { text?: string }; location?: { latitude: number; longitude: number }; primaryType?: string; types?: string[]; rating?: number; userRatingCount?: number; priceLevel?: string; regularOpeningHours?: { weekdayDescriptions?: string[] }; nationalPhoneNumber?: string; businessStatus?: string }[]).flatMap((p) => {
     const name = (p.displayName?.text ?? "").trim().slice(0, 80);
     if (!name || !p.location || (p.businessStatus && p.businessStatus !== "OPERATIONAL")) return [];
     if ((p.types ?? []).some((t) => lodgingTypes.includes(t)) || lodgingTypes.includes(p.primaryType ?? "")) return [];
@@ -145,7 +145,7 @@ export function parseGooglePlaces(json: unknown, kind: NearbyKind, lat: number, 
     if (meters > max) return [];
     return [{ name, kind: typeKind[p.primaryType ?? ""] ?? kind, meters, walkMin: walkMinutes(meters), cuisine: (p.primaryType ?? "").replace(/_/g, " ").replace(/ restaurant$/, "").slice(0, 40), hours: todayLine(p.regularOpeningHours?.weekdayDescriptions, jsDay),
       ...(typeof p.rating === "number" ? { rating: p.rating, ratings: Number(p.userRatingCount ?? 0) } : {}), ...(p.priceLevel && priceLevels[p.priceLevel] ? { price: priceLevels[p.priceLevel] } : {}), ...(p.nationalPhoneNumber ? { phone: p.nationalPhoneNumber } : {}),
-      lat: p.location.latitude, lon: p.location.longitude, ...(p.formattedAddress ? { address: p.formattedAddress.replace(/,\s*(Ελλάδα|Greece)$/, "").slice(0, 120) } : {}),
+      lat: p.location.latitude, lon: p.location.longitude, ...(typeof p.delivery === "boolean" ? { delivery: p.delivery } : {}), ...(typeof p.takeout === "boolean" ? { takeout: p.takeout } : {}), ...(p.formattedAddress ? { address: p.formattedAddress.replace(/,\s*(Ελλάδα|Greece)$/, "").slice(0, 120) } : {}),
       ...(p.websiteUri && /^https?:\/\//.test(p.websiteUri) ? { website: p.websiteUri.slice(0, 300) } : {}), ...(p.googleMapsUri && p.googleMapsUri.startsWith("https://") ? { mapsUrl: p.googleMapsUri.slice(0, 300) } : {}),
       ...(Array.isArray(p.regularOpeningHours?.weekdayDescriptions) ? { week: p.regularOpeningHours!.weekdayDescriptions!.slice(0, 7).map((x) => String(x).slice(0, 80)) } : {}) }];
   });
@@ -165,32 +165,42 @@ export function nearbyText(places: NearbyPlace[], radiusKm: number, perKind = 12
   if (!places.length) return `NEARBY PLACES: (no data from OpenStreetMap right now — you may search the web; say distances are approximate)`;
   const groups = (Object.keys(kindLabels) as NearbyKind[]).map((k) => {
     const ps = places.filter((p) => p.kind === k).slice(0, perKind);
-    return ps.length ? `${kindLabels[k]}: ${ps.map((p) => `${p.name} (${p.routed ? `${p.meters} m walking route, ${p.walkMin} min on foot` : `~${p.meters} m straight line, ~${p.walkMin} min walk`}${p.rating ? `, ★${p.rating.toFixed(1)} (${p.ratings} reviews)` : ""}${p.price ? `, ${p.price}` : ""}${p.cuisine ? `, ${p.cuisine}` : ""}${p.address ? `, address: ${p.address}` : ""}${p.hours ? `, ${source === "google" ? "today" : "hours"} ${p.hours}` : ""})`).join(" · ")}` : "";
+    return ps.length ? `${kindLabels[k]}: ${ps.map((p) => `${p.name} (${p.routed ? `${p.meters} m walking route, ${p.walkMin} min on foot` : `~${p.meters} m straight line, ~${p.walkMin} min walk`}${p.rating ? `, ★${p.rating.toFixed(1)} (${p.ratings} reviews)` : ""}${p.price ? `, ${p.price}` : ""}${p.cuisine ? `, ${p.cuisine}` : ""}${p.delivery === true ? ", delivery: yes" : p.delivery === false ? ", delivery: no" : ""}${p.takeout ? ", take-away" : ""}${p.address ? `, address: ${p.address}` : ""}${p.hours ? `, ${source === "google" ? "today" : "hours"} ${p.hours}` : ""})`).join(" · ")}` : "";
   }).filter(Boolean);
   return `NEARBY PLACES (${source === "google" ? "Google Maps" : "OpenStreetMap"}, within ${clampRadiusKm(radiusKm)} km of the hotel; distances are walking routes from the hotel unless marked straight line — use them as given, do not change them)
 ${groups.join("\n")}
 Say where a place is (village / area) only from its address here — never guess the area.
+Delivery: "delivery: yes" comes from Google Maps and may be out of date — suggest calling to confirm; with no delivery mark it is unknown, not no. The hotel's partner businesses that deliver to the hotel (HOTEL PARTNERS below) come first for delivery questions.
 Never recommend or name other accommodation (hotels, rooms to let, studios, villas, apartments, Airbnb) — not from this list, not from the web.
-When the guest asks for something near the hotel or within walking distance, recommend from this list first and always say both the distance and the walking time (e.g. "350 m, 5 minutes on foot")${source === "google" ? "; prefer well-rated places and mention the rating and today's hours when useful" : ""}. You may search the web for reviews / opening times; the list may miss a few places and some may be closed out of season — say so if unsure.`;
+When the guest asks for something near the hotel or within walking distance, recommend from this list first, nearest first (in order of distance), and always say both the distance and the walking time (e.g. "350 m, 5 minutes on foot")${source === "google" ? "; prefer well-rated places and mention the rating and today's hours when useful" : ""}. You may search the web for reviews / opening times; the list may miss a few places and some may be closed out of season — say so if unsure.`;
 }
 
 // ───────────────────────────── map cards on the TV ─────────────────────────────
 
 /** A place or beach the assistant may mention, with what the TV card shows. */
-export type Spot = { name: string; icon: string; lat: number; lon: number; line: string; directions: string };
+export type Spot = { name: string; icon: string; lat: number; lon: number; line: string; directions: string; meters: number };
 
 const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
-/** Places / beaches named in the assistant's reply, in the order they appear (at most `max`). */
-export function mentionedSpots(reply: string, spots: Spot[], max = 4): Spot[] {
+/** Places / beaches named in the assistant's reply (at most `max`), nearest to the hotel first. */
+export function mentionedSpots(reply: string, spots: Spot[], max = 8): Spot[] {
   const text = fold(reply), seen = new Set<string>();
   return spots
     .map((s) => { const base = fold(s.name.split(" (")[0].split("/")[0].trim()); return { s, at: base.length >= 4 ? text.indexOf(base) : -1 }; })
     .filter((x) => x.at >= 0 && !seen.has(x.s.name) && seen.add(x.s.name))
     .sort((a, b) => a.at - b.at)
     .slice(0, max)
-    .map((x) => x.s);
+    .map((x) => x.s)
+    .sort((a, b) => a.meters - b.meters);
 }
 
 export const directionsUrl = (from: { lat: number; lon: number }, to: { lat: number; lon: number }, walk: boolean) =>
   `https://www.google.com/maps/dir/?api=1&origin=${from.lat},${from.lon}&destination=${to.lat},${to.lon}&travelmode=${walk ? "walking" : "driving"}`;
+
+/** The hotel's partner businesses for the assistant: guests order them in "My booking"; delivery ones come first. */
+export function partnersText(partners: { name: string; categoryLabel: string; delivery: boolean; pickup: boolean; hours: string; guestDiscount: number | null; offers: { title: string }[] }[]): string {
+  if (!partners.length) return "";
+  const list = [...partners].sort((a, b) => Number(b.delivery) - Number(a.delivery));
+  return `HOTEL PARTNERS (order in the guest's "My booking" → Partner businesses; pay the business: cash, card or payment link)
+${list.map((p) => `- ${p.name} (${p.categoryLabel}; ${p.delivery ? "delivers to the hotel" : "no delivery"}${p.pickup ? ", pick-up" : ""}${p.hours ? `, hours ${p.hours}` : ""}${p.guestDiscount !== null ? `, hotel-guest offer${p.guestDiscount ? ` −${p.guestDiscount}%` : ""}: ${p.offers.map((o) => o.title).join(" / ")}` : ""})`).join("\n")}`;
+}

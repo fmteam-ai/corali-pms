@@ -235,6 +235,14 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
       const grid = Array.from(container?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
       const inGrid = grid.indexOf(document.activeElement as HTMLButtonElement);
       if (modal && inGrid < 0 && grid.length) { grid[0].focus(); e.preventDefault(); return; }
+      // A row that scrolls sideways (the assistant's map cards): left/right go to the card next to it, also off screen.
+      const strip = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("[data-strip]");
+      if (inGrid >= 0 && strip && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        const cards = Array.from(strip.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
+        cards[cards.indexOf(document.activeElement as HTMLButtonElement) + (e.key === "ArrowRight" ? 1 : -1)]?.focus();
+        e.preventDefault();
+        return;
+      }
       if (inGrid >= 0 && e.key.startsWith("Arrow")) {
         const box = (b: Element) => { const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
         const from = box(grid[inGrid]), dx = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0, dy = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;

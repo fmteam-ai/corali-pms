@@ -48,6 +48,7 @@ export function GuestNearby({ token, lang }: { token: string; lang: BookingLangu
               </div>
               <span className="gnDist">{distance(p)}</span>
             </div>
+            {p.delivery && <small className="gnDelivery">🛵 Delivery{p.takeout ? " · Take-away" : ""}</small>}
             {p.hours && <small className={`gnHours${/κλειστ|closed|fermé|geschlossen|chiuso|cerrado/i.test(p.hours) ? " closed" : ""}`}>🕒 {t.today}: {p.hours}</small>}
             {p.address && <small className="gnAddr">📍 {p.address}</small>}
             <div className="gnActions">

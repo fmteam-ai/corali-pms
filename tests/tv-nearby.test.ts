@@ -96,10 +96,10 @@ test("walking-route places are told as routes, others as straight line", async (
 
 test("map cards: places and beaches named in the reply, in order, without accents / case trouble", async () => {
   const { mentionedSpots, directionsUrl } = await import("../lib/tv-nearby-core.ts");
-  const s = (name: string) => ({ name, icon: "📍", lat: 37, lon: 25, line: "", directions: directionsUrl({ lat: 37.04, lon: 25.25 }, { lat: 37, lon: 25 }, true) });
-  const spots = [s("Ταβέρνα Θάλασσα"), s("Πούντα (μετά τον Λογαρά)"), s("Λογαράς"), s("Bar"), s("Café Λιμάνι")];
-  const got = mentionedSpots("Σήμερα προτείνω τον ΛΟΓΑΡΑΣ και την πουντα, μετά φαγητό στην ταβερνα θαλασσα.", spots);
-  assert.deepEqual(got.map((x) => x.name), ["Λογαράς", "Πούντα (μετά τον Λογαρά)", "Ταβέρνα Θάλασσα"]);
+  const s = (name: string, meters: number) => ({ name, icon: "📍", lat: 37, lon: 25, line: "", meters, directions: directionsUrl({ lat: 37.04, lon: 25.25 }, { lat: 37, lon: 25 }, true) });
+  const spots = [s("Ταβέρνα Θάλασσα", 640), s("Πούντα (μετά τον Λογαρά)", 2000), s("Λογαράς", 300), s("Bar", 50), s("Café Λιμάνι", 60)];
+  const got = mentionedSpots("Σήμερα προτείνω την πουντα και τον ΛΟΓΑΡΑΣ, μετά φαγητό στην ταβερνα θαλασσα.", spots);
+  assert.deepEqual(got.map((x) => x.name), ["Λογαράς", "Ταβέρνα Θάλασσα", "Πούντα (μετά τον Λογαρά)"]); // nearest first
   assert.equal(mentionedSpots("ένα Bar εδώ", spots).length, 0); // names under 4 letters are ignored
   assert.equal(mentionedSpots("Café Λιμάνι, Λογαράς, Πούντα, Ταβέρνα Θάλασσα", spots, 2).length, 2);
   assert.match(spots[0].directions, /travelmode=walking$/);
@@ -123,4 +123,19 @@ test("the assistant gets each place's address and is told not to guess the area"
   const t = nearbyText([{ name: "Souvlaki Tzanis", kind: "fast_food", meters: 927, walkMin: 15, routed: true, cuisine: "", hours: "", address: "Μάρπησσα 844 00" }], 2, 12, "google");
   assert.match(t, /Souvlaki Tzanis \(927 m walking route, 15 min on foot, address: Μάρπησσα 844 00\)/);
   assert.match(t, /never guess the area/);
+});
+
+test("delivery: from Google and from the hotel's partners (delivery ones first)", async () => {
+  const { parseGooglePlaces, partnersText } = await import("../lib/tv-nearby-core.ts");
+  const [p] = parseGooglePlaces({ places: [{ displayName: { text: "Pizza Nostra" }, location: { latitude: H.lat + 0.001, longitude: H.lon }, primaryType: "pizza_restaurant", types: ["restaurant"], delivery: true, takeout: true, businessStatus: "OPERATIONAL" }] }, "restaurant", H.lat, H.lon, 2, 1);
+  assert.equal(p.delivery, true);
+  assert.match(nearbyText([p], 2, 12, "google"), /Pizza Nostra \(.*delivery: yes, take-away/);
+  const t = partnersText([
+    { name: "Sunset Bar", categoryLabel: "Μπαρ", delivery: false, pickup: true, hours: "17:00–02:00", guestDiscount: null, offers: [] },
+    { name: "Taverna Thalassa", categoryLabel: "Εστιατόρια", delivery: true, pickup: true, hours: "", guestDiscount: 10, offers: [{ title: "−10% για πελάτες" }] },
+  ]);
+  assert.match(t, /^HOTEL PARTNERS/);
+  assert.ok(t.indexOf("Taverna Thalassa") < t.indexOf("Sunset Bar"));
+  assert.match(t, /delivers to the hotel, pick-up, hotel-guest offer −10%: −10% για πελάτες/);
+  assert.equal(partnersText([]), "");
 });

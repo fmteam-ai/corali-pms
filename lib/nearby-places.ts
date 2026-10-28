@@ -96,7 +96,7 @@ export type NearbyState = { source: Source; places: NearbyPlace[]; note: string;
 export async function nearbyPlaces(ownerId: string, radiusKm: number, hide: string[], at: At, force = false): Promise<NearbyState> {
   const g = await providerCredentials(ownerId, "googlePlaces").catch(() => null);
   const apiKey = g?.active ? g.secrets.apiKey : "";
-  const key = `v2:${apiKey ? "g" : "o"}:${radiusKm}:${at.lat},${at.lon}`;
+  const key = `v3:${apiKey ? "g" : "o"}:${radiusKm}:${at.lat},${at.lon}`;
   const now = Date.now();
   const row = (await db().query(`SELECT cache_key,source,places_json,fetched_at,note FROM nearby_places_cache WHERE owner_id=$1`, [ownerId])).rows[0];
   let source: Source = row?.source === "google" ? "google" : "osm";
