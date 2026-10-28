@@ -2180,6 +2180,11 @@ const el = {
   "nav.partners": "Συνεργαζόμενες επιχειρήσεις",
   "partners.title": "Συνεργαζόμενες επιχειρήσεις",
   "partners.subtitle": "Μπαρ, εστιατόρια, fast food, ενοικιάσεις και άλλες επιχειρήσεις: κατάλογος, παραγγελίες από την εφαρμογή του πελάτη, προσφορές με έγκριση και προμήθεια.",
+  "tv.questionsTitle": "Έτοιμες ερωτήσεις του βοηθού",
+  "tv.questionsHelp": "Τα κουμπιά κάτω από το μικρόφωνο στην καρτέλα «Βοηθός». Γράψτε τις ερωτήσεις σε κάθε γλώσσα· όπου μείνει κενό, η τηλεόραση δείχνει την αγγλική. Έως 12 ερωτήσεις, 80 χαρακτήρες η καθεμία. Πατήστε «Αποθήκευση» στο τέλος.",
+  "tv.question": "Ερώτηση",
+  "tv.questionAdd": "Προσθήκη ερώτησης",
+  "tv.questionsReset": "Επαναφορά αρχικών ερωτήσεων",
 } as const;
 
 export type PmsKey = keyof typeof el;
@@ -4356,6 +4361,11 @@ const en: Record<PmsKey, string> = {
   "nav.partners": "Partner businesses",
   "partners.title": "Partner businesses",
   "partners.subtitle": "Bars, restaurants, fast food, rentals and more: catalogue, orders from the guest app, approved offers and commission.",
+  "tv.questionsTitle": "Assistant ready questions",
+  "tv.questionsHelp": "The buttons under the microphone on the Assistant tab. Write each question in every language; where a language is empty the TV shows the English text. Up to 12 questions, 80 characters each. Press Save at the end.",
+  "tv.question": "Question",
+  "tv.questionAdd": "Add question",
+  "tv.questionsReset": "Restore default questions",
 };
 
 export const pmsDictionaries: Record<PmsLang, Record<PmsKey, string>> = { el, en };

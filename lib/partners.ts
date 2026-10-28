@@ -165,6 +165,14 @@ export async function partnersEnabled(ownerId: string): Promise<boolean> {
 export async function setPartnersEnabled(ownerId: string, enabled: boolean): Promise<void> {
   await db().query(`INSERT INTO partner_settings(owner_id,enabled,updated_at) VALUES($1,$2,$3) ON CONFLICT(owner_id) DO UPDATE SET enabled=EXCLUDED.enabled,updated_at=EXCLUDED.updated_at`, [ownerId, enabled ? 1 : 0, Date.now()]);
 }
+/**
+ * Partners for a room TV (prepared for a later TV tab and for the TV assistant): the same sorted list as "My booking",
+ * hotel-guest offers first, only when the feature is on and "show on TV" is set.
+ */
+export async function tvPartners(ownerId: string, lang: string): Promise<GuestPartner[]> {
+  const r = (await db().query(`SELECT enabled,show_on_tv FROM partner_settings WHERE owner_id=$1`, [ownerId])).rows[0];
+  return Number(r?.enabled) === 1 && Number(r?.show_on_tv) === 1 ? guestPartners(ownerId, lang) : [];
+}
 const ENABLED_SQL = "EXISTS(SELECT 1 FROM partner_settings ps WHERE ps.owner_id=u.owner_id AND ps.enabled=1)";
 
 // ───────────────────────────── partner app ─────────────────────────────

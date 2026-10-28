@@ -4,6 +4,7 @@ import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 import type { TvScreenRow } from "@/lib/tv";
 import { tvLanguages, type TvLanguage, type TvSettings } from "@/lib/tv-core";
 import { defaultInfoSections, MAX_INFO_SECTIONS, type TvInfoSection } from "@/lib/tv-info";
+import { defaultTvQuestions, MAX_TV_QUESTIONS, type TvQuestion } from "@/lib/tv-questions";
 import { defaultBeaches, windDirections, windNames, type TvBeach } from "@/lib/tv-beaches";
 import { channelSource, MAX_TV_CHANNELS, tvChannelCategories, type TvChannel } from "@/lib/tv-channels-core";
 import { MAX_TV_APPS, tvAppCatalog, type TvApp } from "@/lib/tv-apps-core";
@@ -28,6 +29,8 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
   const [appCode, setAppCode] = useState<{ roomId: number; room: string; code: string; expiresAt: number } | null>(null);
   const set = (patch: Partial<TvSettings>) => setSettings((s) => ({ ...s, ...patch }));
   const setInfo = (info: TvInfoSection[]) => set({ info });
+  const editQuestion = (i: number, value: string) => set({ assistantQuestions: settings.assistantQuestions.map((q, j): TvQuestion => (j === i ? { ...q, [textLang]: value } : q)) });
+  const moveQuestion = (i: number, d: number) => { const qs = [...settings.assistantQuestions]; [qs[i], qs[i + d]] = [qs[i + d], qs[i]]; set({ assistantQuestions: qs }); };
   const editBeach = (i: number, patch: Partial<TvBeach>) => set({ beaches: settings.beaches.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
   const editInfo = (i: number, patch: Partial<TvInfoSection>) => setInfo(settings.info.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const setChannels = (channels: TvChannel[]) => set({ channels });
@@ -128,6 +131,24 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
           <div className="tvInfoAdd">
             <button type="button" className="secondaryButton" disabled={settings.info.length >= MAX_INFO_SECTIONS} onClick={() => setInfo([...settings.info, { key: `s${Date.now().toString(36)}`, icon: "ℹ️", title: {}, body: {} }])}>+ {t("tv.infoAdd")}</button>
             <button type="button" className="secondaryButton" onClick={() => confirm(t("tv.infoResetConfirm")) && setInfo(defaultInfoSections.map((x) => ({ ...x, title: { ...x.title }, body: { ...x.body } })))}>{t("tv.infoReset")}</button>
+          </div>
+        )}
+        <h3>{t("tv.questionsTitle")}</h3>
+        <small>{t("tv.questionsHelp")}</small>
+        <div className="tvLangTabs" role="tablist">{tvLanguages.map((l) => <button type="button" role="tab" aria-selected={textLang === l} className={textLang === l ? "active" : ""} key={l} onClick={() => setTextLang(l)}>{langNames[l]}</button>)}</div>
+        <div className="tvQuestions">
+          {settings.assistantQuestions.map((q, i) => (
+            <div className="tvQuestion" key={i}>
+              <span className="tvQuestionNo">{i + 1}</span>
+              <input aria-label={`${t("tv.question")} ${i + 1}`} placeholder={q.en || q.el || t("tv.question")} value={q[textLang] ?? ""} maxLength={80} disabled={!canEdit} onChange={(e) => editQuestion(i, e.target.value)} />
+              {canEdit && <span className="tvInfoActions"><button type="button" className="secondaryButton" aria-label="↑" disabled={i === 0} onClick={() => moveQuestion(i, -1)}>↑</button><button type="button" className="secondaryButton" aria-label="↓" disabled={i === settings.assistantQuestions.length - 1} onClick={() => moveQuestion(i, 1)}>↓</button><button type="button" className="secondaryButton danger" aria-label="✕" onClick={() => confirm(t("tv.infoRemoveConfirm")) && set({ assistantQuestions: settings.assistantQuestions.filter((_, j) => j !== i) })}>✕</button></span>}
+            </div>
+          ))}
+        </div>
+        {canEdit && (
+          <div className="tvInfoAdd">
+            <button type="button" className="secondaryButton" disabled={settings.assistantQuestions.length >= MAX_TV_QUESTIONS} onClick={() => set({ assistantQuestions: [...settings.assistantQuestions, {}] })}>+ {t("tv.questionAdd")}</button>
+            <button type="button" className="secondaryButton" onClick={() => confirm(t("tv.infoResetConfirm")) && set({ assistantQuestions: defaultTvQuestions.map((q) => ({ ...q })) })}>{t("tv.questionsReset")}</button>
           </div>
         )}
         <h3>{t("tv.beachesTitle")}</h3>

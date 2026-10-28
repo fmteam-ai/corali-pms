@@ -13,6 +13,7 @@ import { defaultTransferTime, transferDays, tvProblemTexts, tvRequestTexts, tvTr
 import { channelSource, tvChannelTexts } from "@/lib/tv-channels-core";
 import { tvAppTexts } from "@/lib/tv-apps-core";
 import { speechLocale, tvAssistantTexts } from "@/lib/tv-assistant-core";
+import { questionsFor } from "@/lib/tv-questions";
 import { beaufort, currentStay, whatsappLink, firstName, normalizeTvSettings, pickText, tvLanguage, tvTexts, weatherIcon, wifiQrPayload, type TvLanguage, type TvSettings, type TvStay } from "@/lib/tv-core";
 
 export async function loadTvSettings(ownerId: string): Promise<TvSettings> {
@@ -126,7 +127,7 @@ export async function tvScreenData(token: string, langOverride?: string | null) 
     apps: settings.apps.map((a) => ({ key: a.key, name: a.name, packages: a.packages, color: a.color })),
     appTexts: tvAppTexts[lang],
     // AI assistant tab (PMS → Corali TV): only during a stay; voice works inside the Corali TV app (1.5+).
-    assistant: settings.assistant && state.mode === "stay" ? { texts: tvAssistantTexts[lang], speech: speechLocale[lang] } : null,
+    assistant: settings.assistant && state.mode === "stay" ? { texts: { ...tvAssistantTexts[lang], suggestions: questionsFor(settings.assistantQuestions, lang) }, speech: speechLocale[lang] } : null,
     messages: await screenMessages(ownerId, Number(s.room_id), lang, token, state.mode === "stay" ? firstName(state.stay.guest_name) : null),
     info: settings.info.map((x) => ({ key: x.key, icon: x.icon, title: pickText(x.title, lang), body: fillInfo(pickText(x.body, lang), { checkIn: settings.checkInTime, checkOut: settings.checkOutTime, wifi: ssid, password }) })).filter((x) => x.title && x.body),
   };

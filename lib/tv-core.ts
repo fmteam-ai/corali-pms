@@ -4,6 +4,7 @@ import { normalizeTvApps, type TvApp } from "./tv-apps-core.ts";
 import { normalizeTvChannels, type TvChannel } from "./tv-channels-core.ts";
 import { normalizeInfoSections, type TvInfoSection } from "./tv-info.ts";
 import { normalizeBeaches, type TvBeach } from "./tv-beaches.ts";
+import { normalizeTvQuestions, type TvQuestion } from "./tv-questions.ts";
 
 export const tvLanguages = ["el", "en", "fr", "de", "it", "es"] as const;
 export type TvLanguage = (typeof tvLanguages)[number];
@@ -32,6 +33,8 @@ export type TvSettings = {
   assistantDailyLimit: number;
   /** Beaches and the winds they are sheltered from (the assistant suggests calm ones on windy days). */
   beaches: TvBeach[];
+  /** Ready questions on the assistant tab, per language (PMS-editable). */
+  assistantQuestions: TvQuestion[];
 };
 
 export const defaultTvSettings: TvSettings = {
@@ -74,6 +77,7 @@ export const defaultTvSettings: TvSettings = {
   assistant: false,
   assistantDailyLimit: 40,
   beaches: normalizeBeaches(undefined),
+  assistantQuestions: normalizeTvQuestions(undefined),
 };
 
 const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -124,6 +128,7 @@ export function normalizeTvSettings(raw: unknown): TvSettings {
     apps: normalizeTvApps(r.apps),
     assistant: r.assistant === true,
     beaches: normalizeBeaches(r.beaches),
+    assistantQuestions: normalizeTvQuestions(r.assistantQuestions),
     assistantDailyLimit: Number.isFinite(Number(r.assistantDailyLimit)) && r.assistantDailyLimit !== null && r.assistantDailyLimit !== "" ? Math.min(200, Math.max(5, Math.round(Number(r.assistantDailyLimit)))) : 40,
   };
 }

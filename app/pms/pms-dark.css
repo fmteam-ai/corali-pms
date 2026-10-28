@@ -491,6 +491,7 @@
 .pms[data-theme="dark"] .gpOfferBox.guests{background:hsl(40 45% 20%)}
 .pms[data-theme="dark"] .gPartners .gpQty button{border:1px solid hsl(200 17% 29%);background:hsl(200 18% 9%)}
 .pms[data-theme="dark"] .gPassQr{background:hsl(200 18% 9%)}
+.pms[data-theme="dark"] .gPassCard .gOrderBtn{color:hsl(191 51% 72%)}
 .pmsTop[data-theme="dark"] .pmsTopbar{background:hsl(200 18% 9%)}
 .pms[data-theme="dark"] .tableWrap td{border-bottom:1px solid hsl(200 20% 26%)}
 .pms[data-theme="dark"] .tableWrap tbody tr:hover td{background:hsl(180 14% 20%)}
@@ -585,3 +586,4 @@
 .pms[data-theme="dark"] .ptBadge.st-cancelled{background:hsl(5 43% 20%);color:hsl(4 75% 72%)}
 .pms[data-theme="dark"] .ptPwd code{background:hsl(200 18% 9%)}
 .pms[data-theme="dark"] .ptSwitch{border-left:4px solid hsl(200 13% 31%)}
+.pms[data-theme="dark"] .tvQuestionNo{background:hsl(200 18% 13%)}

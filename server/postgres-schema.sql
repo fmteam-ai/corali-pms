@@ -2070,3 +2070,5 @@ CREATE TABLE IF NOT EXISTS partner_settings (
  enabled INTEGER NOT NULL DEFAULT 0,
  updated_at BIGINT NOT NULL DEFAULT 0
 );
+-- Prepared for a later "Partners" tab on Corali TV (and partner offers in the TV assistant): off until the hotel turns it on.
+ALTER TABLE partner_settings ADD COLUMN IF NOT EXISTS show_on_tv INTEGER NOT NULL DEFAULT 0;

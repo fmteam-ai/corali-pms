@@ -598,3 +598,5 @@ body:has(.pms){background:#f2f4f6}
 .ptPwd code{font-size:16px;font-weight:700;padding:2px 8px;background:#fff;border-radius:6px;user-select:all}
 @media(max-width:800px){.ptTable thead{display:none}.ptTable tr{display:grid;padding:8px 0;border-top:1px solid var(--line,#e3e8ec)}.ptTable td{border:0;padding:3px 4px}}
 .ptSwitch{display:grid;gap:6px;border-left:4px solid #b9c4c9}.ptSwitch.on{border-left-color:#1f7a4d}
+.tvQuestions{display:grid;gap:8px}.tvQuestion{display:flex;gap:8px;align-items:center}.tvQuestion input{flex:1;min-width:0}
+.tvQuestionNo{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#eef2f4;font-weight:700;font-size:13px;flex:none}
