@@ -12,6 +12,9 @@ import {runRoomAc} from "./room-ac-worker.mjs";
 import {runRoomClimate} from "./room-climate-worker.mjs";
 import {runCampaigns} from "./campaign-worker.mjs";
 if(!process.env.DATABASE_URL||!process.env.PMS_DOCUMENT_KEY||!process.env.BOOKING_ORIGIN)throw Error("Automation requires DATABASE_URL, PMS_DOCUMENT_KEY and BOOKING_ORIGIN");
+// Keeps the booking site and the PMS awake: cPanel stops an app that had no visitors for a few minutes and the next
+// guest waits for it to start. Asking every few minutes (availability for next week also warms the database) avoids that.
+const warm=new Date().getMinutes()%4===0?Promise.allSettled([`${process.env.BOOKING_ORIGIN}/api/public/availability?checkIn=${new Date(Date.now()+7*86400000).toISOString().slice(0,10)}&checkOut=${new Date(Date.now()+8*86400000).toISOString().slice(0,10)}&adults=2&lang=el`,`${process.env.BOOKING_ORIGIN}/book`,...(process.env.PMS_ORIGIN?[`${process.env.PMS_ORIGIN}/api/health`]:[])].map(u=>fetch(u,{signal:AbortSignal.timeout(25_000),headers:{"User-Agent":"Corali-keep-warm"}}).then(r=>r.arrayBuffer()))):Promise.resolve();
 const owner=process.env.PMS_OWNER_ID??"hotel-corali",secret=process.env.PMS_DOCUMENT_KEY,pool=new pg.Pool({connectionString:process.env.DATABASE_URL,ssl:databaseSsl()}),now=Date.now();
 function key(){return createHash("sha256").update(secret).digest()}
 function seal(value){const iv=randomBytes(12),cipher=createCipheriv("aes-256-gcm",key(),iv),data=Buffer.concat([cipher.update(value,"utf8"),cipher.final()]);return ["v1",iv.toString("base64url"),cipher.getAuthTag().toString("base64url"),data.toString("base64url")].join(".")}
@@ -59,4 +62,4 @@ try{await run();
  // Room A/C with presence sensors: every minute, so power returns within a minute when the guest comes back.
  await runRoomAc({pool,owner,unseal,seal,presenceOnly:true}).catch(e=>console.error("A/C presence failed",e))
  // Room temperature / humidity sensors: read every ~10 minutes, alerts to the PMS.
- await runRoomClimate({pool,owner,unseal,seal}).catch(e=>console.error("Room climate failed",e))}finally{await pool.end()}
+ await runRoomClimate({pool,owner,unseal,seal}).catch(e=>console.error("Room climate failed",e))}finally{await warm;await pool.end()}
