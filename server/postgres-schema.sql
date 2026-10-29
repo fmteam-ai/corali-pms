@@ -743,6 +743,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "idx_rooms_owner_code" ON "rooms" ("owner_id",
 -- Attributes are an object so JSONB containment queries (attributes @> ...) work.
 ALTER TABLE "rooms" ADD COLUMN IF NOT EXISTS "attributes" JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE "rooms" ADD COLUMN IF NOT EXISTS "ai_metadata" JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE "rooms" ADD COLUMN IF NOT EXISTS "description_translations" JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE "booking_sessions" ADD COLUMN IF NOT EXISTS "guest_segment" TEXT NOT NULL DEFAULT 'leisure';
 ALTER TABLE "booking_sessions" ADD COLUMN IF NOT EXISTS "ai_upsell_logs" JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE "booking_sessions" ADD COLUMN IF NOT EXISTS "device_metadata" JSONB NOT NULL DEFAULT '{}'::jsonb;

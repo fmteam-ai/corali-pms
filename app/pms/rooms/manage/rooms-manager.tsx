@@ -14,10 +14,12 @@ function reason(t: ReturnType<typeof pmsT>, status: number, code: string | undef
   return `${t("rm.failed")} (${code ?? "HTTP"} · ${status})`;
 }
 
-type Room = { id: number; code: string; roomType: string; capacity: number; baseRateCents: number; categoryId: number | null; description: string; active: boolean; status: string; hasBookings: boolean; images: string[]; amenityIds: number[] };
+type Room = { id: number; code: string; roomType: string; capacity: number; baseRateCents: number; categoryId: number | null; description: string; descriptions: Record<string, string>; active: boolean; status: string; hasBookings: boolean; images: string[]; amenityIds: number[] };
 type Amenity = { id: number; icon: string; active: boolean; names: AmenityNames };
 type Category = { id: number; name: string };
-const blank = { code: "", roomType: "", capacity: 2, baseRateCents: 0, categoryId: null as number | null, description: "", active: true };
+const descLangs = ["el", "en", "fr", "de", "it", "es"] as const;
+const descLangNames: Record<string, string> = { el: "🇬🇷 Ελληνικά", en: "🇬🇧 English", fr: "🇫🇷 Français", de: "🇩🇪 Deutsch", it: "🇮🇹 Italiano", es: "🇪🇸 Español" };
+const blank = { code: "", roomType: "", capacity: 2, baseRateCents: 0, categoryId: null as number | null, description: "", descriptions: {} as Record<string, string>, active: true };
 
 /** Resize a photo to max 1600 px JPEG before upload (keeps each upload well under server body limits). */
 async function resize(file: File): Promise<string> {
@@ -287,13 +289,14 @@ export function RoomsManager({ lang, rooms: initial, categories, amenities: init
   const [amenities, setAmenities] = useState(initialAmenities);
   const [open, setOpen] = useState<number | "new" | null>(null);
   const [form, setForm] = useState(blank);
+  const [descLang, setDescLang] = useState<"" | (typeof descLangs)[number]>("");
   const [msg, setMsg] = useState("");
   const money = (c: number) => new Intl.NumberFormat(pmsLocale(lang), { style: "currency", currency: "EUR" }).format(c / 100);
   const types = [...new Set(rooms.map((r) => r.roomType))];
   const error = (code: string | undefined, status = 0) => reason(t, status, code);
   function edit(r: Room | null) {
     setOpen(r ? r.id : "new");
-    setForm(r ? { code: r.code, roomType: r.roomType, capacity: r.capacity, baseRateCents: r.baseRateCents, categoryId: r.categoryId, description: r.description, active: r.active } : { ...blank, roomType: types[0] ?? "" });
+    setForm(r ? { code: r.code, roomType: r.roomType, capacity: r.capacity, baseRateCents: r.baseRateCents, categoryId: r.categoryId, description: r.description, descriptions: { ...r.descriptions }, active: r.active } : { ...blank, roomType: types[0] ?? "" });
     setMsg("");
   }
   async function save() {
@@ -327,7 +330,14 @@ export function RoomsManager({ lang, rooms: initial, categories, amenities: init
         <label>{t("rm.baseRate")}<input type="number" min={0} step={1} value={form.baseRateCents / 100} onChange={(e) => setForm({ ...form, baseRateCents: Math.max(0, Math.round(Number(e.target.value) * 100) || 0) })} /></label>
         <label className="inline"><input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> {t("rm.active")}</label>
       </div>
-      <label>{t("rm.description")}<textarea rows={4} maxLength={3000} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
+      <div className="roomDescLangs">
+        <span className="roomDescHead">{t("rm.description")}</span>
+        <div className="tvLangTabs" role="tablist">{(["", ...descLangs] as const).map((l) => <button type="button" role="tab" key={l || "main"} aria-selected={descLang === l} className={`${descLang === l ? "active" : ""}${l && form.descriptions[l]?.trim() ? " filled" : ""}`} onClick={() => setDescLang(l)}>{l ? descLangNames[l] : t("rm.descMain")}</button>)}</div>
+        {descLang
+          ? <textarea rows={5} maxLength={3000} aria-label={`${t("rm.description")} ${descLangNames[descLang]}`} placeholder={form.description} value={form.descriptions[descLang] ?? ""} onChange={(e) => setForm({ ...form, descriptions: { ...form.descriptions, [descLang]: e.target.value } })} />
+          : <textarea rows={5} maxLength={3000} aria-label={t("rm.description")} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />}
+        <small className="muted">{t("rm.descHelp")}</small>
+      </div>
       <div className="actions">
         <button type="button" disabled={!form.code.trim() || form.roomType.trim().length < 2} onClick={save}>{open === "new" ? t("rm.create") : t("rm.save")}</button>
         <button type="button" className="secondaryButton" onClick={() => setOpen(null)}>{t("rm.close")}</button>

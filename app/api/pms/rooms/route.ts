@@ -15,8 +15,12 @@ const fields = z.object({
   baseRateCents: z.number().int().min(0).max(10_000_00),
   categoryId: z.number().int().positive().nullable().default(null),
   description: z.string().trim().max(3000).default(""),
+  // Description per booking-engine language; an empty language shows the main description.
+  descriptions: z.object(Object.fromEntries(["el", "en", "fr", "de", "it", "es"].map((l) => [l, z.string().trim().max(3000).optional()]))).default({}),
   active: z.boolean().default(true),
 });
+
+const cleanDescriptions = (d: Record<string, string | undefined>) => Object.fromEntries(Object.entries(d).filter(([, v]) => v));
 
 async function snapshot(ownerId: string, body: Record<string, unknown>) {
   const id = Number(body?.id);
@@ -44,8 +48,8 @@ async function handlePOST(request: Request) {
     const room = await withTransaction(async (c) => {
       await checkCategory(c, u.ownerId, x.categoryId);
       const r = await c.query(
-        `INSERT INTO rooms(owner_id,code,room_type,capacity,base_rate_cents,category_id,description,active,operational_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'dirty') RETURNING *`,
-        [u.ownerId, x.code, x.roomType, x.capacity, x.baseRateCents, x.categoryId, x.description, x.active ? 1 : 0],
+        `INSERT INTO rooms(owner_id,code,room_type,capacity,base_rate_cents,category_id,description,active,operational_status,description_translations) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'dirty',$9::jsonb) RETURNING *`,
+        [u.ownerId, x.code, x.roomType, x.capacity, x.baseRateCents, x.categoryId, x.description, x.active ? 1 : 0, JSON.stringify(cleanDescriptions(x.descriptions))],
       );
       const today = hotelToday();
       await enqueueAvailability(c, u.ownerId, today, addDays(today, 365), "room_added");
@@ -68,8 +72,8 @@ async function handlePATCH(request: Request) {
     const room = await withTransaction(async (c) => {
       await checkCategory(c, u.ownerId, x.categoryId);
       const r = await c.query(
-        `UPDATE rooms SET code=$3,room_type=$4,capacity=$5,base_rate_cents=$6,category_id=$7,description=$8,active=$9 WHERE owner_id=$1 AND id=$2 RETURNING *`,
-        [u.ownerId, id, x.code, x.roomType, x.capacity, x.baseRateCents, x.categoryId, x.description, x.active ? 1 : 0],
+        `UPDATE rooms SET code=$3,room_type=$4,capacity=$5,base_rate_cents=$6,category_id=$7,description=$8,active=$9,description_translations=$10::jsonb WHERE owner_id=$1 AND id=$2 RETURNING *`,
+        [u.ownerId, id, x.code, x.roomType, x.capacity, x.baseRateCents, x.categoryId, x.description, x.active ? 1 : 0, JSON.stringify(cleanDescriptions(x.descriptions))],
       );
       if (!r.rowCount) throw Error("NOT_FOUND");
       const today = hotelToday();

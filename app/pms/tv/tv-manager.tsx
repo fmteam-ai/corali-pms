@@ -152,8 +152,9 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         <label>{t("tv.wifiNote")}<input value={settings.wifiNote[textLang] ?? ""} maxLength={200} disabled={!canEdit} onChange={(e) => set({ wifiNote: { ...settings.wifiNote, [textLang]: e.target.value } })} /></label>
         <label>{t("tv.tips")}<textarea rows={5} maxLength={1500} value={settings.tips[textLang] ?? ""} disabled={!canEdit} onChange={(e) => set({ tips: { ...settings.tips, [textLang]: e.target.value } })} /><small>{t("tv.tipsHelp")}</small></label>
         </Fold>
-        <h3>{t("tv.infoTitle")}</h3>
+        <Fold title={t("tv.infoTitle")} count={settings.info.length}>
         <small>{t("tv.infoHelp")}</small>
+        <div className="tvLangTabs" role="tablist">{tvLanguages.map((l) => <button type="button" role="tab" aria-selected={textLang === l} className={textLang === l ? "active" : ""} key={l} onClick={() => setTextLang(l)}>{langNames[l]}</button>)}</div>
         {settings.info.map((x, i) => (
           <div className="tvInfoEdit" key={x.key}>
             <div className="tvInfoEditHead">
@@ -170,6 +171,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
             <button type="button" className="secondaryButton" onClick={() => confirm(t("tv.infoResetConfirm")) && setInfo(defaultInfoSections.map((x) => ({ ...x, title: { ...x.title }, body: { ...x.body } })))}>{t("tv.infoReset")}</button>
           </div>
         )}
+        </Fold>
         <Fold title={t("tv.questionsTitle")} count={settings.assistantQuestions.length}>
         <small>{t("tv.questionsHelp")}</small>
         <div className="tvLangTabs" role="tablist">{tvLanguages.map((l) => <button type="button" role="tab" aria-selected={textLang === l} className={textLang === l ? "active" : ""} key={l} onClick={() => setTextLang(l)}>{langNames[l]}</button>)}</div>
