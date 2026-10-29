@@ -22,6 +22,15 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [checkedAt] = useState(() => Date.now());
+  // The settings as last saved: the save bar appears as soon as anything differs, so a change is never left unsaved.
+  const [savedJson, setSavedJson] = useState(() => JSON.stringify(settings));
+  const dirty = JSON.stringify(settings) !== savedJson;
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
   const [power, setPower] = useState(initialPower.settings);
   const [hasKey, setHasKey] = useState(initialPower.hasKey);
   const [authKey, setAuthKey] = useState("");
@@ -50,7 +59,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
       const r = await fetch("/api/pms/tv", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await r.json().catch(() => ({}));
       if (!d.ok) { setMsg(t("tv.failed")); return; }
-      if (d.settings) setSettings(d.settings);
+      if (d.settings) { setSettings(d.settings); if (body.action === "settings") setSavedJson(JSON.stringify(d.settings)); }
       if (d.screens) setScreens(d.screens);
       setMsg(done);
     } finally { setBusy(false); }
@@ -299,6 +308,12 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         })}</tbody></table></div>
       </Fold>
       <p className="notice" role="status">{msg}</p>
+      {canEdit && (dirty || msg === t("tv.saved")) && (
+        <div className={`tvSaveBar${dirty ? "" : " done"}`} role="region" aria-label={t("tv.save")}>
+          <span>{dirty ? t("tv.unsaved") : `✓ ${t("tv.saved")}`}</span>
+          {dirty && <button type="button" disabled={busy} onClick={() => post({ action: "settings", settings }, t("tv.saved"))}>{t("tv.save")}</button>}
+        </div>
+      )}
 
       <div className="hubCard">
         <h2>{t("tv.powerTitle")}</h2>
