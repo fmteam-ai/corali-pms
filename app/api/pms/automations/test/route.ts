@@ -33,13 +33,13 @@ async function handlePOST(request: Request) {
     let stored: unknown = null;
     try { stored = JSON.parse(String(row?.templates_json ?? "{}")); } catch { stored = null; }
     const templates = withDefaultTemplates(stored);
-    const values = sampleValues(env().BOOKING_ORIGIN);
+    const values = sampleValues(env().BOOKING_ORIGIN, x.lang);
     if (x.channel === "email") {
       const t = templates[x.event][x.lang];
       const smtp = await providerCredentials(u.ownerId, "smtp");
       const server = smtp ? `${smtp.settings.host}:${smtp.settings.port || 587}` : env().SMTP_HOST ? `${env().SMTP_HOST}:${env().SMTP_PORT}` : null;
       try {
-        await sendEmail(x.to, `[TEST] ${renderTemplate(t.subject, values)}`, `*** Test message from Hotel Corali PMS — sample booking data, not a real reservation. ***\n\n${renderTemplate(t.body, values)}`);
+        await sendEmail(x.to, `[TEST] ${renderTemplate(t.subject, values)}`, `*** ${x.lang === "el" ? "Δοκιμαστικό μήνυμα από το PMS — δείγμα κράτησης, όχι πραγματική κράτηση." : "Test message from Hotel Corali PMS — sample booking data, not a real reservation."} ***\n\n${renderTemplate(t.body, values)}`, { lang: x.lang });
         return Response.json({ ok: true, channel: "email", server });
       } catch (e) {
         const d = smtpDiagnosis(e);

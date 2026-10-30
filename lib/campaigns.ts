@@ -5,6 +5,7 @@ import sharp from "sharp";
 import { db } from "@/lib/db";
 import { documentKey, env } from "@/lib/env";
 import { sendEmail } from "@/lib/notifications/email";
+import { loadBrand, logoUrl } from "@/lib/message-brand";
 import { hotelToday } from "@/lib/tape-chart";
 import { audienceQuery, batchSize, normalizeAudience, normalizeContent, normalizeEmail, normalizePhone, renderCampaignEmail, unsubscribeToken, validUnsubscribeToken, type CampaignAudience, type CampaignContent } from "../scripts/campaign-core.mjs";
 
@@ -88,7 +89,7 @@ export async function testCampaignEmail(ownerId: string, id: number, to: string,
   const c = (await db().query(`SELECT content_json,image_data IS NOT NULL AS has_image,updated_at FROM campaigns WHERE owner_id=$1 AND id=$2`, [ownerId, id])).rows[0];
   if (!c) throw Error("NOT_FOUND");
   const origin = env().BOOKING_ORIGIN;
-  const m = renderCampaignEmail({ content: normalizeContent(parse(c.content_json)), lang, name: "Maria Papadopoulou", imageUrl: c.has_image ? `${origin}/api/public/campaigns/image/${id}?v=${c.updated_at}` : "", unsubscribeUrl: `${origin}/unsubscribe?test=1&lang=${lang}`, logoUrl: `${origin}/hotel-corali-logo.png` });
+  const m = renderCampaignEmail({ brand: await loadBrand(ownerId), logoUrl: logoUrl(), content: normalizeContent(parse(c.content_json)), lang, name: "Maria Papadopoulou", imageUrl: c.has_image ? `${origin}/api/public/campaigns/image/${id}?v=${c.updated_at}` : "", unsubscribeUrl: `${origin}/unsubscribe?test=1&lang=${lang}` });
   if (!m) throw Error("NO_CONTENT");
   await sendEmail(to, `[TEST] ${m.subject}`, m.text, { html: m.html });
 }

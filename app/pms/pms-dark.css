@@ -614,3 +614,7 @@
 .pms[data-theme="dark"] .tvWarn{color:hsl(26 75% 72%)}
 .pms[data-theme="dark"] .tvBeachStatus.ok{border-color:hsl(143 35% 32%);background:hsl(146 22% 20%)}
 .pms[data-theme="dark"] .walletLinkCard{background:hsl(200 18% 9%)}
+.pms[data-theme="dark"] .brandPreview iframe{background:hsl(200 18% 14%)}
+.pms[data-theme="dark"] .waBubble{background:hsl(96 33% 20%);color:hsl(196 10% 85%)}
+.pms[data-theme="dark"] .waBubble small{color:hsl(194 4% 76%)}
+.pms[data-theme="dark"] .waSignature{background:hsl(96 33% 20%);color:hsl(196 10% 85%)}

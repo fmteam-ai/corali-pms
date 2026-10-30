@@ -1,8 +1,12 @@
+import { stayDate } from "../scripts/email-brand-core.mjs";
 // Test sends from PMS → Automated messages: sample booking values and readable diagnoses of SMTP / Meta errors (pure).
 
 /** Placeholder booking used to fill templates in a test message. */
-export function sampleValues(origin: string): Record<string, string> {
-  return { name: "Maria Papadopoulou", reference: "CRL-TEST01", checkIn: "2026-06-12", checkOut: "2026-06-15", amount: "€240.00", link: `${origin.replace(/\/$/, "")}/book`, arrival: "Check-in from 13:00 · reception open 07:30–21:00" };
+const sampleArrival: Record<string, string> = { el: "Check-in από τις 13:00 · ρεσεψιόν 07:30–21:00", en: "Check-in from 13:00 · reception open 07:30–21:00", fr: "Arrivée à partir de 13h00 · réception 07h30–21h00", de: "Check-in ab 13:00 · Rezeption 07:30–21:00", it: "Check-in dalle 13:00 · reception 07:30–21:00", es: "Check-in desde las 13:00 · recepción 07:30–21:00" };
+
+/** Sample booking for test messages, in the language being tested (dates as guests see them). */
+export function sampleValues(origin: string, lang = "en"): Record<string, string> {
+  return { name: "Maria Papadopoulou", reference: "CRL-TEST01", checkIn: stayDate("2026-06-12", lang), checkOut: stayDate("2026-06-15", lang), amount: new Intl.NumberFormat(lang === "el" ? "el-GR" : lang, { style: "currency", currency: "EUR" }).format(240), link: `${origin.replace(/\/$/, "")}/book`, arrival: sampleArrival[lang] ?? sampleArrival.en };
 }
 
 /** Phone number as WhatsApp expects it: digits only with country code, or null when it cannot be one. */

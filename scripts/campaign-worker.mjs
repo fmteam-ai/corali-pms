@@ -1,6 +1,7 @@
 // Bulk messages worker (run every minute by run-message-automations.mjs): starts scheduled campaigns (takes the
 // audience snapshot), then sends at most `rate_per_minute` e-mails and WhatsApp messages per campaign per run.
 // The unsubscribe list and consent are checked again right before each message.
+import { normalizeBrand } from "./email-brand-core.mjs";
 import { audienceQuery, batchSize, renderCampaignEmail, unsubscribeToken, whatsappLanguage, firstName } from "./campaign-core.mjs";
 
 const hotelToday = (now) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(new Date(now));
@@ -40,7 +41,7 @@ export async function runCampaigns({ pool, owner, secret, origin, email, whatsap
           let ref;
           if (channel === "email") {
             const unsubscribeUrl = `${origin}/unsubscribe?r=${r.id}&t=${unsubscribeToken(secret, r.id)}&lang=${r.lang}`;
-            const m = renderCampaignEmail({ content, lang: r.lang, name: r.name, imageUrl, unsubscribeUrl, logoUrl: `${origin}/hotel-corali-logo.png` });
+            const m = renderCampaignEmail({ brand: await campaignBrand(pool, owner), content, lang: r.lang, name: r.name, imageUrl, unsubscribeUrl, logoUrl: `${origin}/hotel-corali-logo.png` });
             if (!m) throw Object.assign(Error("NO_CONTENT"), { skip: true });
             ref = await email(r.address, m.subject, m.text, { html: m.html, headers: { "List-Unsubscribe": `<${origin}/api/public/unsubscribe?r=${r.id}&t=${unsubscribeToken(secret, r.id)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } });
           } else {
@@ -61,4 +62,14 @@ export async function runCampaigns({ pool, owner, secret, origin, email, whatsap
     if (!left.rowCount) await pool.query(`UPDATE campaigns SET status='sent',finished_at=$3,updated_at=$3 WHERE owner_id=$1 AND id=$2 AND status='sending'`, [owner, c.id, Date.now()]);
   }
   return out;
+}
+
+/** The hotel's look for e-mails (PMS → Αυτόματα μηνύματα → Εμφάνιση), read once per run. */
+let brandCache = null;
+async function campaignBrand(pool, owner) {
+  if (brandCache) return brandCache;
+  const r = await pool.query(`SELECT settings_json FROM message_brand WHERE owner_id=$1`, [owner]).catch(() => ({ rows: [] }));
+  let raw = null; try { raw = r.rows[0] ? JSON.parse(String(r.rows[0].settings_json)) : null; } catch { raw = null; }
+  brandCache = normalizeBrand(raw);
+  return brandCache;
 }

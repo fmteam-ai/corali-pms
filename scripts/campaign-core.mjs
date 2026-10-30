@@ -3,6 +3,7 @@
 // signed unsubscribe token. Used by the PMS (preview, test) and by the cron worker (sending).
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { contactLines, normalizeBrand, renderBrandedEmail } from "./email-brand-core.mjs";
 export const campaignLanguages = ["el", "en", "fr", "de", "it", "es"];
 export const MAX_CAMPAIGN_RATE = 120;
 
@@ -84,27 +85,18 @@ const footerTexts = {
   es: { why: "Recibe este mensaje porque se alojó en el Hotel Corali y aceptó recibir nuestras noticias.", unsubscribe: "Darse de baja" },
 };
 
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const linkify = (s) => esc(s).replace(/https:\/\/[^\s<]+/g, (u) => `<a href="${u}" style="color:#173e47">${u}</a>`);
 
 /** The e-mail: subject, plain text and HTML (hotel header, optional photo, paragraphs, unsubscribe footer). */
-export function renderCampaignEmail({ content, lang, name, imageUrl, unsubscribeUrl, logoUrl, hotelName = "Hotel Corali" }) {
+export function renderCampaignEmail({ content, lang, name, imageUrl, unsubscribeUrl, logoUrl, hotelName = "Hotel Corali", brand }) {
   const c = pickContent(content, lang);
   if (!c) return null;
   const f = footerTexts[lang] ?? footerTexts.en;
   const first = firstName(name);
   const subject = fill(c.subject, first), body = fill(c.body, first);
-  const text = `${body}\n\n—\n${hotelName}\n${f.why}\n${f.unsubscribe}: ${unsubscribeUrl}`;
-  const paragraphs = body.split(/\n{2,}/).map((p) => `<p style="margin:0 0 16px;line-height:1.6">${linkify(p).replace(/\n/g, "<br>")}</p>`).join("");
-  const html = `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(subject)}</title></head>
-<body style="margin:0;background:#f3f1ec;font-family:Georgia,'Times New Roman',serif;color:#1d2b30">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f1ec;padding:24px 12px"><tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden">
-<tr><td style="background:#ffffff;padding:22px;text-align:center;border-bottom:3px solid #c9a227">${logoUrl ? `<img src="${esc(logoUrl)}" alt="${esc(hotelName)}" width="180" style="max-width:180px;height:auto">` : `<span style="color:#173e47;font-size:24px">${esc(hotelName)}</span>`}</td></tr>
-${imageUrl ? `<tr><td><img src="${esc(imageUrl)}" alt="" width="600" style="display:block;width:100%;max-width:600px;height:auto"></td></tr>` : ""}
-<tr><td style="padding:28px 28px 12px;font-size:17px">${paragraphs}</td></tr>
-<tr><td style="padding:16px 28px 26px;font-family:Arial,sans-serif;font-size:12px;color:#6b7c85;border-top:1px solid #ece7dc">${esc(hotelName)} · Piso Livadi, Paros<br>${esc(f.why)}<br><a href="${esc(unsubscribeUrl)}" style="color:#6b7c85">${esc(f.unsubscribe)}</a></td></tr>
-</table></td></tr></table></body></html>`;
+  const b = normalizeBrand({ ...(brand ?? {}), name: brand?.name || hotelName });
+  const text = `${body}\n\n—\n${b.name}\n${contactLines(b).join("\n")}\n${f.why}\n${f.unsubscribe}: ${unsubscribeUrl}`;
+  // The same designed e-mail as every guest message, with the photo, and why they get it / unsubscribe at the end.
+  const html = renderBrandedEmail({ subject, text: body, lang, brand: b, logoUrl, imageUrl, notes: [{ text: f.why }, { text: f.unsubscribe, href: unsubscribeUrl }] });
   return { subject, text, html };
 }
 

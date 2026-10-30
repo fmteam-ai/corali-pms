@@ -1,0 +1,11 @@
+export type Brand = { name: string; address: string; phone: string; email: string; website: string; accent: string; whatsappSignature: boolean };
+export declare const defaultBrand: Brand;
+export declare function normalizeBrand(raw: unknown): Brand;
+export declare function withFallbacks(brand: Brand, x?: { phone?: string; email?: string }): Brand;
+export declare function esc(s: unknown): string;
+export declare function buttonLabel(link: string, lang: string): string;
+export declare function contactLines(brand: Brand): string[];
+export declare function renderBrandedEmail(x: { subject: string; text: string; lang?: string; brand: unknown; logoUrl?: string; imageUrl?: string; notes?: { text: string; href?: string }[] }): string;
+export declare function whatsappSignature(raw: unknown): string;
+export declare function stayDate(value: unknown, lang: string): string;
+export declare function whatsappTemplateSuggestions(raw: unknown): { event: string; name: string; header: string; el: string; en: string; footer: string }[];

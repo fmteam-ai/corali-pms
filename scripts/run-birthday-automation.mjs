@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import pg from "pg";
 import nodemailer from "nodemailer";
 import { databaseSsl } from "./database-config.mjs";
+import { normalizeBrand, renderBrandedEmail, withFallbacks } from "./email-brand-core.mjs";
 import { purgeExpiredIdentityData } from "./retention-core.mjs";
 import { BIRTHDAY_MINIMUM_AGE, birthdayCode, birthdayTerms, birthdayLanguage, birthdayMessage } from "./birthday-core.mjs";
 
@@ -17,7 +18,12 @@ const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: data
 async function email(to, message) {
   if (!process.env.SMTP_HOST || !process.env.SMTP_USERNAME || !process.env.SMTP_PASSWORD || !process.env.SMTP_FROM) return "not_configured";
   const transport = nodemailer.createTransport({ host: process.env.SMTP_HOST, port: Number(process.env.SMTP_PORT ?? 587), secure: Number(process.env.SMTP_PORT) === 465, auth: { user: process.env.SMTP_USERNAME, pass: process.env.SMTP_PASSWORD } });
-  await transport.sendMail({ from: process.env.SMTP_FROM, to, subject: message.subject, text: message.body });
+  // The hotel's designed e-mail (logo, contact details) as in every other guest message.
+  const b = (await pool.query(`SELECT settings_json FROM message_brand WHERE owner_id=$1`, [owner]).catch(() => ({ rows: [] }))).rows[0];
+  let raw = null; try { raw = b ? JSON.parse(String(b.settings_json)) : null; } catch { raw = null; }
+  const brand = withFallbacks(normalizeBrand(raw), { email: process.env.SMTP_FROM });
+  const html = renderBrandedEmail({ subject: message.subject, text: message.body, lang: /[\u0370-\u03ff]/.test(message.body) ? "el" : "en", brand, logoUrl: process.env.BOOKING_ORIGIN ? `${process.env.BOOKING_ORIGIN.replace(/\/$/, "")}/hotel-corali-logo.png` : "" });
+  await transport.sendMail({ from: process.env.SMTP_FROM, to, subject: message.subject, text: message.body, html });
   return "sent";
 }
 async function whatsapp(phone, language, code) {

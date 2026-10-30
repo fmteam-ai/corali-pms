@@ -12,7 +12,7 @@ export declare function normalizePhone(p: unknown): string;
 export declare function audienceQuery(owner: string, audience: unknown, channel: "email" | "whatsapp", today: string): { sql: string; params: unknown[] };
 export declare function unsubscribeToken(secret: string, recipientId: number | string): string;
 export declare function validUnsubscribeToken(secret: string, recipientId: number | string, token: unknown): boolean;
-export declare function renderCampaignEmail(x: { content: CampaignContent; lang: string; name: string; imageUrl?: string; unsubscribeUrl: string; logoUrl?: string; hotelName?: string }): { subject: string; text: string; html: string } | null;
+export declare function renderCampaignEmail(x: { content: CampaignContent; lang: string; name: string; imageUrl?: string; unsubscribeUrl: string; logoUrl?: string; hotelName?: string; brand?: unknown }): { subject: string; text: string; html: string } | null;
 export declare function whatsappLanguage(codes: string, lang: string): string;
 export declare function batchSize(rate: unknown): number;
 export declare const campaignPresets: Record<string, { icon: string } & Record<"el" | "en" | "fr" | "de" | "it" | "es", { subject: string; body: string }>>;
