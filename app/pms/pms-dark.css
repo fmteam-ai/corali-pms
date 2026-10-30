@@ -502,6 +502,9 @@
 .pms[data-theme="dark"] .gnActions a,
 .pms[data-theme="dark"] .gnActions button{border:1px solid hsl(188 30% 28%);background:hsl(200 18% 9%);color:hsl(191 51% 72%)}
 .pms[data-theme="dark"] .gnMapCard{background:hsl(200 18% 9%)}
+.pms[data-theme="dark"] .gnDelivery{color:hsl(150 59% 72%)}
+.pms[data-theme="dark"] .roomDescLangs .tvLangTabs button.filled:not(.active)::after{color:hsl(173 51% 72%)}
+.pms[data-theme="dark"] .tvSaveBar button{color:hsl(191 51% 72%)}
 .pmsTop[data-theme="dark"] .pmsTopbar{background:hsl(200 18% 9%)}
 .pms[data-theme="dark"] .tableWrap td{border-bottom:1px solid hsl(200 20% 26%)}
 .pms[data-theme="dark"] .tableWrap tbody tr:hover td{background:hsl(180 14% 20%)}
@@ -610,3 +613,4 @@
 .pms[data-theme="dark"] .tvOk{color:hsl(150 59% 72%)}
 .pms[data-theme="dark"] .tvWarn{color:hsl(26 75% 72%)}
 .pms[data-theme="dark"] .tvBeachStatus.ok{border-color:hsl(143 35% 32%);background:hsl(146 22% 20%)}
+.pms[data-theme="dark"] .walletLinkCard{background:hsl(200 18% 9%)}

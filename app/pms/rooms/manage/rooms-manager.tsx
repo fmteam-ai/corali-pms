@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- room photos are served by our own API; next/image optimisation is not used on cPanel */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { TranslateButton } from "../../translate-button";
 import { amenityIcon, amenityIcons, amenityName, type AmenityNames, amenityDefaults, standardAmenities } from "@/lib/amenity-icons";
 import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 
@@ -337,6 +338,9 @@ export function RoomsManager({ lang, rooms: initial, categories, amenities: init
           ? <textarea rows={5} maxLength={3000} aria-label={`${t("rm.description")} ${descLangNames[descLang]}`} placeholder={form.description} value={form.descriptions[descLang] ?? ""} onChange={(e) => setForm({ ...form, descriptions: { ...form.descriptions, [descLang]: e.target.value } })} />
           : <textarea rows={5} maxLength={3000} aria-label={t("rm.description")} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />}
         <small className="muted">{t("rm.descHelp")}</small>
+        {descLang
+          ? <TranslateButton from={descLang} uiLang={lang === "el" ? "el" : "en"} texts={{ d: { ...form.descriptions, [descLang]: form.descriptions[descLang]?.trim() || form.description } }} onFill={(x) => setForm({ ...form, descriptions: Object.fromEntries(Object.entries(x.d).map(([k, v]) => [k, v ?? ""])) })} />
+          : <small className="muted">🌐 {t("rm.descTranslateHint")}</small>}
       </div>
       <div className="actions">
         <button type="button" disabled={!form.code.trim() || form.roomType.trim().length < 2} onClick={save}>{open === "new" ? t("rm.create") : t("rm.save")}</button>

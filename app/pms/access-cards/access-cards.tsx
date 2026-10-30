@@ -17,6 +17,9 @@ export function AccessCards({ lang, canIssue, canSetup }: { lang: PmsLang; canIs
   const t = pmsT(lang);
   const [data, setData] = useState<State | null>(null);
   const [tab, setTab] = useState<"cards" | "settings" | "log">("cards");
+  // PMS → Ενσωματώσεις → "Apple / Google Wallet" opens straight on the Wallet settings.
+  useEffect(() => { if (location.hash === "#wallet") queueMicrotask(() => setTab("settings")); }, []);
+  useEffect(() => { if (tab === "settings" && location.hash === "#wallet") requestAnimationFrame(() => document.getElementById("wallet")?.scrollIntoView({ behavior: "smooth", block: "start" })); }, [tab]);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [manual, setManual] = useState<{ holder: string; email: string; lang: string; roomId: number; zones: string[]; from: string; until: string; send: boolean } | null>(null);
@@ -153,7 +156,7 @@ export function AccessCards({ lang, canIssue, canSetup }: { lang: PmsLang; canIs
             </div>}
           </div>
 
-          <div className="card akForm">
+          <div className="card akForm" id="wallet">
             <h2>Apple Wallet</h2>
             <p className="muted">{t("ak.appleHelp")}</p>
             <div className="akCsr">

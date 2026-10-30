@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { TranslateButton } from "../translate-button";
 import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 import type { TvScreenRow } from "@/lib/tv";
 import { tvLanguages, type TvLanguage, type TvSettings } from "@/lib/tv-core";
@@ -160,6 +161,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         <label>{t("tv.welcome")}<textarea rows={3} maxLength={600} value={settings.welcome[textLang] ?? ""} disabled={!canEdit} onChange={(e) => set({ welcome: { ...settings.welcome, [textLang]: e.target.value } })} /></label>
         <label>{t("tv.wifiNote")}<input value={settings.wifiNote[textLang] ?? ""} maxLength={200} disabled={!canEdit} onChange={(e) => set({ wifiNote: { ...settings.wifiNote, [textLang]: e.target.value } })} /></label>
         <label>{t("tv.tips")}<textarea rows={5} maxLength={1500} value={settings.tips[textLang] ?? ""} disabled={!canEdit} onChange={(e) => set({ tips: { ...settings.tips, [textLang]: e.target.value } })} /><small>{t("tv.tipsHelp")}</small></label>
+        {canEdit && <TranslateButton from={textLang} uiLang={lang === "el" ? "el" : "en"} texts={{ welcome: settings.welcome, wifiNote: settings.wifiNote, tips: settings.tips }} onFill={(x) => set({ welcome: x.welcome as TvSettings["welcome"], wifiNote: x.wifiNote as TvSettings["wifiNote"], tips: x.tips as TvSettings["tips"] })} />}
         </Fold>
         <Fold title={t("tv.infoTitle")} count={settings.info.length}>
         <small>{t("tv.infoHelp")}</small>
@@ -172,6 +174,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
               {canEdit && <span className="tvInfoActions"><button type="button" className="secondaryButton" disabled={i === 0} onClick={() => moveInfo(i, -1)}>↑</button><button type="button" className="secondaryButton" disabled={i === settings.info.length - 1} onClick={() => moveInfo(i, 1)}>↓</button><button type="button" className="secondaryButton" onClick={() => confirm(t("tv.infoRemoveConfirm")) && setInfo(settings.info.filter((_, j) => j !== i))}>✕</button></span>}
             </div>
             <textarea rows={6} maxLength={2500} placeholder={x.body.en ?? ""} value={x.body[textLang] ?? ""} disabled={!canEdit} onChange={(e) => editInfo(i, { body: { ...x.body, [textLang]: e.target.value } })} />
+            {canEdit && <TranslateButton from={textLang} uiLang={lang === "el" ? "el" : "en"} texts={{ title: x.title, body: x.body }} onFill={(f) => editInfo(i, { title: f.title as TvInfoSection["title"], body: f.body as TvInfoSection["body"] })} />}
           </div>
         ))}
         {canEdit && (
@@ -195,6 +198,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         </div>
         {canEdit && (
           <div className="tvInfoAdd">
+            <TranslateButton from={textLang} uiLang={lang === "el" ? "el" : "en"} texts={Object.fromEntries(settings.assistantQuestions.map((q, i) => [`q${i}`, q]))} onFill={(f) => set({ assistantQuestions: settings.assistantQuestions.map((q, i) => (f[`q${i}`] ?? q) as TvQuestion) })} />
             <button type="button" className="secondaryButton" disabled={settings.assistantQuestions.length >= MAX_TV_QUESTIONS} onClick={() => set({ assistantQuestions: [...settings.assistantQuestions, {}] })}>+ {t("tv.questionAdd")}</button>
             <button type="button" className="secondaryButton" onClick={() => confirm(t("tv.infoResetConfirm")) && set({ assistantQuestions: defaultTvQuestions.map((q) => ({ ...q })) })}>{t("tv.questionsReset")}</button>
           </div>
