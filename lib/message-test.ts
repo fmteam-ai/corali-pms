@@ -9,7 +9,7 @@ const sampleArrival: Record<string, string> = { el: "Check-in από τις 13:0
 const samplePath: Record<string, string> = { pre_arrival: "/check-in?token=SAMPLE", checkin: "/check-in?token=SAMPLE", balance: "/pay-balance?token=SAMPLE", payment_failed: "/pay-balance?token=SAMPLE", review: "/review?token=SAMPLE", confirmation: "/manage-booking", welcome: "/manage-booking", pre_departure: "/manage-booking" };
 
 export function sampleValues(origin: string, lang = "en", event = ""): Record<string, string> {
-  return { name: "Maria Papadopoulou", reference: "CRL-TEST01", checkIn: stayDate("2026-06-12", lang), checkOut: stayDate("2026-06-15", lang), amount: new Intl.NumberFormat(lang === "el" ? "el-GR" : lang, { style: "currency", currency: "EUR" }).format(240), link: `${origin.replace(/\/$/, "")}${samplePath[event] ?? "/book"}`, arrival: sampleArrival[lang] ?? sampleArrival.en };
+  return { name: "Maria Papadopoulou", reference: "CRL-TEST01", checkIn: stayDate("2026-06-12", lang), checkOut: stayDate("2026-06-15", lang), amount: new Intl.NumberFormat(lang === "el" ? "el-GR" : lang, { style: "currency", currency: "EUR" }).format(240), link: `${origin.replace(/\/$/, "")}${samplePath[event] ?? "/book"}${(samplePath[event] ?? "").includes("?") ? "&" : "?"}lang=${lang}`, arrival: sampleArrival[lang] ?? sampleArrival.en };
 }
 
 /** Phone number as WhatsApp expects it: digits only with country code, or null when it cannot be one. */

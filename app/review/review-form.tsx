@@ -1,4 +1,5 @@
 "use client";
+import { SAMPLE_TOKEN, sampleLinkText } from "@/lib/sample-link";
 import { useEffect, useState } from "react";
 import { bookingLanguage } from "@/lib/booking-i18n";
 import { reviewText } from "@/lib/review-i18n";
@@ -62,7 +63,7 @@ export function ReviewForm({ token, initialLang }: { token: string; initialLang:
       <section className="card reviewCard" lang={lang}>
         <h1>{t.title}</h1>
         {stage === "loading" && <p>{t.loading}</p>}
-        {stage === "invalid" && <p role="alert">{t.invalid}</p>}
+        {stage === "invalid" && <p role="alert">{token === SAMPLE_TOKEN ? `🧪 ${sampleLinkText(lang)}` : t.invalid}</p>}
         {stage === "already" && <p>{t.already}</p>}
         {stage === "rate" && (
           <>
