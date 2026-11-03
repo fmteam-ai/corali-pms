@@ -33,7 +33,7 @@ async function handlePOST(request: Request) {
     let stored: unknown = null;
     try { stored = JSON.parse(String(row?.templates_json ?? "{}")); } catch { stored = null; }
     const templates = withDefaultTemplates(stored);
-    const values = sampleValues(env().BOOKING_ORIGIN, x.lang);
+    const values = sampleValues(env().BOOKING_ORIGIN, x.lang, x.event);
     if (x.channel === "email") {
       const t = templates[x.event][x.lang];
       const smtp = await providerCredentials(u.ownerId, "smtp");

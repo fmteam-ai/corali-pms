@@ -5,8 +5,11 @@ import { stayDate } from "../scripts/email-brand-core.mjs";
 const sampleArrival: Record<string, string> = { el: "Check-in από τις 13:00 · ρεσεψιόν 07:30–21:00", en: "Check-in from 13:00 · reception open 07:30–21:00", fr: "Arrivée à partir de 13h00 · réception 07h30–21h00", de: "Check-in ab 13:00 · Rezeption 07:30–21:00", it: "Check-in dalle 13:00 · reception 07:30–21:00", es: "Check-in desde las 13:00 · recepción 07:30–21:00" };
 
 /** Sample booking for test messages, in the language being tested (dates as guests see them). */
-export function sampleValues(origin: string, lang = "en"): Record<string, string> {
-  return { name: "Maria Papadopoulou", reference: "CRL-TEST01", checkIn: stayDate("2026-06-12", lang), checkOut: stayDate("2026-06-15", lang), amount: new Intl.NumberFormat(lang === "el" ? "el-GR" : lang, { style: "currency", currency: "EUR" }).format(240), link: `${origin.replace(/\/$/, "")}/book`, arrival: sampleArrival[lang] ?? sampleArrival.en };
+// The link each message carries in real life (a sample token), so the test shows the same button guests get.
+const samplePath: Record<string, string> = { pre_arrival: "/check-in?token=SAMPLE", checkin: "/check-in?token=SAMPLE", balance: "/pay-balance?token=SAMPLE", payment_failed: "/pay-balance?token=SAMPLE", review: "/review?token=SAMPLE", confirmation: "/manage-booking", welcome: "/manage-booking", pre_departure: "/manage-booking" };
+
+export function sampleValues(origin: string, lang = "en", event = ""): Record<string, string> {
+  return { name: "Maria Papadopoulou", reference: "CRL-TEST01", checkIn: stayDate("2026-06-12", lang), checkOut: stayDate("2026-06-15", lang), amount: new Intl.NumberFormat(lang === "el" ? "el-GR" : lang, { style: "currency", currency: "EUR" }).format(240), link: `${origin.replace(/\/$/, "")}${samplePath[event] ?? "/book"}`, arrival: sampleArrival[lang] ?? sampleArrival.en };
 }
 
 /** Phone number as WhatsApp expects it: digits only with country code, or null when it cannot be one. */
