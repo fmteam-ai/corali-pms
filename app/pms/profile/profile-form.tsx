@@ -36,12 +36,12 @@ export function ProfileForm({ displayName, email }: { displayName: string; email
 
   async function confirm(form: FormData) {
     const data = await twoFactor({ action: "confirm", code: form.get("code") });
-    if (data) { setEnabled(true); setSetup(null); setRecoveryCodes(data.recoveryCodes); setMsg("Το 2FA ενεργοποιήθηκε. Αποθήκευσε τους κωδικούς ανάκτησης τώρα."); }
+    if (data) { window.dispatchEvent(new Event("corali:2fa")); setEnabled(true); setSetup(null); setRecoveryCodes(data.recoveryCodes); setMsg("Το 2FA ενεργοποιήθηκε. Αποθήκευσε τους κωδικούς ανάκτησης τώρα."); }
   }
 
   async function disable(form: FormData) {
     const data = await twoFactor({ action: "disable", password: form.get("password"), code: form.get("code") });
-    if (data) { setEnabled(false); setRecoveryCodes([]); setMsg("Το 2FA απενεργοποιήθηκε."); }
+    if (data) { window.dispatchEvent(new Event("corali:2fa")); setEnabled(false); setRecoveryCodes([]); setMsg("Το 2FA απενεργοποιήθηκε."); }
   }
 
   return <div className="profileGrid">
