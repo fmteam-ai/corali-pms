@@ -2149,3 +2149,7 @@ CREATE TABLE IF NOT EXISTS "message_brand" (
   "updated_by" BIGINT,
   "updated_at" BIGINT NOT NULL DEFAULT 0
 );
+-- v132: sign-in history (PMS → Ιστορικό συνδέσεων): address of every session and why it ended.
+ALTER TABLE "pms_sessions" ADD COLUMN IF NOT EXISTS "ip_address" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "pms_sessions" ADD COLUMN IF NOT EXISTS "ended_reason" TEXT;
+CREATE INDEX IF NOT EXISTS "idx_pms_sessions_owner_created" ON "pms_sessions" ("owner_id", "created_at" DESC);

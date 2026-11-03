@@ -7,8 +7,9 @@ const noStore = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 
 /** Corali TV app: exchange the 6-digit code from PMS → Corali TV for the room's screen link (one use). */
 export async function POST(request: Request) {
-  // 10 tries per 15 minutes per address, then 30 minutes blocked: guessing a 6-digit code is not practical.
-  if (!(await allowAttempt(`tv-setup:${clientIp(request)}`, 10, 15 * 60_000, 30 * 60_000))) {
+  // 10 tries per 15 minutes per address, then 30 minutes blocked: guessing a 6-digit code is not practical. The
+  // address can be forged, so there is also a hotel-wide ceiling (a few TVs are set up at a time, never hundreds).
+  if (!(await allowAttempt(`tv-setup:${clientIp(request)}`, 10, 15 * 60_000, 30 * 60_000)) || !(await allowAttempt("tv-setup:all", 60, 15 * 60_000, 15 * 60_000))) {
     return Response.json({ ok: false, error: "TOO_MANY_ATTEMPTS" }, { status: 429, headers: noStore });
   }
   const parsed = input.safeParse(await request.json().catch(() => null));

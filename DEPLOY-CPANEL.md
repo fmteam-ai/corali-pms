@@ -1,4 +1,4 @@
-# Hotel Corali PMS v131 — αυτόματη ασφαλής εγκατάσταση cPanel
+# Hotel Corali PMS v132 — αυτόματη ασφαλής εγκατάσταση cPanel
 
 ## Προτεινόμενη εγκατάσταση για τον συγκεκριμένο server
 
@@ -8,16 +8,16 @@
 
 Η διορθωμένη έκδοση περιλαμβάνει προσωρινό web installer τύπου WordPress. Ανεβάστε:
 
-- `corali-pms-cpanel-v131-root.tar.gz` και το `.sha256` στον `/home/corali/`
-- μόνο το `corali-web-installer-v131.php` ως `/home/corali/public_html/corali-installer.php`
+- `corali-pms-cpanel-v132-root.tar.gz` και το `.sha256` στον `/home/corali/`
+- μόνο το `corali-web-installer-v132.php` ως `/home/corali/public_html/corali-installer.php`
 
-Μην ανεβάσετε το `corali-web-installer-v131-access.txt`. Ανοίξτε το τοπικά και επισκεφθείτε την ιδιωτική διεύθυνση μίας χρήσης που περιέχει. Εναλλακτικά, ανοίξτε απευθείας τον installer και επικολλήστε τον προσωπικό κωδικό στη φόρμα. Επιλέξτε **Ελληνικά** ή **English** πριν την έναρξη. Ο web installer εντοπίζει το EA/CloudLinux Node.js του cPanel, εκτελεί προέλεγχο, checksum, backup PostgreSQL, migrations, δύο runtime tests, atomic swap και rollback. Μετά την εγκατάσταση προσφέρει ασφαλή δημιουργία/ανάκτηση του κύριου owner και επαναφορά 2FA χωρίς terminal. Αν οι παλιοί `/home/corali/releases` ή `/home/corali/backups` έχουν λάθος ιδιοκτησία, χρησιμοποιεί ιδιωτικούς εναλλακτικούς φακέλους μέσα στο εγγράψιμο `/home/corali/apps`. Μετά τον έλεγχο σύνδεσης πατήστε «Κλείδωμα και διαγραφή installer» και απενεργοποιήστε ξανά την PHP `exec`.
+Μην ανεβάσετε το `corali-web-installer-v132-access.txt`. Ανοίξτε το τοπικά και επισκεφθείτε την ιδιωτική διεύθυνση μίας χρήσης που περιέχει. Εναλλακτικά, ανοίξτε απευθείας τον installer και επικολλήστε τον προσωπικό κωδικό στη φόρμα. Επιλέξτε **Ελληνικά** ή **English** πριν την έναρξη. Ο web installer εντοπίζει το EA/CloudLinux Node.js του cPanel, εκτελεί προέλεγχο, checksum, backup PostgreSQL, migrations, δύο runtime tests, atomic swap και rollback. Μετά την εγκατάσταση προσφέρει ασφαλή δημιουργία/ανάκτηση του κύριου owner και επαναφορά 2FA χωρίς terminal. Αν οι παλιοί `/home/corali/releases` ή `/home/corali/backups` έχουν λάθος ιδιοκτησία, χρησιμοποιεί ιδιωτικούς εναλλακτικούς φακέλους μέσα στο εγγράψιμο `/home/corali/apps`. Μετά τον έλεγχο σύνδεσης πατήστε «Κλείδωμα και διαγραφή installer» και απενεργοποιήστε ξανά την PHP `exec`.
 
 Αν εμφανιστεί «Ο installer είναι κλειδωμένος», έχει οριστικοποιηθεί παλαιότερη εγκατάσταση. Κάθε νέο πακέτο αποκτά δικό του κλείδωμα με βάση το checksum του αρχείου. Ανεβάστε **μαζί** τον νέο installer, το νέο αρχείο πρόσβασης (μόνο τοπικά, ποτέ στον server), το νέο archive και το νέο checksum. Μην διαγράψετε το ιδιωτικό `locked` του παλιού installer για να παρακάμψετε το μήνυμα.
 
 Αν ο προέλεγχος δείξει ότι η PHP `exec` είναι απενεργοποιημένη ή ότι ο ενεργός φάκελος `/home/corali/apps` δεν είναι εγγράψιμος, δεν γίνεται καμία αλλαγή.
 
-Η v131 ενημερώνει μαζί τις δύο ενεργές εφαρμογές:
+Η v132 ενημερώνει μαζί τις δύο ενεργές εφαρμογές:
 
 - `/home/corali/apps/corali-pms`
 - `/home/corali/apps/corali-booking`
@@ -28,14 +28,14 @@
 
 Ανεβάστε τα παρακάτω στο `/home/corali/`:
 
-- `corali-pms-cpanel-v131-root.tar.gz`
-- `corali-pms-cpanel-v131-root.tar.gz.sha256`
+- `corali-pms-cpanel-v132-root.tar.gz`
+- `corali-pms-cpanel-v132-root.tar.gz.sha256`
 
 Στο Terminal:
 
 ```bash
 cd /home/corali
-sha256sum -c corali-pms-cpanel-v131-root.tar.gz.sha256
+sha256sum -c corali-pms-cpanel-v132-root.tar.gz.sha256
 ```
 
 Πρέπει να εμφανιστεί `OK`. Αν αποτύχει, μη συνεχίσετε.
@@ -43,9 +43,9 @@ sha256sum -c corali-pms-cpanel-v131-root.tar.gz.sha256
 ## 2. Καθαρή εξαγωγή
 
 ```bash
-mkdir -p /home/corali/releases/corali-v131
-tar -xzf /home/corali/corali-pms-cpanel-v131-root.tar.gz \
-  -C /home/corali/releases/corali-v131
+mkdir -p /home/corali/releases/corali-v132
+tar -xzf /home/corali/corali-pms-cpanel-v132-root.tar.gz \
+  -C /home/corali/releases/corali-v132
 ```
 
 Μην αντιγράψετε `runtime.env` στον release φάκελο. Ο installer το παίρνει αυτόματα από κάθε ενεργή εφαρμογή.
@@ -55,7 +55,7 @@ tar -xzf /home/corali/corali-pms-cpanel-v131-root.tar.gz \
 Ως `root`:
 
 ```bash
-cd /home/corali/releases/corali-v131
+cd /home/corali/releases/corali-v132
 bash INSTALL-CPANEL.sh
 ```
 
@@ -88,16 +88,16 @@ bash INSTALL-CPANEL.sh --yes
 
 ## 4. Τελικός έλεγχος
 
-Μετά το `INSTALLATION COMPLETE — v131`, ανοίξτε από browser:
+Μετά το `INSTALLATION COMPLETE — v132`, ανοίξτε από browser:
 
 ```text
 https://pms.hotelcorali.gr/api/health
 https://booking.hotelcorali.gr/api/health
 ```
 
-Και τα δύο πρέπει να επιστρέφουν `"ok":true` και `"version":"v131"`. Ο έλεγχος γίνεται από browser επειδή το ModSecurity/Cloudflare μπορεί να επιστρέψει 406 σε server-side `curl`.
+Και τα δύο πρέπει να επιστρέφουν `"ok":true` και `"version":"v132"`. Ο έλεγχος γίνεται από browser επειδή το ModSecurity/Cloudflare μπορεί να επιστρέψει 406 σε server-side `curl`.
 
-Ελέγξτε επίσης login/2FA/profile, σημειώσεις και ειδοποιήσεις, μία δοκιμαστική κράτηση, folio/check-in/out, room grid, housekeeping, `/book` στα Ελληνικά και Αγγλικά και πληρωμή μόνο σε Stripe test mode. Η v131 δεν προσφέρει Viva ως μέθοδο πληρωμής επισκέπτη.
+Ελέγξτε επίσης login/2FA/profile, σημειώσεις και ειδοποιήσεις, μία δοκιμαστική κράτηση, folio/check-in/out, room grid, housekeeping, `/book` στα Ελληνικά και Αγγλικά και πληρωμή μόνο σε Stripe test mode. Η v132 δεν προσφέρει Viva ως μέθοδο πληρωμής επισκέπτη.
 
 Η δρομολόγηση πρέπει να είναι:
 
@@ -111,7 +111,7 @@ https://booking.hotelcorali.gr/api/health
 
 ```bash
 bash /home/corali/apps/corali-pms/ROLLBACK-CPANEL.sh \
-  /home/corali/backups/corali-deployment-v131-TIMESTAMP.manifest
+  /home/corali/backups/corali-deployment-v132-TIMESTAMP.manifest
 ```
 
 Το rollback επαναφέρει και τις δύο εφαρμογές. Δεν επαναφέρει αυτόματα τη βάση, επειδή οι migrations είναι additive και η επαναφορά παλιού dump θα μπορούσε να διαγράψει νεότερες κρατήσεις.
@@ -226,11 +226,21 @@ cd /home/corali/apps/corali-pms && /opt/cpanel/ea-nodejs22/bin/node --env-file=r
 
 Κάθε εκτέλεση καταγράφεται στο «Ιστορικό ενεργειών» (retention.purge). Η ίδια διαγραφή εκτελείται επίσης από το ημερήσιο birthday cron.
 
-### Ψηφιακά κλειδιά (Apple / Google Wallet) — v131
+### Ψηφιακά κλειδιά (Apple / Google Wallet) — v132
 
 PMS → Κρατήσεις → «Ψηφιακά κλειδιά». Οι κάρτες των κρατήσεων δημιουργούνται και στέλνονται από το ίδιο cron των αυτοματοποιημένων μηνυμάτων (παρακάτω) — δεν χρειάζεται νέο cron. Χρειάζονται: SMTP (για το email), Apple Developer Pass Type ID (.p12 + WWDR G4) για το Apple Wallet, Google Wallet issuer + service account (.json) για το Google Wallet. Οι κλειδαριές / συσκευές πόρτας ρωτούν `POST /api/public/access/verify` (booking domain) με το «κλειδί συσκευών» του PMS.
 
 > **Node.js στα cron:** χρησιμοποιείτε πάντα το Node.js 22 του cPanel (`/opt/cpanel/ea-nodejs22/bin/node`, ή όποιο `ea-nodejs22`/`alt-nodejs22` έχει ο server). Το `/usr/bin/node` σε πολλούς servers είναι παλιά έκδοση χωρίς `--env-file` και το cron αποτυγχάνει σιωπηλά (`bad option: --env-file`). Έλεγχος: `/opt/cpanel/ea-nodejs22/bin/node -v` (πρέπει v22+).
+
+### Καθημερινό κρυπτογραφημένο αντίγραφο βάσης (cron)
+
+Το PMS κρατά προσωπικά δεδομένα πελατών· ο installer παίρνει αντίγραφο μόνο σε κάθε αναβάθμιση. Προσθέστε **σε ένα μόνο PMS instance** ημερήσιο cron (π.χ. 03:40). Κρατά τα 14 νεότερα αντίγραφα στο `/home/corali/backups/db` (αλλαγή με `BACKUP_DIR` / `BACKUP_KEEP` στο runtime.env), κρυπτογραφημένα AES-256-GCM με κλειδί από το `PMS_DOCUMENT_KEY`:
+
+```bash
+cd /home/corali/apps/corali-pms && /opt/cpanel/ea-nodejs22/bin/node --env-file=runtime.env scripts/run-db-backup.mjs >> /home/corali/logs/corali-db-backup.log 2>&1
+```
+
+Κατεβάζετε τακτικά ένα αντίγραφο εκτός server (cPanel → File Manager). Χωρίς το `PMS_DOCUMENT_KEY` το αρχείο δεν ανοίγει — κρατήστε το κλειδί σε ασφαλές μέρος (π.χ. password manager), αλλιώς το αντίγραφο δεν επαναφέρεται. Επαναφορά: `node --env-file=runtime.env scripts/restore-db-backup.mjs ΑΡΧΕΙΟ.dump.enc /tmp/restore.dump` και μετά `pg_restore --clean --no-owner --dbname=… /tmp/restore.dump`. Αν το `pg_dump` δεν είναι στο PATH, ορίστε `PG_DUMP_BIN`.
 
 ### Αυτοματοποιημένα μηνύματα (cron)
 

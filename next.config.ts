@@ -26,8 +26,16 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          // HTTPS only for a year (both sites always run on HTTPS; subdomains are not included, so the hotel's other
+          // sites are not affected).
+          { key: "Strict-Transport-Security", value: "max-age=31536000" },
+          // No plugins, no <base> hijacking, no framing by other sites, and any http:// resource is fetched over https.
+          { key: "Content-Security-Policy", value: `object-src 'none'; base-uri 'self'; frame-ancestors 'none'${process.env.NODE_ENV === "production" ? "; upgrade-insecure-requests" : ""}` },
+          { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
         ],
       },
+      // The back office, the staff apps and every private API are never indexed by search engines.
+      ...["/pms/:path*", "/login", "/staff", "/hk", "/partner/:path*", "/api/:path*", "/tv/:path*", "/check-in/:path*", "/manage-booking/:path*", "/card/:path*"].map((source) => ({ source, headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] })),
       // Corali Staff: voice commands need the microphone (this page only; the last matching header wins).
       { source: "/staff", headers: [{ key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=()" }] },
       // Partner app: the camera scans the guest pass QR (this page only).

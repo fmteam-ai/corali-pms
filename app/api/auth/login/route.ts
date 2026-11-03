@@ -16,6 +16,14 @@ const inputSchema = z.object({
   totp: z.string().trim().max(64).default(""),
 });
 
+// Argon2id hash of a random password: verified when the user name does not exist (same work as a real check).
+const DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$kIlGluH6p8scW4p0enz3NA$E433IVpUiiBqA9Fy+JJf8dBMtKy3CF7oiGXmiI/uGlI";
+
+/** The address as the server received it (the whole forwarding chain, so a forged first entry is visible). */
+function addressChain(request: Request): string {
+  return (request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "").slice(0, 200);
+}
+
 function clientIp(request: Request): string {
   return request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
 }
@@ -26,8 +34,11 @@ export async function POST(request: Request): Promise<Response> {
     const input = inputSchema.parse(await request.json());
     const ownerId = env().PMS_OWNER_ID;
     const attemptKey = hashNetworkValue(`${ownerId}:${input.username}:${clientIp(request)}`);
+    // The client address can be forged in X-Forwarded-For, so failures are also counted per account alone: a
+    // password-guessing attack spread over many addresses still stops after a few tries.
+    const accountKey = hashNetworkValue(`${ownerId}:${input.username}:account`);
     const now = Date.now();
-    const attempt = await db().query("SELECT attempts, window_started_at, blocked_until FROM pms_login_attempts WHERE key_hash = $1", [attemptKey]);
+    const attempt = await db().query("SELECT max(blocked_until) AS blocked_until FROM pms_login_attempts WHERE key_hash = ANY($1::text[])", [[attemptKey, accountKey]]);
     if (Number(attempt.rows[0]?.blocked_until ?? 0) > now) {
       await recordAudit({ ownerId, userId: null, action: "security.login_blocked", entity: "session", after: { username: input.username } });
       return Response.json({ ok: false, error: "TOO_MANY_ATTEMPTS" }, { status: 429, headers: { "Retry-After": "900" } });
@@ -39,7 +50,8 @@ export async function POST(request: Request): Promise<Response> {
       values: [ownerId, input.username],
     });
     const user = userResult.rows[0];
-    const passwordOk = user?.active === 1 && await verifyPassword(user.password_hash, input.password).catch(() => false);
+    // An unknown user name takes as long as a wrong password, so the answer time does not reveal which accounts exist.
+    const passwordOk = user ? user.active === 1 && await verifyPassword(user.password_hash, input.password).catch(() => false) : await verifyPassword(DUMMY_HASH, input.password).catch(() => false) && false;
     let totpOk = passwordOk && !user?.totp_confirmed_at;
     if (passwordOk && user?.totp_confirmed_at) {
       const storedSecret = String(user.totp_secret || "");
@@ -61,16 +73,17 @@ export async function POST(request: Request): Promise<Response> {
       }
     }
     if (!passwordOk || !totpOk) {
-      await withTransaction(async (client) => {
-        const existing = await client.query("SELECT attempts, window_started_at FROM pms_login_attempts WHERE key_hash = $1 FOR UPDATE", [attemptKey]);
+      // 5 failures from one address, or 10 for the account from anywhere, within 15 minutes → 15 minutes blocked.
+      for (const [key, limit] of [[attemptKey, 5], [accountKey, 10]] as const) await withTransaction(async (client) => {
+        const existing = await client.query("SELECT attempts, window_started_at FROM pms_login_attempts WHERE key_hash = $1 FOR UPDATE", [key]);
         const withinWindow = now - Number(existing.rows[0]?.window_started_at ?? 0) < 15 * 60_000;
         const attempts = withinWindow ? Number(existing.rows[0]?.attempts ?? 0) + 1 : 1;
-        const blockedUntil = attempts >= 5 ? now + 15 * 60_000 : null;
+        const blockedUntil = attempts >= limit ? now + 15 * 60_000 : null;
         await client.query(
           `INSERT INTO pms_login_attempts (key_hash, attempts, window_started_at, blocked_until, updated_at)
            VALUES ($1,$2,$3,$4,$5)
            ON CONFLICT (key_hash) DO UPDATE SET attempts=$2, window_started_at=$3, blocked_until=$4, updated_at=$5`,
-          [attemptKey, attempts, withinWindow ? existing.rows[0]?.window_started_at : now, blockedUntil, now],
+          [key, attempts, withinWindow ? existing.rows[0]?.window_started_at : now, blockedUntil, now],
         );
       });
       await recordAudit({ ownerId, userId: user?.id ? Number(user.id) : null, action: "security.login_failed", entity: "session", after: { username: input.username, reason: passwordOk ? "second_factor" : "credentials" } });
@@ -82,11 +95,11 @@ export async function POST(request: Request): Promise<Response> {
     const token = newOpaqueToken();
     const expiresAt = now + 8 * 60 * 60_000;
     await withTransaction(async (client) => {
-      await client.query("DELETE FROM pms_login_attempts WHERE key_hash = $1", [attemptKey]);
+      await client.query("DELETE FROM pms_login_attempts WHERE key_hash = ANY($1::text[])", [[attemptKey, accountKey]]);
       await client.query(
-        `INSERT INTO pms_sessions (owner_id, staff_user_id, token_hash, expires_at, created_at, last_seen_at, user_agent, ip_hash)
-         VALUES ($1,$2,$3,$4,$5,$5,$6,$7)`,
-        [ownerId, user.id, hashToken(token), expiresAt, now, request.headers.get("user-agent")?.slice(0, 500) ?? "", hashNetworkValue(clientIp(request))],
+        `INSERT INTO pms_sessions (owner_id, staff_user_id, token_hash, expires_at, created_at, last_seen_at, user_agent, ip_hash, ip_address)
+         VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8)`,
+        [ownerId, user.id, hashToken(token), expiresAt, now, request.headers.get("user-agent")?.slice(0, 500) ?? "", hashNetworkValue(clientIp(request)), addressChain(request)],
       );
     });
     (await cookies()).set(sessionCookieName, token, {

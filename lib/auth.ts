@@ -19,6 +19,12 @@ export type CurrentUser = {
   sessionId: number;
 };
 
+/**
+ * Office sessions (owner, admin, reception, read-only) end after 2 hours without activity, so a PMS left open on an
+ * unattended computer locks itself; the phone apps of housekeeping / staff keep their 8-hour shift session.
+ */
+export const IDLE_TIMEOUT_MS = 2 * 60 * 60_000;
+
 export async function currentUser(): Promise<CurrentUser | null> {
   const token = (await cookies()).get(sessionCookieName)?.value;
   if (!token) return null;
@@ -30,8 +36,9 @@ export async function currentUser(): Promise<CurrentUser | null> {
              JOIN pms_staff_users u ON u.id = s.staff_user_id AND u.owner_id = s.owner_id
             WHERE s.owner_id = $1 AND s.token_hash = $2 AND s.revoked_at IS NULL
               AND s.expires_at > $3 AND u.active = 1
+              AND (s.last_seen_at > $4 OR COALESCE(NULLIF(u.role, ''), 'readonly') IN ('housekeeping', 'staff'))
             LIMIT 1`,
-    values: [env().PMS_OWNER_ID, hashToken(token), now],
+    values: [env().PMS_OWNER_ID, hashToken(token), now, now - IDLE_TIMEOUT_MS],
   });
   const row = result.rows[0];
   if (!row) return null;
