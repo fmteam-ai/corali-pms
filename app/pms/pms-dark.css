@@ -626,3 +626,5 @@
 .pms[data-theme="dark"] .loginStatus.failed{background:hsl(44 45% 20%);color:hsl(44 75% 72%)}
 .pms[data-theme="dark"] .loginStatus.idle,
 .pms[data-theme="dark"] .loginStatus.expired{background:hsl(200 18% 14%);color:hsl(194 4% 76%)}
+.pms[data-theme="dark"] .metaQuick{background:hsl(168 17% 20%)}
+.pms[data-theme="dark"] .metaQuick.ok{background:hsl(144 21% 20%);border-color:hsl(147 35% 29%)}
