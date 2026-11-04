@@ -55,9 +55,20 @@ async function handlePOST(request: Request) {
     if (!phones.length) return Response.json({ ok: false, error: "NO_PHONE" }, { status: 400 });
     const phone = x.phoneNumberId ? phones.find((p) => p.id === x.phoneNumberId) : phones.length === 1 ? phones[0] : null;
     if (!phone) return Response.json({ ok: false, error: "CHOOSE_PHONE", phones: phones.map((p) => ({ id: p.id, number: p.number, name: p.name })) });
+    // A Cloud API number sends only once registered (6-digit two-step PIN, kept with the secrets). Done here so the
+    // hotel never has to call the API by hand; a number not yet verified by SMS / call is reported instead.
+    const info = (await graph(`${base}/${phone.id}?${new URLSearchParams({ fields: "status,code_verification_status,name_status", access_token: token })}`)).json as { status?: string; code_verification_status?: string; name_status?: string };
+    const pin = wa?.secrets.twoStepPin || String(100000 + (randomBytes(4).readUInt32BE() % 900000));
+    let registered = info.status === "CONNECTED";
+    let registerError = "";
+    if (!registered) {
+      const reg = await graph(`${base}/${phone.id}/register`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ messaging_product: "whatsapp", pin }) });
+      registered = reg.ok && reg.json.success === true;
+      if (!registered) registerError = String(reg.json.error?.message ?? "").slice(0, 200);
+    }
     const expiresAt = tokenExpiry(debug);
     const settings = { ...(wa?.settings ?? {}), apiVersion: DEFAULT_GRAPH_VERSION, phoneNumberId: phone.id, businessAccountId: phone.wabaId, appId, tokenExpiresAt: String(expiresAt) };
-    const secrets = { ...(wa?.secrets ?? {}), accessToken: token, appSecret, verifyToken: wa?.secrets.verifyToken || `corali-${randomBytes(9).toString("base64url")}` };
+    const secrets = { ...(wa?.secrets ?? {}), accessToken: token, appSecret, twoStepPin: pin, verifyToken: wa?.secrets.verifyToken || `corali-${randomBytes(9).toString("base64url")}` };
     const now = Date.now();
     await db().query(
       `INSERT INTO provider_connections(owner_id,provider_key,active,status,settings_json,secrets_encrypted,updated_by,updated_at,last_test_at,last_test_result)
@@ -66,7 +77,7 @@ async function handlePOST(request: Request) {
       [u.ownerId, JSON.stringify(settings), sealProviderSecrets(secrets), String(u.id), now],
     );
     await db().query("INSERT INTO provider_connection_audit(owner_id,provider_key,actor_id,action,created_at) VALUES($1,'whatsapp',$2,'quick_connect',$3)", [u.ownerId, String(u.id), now]);
-    return Response.json({ ok: true, phone: { number: phone.number, name: phone.name }, expiresAt });
+    return Response.json({ ok: true, phone: { number: phone.number, name: phone.name }, expiresAt, registered, registerError, nameStatus: String(info.name_status ?? ""), codeVerified: info.code_verification_status !== "NOT_VERIFIED" });
   } catch (e) {
     if (e instanceof z.ZodError) return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
     console.error("WhatsApp quick connect failed", e);

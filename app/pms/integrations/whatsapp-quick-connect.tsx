@@ -15,7 +15,7 @@ const day = (ms: number) => new Date(ms).toLocaleDateString("el-GR", { day: "num
 export function WhatsAppQuickConnect({ hasApp, expiresAt, onDone }: { hasApp: boolean; expiresAt: number; onDone: () => void }) {
   const [appId, setAppId] = useState(""), [appSecret, setAppSecret] = useState(""), [token, setToken] = useState("");
   const [busy, setBusy] = useState(false), [msg, setMsg] = useState(""), [phones, setPhones] = useState<{ id: string; number: string; name: string }[]>([]);
-  const [done, setDone] = useState<{ phone: { number: string; name: string }; expiresAt: number } | null>(null);
+  const [done, setDone] = useState<{ phone: { number: string; name: string }; expiresAt: number; registered: boolean; registerError: string; nameStatus: string; codeVerified: boolean } | null>(null);
   async function connect(phoneNumberId?: string) {
     setBusy(true); setMsg("");
     try {
@@ -31,6 +31,10 @@ export function WhatsAppQuickConnect({ hasApp, expiresAt, onDone }: { hasApp: bo
     <div className="metaQuick ok">
       <h3>✓ Συνδέθηκε</h3>
       <p>Αριθμός WhatsApp: <b>{done.phone.number}</b>{done.phone.name ? <> · {done.phone.name}</> : null}</p>
+      {done.registered ? <p>✓ Ο αριθμός είναι καταχωρισμένος στο WhatsApp Cloud API και μπορεί να στέλνει μηνύματα.</p>
+        : !done.codeVerified ? <p className="notice">Ο αριθμός δεν έχει επιβεβαιωθεί ακόμα με SMS / κλήση. WhatsApp Manager → Αριθμοί τηλεφώνου → ο αριθμός → «Επιβεβαίωση», και μετά πατήστε ξανά «Σύνδεση» εδώ.</p>
+        : <p className="notice">Η καταχώριση του αριθμού δεν ολοκληρώθηκε ακόμα{done.registerError ? ` (Meta: ${done.registerError})` : ""}. Δοκιμάστε ξανά «Σύνδεση» σε λίγα λεπτά.</p>}
+      {done.nameStatus && !["APPROVED", "AVAILABLE_WITHOUT_REVIEW"].includes(done.nameStatus) && <p className="muted">Το όνομα «{done.phone.name || "Hotel Corali"}» ελέγχεται από τη Meta (συνήθως 1–2 ημέρες).</p>}
       {expiry(done.expiresAt)}
       <p>Δοκιμάστε την από <b>Αυτόματα μηνύματα → Δοκιμαστική αποστολή → 💬 WhatsApp</b> (πρότυπο hello_world).</p>
     </div>
