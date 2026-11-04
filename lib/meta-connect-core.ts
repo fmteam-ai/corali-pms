@@ -23,3 +23,27 @@ export function pickPage(pages: MetaPage[], pageId?: string): MetaPage | null {
 /** A pasted token, trimmed of spaces and of a leading "access_token=" or quotes copied by mistake. */
 export const cleanToken = (v: string) => v.trim().replace(/^access_token=/, "").replace(/^["']|["']$/g, "").trim();
 export const validGraphVersion = (v: string) => (/^v\d{1,2}\.0$/.test(v) ? v : DEFAULT_GRAPH_VERSION);
+
+/** WhatsApp Business accounts the token may manage (debug_token → granular_scopes). */
+export function wabaIdsFromDebug(json: unknown): string[] {
+  const scopes = (json as { data?: { granular_scopes?: { scope?: string; target_ids?: unknown[] }[] } } | null)?.data?.granular_scopes ?? [];
+  const ids = scopes.filter((s) => s.scope === "whatsapp_business_management" || s.scope === "whatsapp_business_messaging").flatMap((s) => (Array.isArray(s.target_ids) ? s.target_ids.map(String) : []));
+  return [...new Set(ids.filter((id) => /^\d{5,30}$/.test(id)))];
+}
+
+/** When the token stops working: 0 = never (a System User token), else epoch ms. */
+export function tokenExpiry(json: unknown): number {
+  const d = (json as { data?: { expires_at?: unknown; data_access_expires_at?: unknown } } | null)?.data;
+  const exp = Number(d?.expires_at ?? 0);
+  return exp > 0 ? exp * 1000 : 0;
+}
+
+export type WaPhone = { id: string; number: string; name: string; wabaId: string };
+export function parsePhones(json: unknown, wabaId: string): WaPhone[] {
+  const data = (json as { data?: unknown[] } | null)?.data;
+  if (!Array.isArray(data)) return [];
+  return data.flatMap((p) => {
+    const r = p as { id?: unknown; display_phone_number?: unknown; verified_name?: unknown };
+    return typeof r.id === "string" ? [{ id: r.id, number: String(r.display_phone_number ?? ""), name: String(r.verified_name ?? ""), wabaId }] : [];
+  });
+}

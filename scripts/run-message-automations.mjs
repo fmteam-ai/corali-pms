@@ -13,6 +13,9 @@ import {runRoomClimate} from "./room-climate-worker.mjs";
 import {runCampaigns} from "./campaign-worker.mjs";
 import {normalizeBrand,renderBrandedEmail,stayDate,withFallbacks} from "./email-brand-core.mjs";
 if(!process.env.DATABASE_URL||!process.env.PMS_DOCUMENT_KEY||!process.env.BOOKING_ORIGIN)throw Error("Automation requires DATABASE_URL, PMS_DOCUMENT_KEY and BOOKING_ORIGIN");
+// WhatsApp connected with a 60-day token (PMS → Ενσωματώσεις → Γρήγορη σύνδεση): a PMS notice once a day, from a
+// week before it stops working, so it is renewed before guests stop getting messages.
+async function whatsappTokenReminder(){const n=new Date();if(n.getUTCHours()!==7||n.getUTCMinutes()!==0)return;const c=await credentials("whatsapp").catch(()=>null);const exp=Number(c?.settings?.tokenExpiresAt??0);if(!c||c.disabled||!exp||exp-Date.now()>7*86400000)return;const days=Math.max(0,Math.ceil((exp-Date.now())/86400000));await pool.query(`INSERT INTO pms_notifications(owner_id,kind,title_el,title_en,link,created_at) VALUES($1,'system',$2,$3,'/pms/integrations',$4)`,[owner,days?`Η σύνδεση WhatsApp λήγει σε ${days} ημέρες — Ενσωματώσεις → WhatsApp → Γρήγορη σύνδεση`:"Η σύνδεση WhatsApp έληξε — Ενσωματώσεις → WhatsApp → Γρήγορη σύνδεση",days?`WhatsApp connection expires in ${days} days — Integrations → WhatsApp → Quick connect`:"WhatsApp connection expired — Integrations → WhatsApp → Quick connect",Date.now()])}
 // Keeps the booking site and the PMS awake: cPanel stops an app that had no visitors for a few minutes and the next
 // guest waits for it to start. Asking every few minutes (availability for next week also warms the database) avoids that.
 const warm=new Date().getMinutes()%4===0?Promise.allSettled([`${process.env.BOOKING_ORIGIN}/api/public/availability?checkIn=${new Date(Date.now()+7*86400000).toISOString().slice(0,10)}&checkOut=${new Date(Date.now()+8*86400000).toISOString().slice(0,10)}&adults=2&lang=el`,`${process.env.BOOKING_ORIGIN}/book`,...(process.env.PMS_ORIGIN?[`${process.env.PMS_ORIGIN}/api/health`]:[])].map(u=>fetch(u,{signal:AbortSignal.timeout(25_000),headers:{"User-Agent":"Corali-keep-warm"}}).then(r=>r.arrayBuffer()))):Promise.resolve();
@@ -65,4 +68,5 @@ try{await run();
  // Room A/C with presence sensors: every minute, so power returns within a minute when the guest comes back.
  await runRoomAc({pool,owner,unseal,seal,presenceOnly:true}).catch(e=>console.error("A/C presence failed",e))
  // Room temperature / humidity sensors: read every ~10 minutes, alerts to the PMS.
- await runRoomClimate({pool,owner,unseal,seal}).catch(e=>console.error("Room climate failed",e))}finally{await warm;await pool.end()}
+ await runRoomClimate({pool,owner,unseal,seal}).catch(e=>console.error("Room climate failed",e))
+ await whatsappTokenReminder().catch(e=>console.error("WhatsApp token reminder failed",e))}finally{await warm;await pool.end()}
