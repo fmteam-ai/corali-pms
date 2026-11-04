@@ -48,11 +48,24 @@ async function handlePOST(request: Request) {
         debug = (await graph(`${base}/debug_token?${new URLSearchParams({ input_token: token, access_token: appToken })}`)).json;
       }
     }
-    const wabas = wabaIdsFromDebug(debug);
-    if (!wabas.length) return Response.json({ ok: false, error: "NO_WHATSAPP" }, { status: 400 });
+    // The WhatsApp accounts the token was granted, plus every account owned by the hotel's business portfolios (a token
+    // granted for "all" accounts, or for an empty account made by an earlier attempt, still finds the right number).
+    const wabas = new Set(wabaIdsFromDebug(debug));
+    const businesses = (await graph(`${base}/me/businesses?${new URLSearchParams({ fields: "id,name", limit: "25", access_token: token })}`)).json.data;
+    for (const b of Array.isArray(businesses) ? businesses as { id?: string }[] : []) {
+      if (!b.id) continue;
+      const owned = (await graph(`${base}/${b.id}/owned_whatsapp_business_accounts?${new URLSearchParams({ fields: "id", limit: "25", access_token: token })}`)).json.data;
+      for (const w of Array.isArray(owned) ? owned as { id?: string }[] : []) if (w.id && /^\d{5,30}$/.test(w.id)) wabas.add(w.id);
+    }
+    if (!wabas.size) return Response.json({ ok: false, error: "NO_WHATSAPP" }, { status: 400 });
     const phones: WaPhone[] = [];
-    for (const w of wabas) phones.push(...parsePhones((await graph(`${base}/${w}/phone_numbers?${new URLSearchParams({ fields: "id,display_phone_number,verified_name", access_token: token })}`)).json, w));
-    if (!phones.length) return Response.json({ ok: false, error: "NO_PHONE" }, { status: 400 });
+    let lastError = "";
+    for (const w of wabas) {
+      const r = await graph(`${base}/${w}/phone_numbers?${new URLSearchParams({ fields: "id,display_phone_number,verified_name", access_token: token })}`);
+      if (!r.ok) lastError = String(r.json.error?.message ?? "").slice(0, 200);
+      phones.push(...parsePhones(r.json, w));
+    }
+    if (!phones.length) return Response.json({ ok: false, error: "NO_PHONE", detail: [`λογαριασμοί WhatsApp: ${[...wabas].join(", ")}`, lastError].filter(Boolean).join(" · ") }, { status: 400 });
     const phone = x.phoneNumberId ? phones.find((p) => p.id === x.phoneNumberId) : phones.length === 1 ? phones[0] : null;
     if (!phone) return Response.json({ ok: false, error: "CHOOSE_PHONE", phones: phones.map((p) => ({ id: p.id, number: p.number, name: p.name })) });
     // A Cloud API number sends only once registered (6-digit two-step PIN, kept with the secrets). Done here so the
