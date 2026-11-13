@@ -124,14 +124,16 @@ export function stayDate(value, lang) {
 }
 
 /**
- * Ready WhatsApp templates to submit in Meta Business Manager (WhatsApp → Message templates): logo as image header,
+ * Ready WhatsApp templates to submit in Meta Business Manager (WhatsApp → Message templates): the hotel's name as text header,
  * the text with {{1}} {{2}}… in the order the PMS fills them, and the hotel's name and website as footer.
  */
 export function whatsappTemplateSuggestions(raw) {
   const brand = normalizeBrand(raw);
   const site = brand.website.replace(/^https?:\/\//, "");
   const footer = [brand.name, site].filter(Boolean).join(" · ").slice(0, 60);
-  const t = (event, name, el, en) => ({ event, name, header: "IMAGE (λογότυπο / logo)", el, en, footer });
+  // Text header (the hotel's name): the PMS sends body variables only, so an image header would make every send fail.
+  const header = `TEXT: ${(brand.name || "Hotel").slice(0, 60)}`;
+  const t = (event, name, el, en) => ({ event, name, header, el, en, footer });
   return [
     t("confirmation", "booking_confirmation", "✅ Η κράτησή σας *{{1}}* επιβεβαιώθηκε!\n\n📅 Άφιξη: {{2}}\n📅 Αναχώρηση: {{3}}\n\nΑνυπομονούμε να σας καλωσορίσουμε στην Πάρο.", "✅ Your booking *{{1}}* is confirmed!\n\n📅 Arrival: {{2}}\n📅 Departure: {{3}}\n\nWe look forward to welcoming you to Paros."),
     t("pre_arrival", "pre_arrival", "Γεια σας {{1}} 👋\n\nΣας περιμένουμε στις *{{2}}*. Ολοκληρώστε το online check-in για γρήγορη άφιξη:\n{{3}}", "Hello {{1}} 👋\n\nWe look forward to seeing you on *{{2}}*. Complete your online check-in for a quick arrival:\n{{3}}"),
