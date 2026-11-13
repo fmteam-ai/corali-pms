@@ -628,3 +628,8 @@
 .pms[data-theme="dark"] .loginStatus.expired{background:hsl(200 18% 14%);color:hsl(194 4% 76%)}
 .pms[data-theme="dark"] .metaQuick{background:hsl(168 17% 20%)}
 .pms[data-theme="dark"] .metaQuick.ok{background:hsl(144 21% 20%);border-color:hsl(147 35% 29%)}
+.pms[data-theme="dark"] .waStatus-approved{color:hsl(138 59% 72%)}
+.pms[data-theme="dark"] .waStatus-rejected,
+.pms[data-theme="dark"] .waStatus-disabled{color:hsl(4 75% 72%)}
+.pms[data-theme="dark"] .waStatus-pending,
+.pms[data-theme="dark"] .waStatus-in_appeal{color:hsl(35 75% 72%)}

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { normalizeBrand, renderBrandedEmail, whatsappSignature, whatsappTemplateSuggestions, type Brand } from "../../../scripts/email-brand-core.mjs";
+import { WhatsAppTemplatesSubmit } from "./whatsapp-templates-submit";
 
 const sample = {
   el: { subject: "Η άφιξή σας στο Hotel Corali σε 3 ημέρες · CRL-TEST01", text: "Αγαπητή Maria Papadopoulou,\n\nσας περιμένουμε την **Παρασκευή 12 Ιουνίου 2026**. Το check-in ξεκινά στις 13:00 και η ρεσεψιόν είναι ανοιχτή 07:30–21:00.\n\nΑν δεν έχετε ολοκληρώσει το online check-in: https://booking.hotelcorali.gr/check-in/abc\n\nΚαλό ταξίδι!" },
@@ -50,6 +51,8 @@ export function BrandEditor({ editable }: { editable: boolean }) {
       <details className="brandWhatsapp">
         <summary><b>💬 Πρότυπα WhatsApp έτοιμα για υποβολή στη Meta</b></summary>
         <p className="muted">Το WhatsApp στέλνει στους πελάτες μόνο πρότυπα εγκεκριμένα από τη Meta, και το σχέδιό τους ορίζεται εκεί. Στο Meta Business Manager → WhatsApp Manager → Message templates δημιουργήστε τα παρακάτω (κατηγορία Utility, μάρκετινγκ μόνο για τα μαζικά): Header = Image με το λογότυπο, Body = το κείμενο, Footer = η γραμμή του ξενοδοχείου. Μετά την έγκριση γράψτε το όνομα του προτύπου στο αντίστοιχο μήνυμα πιο πάνω. Οι μεταβλητές {"{{1}}"}, {"{{2}}"}… συμπληρώνονται αυτόματα με αυτή τη σειρά.</p>
+        <WhatsAppTemplatesSubmit editable={editable} />
+        <p className="muted">Τα κείμενα (εμφανίζονται ελληνικά και αγγλικά· η υποβολή περιλαμβάνει και γαλλικά, γερμανικά, ιταλικά, ισπανικά):</p>
         <div className="brandWaList">
           {whatsappTemplateSuggestions(brand).map((s) => (
             <div className="brandWa" key={s.event}>
