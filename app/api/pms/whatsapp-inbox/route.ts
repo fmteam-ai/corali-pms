@@ -51,6 +51,16 @@ export async function GET() {
  * verify token) and subscribes the app to the hotel's WhatsApp account, so guest messages reach the PMS inbox.
  */
 async function handlePOST(request: Request) {
+  try {
+    return await enableInbox(request);
+  } catch (e) {
+    // Never a bare failure: the panel shows what went wrong.
+    console.error("WhatsApp inbox setup failed", e);
+    return Response.json({ ok: false, error: "UNEXPECTED", detail: e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200) }, { status: 500 });
+  }
+}
+
+async function enableInbox(request: Request) {
   const u = await requireApiUser("integrations.write");
   if (u instanceof Response) return u;
   try { assertTrustedOrigin(request); } catch { return Response.json({ ok: false, error: "FORBIDDEN" }, { status: 403 }); }

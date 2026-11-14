@@ -8,6 +8,7 @@ const errors: Record<string, string> = {
   WEBHOOK_FAILED: "Η Meta δεν αποδέχτηκε τη διεύθυνση του PMS για τα μηνύματα.",
   SUBSCRIBE_FAILED: "Η Meta δεν συνέδεσε την εφαρμογή με τον λογαριασμό WhatsApp.",
   TOO_MANY_ATTEMPTS: "Πολλές προσπάθειες — δοκιμάστε ξανά σε μισή ώρα.",
+  FORBIDDEN: "Το αίτημα απορρίφθηκε για λόγους ασφαλείας — ανανεώστε τη σελίδα (F5) και δοκιμάστε ξανά.",
 };
 
 /** «Εισερχόμενα WhatsApp»: guest messages to the hotel's number arrive in PMS → Social → Μηνύματα. */
@@ -23,9 +24,11 @@ export function WhatsAppInboxSetup({ editable }: { editable: boolean }) {
     setBusy(true); setMsg("");
     try {
       const r = await fetch("/api/pms/whatsapp-inbox", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      const d = await r.json().catch(() => ({}));
+      const raw = await r.text().catch(() => "");
+      let d: { ok?: boolean; error?: string; detail?: string; webhook?: boolean; subscribed?: boolean };
+      try { d = JSON.parse(raw); } catch { d = { error: `HTTP ${r.status}`, detail: raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160) }; }
       if (d.ok) { setS({ ready: true, ...d }); setMsg(d.webhook && d.subscribed ? "✓ Τα μηνύματα των επισκεπτών θα εμφανίζονται στο Social → Μηνύματα." : "Η Meta δέχτηκε τη ρύθμιση· η κατάσταση θα ενημερωθεί σε λίγο."); }
-      else setMsg(`${errors[d.error] ?? "Η ενεργοποίηση απέτυχε."}${d.detail ? ` (Meta: ${d.detail})` : ""}`);
+      else { const code = d.error ?? `HTTP ${r.status}`; setMsg(`${errors[code] ?? "Η ενεργοποίηση απέτυχε."}${d.detail ? ` (${code === "UNEXPECTED" || code.startsWith("HTTP") ? "" : "Meta: "}${d.detail})` : ""}${errors[code] ? "" : ` [${code}]`}`); }
     } finally { setBusy(false); }
   }
   if (!s) return null;
