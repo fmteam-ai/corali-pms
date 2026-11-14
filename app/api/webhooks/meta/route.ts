@@ -13,9 +13,10 @@ export async function GET(request: Request) {
   const given = url.searchParams.get("hub.verify_token");
   // Facebook/Instagram and WhatsApp may be set up with different Meta apps, each with its own verify token.
   if (url.searchParams.get("hub.mode") === "subscribe" && given && [meta?.secrets.verifyToken, wa?.secrets.verifyToken].some((t) => t && t === given)) {
-    return new Response(url.searchParams.get("hub.challenge") ?? "", { status: 200 });
+    return new Response(url.searchParams.get("hub.challenge") ?? "", { status: 200, headers: { "Cache-Control": "no-store" } });
   }
-  return new Response("Forbidden", { status: 403 });
+  // Never cached (e.g. by Cloudflare): an old "Forbidden" must not hide a token saved since.
+  return new Response("Forbidden", { status: 403, headers: { "Cache-Control": "no-store" } });
 }
 
 type MessagingEvent = { sender?: { id?: string }; message?: { mid?: string; text?: string; is_echo?: boolean }; timestamp?: number };

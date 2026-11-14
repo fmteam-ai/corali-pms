@@ -26,6 +26,21 @@ async function setup(ownerId: string) {
   return { wa, appId, appToken: `${appId}|${appSecret}`, access, waba, verifyToken: wa.secrets.verifyToken, base: `https://graph.facebook.com/${DEFAULT_GRAPH_VERSION}`, callback: `${env().BOOKING_ORIGIN}/api/webhooks/meta` };
 }
 
+/**
+ * Asks the booking site the same question Meta asks when the webhook is saved (verify token + challenge), with the
+ * token stored in the PMS: shows whether Meta could validate the callback, without revealing the token.
+ */
+async function callbackCheck(s: { callback: string; verifyToken: string }) {
+  const challenge = String(Math.floor(Math.random() * 1e9));
+  try {
+    const r = await fetch(`${s.callback}?${new URLSearchParams({ "hub.mode": "subscribe", "hub.verify_token": s.verifyToken, "hub.challenge": challenge })}`, { cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(10_000), headers: { "User-Agent": "Corali-PMS-webhook-check/1" } });
+    const body = (await r.text().catch(() => "")).trim();
+    return { ok: r.status === 200 && body === challenge, status: r.status, body: body === challenge ? "" : body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 120) };
+  } catch (e) {
+    return { ok: false, status: 0, body: e instanceof Error ? e.message.slice(0, 120) : "unreachable" };
+  }
+}
+
 /** Whether Meta delivers guest WhatsApp messages to the PMS: the app's webhook and the WhatsApp account's subscription. */
 async function status(s: Exclude<Awaited<ReturnType<typeof setup>>, { error: string }>) {
   const [subs, apps] = await Promise.all([
@@ -43,7 +58,8 @@ export async function GET() {
   if (u instanceof Response) return u;
   const s = await setup(u.ownerId);
   if ("error" in s) return Response.json({ ok: true, ready: false, reason: s.error });
-  return Response.json({ ok: true, ready: true, ...(await status(s)) });
+  const [st, check] = await Promise.all([status(s), callbackCheck(s)]);
+  return Response.json({ ok: true, ready: true, ...st, callbackCheck: check });
 }
 
 /**
@@ -67,6 +83,9 @@ async function enableInbox(request: Request) {
   const s = await setup(u.ownerId);
   if ("error" in s) return Response.json({ ok: false, error: s.error }, { status: 400 });
   if (!(await allowAttempt(`wa-inbox:${u.ownerId}`, 10, 60 * 60_000, 30 * 60_000))) return Response.json({ ok: false, error: "TOO_MANY_ATTEMPTS" }, { status: 429 });
+  // Meta checks the callback at once: say plainly when the booking site would not answer it.
+  const check = await callbackCheck(s);
+  if (!check.ok) return Response.json({ ok: false, error: "CALLBACK_FAILED", detail: `HTTP ${check.status || "—"}${check.body ? ` · ${check.body}` : ""}`, callbackCheck: check }, { status: 502 });
   const hook = await graph(`${s.base}/${s.appId}/subscriptions`, { method: "POST", body: new URLSearchParams({ object: "whatsapp_business_account", callback_url: s.callback, verify_token: s.verifyToken, fields: "messages", include_values: "true", access_token: s.appToken }) });
   if (!hook.ok) return Response.json({ ok: false, error: "WEBHOOK_FAILED", detail: metaMessage(hook.json.error) }, { status: 502 });
   const sub = await graph(`${s.base}/${s.waba}/subscribed_apps`, { method: "POST", headers: { Authorization: `Bearer ${s.access}` } });
