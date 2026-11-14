@@ -13,7 +13,7 @@ export function CheckinCard({ lang, bookingId, checkin, canReveal, send }: { lan
   const t = pmsT(lang);
   const [identity, setIdentity] = useState<{ documentNumber: string; dateOfBirth: string } | null>(null);
   const [error, setError] = useState("");
-  if (!checkin) return <article><h2>{t("ci.title")}</h2><p>{t("ci.none")}</p>{send && <CheckinSend lang={lang} bookingId={bookingId} email={send.email} phone={send.phone} />}</article>;
+  if (!checkin) return <article id="checkin"><h2>{t("ci.title")}</h2><p>{t("ci.none")}</p>{send && <CheckinSend lang={lang} bookingId={bookingId} email={send.email} phone={send.phone} />}</article>;
   const yesNo = (v: number) => (Number(v) ? t("ci.yes") : t("ci.no"));
   async function reveal() {
     const r = await fetch(`/api/pms/reservations/${bookingId}/identity`, { method: "POST" });
@@ -22,7 +22,7 @@ export function CheckinCard({ lang, bookingId, checkin, canReveal, send }: { lan
     else setError(d.error === "PURGED" ? t("ci.purged") : d.error === "DOCUMENT_KEY_NOT_CONFIGURED" ? t("ci.keyMissing") : t("res.failed"));
   }
   return (
-    <article className="checkinCard">
+    <article className="checkinCard" id="checkin">
       <h2>{t("ci.title")} ✓</h2>
       <dl>
         <dt>{t("ci.submitted")}</dt><dd>{new Date(Number(checkin.submitted_at)).toLocaleString(pmsLocale(lang))}</dd>

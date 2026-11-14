@@ -25,7 +25,7 @@ test("audience query binds every placeholder and keeps consent + unsubscribe che
     assert.match(q.sql, /check_out<=\$2/);
     // E-mail: only the address and consent the guest gave in online check-in (never the booking's own e-mail).
     if (ch === "email") { assert.match(q.sql, /FROM guest_checkins c .*c\.status='submitted'/); assert.match(q.sql, /email_marketing_consent/); assert.doesNotMatch(q.sql, /b\.guest_email/); }
-    else assert.match(q.sql, /whatsapp_opt_in/);
+    else { assert.match(q.sql, /whatsapp_marketing_consent/); assert.doesNotMatch(q.sql, /b\.guest_phone|whatsapp_opt_in/); }
   }
 });
 

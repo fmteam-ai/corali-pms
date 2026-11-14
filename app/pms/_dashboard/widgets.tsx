@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { pmsLocale, pmsStatus, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 import { AiText } from "../ai-text";
 
-export type Stay = { id: number; reference: string; guest_name: string; room_code: string | null; check_in: string; check_out: string; status: string; balance_cents: number; version: number; adults: number; children: number };
+export type Stay = { id: number; reference: string; guest_name: string; room_code: string | null; check_in: string; check_out: string; status: string; balance_cents: number; version: number; adults: number; children: number; checkin_done?: boolean };
 export type Note = { id: number; body: string; color: string };
 export type RoomToday = { id: number; code: string; room_type: string; operational_status: string; guest_name: string | null; booking_id: number | null };
 export type Recent = { id: number; reference: string; guest_name: string; check_in: string; check_out: string; status: string; channel: string; created_at: number };
@@ -141,6 +141,8 @@ export function StayList({ t, lang, kind, stays, canEdit }: { t: T; lang: PmsLan
   const [msg, setMsg] = useState("");
   const list = stays[day].filter((s) => !q || `${s.reference} ${s.guest_name} ${s.room_code ?? ""}`.toLowerCase().includes(q.toLowerCase()));
   async function act(s: Stay, action: "check_in" | "check_out") {
+    // The online check-in form is required for every guest (any channel): warn before checking in without it.
+    if (action === "check_in" && s.checkin_done === false && !window.confirm(t("desk.ciMissingConfirm"))) return;
     setBusy(s.id);
     const { ok, d } = await post(`/api/pms/reservations/${s.id}`, { version: s.version, action }, "PATCH");
     setBusy(null);
@@ -162,7 +164,7 @@ export function StayList({ t, lang, kind, stays, canEdit }: { t: T; lang: PmsLan
             {list.map((s) => (
               <tr key={s.id}>
                 <td><Link href={`/pms/reservations/${s.id}`}>{s.reference}</Link></td>
-                <td>{s.guest_name}{Number(s.balance_cents) > 0 && <small className="balanceDue">{money(lang, Number(s.balance_cents))}</small>}</td>
+                <td>{s.guest_name}{kind === "arriving" && s.status === "confirmed" && s.checkin_done === false && <Link className="ciMissing" href={`/pms/reservations/${s.id}#checkin`} title={t("w.ciMissingHint")}>📋 {t("w.ciMissing")}</Link>}{kind === "arriving" && s.checkin_done && <small className="ciDone" title={t("w.ciDoneHint")}>📋 ✓</small>}{Number(s.balance_cents) > 0 && <small className="balanceDue">{money(lang, Number(s.balance_cents))}</small>}</td>
                 <td>{s.adults}{s.children ? ` + ${s.children}` : ""}</td>
                 <td>{s.room_code ?? "—"}</td>
                 <td>{shortDate(lang, kind === "arriving" ? s.check_out : s.check_in)}</td>

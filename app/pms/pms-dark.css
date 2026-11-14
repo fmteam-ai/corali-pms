@@ -638,3 +638,5 @@
 .pms[data-theme="dark"] .guestStatus-eligible{color:hsl(138 59% 72%)}
 .pms[data-theme="dark"] .guestStatus-unsubscribed,
 .pms[data-theme="dark"] .guestStatus-ota_address{color:hsl(4 75% 72%)}
+.pms[data-theme="dark"] .ciMissing{color:hsl(22 75% 72%)}
+.pms[data-theme="dark"] .ciDone{color:hsl(138 59% 72%)}

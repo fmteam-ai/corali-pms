@@ -12,7 +12,7 @@ import { pmsLocale } from "@/lib/pms-i18n";
 import { DashboardRefresh } from "./dashboard-refresh";
 import { WidgetDashboard, type DashboardData } from "./_dashboard/widget-dashboard";
 
-const stayColumns = `b.id,b.reference,b.guest_name,r.code room_code,b.check_in,b.check_out,b.status,b.balance_cents,b.version,b.adults,b.children`;
+const stayColumns = `b.id,b.reference,b.guest_name,r.code room_code,b.check_in,b.check_out,b.status,b.balance_cents,b.version,b.adults,b.children,EXISTS(SELECT 1 FROM guest_checkins g WHERE g.owner_id=b.owner_id AND g.booking_id=b.id AND g.status='submitted') checkin_done`;
 const hotelDay = (offset: number) => `((now() AT TIME ZONE 'Europe/Athens')::date+${offset})::text`;
 
 export default async function PmsPage() {
@@ -38,7 +38,7 @@ export default async function PmsPage() {
     stays("check_out", -1, departureStatuses), stays("check_out", 0, departureStatuses), stays("check_out", 1, departureStatuses),
   ]);
   const num = (v: unknown) => Number(v ?? 0);
-  const asStays = (rows: Record<string, unknown>[]) => rows.map((r) => ({ ...r, id: num(r.id), balance_cents: num(r.balance_cents), version: num(r.version), adults: num(r.adults), children: num(r.children) })) as DashboardData["arrivals"]["today"];
+  const asStays = (rows: Record<string, unknown>[]) => rows.map((r) => ({ ...r, id: num(r.id), balance_cents: num(r.balance_cents), version: num(r.version), adults: num(r.adults), children: num(r.children), checkin_done: Boolean(r.checkin_done) })) as DashboardData["arrivals"]["today"];
   const h = hk.rows[0] ?? {};
   const data: DashboardData = {
     today: hotelToday(),

@@ -23,3 +23,4 @@ export declare function channelName(channel: unknown, lang?: string): string;
 export declare const VALID_EMAIL_SQL: string;
 export declare const CHECKIN_EMAIL_JOIN: string;
 export declare const GUEST_EMAIL_SQL: string;
+export declare const CHECKIN_PHONE_JOIN: string;

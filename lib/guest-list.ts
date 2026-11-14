@@ -2,7 +2,7 @@
 // the booking, the channel it came from and whether bulk messages may be sent to it (and why not).
 import { db } from "@/lib/db";
 import { hotelToday } from "@/lib/tape-chart";
-import { audienceQuery, channelName, CHECKIN_EMAIL_JOIN, GUEST_EMAIL_SQL, isOtaRelayEmail, VALID_EMAIL_SQL } from "../scripts/campaign-core.mjs";
+import { audienceQuery, channelName, CHECKIN_EMAIL_JOIN, CHECKIN_PHONE_JOIN, GUEST_EMAIL_SQL, isOtaRelayEmail, VALID_EMAIL_SQL } from "../scripts/campaign-core.mjs";
 
 export type GuestListStatus = "eligible" | "no_consent" | "unsubscribed" | "ota_address" | "future_stay";
 export type WhatsAppListStatus = "eligible" | "no_consent" | "unsubscribed" | "no_phone" | "future_stay";
@@ -23,7 +23,7 @@ export function guestStatus(x: { email: string; consent: boolean; unsubscribed: 
   return "eligible";
 }
 
-/** The same for bulk WhatsApp messages (the phone of the latest booking; consent given in the booking or online check-in). */
+/** The same for bulk WhatsApp messages (the mobile typed in online check-in and the WhatsApp consent ticked there). */
 export function whatsappStatus(x: { phone: string; consent: boolean; unsubscribed: boolean; pastStays: number }): WhatsAppListStatus {
   const digits = x.phone.replace(/\D/g, "");
   if (digits.length < 10 || digits.length > 15) return "no_phone";
@@ -42,9 +42,9 @@ export async function guestList(ownerId: string, opts: { q?: string; filter?: Gu
   const r = await db().query(
     `WITH b AS (
        SELECT b.id,${GUEST_EMAIL_SQL} email,true from_checkin,
-         b.guest_name,coalesce(b.guest_phone,'') phone,coalesce(b.guest_country,'') country,coalesce(b.guest_language,'') language,b.reference,b.check_in,b.check_out,coalesce(nullif(b.external_channel,''),b.channel,'') channel,
-         coalesce(ci.consent,0) consent,b.whatsapp_opt_in wa_consent
-       FROM bookings b ${CHECKIN_EMAIL_JOIN} WHERE b.owner_id=$1 AND b.status NOT IN ('cancelled') AND ci.email IS NOT NULL),
+         b.guest_name,coalesce(nullif(cp.phone,''),'') phone,coalesce(b.guest_country,'') country,coalesce(b.guest_language,'') language,b.reference,b.check_in,b.check_out,coalesce(nullif(b.external_channel,''),b.channel,'') channel,
+         coalesce(ci.consent,0) consent,coalesce(cp.consent,0) wa_consent
+       FROM bookings b ${CHECKIN_EMAIL_JOIN} ${CHECKIN_PHONE_JOIN} WHERE b.owner_id=$1 AND b.status NOT IN ('cancelled') AND ci.email IS NOT NULL),
      g AS (
        SELECT email,(array_agg(guest_name ORDER BY check_in DESC))[1] name,(array_agg(phone ORDER BY check_in DESC))[1] phone,(array_agg(country ORDER BY check_in DESC))[1] country,(array_agg(language ORDER BY check_in DESC))[1] language,
          count(*)::int bookings,(array_agg(reference ORDER BY check_in DESC))[1] reference,(array_agg(id ORDER BY check_in DESC))[1] booking_id,max(check_in) check_in,(array_agg(check_out ORDER BY check_in DESC))[1] check_out,

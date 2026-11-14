@@ -14,7 +14,7 @@ const texts = {
     search: "Αναζήτηση: όνομα, email, κράτηση, τηλέφωνο", csv: "⬇ Excel (CSV)", none: "Δεν βρέθηκαν επισκέπτες.", more: "Εμφανίζονται οι πρώτοι 300 από {n} — χρησιμοποιήστε αναζήτηση ή το Excel για όλους.",
     cols: ["Όνομα", "Email", "Κράτηση", "Κανάλι", "Μαζικά email", "WhatsApp"], stays: "κρατήσεις", fromCheckin: "από το online check-in", waCount: "Μαζικά WhatsApp λαμβάνουν: {n}",
     wa: { eligible: "✓ Λαμβάνει", no_consent: "Χωρίς συγκατάθεση", unsubscribed: "🚫 Διαγράφηκε", no_phone: "Χωρίς κινητό", future_stay: "Μετά τη διαμονή" },
-    waHint: "Για μαζικά WhatsApp χρειάζεται συγκατάθεση του επισκέπτη (στην κράτηση ή στο online check-in) — και για τηλέφωνα από Booking.com / Airbnb.",
+    waHint: "Μαζικά WhatsApp λαμβάνουν μόνο όσοι έδωσαν κινητό και τσέκαραν τη συγκατάθεση WhatsApp στο online check-in (και για κρατήσεις από Booking.com / Airbnb).",
     filters: { all: "Όλοι", eligible: "✓ Λαμβάνουν", no_consent: "Χωρίς συγκατάθεση", future_stay: "Πριν τη διαμονή", unsubscribed: "Διαγράφηκαν", ota_address: "Διεύθυνση OTA" },
     status: { eligible: "✓ Λαμβάνει", no_consent: "Χωρίς συγκατάθεση", future_stay: "Μετά τη διαμονή", unsubscribed: "🚫 Διαγράφηκε", ota_address: "Διεύθυνση OTA" },
     hint: {
@@ -30,7 +30,7 @@ const texts = {
     search: "Search: name, e-mail, booking, phone", csv: "⬇ Excel (CSV)", none: "No guests found.", more: "Showing the first 300 of {n} — use search or Excel for all.",
     cols: ["Name", "E-mail", "Booking", "Channel", "Bulk e-mail", "WhatsApp"], stays: "bookings", fromCheckin: "from online check-in", waCount: "Bulk WhatsApp reaches: {n}",
     wa: { eligible: "✓ Receives", no_consent: "No consent", unsubscribed: "🚫 Unsubscribed", no_phone: "No mobile", future_stay: "After the stay" },
-    waHint: "Bulk WhatsApp needs the guest's consent (in the booking or online check-in) — also for phones from Booking.com / Airbnb.",
+    waHint: "Bulk WhatsApp only reaches guests who gave a mobile and ticked WhatsApp consent in online check-in (also for Booking.com / Airbnb bookings).",
     filters: { all: "All", eligible: "✓ Receive", no_consent: "No consent", future_stay: "Before the stay", unsubscribed: "Unsubscribed", ota_address: "OTA address" },
     status: { eligible: "✓ Receives", no_consent: "No consent", future_stay: "After the stay", unsubscribed: "🚫 Unsubscribed", ota_address: "OTA address" },
     hint: {
