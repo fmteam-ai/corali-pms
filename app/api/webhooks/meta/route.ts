@@ -48,7 +48,7 @@ export async function POST(request: Request) {
         // Draft a reply with live availability for the reception inbox (sent only after staff approval).
         const draft = await draftDmReply(ownerId, text, platform).catch(() => null);
         if (draft) await db().query(`UPDATE social_messages SET suggested_reply=$1,stay_request_json=$2 WHERE id=$3`, [draft.reply, draft.request ? JSON.stringify(draft.request) : null, r.rows[0].id]);
-        await pushNotification(db(), ownerId, { kind: "system", titleEl: `Νέο μήνυμα ${platform === "instagram" ? "Instagram" : "Facebook"}: ${text.slice(0, 80)}`, titleEn: `New ${platform === "instagram" ? "Instagram" : "Facebook"} message: ${text.slice(0, 80)}`, link: "/pms/social" });
+        await pushNotification(db(), ownerId, { kind: "guest_message", titleEl: `Νέο μήνυμα ${platform === "instagram" ? "Instagram" : "Facebook"}: ${text.slice(0, 80)}`, titleEn: `New ${platform === "instagram" ? "Instagram" : "Facebook"} message: ${text.slice(0, 80)}`, link: "/pms/social" });
       }
     }
   }
@@ -82,7 +82,7 @@ async function whatsappWebhook(ownerId: string, raw: string, signature: string |
     const draft = await draftDmReply(ownerId, m.text, "whatsapp").catch(() => null);
     if (draft) await db().query(`UPDATE social_messages SET suggested_reply=$1,stay_request_json=$2 WHERE id=$3`, [draft.reply, draft.request ? JSON.stringify(draft.request) : null, r.rows[0].id]);
     const who = m.name || `+${m.from}`;
-    await pushNotification(db(), ownerId, { kind: "system", titleEl: `Νέο μήνυμα WhatsApp από ${who}: ${m.text.slice(0, 80)}`, titleEn: `New WhatsApp message from ${who}: ${m.text.slice(0, 80)}`, link: "/pms/social" });
+    await pushNotification(db(), ownerId, { kind: "guest_message", titleEl: `Νέο μήνυμα WhatsApp από ${who}: ${m.text.slice(0, 80)}`, titleEn: `New WhatsApp message from ${who}: ${m.text.slice(0, 80)}`, link: "/pms/social" });
   }
   return Response.json({ ok: true, stored });
 }

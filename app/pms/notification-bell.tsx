@@ -14,6 +14,16 @@ export function NotificationBell({ lang }: { lang: PmsLang }) {
   const [live, setLive] = useState(false);
   const [toasts, setToasts] = useState<Notification[]>([]);
   const seen = useRef<Set<string> | null>(null);
+  const [sound, setSound] = useState(true);
+  const [desktop, setDesktop] = useState<"unsupported" | "default" | "granted" | "denied">("unsupported");
+  useEffect(() => {
+    queueMicrotask(() => {
+      try { setSound(localStorage.getItem("corali:sound") !== "off"); } catch { /* storage blocked: sound stays on */ }
+      if (typeof Notification !== "undefined") setDesktop(Notification.permission);
+    });
+  }, []);
+  const soundOn = useRef(true);
+  useEffect(() => { soundOn.current = sound; }, [sound]);
 
   // A notification that arrives while the PMS is open pops up for 5 seconds (bottom right), then stays in the bell.
   const load = useCallback(async () => {
@@ -27,14 +37,26 @@ export function NotificationBell({ lang }: { lang: PmsLang }) {
     const fresh = list.filter((x) => !known.has(x.key)).slice(0, 3);
     if (!fresh.length) return;
     window.dispatchEvent(new Event("corali:notifications"));
-    // A request from a room TV or a message from housekeeping also plays a chime (once the browser allows sound, i.e. after any click in the PMS).
-    if (fresh.some((x) => x.kind === "tv_request" || x.kind === "hk_message" || x.kind === "guest_order")) {
-      const audio = new Audio("/sounds/pms-request.wav");
+    // A request from a room TV or housekeeping plays the request chime; a guest message (WhatsApp, Facebook, Instagram,
+    // TikTok, e-mail, guest portal) its own softer chime — once the browser allows sound, i.e. after any click in the PMS.
+    const chime = fresh.some((x) => x.kind === "tv_request" || x.kind === "hk_message" || x.kind === "guest_order") ? "/sounds/pms-request.wav" : fresh.some((x) => x.kind === "guest_message") ? "/sounds/pms-message.wav" : "";
+    if (chime && soundOn.current) {
+      const audio = new Audio(chime);
       audio.volume = 0.8;
       void audio.play().catch(() => { /* sound blocked until the page has been clicked */ });
     }
+    // In another tab or window: a desktop notification (if allowed) for messages and requests.
+    if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.visibilityState !== "visible") {
+      for (const x of fresh.filter((y) => ["guest_message", "tv_request", "hk_message", "guest_order", "direct_booking"].includes(y.kind))) {
+        try {
+          const n = new Notification("Hotel Corali PMS", { body: x.title, tag: x.key, icon: "/hotel-corali-logo.png" });
+          n.onclick = () => { window.focus(); window.location.href = x.link; n.close(); };
+        } catch { /* some browsers only allow notifications from a service worker */ }
+      }
+    }
     setToasts((v) => [...fresh, ...v].slice(0, 4));
-    for (const x of fresh) window.setTimeout(() => setToasts((v) => v.filter((y) => y.key !== x.key)), 5_000);
+    // Messages stay on screen longer so they are not missed.
+    for (const x of fresh) window.setTimeout(() => setToasts((v) => v.filter((y) => y.key !== x.key)), x.kind === "guest_message" ? 15_000 : 5_000);
   }, []);
 
   useEffect(() => {
@@ -63,6 +85,16 @@ export function NotificationBell({ lang }: { lang: PmsLang }) {
   async function mark(key: string) {
     if ((await post({ action: "read_notification", key })).ok) setItems((v) => v.filter((x) => x.key !== key));
   }
+  function toggleSound() {
+    const next = !sound;
+    setSound(next);
+    try { localStorage.setItem("corali:sound", next ? "on" : "off"); } catch { /* storage blocked */ }
+    if (next) { const a = new Audio("/sounds/pms-message.wav"); a.volume = 0.8; void a.play().catch(() => undefined); }
+  }
+  async function askDesktop() {
+    if (typeof Notification === "undefined") return;
+    setDesktop(await Notification.requestPermission());
+  }
   async function markAll() {
     if ((await post({ action: "read_all" })).ok) setItems([]);
   }
@@ -89,6 +121,12 @@ export function NotificationBell({ lang }: { lang: PmsLang }) {
           <div className="bellHead">
             <strong>{t("bell.title")}</strong>
             {items.length > 0 && <button type="button" onClick={markAll}>{t("bell.markAll")}</button>}
+          </div>
+          <div className="bellPrefs">
+            <button type="button" aria-pressed={sound} onClick={toggleSound} title={t("bell.soundHint")}>{sound ? `🔊 ${t("bell.soundOn")}` : `🔇 ${t("bell.soundOff")}`}</button>
+            {desktop === "default" && <button type="button" onClick={() => void askDesktop()}>🖥 {t("bell.desktopAsk")}</button>}
+            {desktop === "granted" && <span>🖥 {t("bell.desktopOn")}</span>}
+            {desktop === "denied" && <span title={t("bell.desktopDeniedHint")}>🖥 {t("bell.desktopDenied")}</span>}
           </div>
           {items.length === 0 ? <p>{t("bell.empty")}</p> : items.map((item) => (
             <div key={item.key}>

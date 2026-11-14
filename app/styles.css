@@ -112,7 +112,7 @@ p { line-height: 1.65; }
 .bellHead button{border:0;background:#eef6f8;color:#19769b;border-radius:8px;padding:6px 10px;font-weight:700;cursor:pointer}
 .bellPanel a small{display:block;color:#718399;font-size:11px}
 .bellIcon{width:22px;text-align:center}
-.bellPanel{max-height:70vh;overflow:auto}
+.bellPanel{max-height:70vh;overflow:auto}.bellPanel>.bellPrefs{flex-wrap:wrap;gap:6px;padding:8px 0;font-size:12px;color:#5b6b70}.bellPanel .bellPrefs button{background:#eef6f8;color:#19769b;font-weight:600;font-size:12px;padding:5px 9px}
 .forecastHead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .forecastHead h2{margin:0}
 .forecastAverage{margin:6px 0 12px;color:#60757a}

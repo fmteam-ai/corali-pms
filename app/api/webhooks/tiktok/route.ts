@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     stored++;
     const draft = await draftDmReply(ownerId, m.text, "tiktok").catch(() => null);
     if (draft) await db().query(`UPDATE social_messages SET suggested_reply=$1,stay_request_json=$2 WHERE id=$3`, [draft.reply, draft.request ? JSON.stringify(draft.request) : null, r.rows[0].id]);
-    await pushNotification(db(), ownerId, { kind: "system", titleEl: `Νέο μήνυμα TikTok: ${m.text.slice(0, 80)}`, titleEn: `New TikTok message: ${m.text.slice(0, 80)}`, link: "/pms/social" });
+    await pushNotification(db(), ownerId, { kind: "guest_message", titleEl: `Νέο μήνυμα TikTok: ${m.text.slice(0, 80)}`, titleEn: `New TikTok message: ${m.text.slice(0, 80)}`, link: "/pms/social" });
   }
   return Response.json({ ok: true, stored });
 }
