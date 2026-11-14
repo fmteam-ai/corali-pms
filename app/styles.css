@@ -941,3 +941,6 @@ table.numeric tr.selected td{background:#fff8e6}
 .translateBtn{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap}.translateBtn small{font-size:12px;opacity:.85}.translateBtn button{white-space:nowrap}
 .translationActions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px}
 .card .formError,.loginForm .formError{width:auto;max-width:100%;margin:0;box-sizing:border-box}
+
+/* Αυτόματα μηνύματα: one checkbox per line */
+.automationEditor .autoCheck{display:flex;align-items:center;gap:8px;margin:6px 0}
