@@ -58,7 +58,7 @@ async function run(){const r=await pool.query(`SELECT * FROM message_automation_
  let reference;if(delivery.channel==="email"){if(event==="review"&&!Number(b.email_marketing_opt_in))throw Error("SKIPPED_NOT_ELIGIBLE");reference=await email(b.guest_email,interpolate(template.subject,values),interpolate(template.body,values))}else {if(!Number(b.whatsapp_opt_in))throw Error("WHATSAPP_NOT_OPTED_IN");if(triggered&&(!Number(settings.whatsapp_enabled)||!template.whatsappTemplate))throw Error("SKIPPED_NOT_ELIGIBLE");reference=await whatsapp(b.guest_phone,event,lang,template.whatsappTemplate,values)}await pool.query(`UPDATE message_deliveries SET status='sent',provider_reference=$1,sent_at=$2,last_error=NULL,updated_at=$2 WHERE id=$3`,[reference??"accepted",Date.now(),delivery.id])
  }catch(e){const skipped=e instanceof Error&&e.message==="SKIPPED_NOT_ELIGIBLE";await pool.query(`UPDATE message_deliveries SET status=$1,last_error=$2,updated_at=$3 WHERE id=$4`,[skipped?"skipped":"failed",e instanceof Error?e.message.slice(0,250):"SEND_FAILED",Date.now(),delivery.id])}}
  console.log(`Automation scan complete: ${bookings.rowCount} bookings`)}
-try{await run();
+try{await run().catch(e=>{console.error("Guest message automations failed",e);process.exitCode=1});
  // Virtual access cards (PMS → Digital key): a failure here never stops the guest messages above.
  await runAccessCards({pool,owner,seal,email,origin:process.env.BOOKING_ORIGIN}).catch(e=>console.error("Access cards failed",e))
  // Bulk messages to past guests (PMS → Bulk messages): a few per minute, consent and unsubscribes checked per message.

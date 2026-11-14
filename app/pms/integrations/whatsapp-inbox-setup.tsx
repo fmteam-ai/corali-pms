@@ -26,7 +26,7 @@ export function WhatsAppInboxSetup({ editable }: { editable: boolean }) {
   const follow = useCallback(async (requestedAt: number) => {
     setWaiting(true);
     for (let i = 0; i < 18; i++) {
-      await new Promise((r) => setTimeout(r, 10_000));
+      await new Promise((r) => setTimeout(r, i < 6 ? 4_000 : 10_000));
       const d = await load();
       if (d?.setup && d.setup.doneAt >= requestedAt) {
         setWaiting(false);
@@ -35,7 +35,7 @@ export function WhatsAppInboxSetup({ editable }: { editable: boolean }) {
       }
     }
     setWaiting(false);
-    setMsg("Δεν ολοκληρώθηκε ακόμα. Ελέγξτε ότι τρέχει το cron «Αυτόματα μηνύματα» (κάθε λεπτό) και ανανεώστε σε λίγο.");
+    setMsg("Δεν ολοκληρώθηκε ακόμα — ανανεώστε τη σελίδα σε λίγο ή πατήστε ξανά «Ενεργοποίηση εισερχομένων».");
   }, [load]);
   useEffect(() => { queueMicrotask(() => { void load(); }); }, [load]);
   async function enable() {
@@ -45,7 +45,7 @@ export function WhatsAppInboxSetup({ editable }: { editable: boolean }) {
       const raw = await r.text().catch(() => "");
       let d: { ok?: boolean; error?: string; detail?: string; webhook?: boolean; subscribed?: boolean; queued?: boolean; requestedAt?: number };
       try { d = JSON.parse(raw); } catch { d = { error: `HTTP ${r.status}`, detail: raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160) }; }
-      if (d.ok && (d as { queued?: boolean; requestedAt?: number }).queued) { setMsg("⏳ Η ρύθμιση γίνεται στον server (έως 1 λεπτό) — μπορείτε να μείνετε σε αυτή τη σελίδα."); void follow(Number((d as { requestedAt?: number }).requestedAt) || Date.now()); }
+      if (d.ok && (d as { queued?: boolean; requestedAt?: number }).queued) { setMsg("⏳ Η ρύθμιση γίνεται στον server (λίγα δευτερόλεπτα) — μείνετε σε αυτή τη σελίδα."); void follow(Number((d as { requestedAt?: number }).requestedAt) || Date.now()); }
       else if (d.ok) { setS({ ready: true, ...d }); }
       else { const code = d.error ?? `HTTP ${r.status}`; setMsg(`${errors[code] ?? "Η ενεργοποίηση απέτυχε."}${d.detail ? ` (${code === "UNEXPECTED" || code.startsWith("HTTP") ? "" : "Meta: "}${d.detail})` : ""}${errors[code] ? "" : ` [${code}]`}`); }
     } finally { setBusy(false); }

@@ -4,7 +4,9 @@ import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { DEFAULT_GRAPH_VERSION } from "@/lib/meta-connect-core";
 import { providerCredentials } from "@/lib/provider-connections";
+import { after } from "next/server";
 import { allowAttempt } from "@/lib/request-limit";
+import { runWhatsAppInboxSetup } from "../../../../scripts/whatsapp-inbox-worker.mjs";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 import { can } from "@/lib/security/permissions";
 
@@ -96,6 +98,12 @@ async function enableInbox(request: Request) {
   // never waits on Meta (a long wait here was cut by the proxy with 502).
   const at = Date.now();
   await db().query(`UPDATE provider_connections SET settings_json=(settings_json::jsonb || $3::jsonb)::text WHERE owner_id=$1 AND provider_key=$2`, [u.ownerId, "whatsapp", JSON.stringify({ inboxSetupRequestedAt: String(at) })]);
+  // Done by the PMS itself right after this answer (no cron needed); the automation cron, where it runs, is a fallback.
+  const ownerId = u.ownerId;
+  after(() => runWhatsAppInboxSetup({
+    pool: db(), owner: ownerId, origin: env().BOOKING_ORIGIN,
+    credentials: async (key) => { const c = await providerCredentials(ownerId, key as "whatsapp"); return c ? (c.active ? { settings: c.settings, secrets: c.secrets } : { disabled: true }) : null; },
+  }).catch((e) => console.error("WhatsApp inbox setup failed", e)));
   return Response.json({ ok: true, queued: true, requestedAt: at });
 }
 
