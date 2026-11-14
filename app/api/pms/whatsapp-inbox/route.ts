@@ -1,5 +1,6 @@
 import { audited } from "@/lib/audit";
 import { requireApiUser } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { DEFAULT_GRAPH_VERSION } from "@/lib/meta-connect-core";
 import { providerCredentials } from "@/lib/provider-connections";
@@ -63,7 +64,8 @@ export async function GET() {
   // The verify token only lets Meta confirm the callback URL (it opens nothing): shown to those who edit connections,
   // so it can be pasted into Meta → WhatsApp → Configuration exactly as stored.
   const verifyToken = can(u.role, "integrations.write", u.permissions) ? s.verifyToken : undefined;
-  return Response.json({ ok: true, ready: true, ...st, callbackCheck: check, verifyToken }, { headers: { "Cache-Control": "no-store" } });
+  const setupState = { requestedAt: Number(s.wa.settings.inboxSetupRequestedAt || 0), doneAt: Number(s.wa.settings.inboxSetupDoneAt || 0), result: String(s.wa.settings.inboxSetupResult ?? "") };
+  return Response.json({ ok: true, ready: true, ...st, callbackCheck: check, verifyToken, setup: setupState }, { headers: { "Cache-Control": "no-store" } });
 }
 
 /**
@@ -90,11 +92,11 @@ async function enableInbox(request: Request) {
   // Meta checks the callback at once: say plainly when the booking site would not answer it.
   const check = await callbackCheck(s);
   if (!check.ok) return Response.json({ ok: false, error: "CALLBACK_FAILED", detail: `HTTP ${check.status || "—"}${check.body ? ` · ${check.body}` : ""}`, callbackCheck: check }, { status: 502 });
-  const hook = await graph(`${s.base}/${s.appId}/subscriptions`, { method: "POST", body: new URLSearchParams({ object: "whatsapp_business_account", callback_url: s.callback, verify_token: s.verifyToken, fields: "messages", include_values: "true", access_token: s.appToken }) });
-  if (!hook.ok) return Response.json({ ok: false, error: "WEBHOOK_FAILED", detail: metaMessage(hook.json.error) }, { status: 502 });
-  const sub = await graph(`${s.base}/${s.waba}/subscribed_apps`, { method: "POST", headers: { Authorization: `Bearer ${s.access}` } });
-  if (!sub.ok) return Response.json({ ok: false, error: "SUBSCRIBE_FAILED", detail: metaMessage(sub.json.error) }, { status: 502 });
-  return Response.json({ ok: true, ...(await status(s)) });
+  // The calls to Meta run in the automation cron within a minute (scripts/whatsapp-inbox-worker.mjs), so this page
+  // never waits on Meta (a long wait here was cut by the proxy with 502).
+  const at = Date.now();
+  await db().query(`UPDATE provider_connections SET settings_json=(settings_json::jsonb || $3::jsonb)::text WHERE owner_id=$1 AND provider_key=$2`, [u.ownerId, "whatsapp", JSON.stringify({ inboxSetupRequestedAt: String(at) })]);
+  return Response.json({ ok: true, queued: true, requestedAt: at });
 }
 
 export const POST = audited("whatsapp_inbox", handlePOST);

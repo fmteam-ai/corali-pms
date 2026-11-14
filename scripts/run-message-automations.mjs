@@ -12,6 +12,7 @@ import {runRoomAc} from "./room-ac-worker.mjs";
 import {runRoomClimate} from "./room-climate-worker.mjs";
 import {runCampaigns} from "./campaign-worker.mjs";
 import {runMailInbox} from "./mail-inbox-worker.mjs";
+import {runWhatsAppInboxSetup} from "./whatsapp-inbox-worker.mjs";
 import {normalizeBrand,renderBrandedEmail,stayDate,withFallbacks} from "./email-brand-core.mjs";
 if(!process.env.DATABASE_URL||!process.env.PMS_DOCUMENT_KEY||!process.env.BOOKING_ORIGIN)throw Error("Automation requires DATABASE_URL, PMS_DOCUMENT_KEY and BOOKING_ORIGIN");
 // WhatsApp connected with a 60-day token (PMS → Ενσωματώσεις → Γρήγορη σύνδεση): a PMS notice once a day, from a
@@ -72,4 +73,6 @@ try{await run();
  await runRoomClimate({pool,owner,unseal,seal}).catch(e=>console.error("Room climate failed",e))
  // New e-mails in the hotel's mailbox (PMS → Συνδέσεις → Εισερχόμενα email): a PMS notification with sound; read-only.
  await runMailInbox({pool,owner,credentials}).then(r=>r.stored&&console.log(`Mail inbox: ${r.stored} new`)).catch(e=>console.error("Mail inbox failed",e instanceof Error?e.message:e))
+ // «Ενεργοποίηση εισερχομένων» WhatsApp requested from PMS → Συνδέσεις (done here, so the page never waits on Meta).
+ await runWhatsAppInboxSetup({pool,owner,credentials,origin:process.env.BOOKING_ORIGIN}).then(r=>r.ran&&console.log(`WhatsApp inbox setup: ${r.result}`)).catch(e=>console.error("WhatsApp inbox setup failed",e))
  await whatsappTokenReminder().catch(e=>console.error("WhatsApp token reminder failed",e))}finally{await warm;await pool.end()}
