@@ -1233,6 +1233,8 @@ CREATE TABLE IF NOT EXISTS competitor_rates (
 -- v48: DM-to-booking drafts with live availability (reviewed and sent by reception)
 ALTER TABLE social_messages ADD COLUMN IF NOT EXISTS suggested_reply TEXT;
 ALTER TABLE social_messages ADD COLUMN IF NOT EXISTS stay_request_json TEXT;
+-- v144: WhatsApp guest messages in the same inbox (the guest's WhatsApp profile name)
+ALTER TABLE social_messages ADD COLUMN IF NOT EXISTS sender_name TEXT;
 
 -- v49: payment terms per rate plan (cancellation policy) and booking policy texts per language
 ALTER TABLE rate_plans ADD COLUMN IF NOT EXISTS deposit_percent BIGINT CHECK (deposit_percent IS NULL OR deposit_percent BETWEEN 0 AND 100);

@@ -3,11 +3,13 @@ import { useEffect, useMemo, useState } from "react";
 import { suggestedReply } from "@/lib/social-reply";
 
 type Post = { id: number; channels: string; caption: string; image_url: string; link_url: string; scheduled_at: number; status: string; created_by: number; author: string | null; approver: string | null; results_json: string };
-type Message = { id: number; platform: string; sender_id: string; direction: string; body: string; status: string; created_at: number; suggested_reply?: string | null; stay_request_json?: string | null };
-type State = { posts: Post[]; messages: Message[]; bookingUrl: string };
+type Message = { id: number; platform: string; sender_id: string; sender_name?: string | null; direction: string; body: string; status: string; created_at: number; suggested_reply?: string | null; stay_request_json?: string | null };
+type Guest = { bookingId: number; reference: string; guestName: string; checkIn: string; checkOut: string; status: string };
+type State = { posts: Post[]; messages: Message[]; guests?: Record<string, Guest>; bookingUrl: string };
+const platformLabel: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", tiktok: "TikTok", whatsapp: "💬 WhatsApp" };
 
 const statusLabel: Record<string, string> = { draft: "Πρόχειρο", pending_approval: "Αναμονή έγκρισης", approved: "Εγκρίθηκε · προγραμματισμένο", published: "Δημοσιεύτηκε", partially_published: "Μερική δημοσίευση", failed: "Αποτυχία", rejected: "Απορρίφθηκε" };
-const errors: Record<string, string> = { SECOND_APPROVER_REQUIRED: "Την έγκριση κάνει άλλο άτομο από τον συντάκτη.", INSTAGRAM_NEEDS_IMAGE: "Το Instagram απαιτεί εικόνα (URL).", INVALID_TRANSITION: "Η ενέργεια δεν επιτρέπεται σε αυτή την κατάσταση.", META_NOT_CONFIGURED: "Ρυθμίστε το Facebook/Instagram στις Συνδέσεις.", SEND_FAILED: "Το Meta δεν δέχτηκε το μήνυμα (ίσως πέρασε το 24ωρο παράθυρο)." };
+const errors: Record<string, string> = { SECOND_APPROVER_REQUIRED: "Την έγκριση κάνει άλλο άτομο από τον συντάκτη.", INSTAGRAM_NEEDS_IMAGE: "Το Instagram απαιτεί εικόνα (URL).", INVALID_TRANSITION: "Η ενέργεια δεν επιτρέπεται σε αυτή την κατάσταση.", META_NOT_CONFIGURED: "Ρυθμίστε το Facebook/Instagram στις Συνδέσεις.", WHATSAPP_NOT_CONFIGURED: "Ρυθμίστε το WhatsApp στις Συνδέσεις.", SEND_FAILED: "Το Meta δεν δέχτηκε το μήνυμα (ίσως πέρασε το 24ωρο παράθυρο)." };
 const local = (ms: number) => new Date(ms - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 
 export function SocialManager({ initial, userId, canPost, canReply }: { initial: State; userId: number; canPost: boolean; canReply: boolean }) {
@@ -44,7 +46,7 @@ export function SocialManager({ initial, userId, canPost, canReply }: { initial:
       <div className="detailGrid">
         <article className="wide">
           <h2>Μηνύματα (DM → κράτηση)</h2>
-          {threads.length === 0 && <p>Δεν υπάρχουν μηνύματα τις τελευταίες 30 ημέρες. Ρυθμίστε τα webhooks <code>/api/webhooks/meta</code> και <code>/api/webhooks/tiktok</code> στο Booking.</p>}
+          {threads.length === 0 && <p>Δεν υπάρχουν μηνύματα τις τελευταίες 30 ημέρες. Ρυθμίστε τα webhooks <code>/api/webhooks/meta</code> και <code>/api/webhooks/tiktok</code> στο Booking· για το WhatsApp: Συνδέσεις → WhatsApp → «Ενεργοποίηση εισερχομένων».</p>}
           {threads.map(([key, list]) => {
             const lastIn = [...list].reverse().find((m) => m.direction === "in");
             const draft = drafts[key] ?? (lastIn ? lastIn.suggested_reply || suggestedReply(lastIn.body, state.bookingUrl, list[0].platform) : "");
@@ -54,7 +56,8 @@ export function SocialManager({ initial, userId, canPost, canReply }: { initial:
             try { stay = lastIn?.stay_request_json ? JSON.parse(lastIn.stay_request_json) : null; } catch { stay = null; }
             return (
               <div className="dmThread" key={key}>
-                <b>{list[0].platform === "instagram" ? "Instagram" : tiktok ? "TikTok" : "Facebook"} · {list[0].sender_id}</b>
+                <b>{platformLabel[list[0].platform] ?? list[0].platform} · {list[0].platform === "whatsapp" ? <>{list.find((m) => m.sender_name)?.sender_name ?? state.guests?.[list[0].sender_id]?.guestName ?? ""} <a href={`https://wa.me/${list[0].sender_id}`} target="_blank" rel="noreferrer">+{list[0].sender_id}</a></> : list[0].sender_id}</b>
+                {list[0].platform === "whatsapp" && state.guests?.[list[0].sender_id] && (() => { const g = state.guests![list[0].sender_id]; return <small className="dmGuest">🛏 Κράτηση <a href={`/pms/reservations/${g.bookingId}`}>{g.reference}</a> · {g.guestName} · {g.checkIn} → {g.checkOut}</small>; })()}
                 {stay && <small className="dmStay">📅 {stay.checkIn} → {stay.checkOut} · {stay.adults}+{stay.children} · πρόταση με ζωντανή διαθεσιμότητα</small>}
                 {list.slice(-6).map((m) => <p key={m.id} className={m.direction === "in" ? "dmIn" : "dmOut"}>{m.body}<small>{new Date(Number(m.created_at)).toLocaleString("el-GR")}</small></p>)}
                 {canReply && lastIn && (

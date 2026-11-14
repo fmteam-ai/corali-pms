@@ -422,7 +422,7 @@ table.numeric tr.selected td{background:#fff8e6}
 .competitorForm input,.competitorForm select{box-sizing:border-box;width:100%;font-weight:400}
 .revenuePage .card{max-width:none;width:100%;box-sizing:border-box;min-width:0}
 .revenuePage .card{padding:24px}
-.dmStay{display:block;color:#1e6b34;font-weight:700;margin:4px 0}
+.dmStay{display:block;color:#1e6b34;font-weight:700;margin:4px 0}.dmGuest{display:block;margin:4px 0;color:var(--muted,#5b6b70)}
 .upsellList{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:8px}
 .upsellList li{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #ded8ce;border-radius:12px;padding:10px}
 .upsellList li div{display:grid;gap:2px}

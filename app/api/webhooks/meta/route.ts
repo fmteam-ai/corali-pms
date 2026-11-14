@@ -4,12 +4,15 @@ import { env } from "@/lib/env";
 import { providerCredentials } from "@/lib/provider-connections";
 import { pushNotification } from "@/lib/pms-notifications";
 import { validMetaSignature } from "@/lib/social";
+import { parseWhatsAppWebhook } from "@/lib/whatsapp-inbox-core";
 
 /** Meta webhook verification handshake. */
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const meta = await providerCredentials(env().PMS_OWNER_ID, "meta").catch(() => null);
-  if (url.searchParams.get("hub.mode") === "subscribe" && meta?.secrets.verifyToken && url.searchParams.get("hub.verify_token") === meta.secrets.verifyToken) {
+  const [meta, wa] = await Promise.all([providerCredentials(env().PMS_OWNER_ID, "meta").catch(() => null), providerCredentials(env().PMS_OWNER_ID, "whatsapp").catch(() => null)]);
+  const given = url.searchParams.get("hub.verify_token");
+  // Facebook/Instagram and WhatsApp may be set up with different Meta apps, each with its own verify token.
+  if (url.searchParams.get("hub.mode") === "subscribe" && given && [meta?.secrets.verifyToken, wa?.secrets.verifyToken].some((t) => t && t === given)) {
     return new Response(url.searchParams.get("hub.challenge") ?? "", { status: 200 });
   }
   return new Response("Forbidden", { status: 403 });
@@ -20,8 +23,9 @@ type MessagingEvent = { sender?: { id?: string }; message?: { mid?: string; text
 /** Incoming Facebook Page / Instagram direct messages, stored for the PMS inbox (replies are sent by staff). */
 export async function POST(request: Request) {
   const ownerId = env().PMS_OWNER_ID;
-  const meta = await providerCredentials(ownerId, "meta").catch(() => null);
   const raw = await request.text();
+  if (/"object"\s*:\s*"whatsapp_business_account"/.test(raw)) return whatsappWebhook(ownerId, raw, request.headers.get("x-hub-signature-256"));
+  const meta = await providerCredentials(ownerId, "meta").catch(() => null);
   if (!meta?.active || !validMetaSignature(raw, request.headers.get("x-hub-signature-256"), meta.secrets.appSecret ?? "")) return new Response("Forbidden", { status: 403 });
   let body: { object?: string; entry?: { messaging?: MessagingEvent[] }[] };
   try {
@@ -47,6 +51,38 @@ export async function POST(request: Request) {
         await pushNotification(db(), ownerId, { kind: "system", titleEl: `Νέο μήνυμα ${platform === "instagram" ? "Instagram" : "Facebook"}: ${text.slice(0, 80)}`, titleEn: `New ${platform === "instagram" ? "Instagram" : "Facebook"} message: ${text.slice(0, 80)}`, link: "/pms/social" });
       }
     }
+  }
+  return Response.json({ ok: true, stored });
+}
+
+/**
+ * Guest messages to the hotel's WhatsApp number (Cloud API), signed with the WhatsApp app's secret (or the
+ * Facebook/Instagram app's, when both use the same app): stored in the same PMS inbox, with a drafted reply.
+ */
+async function whatsappWebhook(ownerId: string, raw: string, signature: string | null) {
+  const [wa, meta] = await Promise.all([providerCredentials(ownerId, "whatsapp").catch(() => null), providerCredentials(ownerId, "meta").catch(() => null)]);
+  const secrets = [wa?.secrets.appSecret, meta?.secrets.appSecret].filter((x): x is string => Boolean(x));
+  if (!wa?.active || !secrets.some((secret) => validMetaSignature(raw, signature, secret))) return new Response("Forbidden", { status: 403 });
+  let body: unknown;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return new Response("Bad request", { status: 400 });
+  }
+  let stored = 0;
+  for (const m of parseWhatsAppWebhook(body)) {
+    // Only the number connected in the PMS (a WhatsApp account can hold more than one).
+    if (wa.settings.phoneNumberId && m.phoneNumberId && m.phoneNumberId !== wa.settings.phoneNumberId) continue;
+    const r = await db().query(
+      `INSERT INTO social_messages(owner_id,platform,sender_id,sender_name,direction,body,external_id,status,created_at) VALUES($1,'whatsapp',$2,$3,'in',$4,$5,'new',$6) ON CONFLICT DO NOTHING RETURNING id`,
+      [ownerId, m.from, m.name || null, m.text, m.id, m.createdAt],
+    );
+    if (!r.rowCount) continue;
+    stored++;
+    const draft = await draftDmReply(ownerId, m.text, "whatsapp").catch(() => null);
+    if (draft) await db().query(`UPDATE social_messages SET suggested_reply=$1,stay_request_json=$2 WHERE id=$3`, [draft.reply, draft.request ? JSON.stringify(draft.request) : null, r.rows[0].id]);
+    const who = m.name || `+${m.from}`;
+    await pushNotification(db(), ownerId, { kind: "system", titleEl: `Νέο μήνυμα WhatsApp από ${who}: ${m.text.slice(0, 80)}`, titleEn: `New WhatsApp message from ${who}: ${m.text.slice(0, 80)}`, link: "/pms/social" });
   }
   return Response.json({ ok: true, stored });
 }

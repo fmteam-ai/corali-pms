@@ -15,7 +15,7 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("edit"), id: z.number().int().positive(), ...post.shape }),
   z.object({ action: z.enum(["submit", "approve", "reject", "withdraw"]), id: z.number().int().positive() }),
   z.object({ action: z.literal("suggest"), messageId: z.number().int().positive() }),
-  z.object({ action: z.literal("reply"), platform: z.enum(["facebook", "instagram", "tiktok"]), senderId: z.string().min(1).max(100), text: z.string().trim().min(1).max(1000) }),
+  z.object({ action: z.literal("reply"), platform: z.enum(["facebook", "instagram", "tiktok", "whatsapp"]), senderId: z.string().min(1).max(100), text: z.string().trim().min(1).max(1000) }),
 ]);
 
 export async function GET() {
@@ -43,6 +43,18 @@ async function handlePOST(request: Request) {
       if (!can(u.role, "reservations.write", u.permissions)) return forbidden(u, "reservations.write", "social.reply");
       await db().query(`INSERT INTO social_messages(owner_id,platform,sender_id,direction,body,status,sent_by,created_at) VALUES($1,'tiktok',$2,'out',$3,'approved_manual',$4,$5)`, [u.ownerId, x.senderId, x.text, u.id, now]);
       await db().query(`UPDATE social_messages SET status='answered' WHERE owner_id=$1 AND platform='tiktok' AND sender_id=$2 AND direction='in' AND status='new'`, [u.ownerId, x.senderId]);
+    } else if (x.action === "reply" && x.platform === "whatsapp") {
+      // Free-text reply to a guest on WhatsApp: Meta accepts it within 24 hours of the guest's last message.
+      if (!can(u.role, "reservations.write", u.permissions)) return forbidden(u, "reservations.write", "social.reply");
+      const wa = await providerCredentials(u.ownerId, "whatsapp");
+      const api = /^v\d+\.\d+$/.test(wa?.settings.apiVersion ?? "") ? wa!.settings.apiVersion : "v22.0";
+      if (!wa?.active || !wa.secrets.accessToken || !wa.settings.phoneNumberId) return Response.json({ ok: false, error: "WHATSAPP_NOT_CONFIGURED" }, { status: 409 });
+      if (!/^\d{6,15}$/.test(x.senderId)) return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
+      const r = await fetch(`https://graph.facebook.com/${api}/${wa.settings.phoneNumberId}/messages`, { method: "POST", headers: { Authorization: `Bearer ${wa.secrets.accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: x.senderId, type: "text", text: { body: x.text, preview_url: true } }), signal: AbortSignal.timeout(15_000) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return Response.json({ ok: false, error: "SEND_FAILED", detail: String(d.error?.error_data?.details ?? d.error?.message ?? r.status).slice(0, 200) }, { status: 502 });
+      await db().query(`INSERT INTO social_messages(owner_id,platform,sender_id,direction,body,external_id,status,sent_by,created_at) VALUES($1,'whatsapp',$2,'out',$3,$4,'sent',$5,$6)`, [u.ownerId, x.senderId, x.text, d.messages?.[0]?.id ?? null, u.id, now]);
+      await db().query(`UPDATE social_messages SET status='answered' WHERE owner_id=$1 AND platform='whatsapp' AND sender_id=$2 AND direction='in' AND status='new'`, [u.ownerId, x.senderId]);
     } else if (x.action === "reply") {
       // Staff-approved reply within Meta's 24-hour messaging window; never sent automatically.
       if (!can(u.role, "reservations.write", u.permissions)) return forbidden(u, "reservations.write", "social.reply");
