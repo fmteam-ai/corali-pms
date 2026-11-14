@@ -23,7 +23,9 @@ test("audience query binds every placeholder and keeps consent + unsubscribe che
     assert.match(q.sql, /consent=1/);
     assert.match(q.sql, /marketing_unsubscribes/);
     assert.match(q.sql, /check_out<=\$2/);
-    assert.match(q.sql, ch === "email" ? /email_marketing_opt_in/ : /whatsapp_opt_in/);
+    // E-mail: only the address and consent the guest gave in online check-in (never the booking's own e-mail).
+    if (ch === "email") { assert.match(q.sql, /FROM guest_checkins c .*c\.status='submitted'/); assert.match(q.sql, /email_marketing_consent/); assert.doesNotMatch(q.sql, /b\.guest_email/); }
+    else assert.match(q.sql, /whatsapp_opt_in/);
   }
 });
 
@@ -63,4 +65,17 @@ test("rate per minute is limited; presets exist in six languages", () => {
   assert.equal(batchSize(0), 20);
   assert.equal(batchSize(500), 120);
   for (const p of Object.values(campaignPresets)) for (const l of ["el", "en", "fr", "de", "it", "es"] as const) { assert.ok(p[l].subject); assert.match(p[l].body, /\{name\}/); }
+});
+
+test("OTA relay addresses never get bulk e-mails; channel names for the guest list", async () => {
+  const { isOtaRelayEmail, channelName, audienceQuery, OTA_RELAY_SQL } = await import("../scripts/campaign-core.mjs");
+  for (const e of ["abc123@guest.booking.com", " X@Guest.Airbnb.com ", "r1@m.expediapartnercentral.com", "a@agoda-messaging.com"]) assert.equal(isOtaRelayEmail(e), true, e);
+  for (const e of ["maria@gmail.com", "booking.com@example.com", "a@booking.com", "", null]) assert.equal(isOtaRelayEmail(e), false, String(e));
+  assert.match(audienceQuery("o", {}, "email", "2026-11-14").sql, new RegExp(`!~ ${OTA_RELAY_SQL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.doesNotMatch(audienceQuery("o", {}, "whatsapp", "2026-11-14").sql, /guest\\\.booking/);
+  assert.equal(channelName("booking.com"), "Booking.com");
+  assert.equal(channelName("direct"), "Απευθείας (site)");
+  assert.equal(channelName("direct", "en"), "Direct (website)");
+  assert.equal(channelName("hostelworld"), "Hostelworld");
+  assert.equal(channelName(""), "—");
 });

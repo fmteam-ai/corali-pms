@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
+import { CheckinSend } from "./checkin-send";
 
 export type Checkin = {
   submitted_at: number; first_name: string; last_name: string; email: string; phone: string; arrival_time: string; travel_details: string;
@@ -8,11 +9,11 @@ export type Checkin = {
   email_marketing_consent: number; whatsapp_marketing_consent: number; purged: boolean;
 };
 
-export function CheckinCard({ lang, bookingId, checkin, canReveal }: { lang: PmsLang; bookingId: number; checkin: Checkin | null; canReveal: boolean }) {
+export function CheckinCard({ lang, bookingId, checkin, canReveal, send }: { lang: PmsLang; bookingId: number; checkin: Checkin | null; canReveal: boolean; send?: { email: string; phone: string } | null }) {
   const t = pmsT(lang);
   const [identity, setIdentity] = useState<{ documentNumber: string; dateOfBirth: string } | null>(null);
   const [error, setError] = useState("");
-  if (!checkin) return <article><h2>{t("ci.title")}</h2><p>{t("ci.none")}</p></article>;
+  if (!checkin) return <article><h2>{t("ci.title")}</h2><p>{t("ci.none")}</p>{send && <CheckinSend lang={lang} bookingId={bookingId} email={send.email} phone={send.phone} />}</article>;
   const yesNo = (v: number) => (Number(v) ? t("ci.yes") : t("ci.no"));
   async function reveal() {
     const r = await fetch(`/api/pms/reservations/${bookingId}/identity`, { method: "POST" });

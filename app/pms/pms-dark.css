@@ -635,3 +635,6 @@
 .pms[data-theme="dark"] .waStatus-disabled{color:hsl(4 75% 72%)}
 .pms[data-theme="dark"] .waStatus-pending,
 .pms[data-theme="dark"] .waStatus-in_appeal{color:hsl(35 75% 72%)}
+.pms[data-theme="dark"] .guestStatus-eligible{color:hsl(138 59% 72%)}
+.pms[data-theme="dark"] .guestStatus-unsubscribed,
+.pms[data-theme="dark"] .guestStatus-ota_address{color:hsl(4 75% 72%)}

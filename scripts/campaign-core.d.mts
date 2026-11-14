@@ -16,3 +16,10 @@ export declare function renderCampaignEmail(x: { content: CampaignContent; lang:
 export declare function whatsappLanguage(codes: string, lang: string): string;
 export declare function batchSize(rate: unknown): number;
 export declare const campaignPresets: Record<string, { icon: string } & Record<"el" | "en" | "fr" | "de" | "it" | "es", { subject: string; body: string }>>;
+export declare const OTA_RELAY_DOMAINS: string[];
+export declare const OTA_RELAY_SQL: string;
+export declare function isOtaRelayEmail(email: unknown): boolean;
+export declare function channelName(channel: unknown, lang?: string): string;
+export declare const VALID_EMAIL_SQL: string;
+export declare const CHECKIN_EMAIL_JOIN: string;
+export declare const GUEST_EMAIL_SQL: string;

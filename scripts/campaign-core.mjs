@@ -47,6 +47,32 @@ export const normalizePhone = (p) => { const d = String(p ?? "").replace(/[\s()+
  * Past guests who agreed to marketing on this channel (booking or online check-in), grouped by e-mail / phone, newest
  * name and language, minus unsubscribed addresses. Only stays already over; cancelled / no-show bookings never count.
  */
+/**
+ * Masked addresses that Booking.com, Airbnb, Expedia and Agoda give the hotel for one stay: they only relay messages
+ * about that booking, and the channels forbid marketing to them, so they never get bulk messages.
+ */
+export const OTA_RELAY_DOMAINS = ["guest.booking.com", "guest.airbnb.com", "m.expediapartnercentral.com", "agoda-messaging.com", "guest.trip.com", "guest.hotels.com"];
+export const OTA_RELAY_SQL = `'@(${OTA_RELAY_DOMAINS.map((d) => d.replaceAll(".", "\\.")).join("|")})$'`;
+export const VALID_EMAIL_SQL = `'^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'`;
+/**
+ * Bulk e-mails only go to the address the guest typed in online check-in, with the consent ticked there (never the
+ * booking's address, which may be a platform relay or given only for the booking).
+ */
+export const CHECKIN_EMAIL_JOIN = `LEFT JOIN LATERAL (SELECT lower(trim(c.email)) AS email,c.email_marketing_consent AS consent FROM guest_checkins c WHERE c.owner_id=b.owner_id AND c.booking_id=b.id AND c.status='submitted' AND c.email ~ ${VALID_EMAIL_SQL} ORDER BY c.submitted_at DESC,c.id DESC LIMIT 1) ci ON true`;
+export const GUEST_EMAIL_SQL = `ci.email`;
+export function isOtaRelayEmail(email) {
+  const domain = String(email ?? "").trim().toLowerCase().split("@")[1] ?? "";
+  return OTA_RELAY_DOMAINS.some((d) => domain === d || domain.endsWith(`.${d}`));
+}
+
+/** Channel a booking came from, for people (Απευθείας, Booking.com, …). */
+export function channelName(channel, lang = "el") {
+  const c = String(channel ?? "").trim().toLowerCase();
+  const el = lang === "el";
+  const known = { direct: el ? "Απευθείας (site)" : "Direct (website)", phone: el ? "Τηλέφωνο" : "Phone", walk_in: el ? "Χωρίς κράτηση (walk-in)" : "Walk-in", manual: el ? "Ρεσεψιόν" : "Front desk", manual_booking: el ? "Ρεσεψιόν" : "Front desk", email: "Email", "booking.com": "Booking.com", booking: "Booking.com", booking_com: "Booking.com", expedia: "Expedia", airbnb: "Airbnb", agoda: "Agoda", tripadvisor: "Tripadvisor", hotels: "Hotels.com" };
+  return known[c] ?? (c ? c.charAt(0).toUpperCase() + c.slice(1) : "—");
+}
+
 export function audienceQuery(owner, audience, channel, today) {
   const a = normalizeAudience(audience);
   const params = [owner, today];
@@ -54,14 +80,15 @@ export function audienceQuery(owner, audience, channel, today) {
   if (a.stayFrom) { params.push(a.stayFrom); where.push(`b.check_out>=$${params.length}`); }
   if (a.stayTo) { params.push(a.stayTo); where.push(`b.check_in<=$${params.length}`); }
   if (a.countries.length) { params.push(a.countries); where.push(`upper(coalesce(b.guest_country,'')) = ANY($${params.length})`); }
-  const address = channel === "email" ? `lower(trim(b.guest_email))` : `regexp_replace(coalesce(b.guest_phone,''),'[^0-9]','','g')`;
-  const consent = channel === "email" ? `b.email_marketing_opt_in` : `b.whatsapp_opt_in`;
-  where.push(channel === "email" ? `b.guest_email ~ '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'` : `length(regexp_replace(coalesce(b.guest_phone,''),'[^0-9]','','g')) BETWEEN 10 AND 15`);
+  const address = channel === "email" ? GUEST_EMAIL_SQL : `regexp_replace(coalesce(b.guest_phone,''),'[^0-9]','','g')`;
+  const consent = channel === "email" ? `coalesce(ci.consent,0)` : `b.whatsapp_opt_in`;
+  where.push(channel === "email" ? `ci.email IS NOT NULL` : `length(regexp_replace(coalesce(b.guest_phone,''),'[^0-9]','','g')) BETWEEN 10 AND 15`);
+  if (channel === "email") where.push(`${GUEST_EMAIL_SQL} !~ ${OTA_RELAY_SQL}`);
   params.push(a.minStays);
   const minStays = `$${params.length}`;
   let langFilter = "";
   if (a.languages.length) { params.push(a.languages); langFilter = `AND g.lang = ANY($${params.length})`; }
-  const sql = `WITH s AS (SELECT ${address} AS address,b.guest_name,b.guest_language,b.check_out,${consent} AS consent FROM bookings b WHERE ${where.join(" AND ")}),
+  const sql = `WITH s AS (SELECT ${address} AS address,b.guest_name,b.guest_language,b.check_out,${consent} AS consent FROM bookings b ${channel === "email" ? CHECKIN_EMAIL_JOIN : ""} WHERE ${where.join(" AND ")}),
  g AS (SELECT address,(array_agg(guest_name ORDER BY check_out DESC))[1] AS name,(array_agg(guest_language ORDER BY check_out DESC))[1] AS lang,count(*)::int AS stays,max(consent) AS consent FROM s GROUP BY address)
  SELECT g.address,g.name,coalesce(g.lang,'en') AS lang,g.stays FROM g WHERE g.consent=1 AND g.stays>=${minStays} ${langFilter}
   AND NOT EXISTS(SELECT 1 FROM marketing_unsubscribes u WHERE u.owner_id=$1 AND u.channel='${channel}' AND u.address=g.address) ORDER BY g.address LIMIT 20000`;
