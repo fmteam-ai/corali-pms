@@ -8,6 +8,7 @@ import { assertTrustedOrigin } from "@/lib/security/origin";
 import { providerFields, providerKeySchema } from "@/lib/provider-fields";
 import { listProviders, providerCredentials, sealProviderSecrets, unsealProviderSecrets, validateProviderFields } from "@/lib/provider-connections";
 import { testVivaCredentials, testWhatsAppCredentials } from "@/lib/provider-tests";
+import { openImap } from "../../../../scripts/imap-core.mjs";
 import { googleSearch, recordGoogleCalls } from "@/lib/nearby-places";
 
 const saveInput = z.object({
@@ -68,7 +69,7 @@ async function handlePOST(request:Request) {
   try {
     assertTrustedOrigin(request);
     const {providerKey} = testInput.parse(await request.json());
-    if (!["stripe","smtp","viva","whatsapp","googlePlaces"].includes(providerKey)) return Response.json({ok:false,error:"TEST_NOT_AVAILABLE"},{status:501});
+    if (!["stripe","smtp","imap","viva","whatsapp","googlePlaces"].includes(providerKey)) return Response.json({ok:false,error:"TEST_NOT_AVAILABLE"},{status:501});
     const connection=await providerCredentials(user.ownerId,providerKey);
     if (!connection?.active) return Response.json({ok:false,error:"NOT_ACTIVE"},{status:409});
     let success=false;
@@ -81,6 +82,11 @@ async function handlePOST(request:Request) {
         const {host,port,username,from}=connection.settings;
         if (!host||!username||!from||!connection.secrets.password) throw new Error("MISSING_FIELDS");
         await nodemailer.createTransport({host,port:Number(port||587),secure:Number(port||587)===465,auth:{user:username,pass:connection.secrets.password},connectionTimeout:8000,greetingTimeout:8000}).verify();
+      } else if(providerKey==="imap") {
+        const {host,port,username,mailbox}=connection.settings;
+        if (!host||!username||!connection.secrets.password) throw new Error("MISSING_FIELDS");
+        const p=Number(port||993), session=await openImap({host,port:p,secure:p!==143,username,password:connection.secrets.password,timeoutMs:10_000});
+        try { await session.examine(mailbox||"INBOX"); } finally { await session.close(); }
       } else if(providerKey==="viva") {
         if(!await testVivaCredentials(connection))throw new Error("VIVA_TEST_FAILED");
       } else if(providerKey==="googlePlaces") {

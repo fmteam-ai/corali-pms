@@ -6,7 +6,7 @@ type Post = { id: number; channels: string; caption: string; image_url: string; 
 type Message = { id: number; platform: string; sender_id: string; sender_name?: string | null; direction: string; body: string; status: string; created_at: number; suggested_reply?: string | null; stay_request_json?: string | null };
 type Guest = { bookingId: number; reference: string; guestName: string; checkIn: string; checkOut: string; status: string };
 type State = { posts: Post[]; messages: Message[]; guests?: Record<string, Guest>; bookingUrl: string };
-const platformLabel: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", tiktok: "TikTok", whatsapp: "💬 WhatsApp" };
+const platformLabel: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", tiktok: "TikTok", whatsapp: "💬 WhatsApp", email: "✉ Email" };
 
 const statusLabel: Record<string, string> = { draft: "Πρόχειρο", pending_approval: "Αναμονή έγκρισης", approved: "Εγκρίθηκε · προγραμματισμένο", published: "Δημοσιεύτηκε", partially_published: "Μερική δημοσίευση", failed: "Αποτυχία", rejected: "Απορρίφθηκε" };
 const errors: Record<string, string> = { SECOND_APPROVER_REQUIRED: "Την έγκριση κάνει άλλο άτομο από τον συντάκτη.", INSTAGRAM_NEEDS_IMAGE: "Το Instagram απαιτεί εικόνα (URL).", INVALID_TRANSITION: "Η ενέργεια δεν επιτρέπεται σε αυτή την κατάσταση.", META_NOT_CONFIGURED: "Ρυθμίστε το Facebook/Instagram στις Συνδέσεις.", WHATSAPP_NOT_CONFIGURED: "Ρυθμίστε το WhatsApp στις Συνδέσεις.", SEND_FAILED: "Το Meta δεν δέχτηκε το μήνυμα (ίσως πέρασε το 24ωρο παράθυρο)." };
@@ -56,11 +56,12 @@ export function SocialManager({ initial, userId, canPost, canReply }: { initial:
             try { stay = lastIn?.stay_request_json ? JSON.parse(lastIn.stay_request_json) : null; } catch { stay = null; }
             return (
               <div className="dmThread" key={key}>
-                <b>{platformLabel[list[0].platform] ?? list[0].platform} · {list[0].platform === "whatsapp" ? <>{list.find((m) => m.sender_name)?.sender_name ?? state.guests?.[list[0].sender_id]?.guestName ?? ""} <a href={`https://wa.me/${list[0].sender_id}`} target="_blank" rel="noreferrer">+{list[0].sender_id}</a></> : list[0].sender_id}</b>
-                {list[0].platform === "whatsapp" && state.guests?.[list[0].sender_id] && (() => { const g = state.guests![list[0].sender_id]; return <small className="dmGuest">🛏 Κράτηση <a href={`/pms/reservations/${g.bookingId}`}>{g.reference}</a> · {g.guestName} · {g.checkIn} → {g.checkOut}</small>; })()}
+                <b>{platformLabel[list[0].platform] ?? list[0].platform} · {list[0].platform === "whatsapp" ? <>{list.find((m) => m.sender_name)?.sender_name ?? state.guests?.[list[0].sender_id]?.guestName ?? ""} <a href={`https://wa.me/${list[0].sender_id}`} target="_blank" rel="noreferrer">+{list[0].sender_id}</a></> : list[0].platform === "email" ? <>{list.find((m) => m.sender_name)?.sender_name ?? ""} <a href={`mailto:${list[0].sender_id}`}>{list[0].sender_id}</a></> : list[0].sender_id}</b>
+                {(list[0].platform === "whatsapp" || list[0].platform === "email") && state.guests?.[list[0].sender_id] && (() => { const g = state.guests![list[0].sender_id]; return <small className="dmGuest">🛏 Κράτηση <a href={`/pms/reservations/${g.bookingId}`}>{g.reference}</a> · {g.guestName} · {g.checkIn} → {g.checkOut}</small>; })()}
                 {stay && <small className="dmStay">📅 {stay.checkIn} → {stay.checkOut} · {stay.adults}+{stay.children} · πρόταση με ζωντανή διαθεσιμότητα</small>}
                 {list.slice(-6).map((m) => <p key={m.id} className={m.direction === "in" ? "dmIn" : "dmOut"}>{m.body}<small>{new Date(Number(m.created_at)).toLocaleString("el-GR")}</small></p>)}
-                {canReply && lastIn && (
+                {list[0].platform === "email" && lastIn && <div className="dmReply"><a className="secondaryButton" href={`mailto:${list[0].sender_id}?subject=${encodeURIComponent(/^re:/i.test(lastIn.body) ? lastIn.body : `Re: ${lastIn.body}`)}`}>✉ Απάντηση από το email σας</a><small>Το PMS δείχνει μόνο αποστολέα και θέμα· το πλήρες μήνυμα και η απάντηση γίνονται στο πρόγραμμα email (Gmail, Outlook, webmail).</small></div>}
+                {canReply && lastIn && list[0].platform !== "email" && (
                   <div className="dmReply">
                     <textarea value={draft} maxLength={1000} onChange={(e) => setDrafts((d) => ({ ...d, [key]: e.target.value }))} />
                     <div className="actions">

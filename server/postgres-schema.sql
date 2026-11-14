@@ -1235,6 +1235,14 @@ ALTER TABLE social_messages ADD COLUMN IF NOT EXISTS suggested_reply TEXT;
 ALTER TABLE social_messages ADD COLUMN IF NOT EXISTS stay_request_json TEXT;
 -- v144: WhatsApp guest messages in the same inbox (the guest's WhatsApp profile name)
 ALTER TABLE social_messages ADD COLUMN IF NOT EXISTS sender_name TEXT;
+-- v148: e-mail notifications (PMS → Συνδέσεις → «Εισερχόμενα email», IMAP): where the automation cron left off
+CREATE TABLE IF NOT EXISTS mail_inbox_state (
+ owner_id TEXT PRIMARY KEY,
+ uid_validity BIGINT NOT NULL DEFAULT 0,
+ last_uid BIGINT NOT NULL DEFAULT 0,
+ checked_at BIGINT NOT NULL DEFAULT 0,
+ last_error TEXT
+);
 
 -- v49: payment terms per rate plan (cancellation policy) and booking policy texts per language
 ALTER TABLE rate_plans ADD COLUMN IF NOT EXISTS deposit_percent BIGINT CHECK (deposit_percent IS NULL OR deposit_percent BETWEEN 0 AND 100);

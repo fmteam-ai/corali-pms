@@ -11,6 +11,7 @@ import {runAutoPricing} from "./auto-pricing-worker.mjs";
 import {runRoomAc} from "./room-ac-worker.mjs";
 import {runRoomClimate} from "./room-climate-worker.mjs";
 import {runCampaigns} from "./campaign-worker.mjs";
+import {runMailInbox} from "./mail-inbox-worker.mjs";
 import {normalizeBrand,renderBrandedEmail,stayDate,withFallbacks} from "./email-brand-core.mjs";
 if(!process.env.DATABASE_URL||!process.env.PMS_DOCUMENT_KEY||!process.env.BOOKING_ORIGIN)throw Error("Automation requires DATABASE_URL, PMS_DOCUMENT_KEY and BOOKING_ORIGIN");
 // WhatsApp connected with a 60-day token (PMS → Ενσωματώσεις → Γρήγορη σύνδεση): a PMS notice once a day, from a
@@ -69,4 +70,6 @@ try{await run();
  await runRoomAc({pool,owner,unseal,seal,presenceOnly:true}).catch(e=>console.error("A/C presence failed",e))
  // Room temperature / humidity sensors: read every ~10 minutes, alerts to the PMS.
  await runRoomClimate({pool,owner,unseal,seal}).catch(e=>console.error("Room climate failed",e))
+ // New e-mails in the hotel's mailbox (PMS → Συνδέσεις → Εισερχόμενα email): a PMS notification with sound; read-only.
+ await runMailInbox({pool,owner,credentials}).then(r=>r.stored&&console.log(`Mail inbox: ${r.stored} new`)).catch(e=>console.error("Mail inbox failed",e instanceof Error?e.message:e))
  await whatsappTokenReminder().catch(e=>console.error("WhatsApp token reminder failed",e))}finally{await warm;await pool.end()}

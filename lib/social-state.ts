@@ -23,5 +23,20 @@ export async function socialState(ownerId: string) {
       if (!guests[key]) guests[key] = { bookingId: Number(b.id), reference: String(b.reference), guestName: String(b.guest_name ?? ""), checkIn: String(b.check_in), checkOut: String(b.check_out), status: String(b.status) };
     }
   }
+  // E-mail senders matched by the booking's e-mail or the one given in online check-in.
+  const emails = [...new Set(messages.rows.filter((m) => m.platform === "email").map((m) => String(m.sender_id).toLowerCase()))];
+  if (emails.length) {
+    const r = await db().query(
+      `SELECT DISTINCT ON (b.id) b.id,b.reference,b.guest_name,b.check_in,b.check_out,b.status,lower(trim(coalesce(c.email,b.guest_email))) matched,lower(trim(b.guest_email)) booking_email,lower(trim(c.email)) checkin_email
+       FROM bookings b LEFT JOIN guest_checkins c ON c.owner_id=b.owner_id AND c.booking_id=b.id
+       WHERE b.owner_id=$1 AND (lower(trim(b.guest_email)) = ANY($2::text[]) OR lower(trim(c.email)) = ANY($2::text[])) ORDER BY b.id,b.check_in DESC`,
+      [ownerId, emails],
+    );
+    for (const b of r.rows.sort((x, y) => String(y.check_in).localeCompare(String(x.check_in)))) {
+      for (const key of [b.booking_email, b.checkin_email].filter((k) => k && emails.includes(String(k)))) {
+        if (!guests[String(key)]) guests[String(key)] = { bookingId: Number(b.id), reference: String(b.reference), guestName: String(b.guest_name ?? ""), checkIn: String(b.check_in), checkOut: String(b.check_out), status: String(b.status) };
+      }
+    }
+  }
   return { posts: posts.rows, messages: messages.rows, guests, bookingUrl: `${env().BOOKING_ORIGIN}/book` };
 }
