@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 type Status = { ready: boolean; reason?: string; webhook?: boolean; subscribed?: boolean; callback?: string; otherCallback?: string | null; readError?: string | null };
 const errors: Record<string, string> = {
   NOT_CONNECTED: "Συνδέστε πρώτα το WhatsApp με τη «Γρήγορη σύνδεση».",
-  APP_REQUIRED: "Λείπουν App ID / App secret της εφαρμογής Meta — επαναλάβετε τη «Γρήγορη σύνδεση» συμπληρώνοντάς τα.",
+  APP_REQUIRED: "Λείπει το App ID (ή το App secret) της εφαρμογής Meta που έχει τον αριθμό WhatsApp. Συμπληρώστε παρακάτω το «App ID» (developers.facebook.com → η εφαρμογή → App settings → Basic → App ID), πατήστε «Αποθήκευση» και ανανεώστε τη σελίδα.",
   WEBHOOK_FAILED: "Η Meta δεν αποδέχτηκε τη διεύθυνση του PMS για τα μηνύματα.",
   SUBSCRIBE_FAILED: "Η Meta δεν συνέδεσε την εφαρμογή με τον λογαριασμό WhatsApp.",
   TOO_MANY_ATTEMPTS: "Πολλές προσπάθειες — δοκιμάστε ξανά σε μισή ώρα.",

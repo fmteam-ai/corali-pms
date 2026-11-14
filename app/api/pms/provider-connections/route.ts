@@ -36,7 +36,12 @@ async function handlePUT(request:Request) {
     const fields = providerFields[input.providerKey];
     if (input.clearSecrets.some(key => !(fields.secrets as readonly string[]).includes(key))) throw new Error("INVALID_FIELDS");
     await withTransaction(async client => {
-      const current = await client.query<{secrets_encrypted:string}>("SELECT secrets_encrypted FROM provider_connections WHERE owner_id=$1 AND provider_key=$2 FOR UPDATE",[user.ownerId,input.providerKey]);
+      const current = await client.query<{secrets_encrypted:string;settings_json:string}>("SELECT secrets_encrypted,settings_json FROM provider_connections WHERE owner_id=$1 AND provider_key=$2 FOR UPDATE",[user.ownerId,input.providerKey]);
+      // Settings the form does not show (set by «Γρήγορη σύνδεση», e.g. token expiry) are kept, not wiped on save.
+      let previous:Record<string,string>={};
+      try { previous=current.rows[0]?JSON.parse(current.rows[0].settings_json||"{}"):{}; } catch { previous={}; }
+      const kept=Object.fromEntries(Object.entries(previous).filter(([key,value])=>!(fields.settings as readonly string[]).includes(key)&&typeof value==="string"));
+      const settings={...kept,...input.settings};
       const secrets = current.rows[0] ? unsealProviderSecrets(current.rows[0].secrets_encrypted) : {};
       for (const key of input.clearSecrets) delete secrets[key];
       for (const [key,value] of Object.entries(input.secrets)) if (value.trim()) secrets[key]=value.trim();
@@ -53,7 +58,7 @@ async function handlePUT(request:Request) {
       await client.query(`INSERT INTO provider_connections(owner_id,provider_key,active,status,settings_json,secrets_encrypted,updated_by,updated_at)
         VALUES($1,$2,$3,'configured',$4,$5,$6,$7)
         ON CONFLICT(owner_id,provider_key) DO UPDATE SET active=$3,status='configured',settings_json=$4,secrets_encrypted=$5,updated_by=$6,updated_at=$7,last_test_at=NULL,last_test_result=NULL`,
-        [user.ownerId,input.providerKey,input.active?1:0,JSON.stringify(input.settings),sealProviderSecrets(secrets),String(user.id),now]);
+        [user.ownerId,input.providerKey,input.active?1:0,JSON.stringify(settings),sealProviderSecrets(secrets),String(user.id),now]);
       await client.query("INSERT INTO provider_connection_audit(owner_id,provider_key,actor_id,action,created_at) VALUES($1,$2,$3,'settings_updated',$4)",[user.ownerId,input.providerKey,String(user.id),now]);
     });
     return Response.json({ok:true});

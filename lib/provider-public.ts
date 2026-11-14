@@ -29,4 +29,5 @@ export function validateProviderFields(key: ProviderKey, settings: Record<string
   if (key === "channelManager" && ((settings.pushRates && !["yes","no"].includes(settings.pushRates)) || (settings.rateMarkupPercent && (!/^-?\d{1,3}(\.\d{1,2})?$/.test(settings.rateMarkupPercent) || Number(settings.rateMarkupPercent) < -50 || Number(settings.rateMarkupPercent) > 100)))) throw new Error("INVALID_FIELDS");
   if (key === "whatsapp" && settings.apiVersion && !/^v\d+\.\d+$/.test(settings.apiVersion)) throw new Error("INVALID_FIELDS");
   if (key === "whatsapp" && [settings.businessAccountId,settings.phoneNumberId].some(value => value && !/^\d{5,30}$/.test(value))) throw new Error("INVALID_FIELDS");
+  if (key === "whatsapp" && settings.appId && !/^\d{5,25}$/.test(settings.appId)) throw new Error("INVALID_FIELDS");
 }

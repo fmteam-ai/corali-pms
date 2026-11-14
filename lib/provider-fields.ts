@@ -2,7 +2,7 @@ import { z } from "zod";
 export const providerFields = {
   stripe: { label: "Stripe", settings: ["publishableKey", "paymentType", "submitType", "automaticMethods", "futureUsage", "extendedAuth", "companyName", "imageUrl", "metadata", "checkoutNote", "feeMode", "feeValue", "feeType"], secrets: ["secretKey", "webhookSecret"] },
   viva: { label: "Viva.com", settings: ["environment", "merchantId", "sourceCode"], secrets: ["clientId", "clientSecret"] },
-  whatsapp: { label: "WhatsApp Business", settings: ["apiVersion", "phoneNumberId", "businessAccountId"], secrets: ["accessToken", "verifyToken", "appSecret", "twoStepPin"] },
+  whatsapp: { label: "WhatsApp Business", settings: ["apiVersion", "phoneNumberId", "businessAccountId", "appId"], secrets: ["accessToken", "verifyToken", "appSecret", "twoStepPin"] },
   smtp: { label: "Email / SMTP", settings: ["host", "port", "username", "from"], secrets: ["password"] },
   imap: { label: "Εισερχόμενα email (IMAP) · ειδοποιήσεις", settings: ["host", "port", "username", "mailbox"], secrets: ["password"] },
   mydata: { label: "ΑΑΔΕ / myDATA", settings: ["environment", "issuerVat", "branch", "receiptSeries", "invoiceSeries", "accommodationVatCategory", "extrasVatCategory", "climateTaxCategory"], secrets: ["username", "subscriptionKey", "providerToken"] },
