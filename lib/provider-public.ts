@@ -19,6 +19,7 @@ export function validateProviderFields(key: ProviderKey, settings: Record<string
   const allowedSecrets = new Set<string>(fields.secrets);
   if (Object.keys(settings).some(field => !allowedSettings.has(field)) || Object.keys(secrets).some(field => !allowedSecrets.has(field))) throw new Error("INVALID_FIELDS");
   if (Object.entries(settings).some(([field, value]) => typeof value !== "string" || value.length > (field === "checkoutNote" ? 4500 : 500)) || Object.values(secrets).some(value => typeof value !== "string" || value.length > 4000)) throw new Error("INVALID_FIELDS");
+  if (secrets.verifyToken && !/^[A-Za-z0-9_-]{8,64}$/.test(secrets.verifyToken)) throw new Error("INVALID_FIELDS");
   if (key === "stripe" && ((secrets.secretKey && !/^sk_(test|live)_/.test(secrets.secretKey)) || (secrets.webhookSecret && !secrets.webhookSecret.startsWith("whsec_")))) throw new Error("INVALID_FIELDS");
   if (key === "stripe" && stripeOptionsProblem(settings)) throw new Error("INVALID_FIELDS");
   if (key === "smtp" && settings.port && (!/^\d+$/.test(settings.port) || Number(settings.port) < 1 || Number(settings.port) > 65535)) throw new Error("INVALID_FIELDS");

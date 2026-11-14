@@ -3,7 +3,8 @@ import { requireApiUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { DEFAULT_GRAPH_VERSION } from "@/lib/meta-connect-core";
-import { providerCredentials } from "@/lib/provider-connections";
+import { randomBytes } from "node:crypto";
+import { providerCredentials, sealProviderSecrets } from "@/lib/provider-connections";
 import { after } from "next/server";
 import { allowAttempt } from "@/lib/request-limit";
 import { runWhatsAppInboxSetup } from "../../../../scripts/whatsapp-inbox-worker.mjs";
@@ -26,8 +27,8 @@ async function setup(ownerId: string) {
   const wa = await providerCredentials(ownerId, "whatsapp");
   const appId = wa?.settings.appId ?? "", appSecret = wa?.secrets.appSecret ?? "", access = wa?.secrets.accessToken ?? "", waba = wa?.settings.businessAccountId ?? "";
   if (!wa?.active || !access || !/^\d{5,30}$/.test(waba)) return { error: "NOT_CONNECTED" as const };
-  if (!/^\d{5,25}$/.test(appId) || !appSecret || !wa.secrets.verifyToken) return { error: "APP_REQUIRED" as const };
-  return { wa, appId, appToken: `${appId}|${appSecret}`, access, waba, verifyToken: wa.secrets.verifyToken, base: `https://graph.facebook.com/${DEFAULT_GRAPH_VERSION}`, callback: `${env().BOOKING_ORIGIN}/api/webhooks/meta` };
+  if (!/^\d{5,25}$/.test(appId) || !appSecret) return { error: "APP_REQUIRED" as const };
+  return { wa, appId, appToken: `${appId}|${appSecret}`, access, waba, verifyToken: wa.secrets.verifyToken ?? "", base: `https://graph.facebook.com/${DEFAULT_GRAPH_VERSION}`, callback: `${env().BOOKING_ORIGIN}/api/webhooks/meta` };
 }
 
 /**
@@ -91,6 +92,14 @@ async function enableInbox(request: Request) {
   const s = await setup(u.ownerId);
   if ("error" in s) return Response.json({ ok: false, error: s.error }, { status: 400 });
   if (!(await allowAttempt(`wa-inbox:${u.ownerId}`, 10, 60 * 60_000, 30 * 60_000))) return Response.json({ ok: false, error: "TOO_MANY_ATTEMPTS" }, { status: 429 });
+  // Meta accepts a verify token of at most 64 letters / digits / - _ (a long or pasted one is refused with #100):
+  // replace it with a new one, so nothing has to be typed by hand.
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(s.verifyToken)) {
+    const verifyToken = `corali-${randomBytes(18).toString("base64url")}`;
+    await db().query(`UPDATE provider_connections SET secrets_encrypted=$3 WHERE owner_id=$1 AND provider_key=$2`, [u.ownerId, "whatsapp", sealProviderSecrets({ ...s.wa.secrets, verifyToken })]);
+    s.verifyToken = verifyToken;
+    s.wa.secrets.verifyToken = verifyToken;
+  }
   // Meta checks the callback at once: say plainly when the booking site would not answer it.
   const check = await callbackCheck(s);
   if (!check.ok) return Response.json({ ok: false, error: "CALLBACK_FAILED", detail: `HTTP ${check.status || "—"}${check.body ? ` · ${check.body}` : ""}`, callbackCheck: check }, { status: 502 });
