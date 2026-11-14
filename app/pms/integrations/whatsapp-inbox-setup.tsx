@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 
-type Status = { ready: boolean; reason?: string; webhook?: boolean; subscribed?: boolean; callback?: string; otherCallback?: string | null; readError?: string | null; callbackCheck?: { ok: boolean; status: number; body: string } };
+type Status = { ready: boolean; reason?: string; webhook?: boolean; subscribed?: boolean; callback?: string; otherCallback?: string | null; readError?: string | null; callbackCheck?: { ok: boolean; status: number; body: string }; verifyToken?: string };
 const errors: Record<string, string> = {
   NOT_CONNECTED: "Συνδέστε πρώτα το WhatsApp με τη «Γρήγορη σύνδεση».",
   APP_REQUIRED: "Λείπει το App ID (ή το App secret) της εφαρμογής Meta που έχει τον αριθμό WhatsApp. Συμπληρώστε παρακάτω το «App ID» (developers.facebook.com → η εφαρμογή → App settings → Basic → App ID), πατήστε «Αποθήκευση» και ανανεώστε τη σελίδα.",
@@ -44,6 +44,12 @@ export function WhatsAppInboxSetup({ editable }: { editable: boolean }) {
           <li>{s.subscribed ? "✓" : "✗"} Η εφαρμογή είναι συνδεδεμένη με τον λογαριασμό WhatsApp</li>
           {s.callbackCheck && <li>{s.callbackCheck.ok ? "✓" : "✗"} Το site κρατήσεων απαντά στον έλεγχο της Meta με το verify token του PMS{s.callbackCheck.ok ? "" : ` (HTTP ${s.callbackCheck.status || "—"}${s.callbackCheck.body ? ` · ${s.callbackCheck.body}` : ""})`}</li>}
         </ul>
+        {s.verifyToken && <div className="waManual">
+          <p><b>Χειροκίνητα στη Meta</b> (developers.facebook.com → η εφαρμογή → WhatsApp → Configuration → Webhook → Edit):</p>
+          <p>Callback URL: <code>{s.callback}</code> <button type="button" className="secondaryButton" onClick={() => { void navigator.clipboard?.writeText(s.callback ?? ""); setMsg("✓ Αντιγράφηκε το Callback URL"); }}>Αντιγραφή</button></p>
+          <p>Verify token: <code>{s.verifyToken}</code> <button type="button" className="secondaryButton" onClick={() => { void navigator.clipboard?.writeText(s.verifyToken ?? ""); setMsg("✓ Αντιγράφηκε το Verify token"); }}>Αντιγραφή</button></p>
+          <p className="muted">Μετά «Verify and save» και, στο «Webhook fields», Subscribe στο «messages».</p>
+        </div>}
         {s.otherCallback && <p className="notice">Η εφαρμογή στέλνει σήμερα τα μηνύματα WhatsApp σε άλλη διεύθυνση (<code>{s.otherCallback}</code>). Η ενεργοποίηση θα την αλλάξει στο PMS.</p>}
         {s.readError && !on && <p className="muted">Meta: {s.readError}</p>}
         {s.callbackCheck && !s.callbackCheck.ok && <p className="notice">{s.callbackCheck.status === 403 ? "Το site κρατήσεων απαντά «Forbidden»: δεν βρίσκει το verify token που έχει αποθηκευμένο το PMS. Ελέγξτε ότι το site κρατήσεων και το PMS χρησιμοποιούν την ίδια βάση δεδομένων και το ίδιο PMS_OWNER_ID στο runtime.env." : s.callbackCheck.status === 0 ? "Το PMS δεν μπόρεσε να φτάσει στο site κρατήσεων (δίκτυο / DNS / Cloudflare)." : "Το site κρατήσεων απάντησε κάτι άλλο από το αναμενόμενο — πιθανώς σελίδα του Cloudflare (έλεγχος bot). Επιτρέψτε στο Cloudflare τη διαδρομή /api/webhooks/*."}</p>}

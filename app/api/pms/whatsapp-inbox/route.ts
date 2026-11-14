@@ -5,6 +5,7 @@ import { DEFAULT_GRAPH_VERSION } from "@/lib/meta-connect-core";
 import { providerCredentials } from "@/lib/provider-connections";
 import { allowAttempt } from "@/lib/request-limit";
 import { assertTrustedOrigin } from "@/lib/security/origin";
+import { can } from "@/lib/security/permissions";
 
 type GraphError = { message?: string; error_user_msg?: string };
 const graph = async (url: string, init?: RequestInit) => {
@@ -59,7 +60,10 @@ export async function GET() {
   const s = await setup(u.ownerId);
   if ("error" in s) return Response.json({ ok: true, ready: false, reason: s.error });
   const [st, check] = await Promise.all([status(s), callbackCheck(s)]);
-  return Response.json({ ok: true, ready: true, ...st, callbackCheck: check });
+  // The verify token only lets Meta confirm the callback URL (it opens nothing): shown to those who edit connections,
+  // so it can be pasted into Meta → WhatsApp → Configuration exactly as stored.
+  const verifyToken = can(u.role, "integrations.write", u.permissions) ? s.verifyToken : undefined;
+  return Response.json({ ok: true, ready: true, ...st, callbackCheck: check, verifyToken }, { headers: { "Cache-Control": "no-store" } });
 }
 
 /**

@@ -629,3 +629,4 @@ body:has(.pms){background:#f2f4f6}
 .pms .guestList td{vertical-align:top}.pms .guestList td:nth-child(3) a,.pms .guestList .nowrap{white-space:nowrap}.pms .guestStatus-no_phone{color:var(--muted)}
 .pms .checkinSend{display:grid;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}.pms .checkinSend p{margin:0}.pms .checkinSend .actions{display:flex;flex-wrap:wrap;gap:8px}.pms .checkinSend small{display:block}
 .pms .ciMissing{display:block;font-size:12px;font-weight:700;color:#b54708;text-decoration:none}.pms .ciMissing:hover{text-decoration:underline}.pms .ciDone{display:block;font-size:12px;color:#1f7a3a}
+.pms .waManual{display:grid;gap:4px;margin:8px 0;padding:10px;border:1px dashed var(--border);border-radius:10px}.pms .waManual p{margin:0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}.pms .waManual code{word-break:break-all}
