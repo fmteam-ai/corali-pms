@@ -1,7 +1,8 @@
 // Corali TV and A/C power worker (PMS instance only, cPanel cron every 5 minutes). Room A/C relays first (see
 // room-ac-worker.mjs). For each room with a TV plug, applies the
 // automatic rule (on from the switch-on time of the arrival day while a stay is confirmed / checked in, off after
-// check-out) when that decision changed since the last automatic switch.
+// check-out) when that decision changed since the last automatic switch. Only rooms whose power method is «shelly»:
+// a room run by the Corali TV app (android_agent) or by hand (manual) never has its plug switched here.
 import process from "node:process";
 import { createDecipheriv, createHash } from "node:crypto";
 import pg from "pg";
@@ -32,14 +33,11 @@ try {
   // Room air conditioners: power only while a guest is checked in / present (see room-ac-worker.mjs).
   const ac = await runRoomAc({ pool, owner, unseal }).catch((e) => { console.error("A/C power failed", e); return null; });
   if (ac) console.log(`A/C power: ${ac.rooms} rooms checked, ${ac.switched} switched${ac.failed ? `, ${ac.failed} failed` : ""}`);
-  if (settings.appScreen) {
-    // The Corali TV app turns the screen on / off itself; the TV stays powered (a plug cut would stop the app).
-    console.log("TV power: screen controlled by the Corali TV app; plugs left on");
-  } else if (!settings.enabled || !settings.server || !s?.auth_key_encrypted) {
+  if (!settings.enabled || !settings.server || !s?.auth_key_encrypted) {
     console.log("TV power: automation off or Shelly not configured");
   } else {
     const key = unseal(s.auth_key_encrypted);
-    const rooms = (await pool.query(`SELECT room_id,power_device_id,power_channel,power_auto_state FROM tv_screens WHERE owner_id=$1 AND active=1 AND power_device_id<>'' ORDER BY room_id`, [owner])).rows;
+    const rooms = (await pool.query(`SELECT room_id,power_device_id,power_channel,power_auto_state FROM tv_screens WHERE owner_id=$1 AND active=1 AND power_device_id<>'' AND COALESCE(power_method,'shelly')='shelly' ORDER BY room_id`, [owner])).rows;
     let switched = 0;
     for (const r of rooms) {
       const stays = (await pool.query(`SELECT status,check_in,check_out FROM bookings WHERE owner_id=$1 AND room_id=$2 AND status IN ('confirmed','checked_in') AND check_in<=$3 AND check_out>=$3`, [owner, r.room_id, today])).rows;

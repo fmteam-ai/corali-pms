@@ -7,6 +7,9 @@ import { hotelToday } from "@/lib/tape-chart";
 import { hotelTime } from "@/lib/tv";
 import { desiredPower, deviceState, normalizePowerSettings, statusRequest, switchError, switchRequest, wakeAction, type PowerSettings } from "../scripts/tv-power-core.mjs";
 
+/** The room's power method; rooms saved before v158 without one: «shelly» with a plug, else «manual». */
+export const POWER_METHOD_SQL = "COALESCE(power_method, CASE WHEN power_device_id<>'' THEN 'shelly' ELSE 'manual' END)";
+
 export type { PowerSettings };
 export type RoomPowerState = { roomId: number; online: boolean; on: boolean | null; power: number | null };
 
@@ -67,8 +70,8 @@ export async function setRoomPower(ownerId: string, roomId: number, on: boolean,
  */
 export async function syncRoomPower(ownerId: string, roomId: number): Promise<void> {
   const { settings } = await loadPowerSettings(ownerId);
-  if (!settings.enabled || settings.appScreen) return;
-  const row = (await db().query(`SELECT power_device_id,power_auto_state FROM tv_screens WHERE owner_id=$1 AND room_id=$2 AND active=1`, [ownerId, roomId])).rows[0];
+  if (!settings.enabled) return;
+  const row = (await db().query(`SELECT power_device_id,power_auto_state FROM tv_screens WHERE owner_id=$1 AND room_id=$2 AND active=1 AND ${POWER_METHOD_SQL}='shelly'`, [ownerId, roomId])).rows[0];
   if (!row?.power_device_id) return;
   const today = hotelToday();
   const stays = (await db().query(`SELECT status,check_in,check_out FROM bookings WHERE owner_id=$1 AND room_id=$2 AND status IN ('confirmed','checked_in') AND check_in<=$3 AND check_out>=$3`, [ownerId, roomId, today])).rows;
@@ -105,14 +108,18 @@ export async function roomPowerStates(ownerId: string): Promise<RoomPowerState[]
 
 /**
  * Urgent message with "turn the TV on": per room plug, switch on a plug that is off, or power-cycle one whose TV is in
- * standby (needs the TV's power-on mode). TVs already on are left alone. Rooms without a plug rely on the Corali TV app.
+ * standby (needs the TV's power-on mode; only with «allowCycle»). TVs already on are left alone. Only rooms whose method is «shelly». Rooms without a plug rely on the Corali TV app.
  */
 export async function wakeRoomTvs(ownerId: string, roomIds: number[]): Promise<void> {
+  const { settings } = await loadPowerSettings(ownerId);
+  const plugRooms = new Set((await db().query(`SELECT room_id FROM tv_screens WHERE owner_id=$1 AND ${POWER_METHOD_SQL}='shelly'`, [ownerId])).rows.map((r) => Number(r.room_id)));
   const states = new Map((await roomPowerStates(ownerId)).map((s) => [s.roomId, s]));
   for (const roomId of roomIds) {
     const state = states.get(roomId);
-    if (!state) continue;
-    const action = wakeAction(state);
+    if (!state || !plugRooms.has(roomId)) continue;
+    let action = wakeAction(state);
+    // A power cycle (plug off, then on) only when explicitly allowed after a test with the room's TV.
+    if (action === "cycle" && !settings.allowCycle) action = "none";
     if (action === "on") await setRoomPower(ownerId, roomId, true);
     if (action === "cycle" && !(await setRoomPower(ownerId, roomId, false))) {
       await new Promise((ok) => setTimeout(ok, 12_000));
@@ -120,25 +127,4 @@ export async function wakeRoomTvs(ownerId: string, roomIds: number[]): Promise<v
     }
     if (action !== "none") await new Promise((ok) => setTimeout(ok, 1100)); // Shelly Cloud: ~1 request per second
   }
-}
-
-/**
- * For the Corali TV app (screen on / off by the app itself): the automatic decision for the room ("on" / "off", the
- * same rule as the plugs; null when off in settings) and the last manual command. The app acts when either changes.
- */
-export async function screenControl(ownerId: string, roomId: number): Promise<{ auto: "on" | "off" | null; autoOn: boolean; autoOff: boolean; cmd: { id: number; on: boolean } | null }> {
-  const { settings } = await loadPowerSettings(ownerId);
-  const row = (await db().query(`UPDATE tv_screens SET screen_seen_at=$3 WHERE owner_id=$1 AND room_id=$2 RETURNING screen_cmd_id,screen_cmd_on`, [ownerId, roomId, Date.now()])).rows[0];
-  if (!settings.enabled || !settings.appScreen) return { auto: null, autoOn: false, autoOff: false, cmd: null };
-  const today = hotelToday();
-  const stays = (await db().query(`SELECT status,check_in,check_out FROM bookings WHERE owner_id=$1 AND room_id=$2 AND status IN ('confirmed','checked_in') AND check_in<=$3 AND check_out>=$3`, [ownerId, roomId, today])).rows;
-  const want = desiredPower(stays.map((x) => ({ status: String(x.status), check_in: String(x.check_in), check_out: String(x.check_out) })), today, hotelTime(), settings.onTime);
-  const id = Number(row?.screen_cmd_id ?? 0);
-  return { auto: want ? "on" : "off", autoOn: settings.autoOn, autoOff: settings.autoOff, cmd: id > 0 ? { id, on: Number(row?.screen_cmd_on) === 1 } : null };
-}
-
-/** Manual «Οθόνη: Άναμμα / Σβήσιμο» from the PMS: the room's app picks it up within about 20 seconds. */
-export async function commandScreen(ownerId: string, roomId: number, on: boolean): Promise<boolean> {
-  const r = await db().query(`UPDATE tv_screens SET screen_cmd_id=$3,screen_cmd_on=$4 WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId, Date.now(), on ? 1 : 0]);
-  return Boolean(r.rowCount);
 }

@@ -12,8 +12,10 @@ import { assertTrustedOrigin } from "@/lib/security/origin";
 import { newOpaqueToken } from "@/lib/security/tokens";
 import { listScreens, loadTvSettings, setupCodeHash, SETUP_CODE_MS } from "@/lib/tv";
 import { normalizeTvSettings } from "@/lib/tv-core";
-import { commandScreen, loadPowerSettings, roomPowerStates, savePowerSettings, setRoomPower, syncRoomPower } from "@/lib/tv-power";
+import { loadPowerSettings, roomPowerStates, savePowerSettings, setRoomPower, syncRoomPower } from "@/lib/tv-power";
 import { validDeviceId } from "../../../../scripts/tv-power-core.mjs";
+import { validPowerMethod } from "../../../../scripts/tv-command-core.mjs";
+import { latestCommands, queueCommand } from "@/lib/tv-commands";
 
 const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("settings"), settings: z.record(z.string(), z.unknown()) }),
@@ -23,7 +25,9 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("powerSettings"), settings: z.record(z.string(), z.unknown()), authKey: z.string().trim().max(400).default("") }),
   z.object({ action: z.literal("powerDevice"), roomId: z.number().int().positive(), deviceId: z.string().trim().max(64).refine((v) => v === "" || validDeviceId(v)), channel: z.number().int().min(0).max(3).default(0) }),
   z.object({ action: z.literal("power"), roomId: z.number().int().positive(), on: z.boolean() }),
-  z.object({ action: z.literal("screenPower"), roomId: z.number().int().positive(), on: z.boolean() }),
+  z.object({ action: z.literal("screenCommand"), roomId: z.number().int().positive(), command: z.enum(["SCREEN_ON", "SCREEN_OFF", "SHOW_WELCOME"]) }),
+  z.object({ action: z.literal("powerMethod"), roomId: z.number().int().positive(), method: z.string().refine(validPowerMethod) }),
+  z.object({ action: z.literal("screenStatus") }),
   z.object({ action: z.literal("powerStatus") }),
   z.object({ action: z.literal("nearbyPreview"), refresh: z.boolean().default(false) }),
   z.object({ action: z.literal("locateHotel"), query: z.string().trim().max(150).default("") }),
@@ -73,9 +77,18 @@ async function handlePOST(request: Request) {
       const error = await setRoomPower(u.ownerId, x.roomId, x.on);
       return Response.json({ ok: !error, error: error || undefined, screens: await listScreens(u.ownerId) }, { status: error ? 502 : 200 });
     }
-    if (x.action === "screenPower") {
-      const ok = await commandScreen(u.ownerId, x.roomId, x.on);
-      return Response.json({ ok, error: ok ? undefined : "NOT_FOUND", screens: await listScreens(u.ownerId) }, { status: ok ? 200 : 404 });
+    if (x.action === "screenCommand") {
+      // Queued only: the PMS shows PENDING → DELIVERED → EXECUTED / FAILED / TIMEOUT as the room's app reports back.
+      const cmd = await queueCommand(u.ownerId, x.roomId, x.command, "manual", u.id);
+      return Response.json({ ok: Boolean(cmd), command: cmd, error: cmd ? undefined : "NOT_FOUND" }, { status: cmd ? 200 : 404 });
+    }
+    if (x.action === "screenStatus") return Response.json({ ok: true, screens: await listScreens(u.ownerId), commands: await latestCommands(u.ownerId) });
+    if (x.action === "powerMethod") {
+      // A new method starts clean: the automatic state is recorded again on the app's next check, without acting.
+      const r = await db().query(`UPDATE tv_screens SET power_method=$1,screen_auto_state=NULL,power_auto_state=NULL WHERE owner_id=$2 AND room_id=$3`, [x.method, u.ownerId, x.roomId]);
+      if (!r.rowCount) return Response.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+      if (x.method === "shelly") await syncRoomPower(u.ownerId, x.roomId);
+      return Response.json({ ok: true, screens: await listScreens(u.ownerId) });
     }
     if (x.action === "powerStatus") return Response.json({ ok: true, states: await roomPowerStates(u.ownerId) });
     if (x.action === "setupCode") {
@@ -99,6 +112,7 @@ async function handlePOST(request: Request) {
     if (!r.rowCount) return Response.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
     return Response.json({ ok: true, screens: await listScreens(u.ownerId) });
   } catch (e) {
+    if (!(e instanceof z.ZodError)) console.error("Corali TV settings failed", e);
     return Response.json({ ok: false, error: e instanceof z.ZodError ? "INVALID_INPUT" : "SAVE_FAILED" }, { status: 400 });
   }
 }

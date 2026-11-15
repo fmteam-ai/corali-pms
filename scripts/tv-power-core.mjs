@@ -36,8 +36,10 @@ export function normalizePowerSettings(raw) {
     onTime: HHMM.test(String(x.onTime ?? "")) ? String(x.onTime) : "13:00",
     autoOn: x.autoOn !== false && x.autoOn !== 0,
     autoOff: x.autoOff !== false && x.autoOff !== 0,
-    // Corali TV app turns the TV screen on / off itself (the TV stays powered; no plug needed).
+    // v157 (kept for old settings): replaced in v158 by the per-room power method.
     appScreen: x.appScreen === true || x.appScreen === 1,
+    // Urgent "turn the TV on" may power-cycle a plug (off, then on) only when explicitly allowed after a test.
+    allowCycle: x.allowCycle === true || x.allowCycle === 1,
     // Room air conditioners on their own Shelly relay (e.g. 1PM Gen4): power only while a guest is checked in.
     acEnabled: x.acEnabled === true || x.acEnabled === 1,
     // With a presence sensor (Tuya mmWave): cut the A/C when nobody has been in the room for this many minutes.

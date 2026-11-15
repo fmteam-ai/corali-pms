@@ -20,11 +20,9 @@ final class Prefs {
     String server() { return p.getString("server", DEFAULT_SERVER); }
     boolean openOnWake() { return p.getBoolean("open_on_wake", true); }
     long lastUrgent() { return p.getLong("last_urgent", 0); }
-    /** Screen control from the PMS: the last automatic decision and manual command acted on. */
-    String lastScreenAuto() { return p.getString("screen_auto", ""); }
-    void setLastScreenAuto(String v) { p.edit().putString("screen_auto", v).apply(); }
-    long lastScreenCmd() { return p.getLong("screen_cmd", 0); }
-    void setLastScreenCmd(long id) { p.edit().putLong("screen_cmd", id).apply(); }
+    /** The last PMS screen command run (each id once, also after a restart). */
+    long lastCommand() { return p.getLong("last_command", 0); }
+    void setLastCommand(long id) { p.edit().putLong("last_command", id).apply(); }
     void setLastUrgent(long id) { p.edit().putLong("last_urgent", id).apply(); }
 
     void saveScreen(String url, String room, String server) {

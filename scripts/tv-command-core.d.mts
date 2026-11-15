@@ -1,0 +1,16 @@
+export type ScreenCommand = "SCREEN_ON" | "SCREEN_OFF" | "SHOW_WELCOME";
+export type CommandStatus = "PENDING" | "DELIVERED" | "EXECUTED" | "FAILED" | "TIMEOUT" | "UNVERIFIED" | "CANCELLED";
+export type PowerMethod = "manual" | "shelly" | "android_agent" | "ir_controller" | "network_wake" | "hdmi_cec";
+export declare const SCREEN_COMMANDS: ScreenCommand[];
+export declare const COMMAND_STATUSES: CommandStatus[];
+export declare const FINAL_STATUSES: CommandStatus[];
+export declare const COMMAND_TTL_MS: number;
+export declare const ACK_TIMEOUT_MS: number;
+export declare const AGENT_ONLINE_MS: number;
+export declare const POWER_METHODS: PowerMethod[];
+export declare const AVAILABLE_POWER_METHODS: PowerMethod[];
+export declare function validPowerMethod(m: unknown): boolean;
+export declare function expiredStatus(cmd: { status: string; expires_at: number; delivered_at: number | null }, now: number): string;
+export declare function reportStatus(cmd: { status: string; command: string }, report: { status?: string; interactive?: boolean } | null): CommandStatus | null;
+export declare function agentState(seenAt: number | null, interactive: number | null, now: number): "unknown" | "offline" | "online" | "screen_on" | "screen_off";
+export declare function autoCommand(previous: string | null, want: boolean, settings: { autoOn: boolean; autoOff: boolean }): { state: "on" | "off"; command: ScreenCommand | null };

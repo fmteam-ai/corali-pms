@@ -2169,3 +2169,32 @@ CREATE INDEX IF NOT EXISTS "idx_pms_sessions_owner_created" ON "pms_sessions" ("
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS screen_cmd_id BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS screen_cmd_on BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS screen_seen_at BIGINT;
+
+-- v158: TV screen commands with delivery and execution reports (PMS → Corali TV app ≥ 1.8). A command is EXECUTED only
+-- when the app measured the screen state afterwards; undelivered ones TIMEOUT, unreported ones become UNVERIFIED.
+CREATE TABLE IF NOT EXISTS tv_screen_commands (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ room_id BIGINT NOT NULL,
+ command TEXT NOT NULL,
+ source TEXT NOT NULL DEFAULT 'manual',
+ status TEXT NOT NULL DEFAULT 'PENDING',
+ error TEXT NOT NULL DEFAULT '',
+ created_by BIGINT,
+ created_at BIGINT NOT NULL,
+ expires_at BIGINT NOT NULL,
+ delivered_at BIGINT,
+ finished_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS tv_screen_commands_room ON tv_screen_commands(owner_id, room_id, id DESC);
+-- Per room: how the TV is powered (manual / shelly / android_agent); the agent's last measured screen state.
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS power_method TEXT;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS screen_interactive BIGINT;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS screen_auto_state TEXT;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS app_version BIGINT;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS app_admin BIGINT;
+-- Existing rooms keep their v157 behaviour: plug rooms → shelly, rooms the v157 app controlled → android_agent.
+UPDATE tv_screens s SET power_method = CASE
+   WHEN s.screen_seen_at IS NOT NULL AND EXISTS (SELECT 1 FROM tv_power_settings p WHERE p.owner_id=s.owner_id AND p.settings_json LIKE '%"appScreen":true%') THEN 'android_agent'
+   WHEN s.power_device_id<>'' THEN 'shelly' ELSE 'manual' END
+ WHERE s.power_method IS NULL;

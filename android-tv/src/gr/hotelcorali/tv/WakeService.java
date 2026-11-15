@@ -16,10 +16,13 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.PowerManager;
 
+import android.util.Log;
+
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
@@ -29,6 +32,9 @@ import java.net.URL;
  */
 public class WakeService extends Service {
     private static final String CHANNEL = "corali_tv";
+    private static final String TAG = "CoraliTV";
+    /** Sent with every check; must match android:versionCode. */
+    static final int VERSION_CODE = 9;
     private static final long URGENT_CHECK_MS = 20_000;
 
     private HandlerThread worker;
@@ -52,7 +58,7 @@ public class WakeService extends Service {
                 JSONObject r = check();
                 if (r != null) {
                     urgent(r);
-                    screen(r.optJSONObject("screen"));
+                    command(r.optJSONObject("command"));
                 }
             } catch (Exception ignored) {
                 // Offline or server busy: try again shortly.
@@ -81,40 +87,71 @@ public class WakeService extends Service {
     }
 
     /**
-     * Screen on / off from the PMS (TV left powered): acts when the automatic decision changes (arrival / check-in →
-     * on, check-out → off) or a new manual command arrives — never fights the guest's own remote in between.
+     * A screen command from the PMS (v158), run once per id. The result is measured afterwards with
+     * PowerManager.isInteractive() and reported back: the PMS never shows success without this report.
      */
-    private void screen(JSONObject s) {
-        if (s == null) return;
+    private void command(JSONObject c) {
+        if (c == null) return;
+        final long id = c.optLong("id", 0);
+        final String type = c.optString("command", "");
         Prefs prefs = new Prefs(this);
-        String auto = s.isNull("auto") ? "" : s.optString("auto", "");
-        Boolean target = null;
-        if (!auto.isEmpty() && !auto.equals(prefs.lastScreenAuto())) {
-            boolean first = prefs.lastScreenAuto().isEmpty();
-            prefs.setLastScreenAuto(auto);
-            // The first answer after install only records the state.
-            if (!first) {
-                if ("on".equals(auto) && s.optBoolean("autoOn")) target = Boolean.TRUE;
-                if ("off".equals(auto) && s.optBoolean("autoOff")) target = Boolean.FALSE;
-            }
-        }
-        JSONObject cmd = s.optJSONObject("cmd");
-        if (cmd != null) {
-            long id = cmd.optLong("id", 0);
-            if (id > 0 && id != prefs.lastScreenCmd()) {
-                boolean first = prefs.lastScreenCmd() == 0;
-                prefs.setLastScreenCmd(id);
-                // A command older than 10 minutes (TV was offline) is stale.
-                if (!first || System.currentTimeMillis() - id < 600_000) target = cmd.optBoolean("on");
-            }
-        }
-        if (target == null) return;
-        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-        if (target) {
+        if (id <= 0 || id == prefs.lastCommand()) return;
+        prefs.setLastCommand(id);
+        final PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        Log.i(TAG, "command " + id + " " + type + " (screen " + (pm.isInteractive() ? "on" : "off") + ")");
+        long verifyAfter;
+        if ("SCREEN_ON".equals(type)) {
             if (!pm.isInteractive()) wakeScreen(pm);
             MainActivity.bringToFront(this, false, true);
-        } else if (pm.isInteractive()) {
-            ScreenAdmin.screenOff(this);
+            verifyAfter = 5_000;
+        } else if ("SCREEN_OFF".equals(type)) {
+            if (!ScreenAdmin.active(this)) { report(id, false, pm.isInteractive(), "NO_SCREEN_OFF_PERMISSION"); return; }
+            if (pm.isInteractive() && !ScreenAdmin.screenOff(this)) { report(id, false, pm.isInteractive(), "LOCK_FAILED"); return; }
+            verifyAfter = 3_000;
+        } else if ("SHOW_WELCOME".equals(type)) {
+            if (!pm.isInteractive()) { report(id, false, false, "SCREEN_IS_OFF"); return; }
+            MainActivity.bringToFront(this, true, false);
+            verifyAfter = 2_000;
+        } else {
+            report(id, false, pm.isInteractive(), "UNKNOWN_COMMAND");
+            return;
+        }
+        background.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                boolean on = pm.isInteractive();
+                Log.i(TAG, "command " + id + " " + type + " done, screen " + (on ? "on" : "off"));
+                report(id, true, on, "");
+            }
+        }, verifyAfter);
+    }
+
+    /** POST /api/public/tv/<token>/command {id, status, interactive, error}; the server decides EXECUTED / FAILED. */
+    private void report(long id, boolean done, boolean interactive, String error) {
+        Prefs prefs = new Prefs(this);
+        Uri screen = Uri.parse(prefs.screenUrl());
+        String token = screen.getLastPathSegment();
+        if (token == null) return;
+        HttpURLConnection http = null;
+        try {
+            JSONObject body = new JSONObject().put("id", id).put("status", done ? "EXECUTED" : "FAILED").put("interactive", interactive);
+            if (!error.isEmpty()) body.put("error", error);
+            URL url = new URL(screen.getScheme() + "://" + screen.getAuthority() + "/api/public/tv/" + Uri.encode(token) + "/command");
+            http = (HttpURLConnection) url.openConnection();
+            http.setConnectTimeout(15_000);
+            http.setReadTimeout(15_000);
+            http.setRequestMethod("POST");
+            http.setDoOutput(true);
+            http.setRequestProperty("Content-Type", "application/json");
+            OutputStream out = http.getOutputStream();
+            out.write(body.toString().getBytes("UTF-8"));
+            out.close();
+            Log.i(TAG, "report " + id + " → HTTP " + http.getResponseCode());
+        } catch (Exception e) {
+            // The PMS marks it UNVERIFIED after two minutes without a report.
+            Log.w(TAG, "report " + id + " failed: " + e);
+        } finally {
+            if (http != null) http.disconnect();
         }
     }
 
@@ -166,12 +203,15 @@ public class WakeService extends Service {
         Uri screen = Uri.parse(prefs.screenUrl());
         String token = screen.getLastPathSegment();
         if (token == null) return null;
-        URL url = new URL(screen.getScheme() + "://" + screen.getAuthority() + "/api/public/tv/" + Uri.encode(token) + "/urgent");
+        // What the PMS shows comes from here: screen on/off as measured now, app version, screen-off permission.
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        String state = "?s=" + (pm.isInteractive() ? 1 : 0) + "&v=" + VERSION_CODE + "&a=" + (ScreenAdmin.active(this) ? 1 : 0);
+        URL url = new URL(screen.getScheme() + "://" + screen.getAuthority() + "/api/public/tv/" + Uri.encode(token) + "/urgent" + state);
         HttpURLConnection http = (HttpURLConnection) url.openConnection();
         try {
             http.setConnectTimeout(15_000);
             http.setReadTimeout(15_000);
-            if (http.getResponseCode() != 200) return null;
+            if (http.getResponseCode() != 200) { Log.w(TAG, "check → HTTP " + http.getResponseCode()); return null; }
             InputStream in = http.getInputStream();
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
             byte[] chunk = new byte[2048];
