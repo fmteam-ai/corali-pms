@@ -2,8 +2,8 @@
 <!-- Corali TV: shows a room's welcome screen (booking.hotelcorali.gr/tv/…) full screen on Google TV / Android TV. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="gr.hotelcorali.tv"
-    android:versionCode="9"
-    android:versionName="1.8">
+    android:versionCode="10"
+    android:versionName="1.9">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="30" />
 
@@ -11,6 +11,8 @@
 
     <!-- Android 11+: see the launchable apps (Netflix, YouTube, ...) so the Apps tab can open them. -->
     <queries>
+        <!-- Read-only capability report: is the factory (Hotel Mode) app installed? -->
+        <package android:name="com.expressluck.tvfactory" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LEANBACK_LAUNCHER" />

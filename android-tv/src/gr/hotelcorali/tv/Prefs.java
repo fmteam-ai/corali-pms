@@ -23,6 +23,9 @@ final class Prefs {
     /** The last PMS screen command run (each id once, also after a restart). */
     long lastCommand() { return p.getLong("last_command", 0); }
     void setLastCommand(long id) { p.edit().putLong("last_command", id).apply(); }
+    /** The room's sound policy from the PMS, as JSON ({defaultVolume, maxVolume, enforceMax, rev}). */
+    String soundPolicy() { return p.getString("sound_policy", "{}"); }
+    void setSoundPolicy(String json) { p.edit().putString("sound_policy", json).apply(); }
     void setLastUrgent(long id) { p.edit().putLong("last_urgent", id).apply(); }
 
     void saveScreen(String url, String room, String server) {

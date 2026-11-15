@@ -42,3 +42,19 @@ test("automatic commands only on a change of the arrival / check-out decision", 
   assert.equal(validPowerMethod("android_agent"), true);
   assert.equal(validPowerMethod("ir_controller"), false);
 });
+
+test("sound commands: EXECUTED only with a matching volume / mute read back", async () => {
+  const { volumeStatus, reportStatus, normalizeSoundPolicy } = await import("../scripts/tv-command-core.mjs");
+  assert.equal(volumeStatus({ command: "SET_VOLUME", value: 30 }, { volume: 33 }), "EXECUTED");
+  assert.equal(volumeStatus({ command: "SET_VOLUME", value: 30 }, { volume: 60 }), "FAILED");
+  assert.equal(volumeStatus({ command: "SET_VOLUME", value: 80, cap: 50 }, { volume: 50 }), "EXECUTED");
+  assert.equal(volumeStatus({ command: "SET_VOLUME", value: 30 }, {}), "UNVERIFIED");
+  assert.equal(volumeStatus({ command: "SET_VOLUME", value: 30 }, { volume: 30, fixed: true }), "FAILED");
+  assert.equal(volumeStatus({ command: "MUTE" }, { muted: true }), "EXECUTED");
+  assert.equal(volumeStatus({ command: "UNMUTE" }, { muted: true }), "FAILED");
+  assert.equal(reportStatus({ status: "DELIVERED", command: "MUTE" }, { status: "EXECUTED", muted: true }), "EXECUTED");
+  assert.equal(reportStatus({ status: "DELIVERED", command: "MUTE" }, { status: "FAILED", muted: false }), "FAILED");
+  assert.deepEqual(normalizeSoundPolicy({ defaultVolume: 70, maxVolume: 50, enforceMax: true }), { defaultVolume: 50, maxVolume: 50, enforceMax: true });
+  assert.deepEqual(normalizeSoundPolicy({ defaultVolume: "", maxVolume: null, enforceMax: true }), { defaultVolume: null, maxVolume: null, enforceMax: false });
+  assert.deepEqual(normalizeSoundPolicy({ defaultVolume: 250 }), { defaultVolume: 100, maxVolume: null, enforceMax: false });
+});

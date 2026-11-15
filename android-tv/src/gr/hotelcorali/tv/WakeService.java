@@ -10,6 +10,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
+import android.database.ContentObserver;
+import android.provider.Settings;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -34,7 +36,8 @@ public class WakeService extends Service {
     private static final String CHANNEL = "corali_tv";
     private static final String TAG = "CoraliTV";
     /** Sent with every check; must match android:versionCode. */
-    static final int VERSION_CODE = 9;
+    static final int VERSION_CODE = 10;
+    private static final long CAPS_EVERY_MS = 10 * 60_000;
     private static final long URGENT_CHECK_MS = 20_000;
 
     private HandlerThread worker;
@@ -42,12 +45,19 @@ public class WakeService extends Service {
     // Keep the processor and Wi-Fi awake while the screen is off, so the PMS can turn the screen on again.
     private PowerManager.WakeLock cpuLock;
     private WifiManager.WifiLock wifiLock;
+    // Sound (v159): volume / mute, the room's sound policy, and when capabilities were last reported.
+    private VolumeController volume;
+    private volatile boolean clamped;
+    private long capsSentAt;
+    private ContentObserver volumeWatch;
 
     private final BroadcastReceiver screenOn = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             Prefs prefs = new Prefs(context);
             if (prefs.configured() && prefs.openOnWake()) MainActivity.bringToFront(context, false, false);
+            // Power-on volume of the room's policy, each time the TV is turned on.
+            if (background != null) background.post(new Runnable() { @Override public void run() { applyPowerOnVolume(); } });
         }
     };
 
@@ -58,6 +68,7 @@ public class WakeService extends Service {
                 JSONObject r = check();
                 if (r != null) {
                     urgent(r);
+                    policy(r.optJSONObject("policy"));
                     command(r.optJSONObject("command"));
                 }
             } catch (Exception ignored) {
@@ -99,6 +110,10 @@ public class WakeService extends Service {
         prefs.setLastCommand(id);
         final PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         Log.i(TAG, "command " + id + " " + type + " (screen " + (pm.isInteractive() ? "on" : "off") + ")");
+        if (type.equals("SET_VOLUME") || type.equals("VOLUME_UP") || type.equals("VOLUME_DOWN") || type.equals("MUTE") || type.equals("UNMUTE")) {
+            soundCommand(id, type, c);
+            return;
+        }
         long verifyAfter;
         if ("SCREEN_ON".equals(type)) {
             if (!pm.isInteractive()) wakeScreen(pm);
@@ -126,8 +141,76 @@ public class WakeService extends Service {
         }, verifyAfter);
     }
 
+    /** Volume / mute from the PMS, read back afterwards (the server decides EXECUTED from the values). */
+    private void soundCommand(long id, String type, JSONObject c) {
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        try {
+            if (volume.fixed()) { report(id, false, pm.isInteractive(), "FIXED_VOLUME", soundState()); return; }
+            Integer cap = c.isNull("cap") ? null : c.optInt("cap");
+            if ("SET_VOLUME".equals(type)) volume.setPercent(c.optInt("value", 0), cap);
+            else if ("VOLUME_UP".equals(type)) volume.step(true, cap);
+            else if ("VOLUME_DOWN".equals(type)) volume.step(false, cap);
+            else volume.setMuted("MUTE".equals(type));
+            Log.i(TAG, "sound " + id + " " + type + " → " + volume.percent() + "% muted=" + volume.muted());
+            report(id, true, pm.isInteractive(), "", soundState());
+        } catch (RuntimeException e) {
+            Log.w(TAG, "sound " + id + " failed: " + e);
+            report(id, false, pm.isInteractive(), "AUDIO_ERROR", soundState());
+        }
+    }
+
+    private JSONObject soundState() {
+        JSONObject o = new JSONObject();
+        try {
+            int p = volume.percent();
+            if (p >= 0) o.put("volume", p);
+            o.put("muted", volume.muted());
+            o.put("fixed", volume.fixed());
+        } catch (Exception ignored) { }
+        return o;
+    }
+
+    /** The room's sound policy from the PMS (kept, so it also applies when the PMS cannot be reached). */
+    private void policy(JSONObject p) {
+        if (p == null) return;
+        new Prefs(this).setSoundPolicy(p.toString());
+        enforceMax();
+    }
+
+    /** Maximum volume, software (best effort): a level above it is brought back to it. */
+    private void enforceMax() {
+        try {
+            JSONObject p = new JSONObject(new Prefs(this).soundPolicy());
+            if (!p.optBoolean("enforceMax") || p.isNull("maxVolume") || volume.fixed()) return;
+            int max = p.optInt("maxVolume", 100);
+            if (volume.percent() > max) {
+                volume.setPercent(max, null);
+                clamped = true;
+                Log.i(TAG, "volume brought back to the maximum " + max + "%");
+            }
+        } catch (Exception ignored) {
+            // No policy yet.
+        }
+    }
+
+    /** Power-on volume (TV turned on / app started at boot), capped by the maximum. */
+    private void applyPowerOnVolume() {
+        try {
+            JSONObject p = new JSONObject(new Prefs(this).soundPolicy());
+            if (p.isNull("defaultVolume") || volume.fixed()) return;
+            Integer cap = p.optBoolean("enforceMax") && !p.isNull("maxVolume") ? p.optInt("maxVolume") : null;
+            int now = volume.setPercent(p.optInt("defaultVolume"), cap);
+            Log.i(TAG, "power-on volume → " + now + "%");
+        } catch (Exception ignored) {
+            // No policy yet.
+        }
+    }
+
     /** POST /api/public/tv/<token>/command {id, status, interactive, error}; the server decides EXECUTED / FAILED. */
-    private void report(long id, boolean done, boolean interactive, String error) {
+    private void report(long id, boolean done, boolean interactive, String error) { report(id, done, interactive, error, null); }
+
+    /** As report(), with the sound state read back after a sound command. */
+    private void report(long id, boolean done, boolean interactive, String error, JSONObject sound) {
         Prefs prefs = new Prefs(this);
         Uri screen = Uri.parse(prefs.screenUrl());
         String token = screen.getLastPathSegment();
@@ -136,6 +219,11 @@ public class WakeService extends Service {
         try {
             JSONObject body = new JSONObject().put("id", id).put("status", done ? "EXECUTED" : "FAILED").put("interactive", interactive);
             if (!error.isEmpty()) body.put("error", error);
+            if (sound != null) {
+                if (sound.has("volume")) body.put("volume", sound.getInt("volume"));
+                if (sound.has("muted")) body.put("muted", sound.getBoolean("muted"));
+                if (sound.has("fixed")) body.put("fixed", sound.getBoolean("fixed"));
+            }
             URL url = new URL(screen.getScheme() + "://" + screen.getAuthority() + "/api/public/tv/" + Uri.encode(token) + "/command");
             http = (HttpURLConnection) url.openConnection();
             http.setConnectTimeout(15_000);
@@ -206,6 +294,14 @@ public class WakeService extends Service {
         // What the PMS shows comes from here: screen on/off as measured now, app version, screen-off permission.
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         String state = "?s=" + (pm.isInteractive() ? 1 : 0) + "&v=" + VERSION_CODE + "&a=" + (ScreenAdmin.active(this) ? 1 : 0);
+        int vol = volume.percent();
+        if (vol >= 0) state += "&vol=" + vol;
+        state += "&mute=" + (volume.muted() ? 1 : 0) + "&fixed=" + (volume.fixed() ? 1 : 0);
+        if (clamped) { state += "&clamped=1"; clamped = false; }
+        if (System.currentTimeMillis() - capsSentAt > CAPS_EVERY_MS) {
+            state += "&caps=" + Uri.encode(volume.capabilities().toString());
+            capsSentAt = System.currentTimeMillis();
+        }
         URL url = new URL(screen.getScheme() + "://" + screen.getAuthority() + "/api/public/tv/" + Uri.encode(token) + "/urgent" + state);
         HttpURLConnection http = (HttpURLConnection) url.openConnection();
         try {
@@ -256,6 +352,14 @@ public class WakeService extends Service {
         worker = new HandlerThread("corali-urgent");
         worker.start();
         background = new Handler(worker.getLooper());
+        volume = new VolumeController(this);
+        // A volume change from the remote or another app: check the maximum at once (besides every 20 s).
+        volumeWatch = new ContentObserver(background) {
+            @Override
+            public void onChange(boolean selfChange) { enforceMax(); }
+        };
+        try { getContentResolver().registerContentObserver(Settings.System.CONTENT_URI, true, volumeWatch); } catch (RuntimeException ignored) { }
+        background.post(new Runnable() { @Override public void run() { applyPowerOnVolume(); } });
         background.postDelayed(checkUrgent, 10_000);
     }
 
@@ -271,6 +375,7 @@ public class WakeService extends Service {
     @Override
     public void onDestroy() {
         unregisterReceiver(screenOn);
+        if (volumeWatch != null) getContentResolver().unregisterContentObserver(volumeWatch);
         if (cpuLock != null && cpuLock.isHeld()) cpuLock.release();
         if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
         background.removeCallbacks(checkUrgent);

@@ -7,10 +7,13 @@ const input = z.object({
   status: z.enum(["EXECUTED", "FAILED"]),
   interactive: z.boolean().optional(),
   error: z.string().max(120).optional(),
+  volume: z.number().int().min(0).max(100).optional(),
+  muted: z.boolean().optional(),
+  fixed: z.boolean().optional(),
 });
 const noStore = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 
-/** Corali TV app ≥ 1.8: result of a screen command, with the screen state it measured afterwards (applied once). */
+/** Corali TV app ≥ 1.8: result of a command, with the screen / sound state it read back afterwards (applied once). */
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const parsed = input.safeParse(await request.json().catch(() => null));

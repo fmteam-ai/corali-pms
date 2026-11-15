@@ -2198,3 +2198,28 @@ UPDATE tv_screens s SET power_method = CASE
    WHEN s.screen_seen_at IS NOT NULL AND EXISTS (SELECT 1 FROM tv_power_settings p WHERE p.owner_id=s.owner_id AND p.settings_json LIKE '%"appScreen":true%') THEN 'android_agent'
    WHEN s.power_device_id<>'' THEN 'shelly' ELSE 'manual' END
  WHERE s.power_method IS NULL;
+
+-- v159: sound control through the Corali TV app ≥ 1.9 (AudioManager). Commands reuse tv_screen_commands with a
+-- value (SET_VOLUME %) and the cap applied; the sound policy per room is desired state, what the TV reports is kept
+-- apart (tv_screens.volume_*), and factory Hotel Mode settings are only read and shown (caps_json), never written.
+ALTER TABLE tv_screen_commands ADD COLUMN IF NOT EXISTS value INTEGER;
+ALTER TABLE tv_screen_commands ADD COLUMN IF NOT EXISTS cap INTEGER;
+ALTER TABLE tv_screen_commands ADD COLUMN IF NOT EXISTS result_volume INTEGER;
+ALTER TABLE tv_screen_commands ADD COLUMN IF NOT EXISTS result_muted BIGINT;
+CREATE TABLE IF NOT EXISTS tv_sound_policies (
+ owner_id TEXT NOT NULL,
+ room_id BIGINT NOT NULL,
+ default_volume INTEGER CHECK (default_volume BETWEEN 0 AND 100),
+ max_volume INTEGER CHECK (max_volume BETWEEN 0 AND 100),
+ enforce_max BIGINT NOT NULL DEFAULT 0,
+ updated_by BIGINT,
+ updated_at BIGINT NOT NULL,
+ PRIMARY KEY (owner_id, room_id),
+ CHECK (default_volume IS NULL OR max_volume IS NULL OR default_volume <= max_volume)
+);
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS volume_percent INTEGER;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS volume_muted BIGINT;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS volume_fixed BIGINT;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS caps_json TEXT;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS policy_applied_at BIGINT;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS policy_clamped_at BIGINT;
