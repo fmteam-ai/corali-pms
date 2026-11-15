@@ -12,6 +12,9 @@ public class BootReceiver extends BroadcastReceiver {
         if (!prefs.configured()) return;
         WakeService.start(context);
         if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(intent.getAction())) return;
+        // Power came back (smart plug on at arrival / check-in): light the screen too, but only in the day, so a
+        // night-time restart of the TV (system update) does not wake a sleeping guest.
+        if (WakeService.dayTime()) WakeService.startPowerOn(context);
         MainActivity.bringToFront(context, false, false);
     }
 }

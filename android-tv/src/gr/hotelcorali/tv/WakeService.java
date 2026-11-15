@@ -78,6 +78,32 @@ public class WakeService extends Service {
         }
     }
 
+    /** 08:00–22:59 on the TV's clock. */
+    static boolean dayTime() {
+        int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        return h >= 8 && h < 23;
+    }
+
+    /** After the TV gets power: wake the screen once Android has settled (it often boots into standby). */
+    static void startPowerOn(Context c) {
+        Intent i = new Intent(c, WakeService.class).putExtra("power_on", true);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) c.startForegroundService(i); else c.startService(i);
+        } catch (RuntimeException ignored) {
+            // Not allowed right now; the screen stays in standby and the guest turns it on with the remote.
+        }
+    }
+
+    private final Runnable powerOn = new Runnable() {
+        @Override
+        public void run() {
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            if (pm.isInteractive()) return;
+            wakeScreen(pm);
+            MainActivity.bringToFront(WakeService.this, false, true);
+        }
+    };
+
     @SuppressWarnings("deprecation")
     private void wakeScreen(PowerManager pm) {
         PowerManager.WakeLock lock = pm.newWakeLock(PowerManager.FULL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE, "CoraliTV:urgent");
@@ -133,12 +159,19 @@ public class WakeService extends Service {
     }
 
     @Override
-    public int onStartCommand(Intent intent, int flags, int startId) { return START_STICKY; }
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null && intent.getBooleanExtra("power_on", false)) {
+            // A few tries: some TVs finish starting (and go to standby) a few seconds after boot.
+            for (long delay : new long[]{2_000, 8_000, 20_000}) background.postDelayed(powerOn, delay);
+        }
+        return START_STICKY;
+    }
 
     @Override
     public void onDestroy() {
         unregisterReceiver(screenOn);
         background.removeCallbacks(checkUrgent);
+        background.removeCallbacks(powerOn);
         worker.quit();
         super.onDestroy();
     }

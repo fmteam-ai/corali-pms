@@ -26,7 +26,7 @@ mkdir -p "$WORK/gen" "$WORK/classes" "$(dirname "$OUT")"
   --min-sdk-version 24 --target-sdk-version 30 -o "$WORK/unsigned.apk" "$WORK/res.zip"
 
 find "$APP/src" "$WORK/gen" -name '*.java' > "$WORK/sources.txt"
-javac -nowarn -Xlint:-options -source 8 -target 8 -encoding UTF-8 -bootclasspath "$ANDROID_JAR" -d "$WORK/classes" @"$WORK/sources.txt"
+javac -nowarn --release 8 -encoding UTF-8 -classpath "$ANDROID_JAR" -d "$WORK/classes" @"$WORK/sources.txt"
 "$BT/dx" --dex --min-sdk-version=24 --output="$WORK/classes.dex" "$WORK/classes"
 (cd "$WORK" && zip -q -j unsigned.apk classes.dex)
 
