@@ -2223,3 +2223,21 @@ ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS volume_fixed BIGINT;
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS caps_json TEXT;
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS policy_applied_at BIGINT;
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS policy_clamped_at BIGINT;
+
+-- v160: Hotel Mode resets (software sound policies only — never a factory reset or vendor setting). One row per request:
+-- the idempotency key makes a repeated click / retry return the first answer; actor, rooms, policies before / after
+-- and the commands queued are kept for the audit trail. policy_rev_applied: the policy the TV app (≥ 1.10) applied.
+CREATE TABLE IF NOT EXISTS tv_reset_requests (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ idempotency_key TEXT NOT NULL,
+ action TEXT NOT NULL,
+ room_ids TEXT NOT NULL,
+ actor_id BIGINT,
+ created_at BIGINT NOT NULL,
+ before_json TEXT NOT NULL DEFAULT '{}',
+ after_json TEXT NOT NULL DEFAULT '{}',
+ commands_json TEXT NOT NULL DEFAULT '{}',
+ UNIQUE (owner_id, idempotency_key)
+);
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS policy_rev_applied BIGINT;

@@ -36,7 +36,7 @@ public class WakeService extends Service {
     private static final String CHANNEL = "corali_tv";
     private static final String TAG = "CoraliTV";
     /** Sent with every check; must match android:versionCode. */
-    static final int VERSION_CODE = 10;
+    static final int VERSION_CODE = 11;
     private static final long CAPS_EVERY_MS = 10 * 60_000;
     private static final long URGENT_CHECK_MS = 20_000;
 
@@ -298,6 +298,11 @@ public class WakeService extends Service {
         if (vol >= 0) state += "&vol=" + vol;
         state += "&mute=" + (volume.muted() ? 1 : 0) + "&fixed=" + (volume.fixed() ? 1 : 0);
         if (clamped) { state += "&clamped=1"; clamped = false; }
+        // The policy revision this TV holds and applies (the PMS confirms resets / policy changes with it).
+        try {
+            long rev = new JSONObject(new Prefs(this).soundPolicy()).optLong("rev", 0);
+            if (rev > 0) state += "&prev=" + rev;
+        } catch (Exception ignored) { }
         if (System.currentTimeMillis() - capsSentAt > CAPS_EVERY_MS) {
             state += "&caps=" + Uri.encode(volume.capabilities().toString());
             capsSentAt = System.currentTimeMillis();

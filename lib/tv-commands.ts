@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { hotelToday } from "@/lib/tape-chart";
 import { hotelTime } from "@/lib/tv";
 import { loadPowerSettings, POWER_METHOD_SQL } from "@/lib/tv-power";
-import { autoCommand, COMMAND_TTL_MS, expiredStatus, normalizeSoundPolicy, parseCapabilities, reportStatus, type SoundPolicy, type TvCommand } from "../scripts/tv-command-core.mjs";
+import { agentState, autoCommand, COMMAND_TTL_MS, expiredStatus, normalizeSoundPolicy, parseCapabilities, reportStatus, resetPlan, resetRoomStatus, type ResetAction, type ResetStatus, type SoundPolicy, type TvCommand } from "../scripts/tv-command-core.mjs";
 import { desiredPower } from "../scripts/tv-power-core.mjs";
 
 export type CommandRow = { id: number; room_id: number; command: string; source: string; status: string; error: string; created_at: number; delivered_at: number | null; finished_at: number | null; value: number | null; cap: number | null; result_volume: number | null; result_muted: number | null };
@@ -24,17 +24,18 @@ async function expire(ownerId: string, roomId: number | null, now: number) {
 }
 
 /** Queue a command for the room; an older one still waiting is CANCELLED (the newest wins). */
-export async function queueCommand(ownerId: string, roomId: number, command: TvCommand, source: "manual" | "auto", userId: number | null, value: number | null = null): Promise<CommandRow | null> {
+export async function queueCommand(ownerId: string, roomId: number, command: TvCommand, source: "manual" | "auto" | "reset", userId: number | null, value: number | null = null, opts: { supersede?: boolean; ttlMs?: number } = {}): Promise<CommandRow | null> {
   const now = Date.now();
   const room = (await db().query(`SELECT 1 FROM tv_screens WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId])).rows[0];
   if (!room) return null;
-  // Only one command waits per room: a newer one replaces it (a quick double press never runs twice).
-  await db().query(`UPDATE tv_screen_commands SET status='CANCELLED',error='SUPERSEDED',finished_at=$3 WHERE owner_id=$1 AND room_id=$2 AND status='PENDING'`, [ownerId, roomId, now]);
+  // Only one command waits per room: a newer one replaces it (a quick double press never runs twice). A reset queues
+  // its steps together (supersede only before the first), delivered oldest first, one per check.
+  if (opts.supersede !== false) await db().query(`UPDATE tv_screen_commands SET status='CANCELLED',error='SUPERSEDED',finished_at=$3 WHERE owner_id=$1 AND room_id=$2 AND status='PENDING'`, [ownerId, roomId, now]);
   const policy = (await soundPolicies(ownerId))[roomId];
   const cap = policy?.enforceMax ? policy.maxVolume : null;
   const r = await db().query(
     `INSERT INTO tv_screen_commands(owner_id,room_id,command,source,status,created_by,created_at,expires_at,value,cap) VALUES($1,$2,$3,$4,'PENDING',$5,$6,$7,$8,$9) RETURNING *`,
-    [ownerId, roomId, command, source, userId, now, now + COMMAND_TTL_MS, value, cap],
+    [ownerId, roomId, command, source, userId, now, now + (opts.ttlMs ?? COMMAND_TTL_MS), value, cap],
   );
   return toRow(r.rows[0]);
 }
@@ -43,7 +44,7 @@ export async function queueCommand(ownerId: string, roomId: number, command: TvC
  * The app's check (every ~20 s): records what it measured (screen on/off, version, screen-off permission), applies the
  * automatic arrival / check-out rule for «android_agent» rooms, and hands over the newest waiting command (once).
  */
-export type AgentReport = { interactive: boolean | null; version: number | null; admin: boolean | null; volume?: number | null; muted?: boolean | null; fixed?: boolean | null; caps?: Record<string, unknown> | null; clamped?: boolean };
+export type AgentReport = { interactive: boolean | null; version: number | null; admin: boolean | null; volume?: number | null; muted?: boolean | null; fixed?: boolean | null; caps?: Record<string, unknown> | null; clamped?: boolean; policyRev?: number | null };
 export type AgentAnswer = { command: { id: number; command: string; value: number | null; cap: number | null } | null; policy: (SoundPolicy & { rev: number }) | null };
 
 export async function agentCheck(ownerId: string, roomId: number, report: AgentReport): Promise<AgentAnswer> {
@@ -52,9 +53,9 @@ export async function agentCheck(ownerId: string, roomId: number, report: AgentR
   const row = (await db().query(
     `UPDATE tv_screens SET screen_seen_at=$3,screen_interactive=$4,app_version=COALESCE($5,app_version),app_admin=COALESCE($6,app_admin),
        volume_percent=COALESCE($7,volume_percent),volume_muted=COALESCE($8,volume_muted),volume_fixed=COALESCE($9,volume_fixed),
-       caps_json=COALESCE($10,caps_json),policy_clamped_at=CASE WHEN $11::boolean THEN $3 ELSE policy_clamped_at END
+       caps_json=COALESCE($10,caps_json),policy_clamped_at=CASE WHEN $11::boolean THEN $3 ELSE policy_clamped_at END,policy_rev_applied=COALESCE($12,policy_rev_applied)
       WHERE owner_id=$1 AND room_id=$2 RETURNING ${POWER_METHOD_SQL} AS method,screen_auto_state`,
-    [ownerId, roomId, now, b(report.interactive), report.version, b(report.admin), report.volume ?? null, b(report.muted), b(report.fixed), report.caps ? JSON.stringify(parseCapabilities(report.caps)) : null, report.clamped === true],
+    [ownerId, roomId, now, b(report.interactive), report.version, b(report.admin), report.volume ?? null, b(report.muted), b(report.fixed), report.caps ? JSON.stringify(parseCapabilities(report.caps)) : null, report.clamped === true, report.policyRev ?? null],
   )).rows[0];
   // Sound policy for apps that apply it (≥ 1.9), whatever the power method.
   const policy = row && report.version !== null && report.version >= 10 ? (await soundPolicies(ownerId))[roomId] ?? null : null;
@@ -81,7 +82,7 @@ export async function agentCheck(ownerId: string, roomId: number, report: AgentR
 /** Hand over the newest waiting command once (atomic). soundOnly: rooms not run by the app keep screen commands back. */
 async function deliver(ownerId: string, roomId: number, now: number, soundOnly: boolean) {
   const next = (await db().query(
-    `UPDATE tv_screen_commands SET status='DELIVERED',delivered_at=$3 WHERE id=(SELECT id FROM tv_screen_commands WHERE owner_id=$1 AND room_id=$2 AND status='PENDING' ${soundOnly ? "AND command NOT IN ('SCREEN_ON','SCREEN_OFF')" : ""} ORDER BY id DESC LIMIT 1) AND status='PENDING' RETURNING id,command,value,cap`,
+    `UPDATE tv_screen_commands SET status='DELIVERED',delivered_at=$3 WHERE id=(SELECT id FROM tv_screen_commands WHERE owner_id=$1 AND room_id=$2 AND status='PENDING' ${soundOnly ? "AND command NOT IN ('SCREEN_ON','SCREEN_OFF')" : ""} ORDER BY id ASC LIMIT 1) AND status='PENDING' RETURNING id,command,value,cap`,
     [ownerId, roomId, now],
   )).rows[0];
   return next ? { id: Number(next.id), command: String(next.command), value: num(next.value), cap: num(next.cap) } : null;
@@ -132,4 +133,70 @@ export async function latestCommands(ownerId: string): Promise<Record<number, Co
   await expire(ownerId, null, Date.now());
   const rows = (await db().query(`SELECT DISTINCT ON (room_id) * FROM tv_screen_commands WHERE owner_id=$1 ORDER BY room_id, id DESC`, [ownerId])).rows;
   return Object.fromEntries(rows.map((x) => [Number(x.room_id), toRow(x)]));
+}
+
+/** Corali TV app versions: sound commands (1.9) and the applied-policy report (1.10). */
+export const SOUND_APP = 10;
+export const POLICY_ACK_APP = 11;
+const RESET_TTL_MS = 30 * 60_000;
+
+export type ResetRoomResult = { roomId: number; roomCode: string; policySaved: boolean; commandIds: number[]; status: ResetStatus };
+
+/**
+ * v160 reset for the selected rooms (never all implicitly). Idempotent by key: a repeat returns the first request.
+ * Saves the policy (desired state) and queues the sound steps; per room the status then follows the TV's reports.
+ * Never touches the room token, Wi-Fi, power method, welcome screen, bookings or any factory / vendor setting.
+ */
+export async function runReset(ownerId: string, userId: number, action: ResetAction | "restore_sound", roomIds: number[], key: string, preset: unknown): Promise<{ requestId: number; repeated: boolean }> {
+  const existing = (await db().query(`SELECT id FROM tv_reset_requests WHERE owner_id=$1 AND idempotency_key=$2`, [ownerId, key])).rows[0];
+  if (existing) return { requestId: Number(existing.id), repeated: true };
+  const now = Date.now();
+  const screens = new Map((await db().query(`SELECT room_id,app_version FROM tv_screens WHERE owner_id=$1 AND active=1`, [ownerId])).rows.map((r) => [Number(r.room_id), r.app_version === null ? null : Number(r.app_version)]));
+  const before = await soundPolicies(ownerId);
+  const after: Record<number, unknown> = {}, commands: Record<number, number[]> = {};
+  const ins = await db().query(
+    `INSERT INTO tv_reset_requests(owner_id,idempotency_key,action,room_ids,actor_id,created_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(owner_id,idempotency_key) DO NOTHING RETURNING id`,
+    [ownerId, key, action, JSON.stringify(roomIds), userId, now],
+  );
+  if (!ins.rowCount) return { requestId: Number((await db().query(`SELECT id FROM tv_reset_requests WHERE owner_id=$1 AND idempotency_key=$2`, [ownerId, key])).rows[0].id), repeated: true };
+  for (const roomId of roomIds) {
+    if (!screens.has(roomId)) continue;
+    const plan = resetPlan(action, before[roomId] ?? null, preset);
+    if (plan.policy) { await saveSoundPolicy(ownerId, [roomId], plan.policy, userId); after[roomId] = plan.policy; }
+    const version = screens.get(roomId) ?? null;
+    if (version === null || version < SOUND_APP) continue; // APP_TOO_OLD: the policy waits for the app update
+    const ids: number[] = [];
+    for (const [i, step] of plan.commands.entries()) {
+      const c = await queueCommand(ownerId, roomId, step.command, "reset", userId, step.value, { supersede: i === 0, ttlMs: RESET_TTL_MS });
+      if (c) ids.push(c.id);
+    }
+    commands[roomId] = ids;
+  }
+  await db().query(`UPDATE tv_reset_requests SET before_json=$2,after_json=$3,commands_json=$4 WHERE id=$1`, [ins.rows[0].id, JSON.stringify(Object.fromEntries(roomIds.map((r) => [r, before[r] ?? null]))), JSON.stringify(after), JSON.stringify(commands)]);
+  return { requestId: Number(ins.rows[0].id), repeated: false };
+}
+
+/** Status of a reset request per room, from the TVs' own reports (commands + applied policy). */
+export async function resetResults(ownerId: string, requestId: number): Promise<{ action: string; results: ResetRoomResult[] } | null> {
+  const req = (await db().query(`SELECT * FROM tv_reset_requests WHERE owner_id=$1 AND id=$2`, [ownerId, requestId])).rows[0];
+  if (!req) return null;
+  const now = Date.now();
+  await expire(ownerId, null, now);
+  const roomIds = JSON.parse(String(req.room_ids)) as number[];
+  const after = JSON.parse(String(req.after_json)) as Record<string, unknown>;
+  const cmdIds = JSON.parse(String(req.commands_json)) as Record<string, number[]>;
+  const all = Object.values(cmdIds).flat();
+  const cmds = new Map(all.length ? (await db().query(`SELECT id,status FROM tv_screen_commands WHERE owner_id=$1 AND id = ANY($2::bigint[])`, [ownerId, all])).rows.map((r) => [Number(r.id), String(r.status)]) : []);
+  const policies = await soundPolicies(ownerId);
+  const screens = new Map((await db().query(`SELECT s.room_id,r.code,s.app_version,s.screen_seen_at,s.screen_interactive,s.policy_rev_applied FROM tv_screens s JOIN rooms r ON r.id=s.room_id AND r.owner_id=s.owner_id WHERE s.owner_id=$1`, [ownerId])).rows.map((r) => [Number(r.room_id), r]));
+  const results = roomIds.map((roomId): ResetRoomResult => {
+    const s = screens.get(roomId);
+    const ids = cmdIds[String(roomId)] ?? [];
+    const online = s ? !["offline", "unknown"].includes(agentState(num(s.screen_seen_at), num(s.screen_interactive), now)) : false;
+    return {
+      roomId, roomCode: s ? String(s.code) : String(roomId), policySaved: String(roomId) in after, commandIds: ids,
+      status: resetRoomStatus({ appVersion: s ? num(s.app_version) : null, online, commands: ids.map((id) => ({ status: cmds.get(id) ?? "PENDING" })), policyRev: String(roomId) in after ? policies[roomId]?.rev ?? null : null, appliedRev: s ? num(s.policy_rev_applied) : null, needsPolicyAck: String(roomId) in after }),
+    };
+  });
+  return { action: String(req.action), results };
 }

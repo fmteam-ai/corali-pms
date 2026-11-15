@@ -8,7 +8,9 @@ import type { CommandRow } from "@/lib/tv-commands";
 import { agentState, FINAL_STATUSES, type SoundPolicy } from "../../../scripts/tv-command-core.mjs";
 
 type Policy = SoundPolicy & { rev?: number };
-type Data = { screens: TvScreenRow[]; policies: Record<number, Policy>; commands: Record<number, CommandRow>; soundApp: number };
+type Data = { screens: TvScreenRow[]; policies: Record<number, Policy>; commands: Record<number, CommandRow>; soundApp: number; preset: SoundPolicy };
+type ResetResult = { roomId: number; roomCode: string; policySaved: boolean; commandIds: number[]; status: string };
+const FINAL_RESET = ["EXECUTED", "FAILED", "UNVERIFIED", "APP_TOO_OLD", "SUPERSEDED"];
 
 const EL = {
   title: "Ήχος & Hotel Mode",
@@ -29,6 +31,19 @@ const EL = {
   unsupportedHelp: "Κλείδωμα μενού, κλείδωμα πηγής (HDMI) και εργοστασιακό όριο έντασης: η τηλεόραση έχει εργοστασιακές ρυθμίσεις Hotel Mode, αλλά καμία εξουσιοδοτημένη πρόσβαση για εφαρμογές. Οι τιμές τους εμφανίζονται μόνο για ενημέρωση (ανάγνωση) και δεν αλλάζουν από το PMS.",
   menuLock: "Κλείδωμα μενού", sourceLock: "Κλείδωμα πηγής",
   noPerm: "Μόνο ανάγνωση (χρειάζεται δικαίωμα κρατήσεων για την ένταση / διαχειριστή για την πολιτική).",
+  policyApplied: "πολιτική στην TV ✓", policyWaiting: "η TV δεν έχει πάρει ακόμα τη νέα πολιτική", policyUnknown: "επιβεβαίωση πολιτικής: χρειάζεται Corali TV 1.10",
+  resets: "Επαναφορές (μόνο στα επιλεγμένα δωμάτια)", resetsHelp: "Αλλάζουν μόνο τις πολιτικές ήχου του ξενοδοχείου στην εφαρμογή. Δεν γίνεται εργοστασιακή επαναφορά, δεν αγγίζονται ρυθμίσεις του κατασκευαστή, ο σύνδεσμος του δωματίου, το Wi-Fi, η μέθοδος ρεύματος ή το καλωσόρισμα.",
+  preset: "Προεπιλογές ξενοδοχείου", savePreset: "Αποθήκευση προεπιλογών",
+  r_hotel_default: "Επαναφορά προεπιλογών ξενοδοχείου", r_no_max_enforcement: "Κατάργηση περιορισμού μέγιστης έντασης", r_restore_sound: "Επαναφορά ήχου τώρα", r_hotel_mode: "Επαναφορά Hotel Mode",
+  d_hotel_default: "Πολιτική → ένταση στο άναμμα {d}%, μέγιστη {m}%, επιβολή {e}· μετά «Ήχος» (unmute).",
+  d_no_max_enforcement: "Επιβολή μεγίστου → όχι (η ένταση στο άναμμα μένει). Δεν σημαίνει εργοστασιακό μέγιστο 100%.",
+  d_restore_sound: "«Ήχος» (unmute) και ένταση στην ένταση εκκίνησης του δωματίου (με το όριο, αν ισχύει). Η πολιτική δεν αλλάζει.",
+  d_hotel_mode: "Μόνο οι πολιτικές λογισμικού: πολιτική → {d}% / {m}% / επιβολή {e}, «Ήχος» και ένταση {d}%. Εργοστασιακές ρυθμίσεις: δεν αγγίζονται.",
+  confirmRooms: "Δωμάτια", noFactory: "Δεν πραγματοποιείται εργοστασιακή επαναφορά.", typeCount: "Μαζική επαναφορά: γράψτε τον αριθμό των δωματίων ({n}) για επιβεβαίωση.", countMismatch: "Ο αριθμός δεν ταιριάζει — δεν έγινε τίποτα.",
+  yes: "ναι", no: "όχι", selectFirst: "Επιλέξτε πρώτα δωμάτια.",
+  emergency: "Emergency Unlock Menu", emergencyHelp: "Δεν υποστηρίζεται από το PMS: δεν υπάρχει εγκεκριμένος μηχανισμός ξεκλειδώματος και επαναφοράς. Μόνο για εξουσιοδοτημένο τεχνικό, χειροκίνητα στην τηλεόραση: Factory Menu → Engineer Mode Option → Lock Menu Key → Off. Το «Lock Menu Key» επηρεάζει συγκεκριμένο πλήκτρο, όχι όλες τις ρυθμίσεις Android.",
+  resultTitle: "Αποτέλεσμα επαναφοράς", res_PENDING: "⏳ σε αναμονή", res_DELIVERED: "📨 παραδόθηκε", res_EXECUTED: "✓ επιβεβαιώθηκε από την TV", res_UNVERIFIED: "? χωρίς επιβεβαίωση", res_FAILED: "✗ απέτυχε", res_OFFLINE: "TV εκτός σύνδεσης — η πολιτική θα εφαρμοστεί όταν συνδεθεί", res_APP_TOO_OLD: "χρειάζεται Corali TV 1.9+ (η πολιτική αποθηκεύτηκε)", res_SUPERSEDED: "αντικαταστάθηκε από νεότερη εντολή / επαναφορά",
+  factoryUnsupported: "Εργοστασιακό κλείδωμα μενού: UNSUPPORTED (δεν αγγίχτηκε)", repeated: "Το ίδιο αίτημα είχε ήδη σταλεί — εμφανίζεται το αρχικό αποτέλεσμα.",
 };
 const EN: typeof EL = {
   ...EL,
@@ -50,6 +65,19 @@ const EN: typeof EL = {
   unsupportedHelp: "Menu lock, source (HDMI) lock and the factory volume limit: the TV has factory Hotel Mode settings, but no authorised access for apps. Their values are shown for information only (read) and are not changed by the PMS.",
   menuLock: "Menu lock", sourceLock: "Source lock",
   noPerm: "Read only (volume needs the reservations permission, the policy needs admin).",
+  policyApplied: "policy on the TV ✓", policyWaiting: "the TV has not taken the new policy yet", policyUnknown: "policy confirmation needs Corali TV 1.10",
+  resets: "Resets (selected rooms only)", resetsHelp: "They change only the hotel's sound policies in the app. No factory reset, no vendor settings; room link, Wi-Fi, power method and welcome screen are not touched.",
+  preset: "Hotel defaults", savePreset: "Save defaults",
+  r_hotel_default: "Reset to hotel defaults", r_no_max_enforcement: "Remove maximum volume limit", r_restore_sound: "Restore sound now", r_hotel_mode: "Reset Hotel Mode",
+  d_hotel_default: "Policy → power-on {d}%, maximum {m}%, enforce {e}; then unmute.",
+  d_no_max_enforcement: "Enforce maximum → no (power-on volume kept). It does not mean a factory maximum of 100%.",
+  d_restore_sound: "Unmute and set the room's power-on volume (within the limit, if enforced). The policy is not changed.",
+  d_hotel_mode: "Software policies only: policy → {d}% / {m}% / enforce {e}, unmute and volume {d}%. Factory settings are not touched.",
+  confirmRooms: "Rooms", noFactory: "No factory reset is performed.", typeCount: "Bulk reset: type the number of rooms ({n}) to confirm.", countMismatch: "The number does not match — nothing was done.",
+  yes: "yes", no: "no", selectFirst: "Select rooms first.",
+  emergency: "Emergency Unlock Menu", emergencyHelp: "Not supported by the PMS: there is no approved unlock and rollback mechanism. Authorised technician only, by hand on the TV: Factory Menu → Engineer Mode Option → Lock Menu Key → Off. “Lock Menu Key” affects a specific key, not all Android settings.",
+  resultTitle: "Reset result", res_PENDING: "⏳ pending", res_DELIVERED: "📨 delivered", res_EXECUTED: "✓ confirmed by the TV", res_UNVERIFIED: "? not confirmed", res_FAILED: "✗ failed", res_OFFLINE: "TV offline — the policy applies when it connects", res_APP_TOO_OLD: "needs Corali TV 1.9+ (policy saved)", res_SUPERSEDED: "replaced by a newer command / reset",
+  factoryUnsupported: "Factory menu lock: UNSUPPORTED (not touched)", repeated: "The same request had already been sent — showing its result.",
 };
 
 export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; canCommand: boolean; canPolicy: boolean }) {
@@ -64,6 +92,8 @@ export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; ca
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [preset, setPreset] = useState<SoundPolicy | null>(null);
+  const [reset, setReset] = useState<{ requestId: number; action: string; results: ResetResult[] } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -77,6 +107,18 @@ export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; ca
     const id = window.setInterval(() => void load(), waiting ? 4_000 : 30_000);
     return () => window.clearInterval(id);
   }, [load, waiting]);
+
+  useEffect(() => {
+    if (!reset || reset.results.every((r) => FINAL_RESET.includes(r.status))) return;
+    const id = window.setInterval(async () => {
+      try {
+        const r = await fetch("/api/pms/tv/sound", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reset_status", requestId: reset.requestId }) });
+        const d = await r.json();
+        if (d.ok) setReset({ requestId: d.requestId, action: d.action, results: d.results });
+      } catch { /* next tick */ }
+    }, 5_000);
+    return () => window.clearInterval(id);
+  }, [reset]);
 
   async function post(body: unknown) {
     setBusy(true); setMsg("");
@@ -102,6 +144,27 @@ export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; ca
     setMsg(T.policySaved.replace("{n}", String(d.saved.length)));
     setData((x) => (x ? { ...x, policies: d.policies } : x));
     setEdit((e) => { const n = { ...e }; for (const r of roomIds) delete n[r]; return n; });
+  }
+
+  const presetNow = preset ?? data?.preset ?? { defaultVolume: 8, maxVolume: 30, enforceMax: true };
+  async function runReset(action: "hotel_default" | "no_max_enforcement" | "restore_sound" | "hotel_mode") {
+    if (!data) return;
+    const ids = [...sel];
+    if (!ids.length) { setMsg(T.selectFirst); return; }
+    const codes = data.screens.filter((s) => sel.has(s.room_id)).map((s) => s.room_code).join(", ");
+    const desc = tx(`d_${action}`).replaceAll("{d}", String(presetNow.defaultVolume)).replaceAll("{m}", String(presetNow.maxVolume)).replaceAll("{e}", presetNow.enforceMax ? T.yes : T.no);
+    if (!window.confirm(`${tx(`r_${action}`)}\n\n${desc}\n\n${T.confirmRooms} (${ids.length}): ${codes}\n\n${T.noFactory}`)) return;
+    if (ids.length > 1 && window.prompt(T.typeCount.replace("{n}", String(ids.length)))?.trim() !== String(ids.length)) { setMsg(T.countMismatch); return; }
+    const key = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}abcdef`;
+    const d = await post(action === "restore_sound" ? { action, roomIds: ids, idempotencyKey: key } : { action: "reset_policy", roomIds: ids, preset: action, idempotencyKey: key });
+    if (!d) return;
+    setReset({ requestId: d.requestId, action: d.action, results: d.results });
+    setMsg(d.repeated ? T.repeated : "");
+    void load();
+  }
+  async function savePreset() {
+    const d = await post({ action: "preset", preset: presetNow });
+    if (d) { setPreset(d.preset); setMsg(T.policySaved.replace("{n}", "—")); }
   }
 
   if (!data) return null;
@@ -139,6 +202,36 @@ export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; ca
         </div>
       )}
 
+      {(canPolicy || canCommand) && (
+        <div className="hubCard">
+          <h3>{T.resets}</h3>
+          <small>{T.resetsHelp}</small>
+          {canPolicy && <div className="tvAdminChecks">
+            <b>{T.preset}:</b>
+            <label className="inline">{T.def} {pctInput(presetNow.defaultVolume, (n) => setPreset({ ...presetNow, defaultVolume: n ?? 0 }), busy)}</label>
+            <label className="inline">{T.max} {pctInput(presetNow.maxVolume, (n) => setPreset({ ...presetNow, maxVolume: n ?? 0 }), busy)}</label>
+            <label className="inline"><input type="checkbox" checked={presetNow.enforceMax} onChange={(e) => setPreset({ ...presetNow, enforceMax: e.target.checked })} /> {T.enforce}</label>
+            <button type="button" className="secondaryButton" disabled={busy} onClick={() => void savePreset()}>{T.savePreset}</button>
+          </div>}
+          <div className="tvAdminChecks">
+            {canPolicy && <button type="button" disabled={busy || !selected.length} onClick={() => void runReset("hotel_default")}>{T.r_hotel_default}</button>}
+            {canPolicy && <button type="button" className="secondaryButton" disabled={busy || !selected.length} onClick={() => void runReset("no_max_enforcement")}>{T.r_no_max_enforcement}</button>}
+            {canCommand && <button type="button" className="secondaryButton" disabled={busy || !selected.length} onClick={() => void runReset("restore_sound")}>{T.r_restore_sound}</button>}
+            {canPolicy && <button type="button" className="secondaryButton" disabled={busy || !selected.length} onClick={() => void runReset("hotel_mode")}>{T.r_hotel_mode}</button>}
+            {canPolicy && <button type="button" className="secondaryButton" disabled title={T.emergencyHelp}>{T.emergency} — {T.unsupported}</button>}
+          </div>
+          {canPolicy && <small className="muted">{T.emergency}: {T.emergencyHelp}</small>}
+          {reset && (
+            <div className="notice" role="status">
+              <b>{T.resultTitle}: {tx(`r_${reset.action}`)}</b>
+              <ul className="plainList">{reset.results.map((r) => (
+                <li key={r.roomId}><b>{r.roomCode}</b> — <span className={r.status === "EXECUTED" ? "credit" : ["FAILED", "OFFLINE", "UNVERIFIED", "APP_TOO_OLD"].includes(r.status) ? "debit" : ""}>{tx(`res_${r.status}`)}</span>{reset.action === "hotel_mode" ? <small className="muted"> · {T.factoryUnsupported}</small> : null}</li>
+              ))}</ul>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="tableWrap"><table>
         <thead><tr><th /><th>{T.room}</th><th>{T.state}</th><th>{T.volume}</th><th>{T.policy}</th><th>{T.caps}</th><th>{T.last}</th></tr></thead>
         <tbody>{screens.map((s) => {
@@ -171,6 +264,7 @@ export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; ca
                 <label className="inline">{T.max} {pctInput(p.maxVolume, (n) => setEdit({ ...edit, [s.room_id]: { ...p, maxVolume: n } }), !canPolicy || busy)}</label>
                 <label className="inline"><input type="checkbox" checked={p.enforceMax} disabled={!canPolicy || busy} onChange={(e) => setEdit({ ...edit, [s.room_id]: { ...p, enforceMax: e.target.checked } })} /> {T.enforce}</label>
                 {canPolicy && edit[s.room_id] && <button type="button" className="secondaryButton" disabled={busy} onClick={() => void savePolicy([s.room_id], p)}>{T.save}</button>}
+                {data.policies[s.room_id] && !old && <small className={s.policy_rev_applied !== null && data.policies[s.room_id].rev !== undefined && s.policy_rev_applied >= Number(data.policies[s.room_id].rev) ? "credit" : "muted"}>{s.app_version !== null && s.app_version < 11 ? T.policyUnknown : s.policy_rev_applied !== null && s.policy_rev_applied >= Number(data.policies[s.room_id].rev) ? T.policyApplied : T.policyWaiting}</small>}
               </td>
               <td>{caps.length ? <small>{caps.map(([k, val]) => `${tx(`cap_${k}`)}: ${val ?? "—"}`).join(" · ")}</small> : <span className="muted">—</span>}</td>
               <td>{c ? <small className={c.status === "EXECUTED" ? "credit" : ["FAILED", "TIMEOUT", "UNVERIFIED"].includes(c.status) ? "debit" : ""}>{tx(`cmd_${c.command}`)}{c.value !== null ? ` ${c.value}%` : ""}{c.cap !== null ? ` (≤${c.cap}%)` : ""} · {at(c.created_at)} → <b>{tx(`st_${c.status}`)}</b>{c.result_volume !== null ? ` · ${c.result_volume}%` : ""}{c.result_muted === 1 ? ` · ${T.muted}` : ""}{c.error ? ` · ${c.error}` : ""}</small> : <span className="muted">—</span>}</td>

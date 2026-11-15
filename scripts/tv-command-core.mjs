@@ -107,3 +107,46 @@ export function parseCapabilities(raw) {
   for (const k of CAPABILITY_LABELS) if (k in raw) out[k] = raw[k] === null ? null : String(raw[k]).slice(0, 40);
   return out;
 }
+
+/** The hotel's sound preset (PMS → Corali TV → Ήχος): what «Επαναφορά προεπιλογών» applies. Pilot room 112: 8% / 30%. */
+export function normalizeSoundPreset(raw) {
+  const p = normalizeSoundPolicy(raw && typeof raw === "object" ? raw : { defaultVolume: 8, maxVolume: 30, enforceMax: true });
+  return { defaultVolume: p.defaultVolume ?? 8, maxVolume: p.maxVolume ?? 30, enforceMax: raw && typeof raw === "object" && "enforceMax" in raw ? p.enforceMax : true };
+}
+
+export const RESET_PRESETS = ["hotel_default", "no_max_enforcement", "hotel_mode"];
+
+/**
+ * v160 resets (software policies only — never a factory reset, never vendor settings, never the room token, Wi-Fi,
+ * power method or welcome screen). Returns the policy to save (null: leave it) and the sound commands to queue, in order.
+ *  hotel_default:      policy = hotel preset, then UNMUTE
+ *  no_max_enforcement: the room's policy with enforceMax=false (power-on volume kept)
+ *  hotel_mode:         policy = hotel preset, then UNMUTE + SET_VOLUME(power-on volume)
+ *  restore_sound:      no policy change; UNMUTE + SET_VOLUME(room's power-on volume, else the preset's)
+ */
+export function resetPlan(action, current, preset) {
+  const cur = current ? normalizeSoundPolicy(current) : null;
+  const p = normalizeSoundPreset(preset);
+  if (action === "hotel_default") return { policy: p, commands: [{ command: "UNMUTE", value: null }] };
+  if (action === "no_max_enforcement") return { policy: { defaultVolume: cur?.defaultVolume ?? null, maxVolume: cur?.maxVolume ?? null, enforceMax: false }, commands: [] };
+  if (action === "hotel_mode") return { policy: p, commands: [{ command: "UNMUTE", value: null }, { command: "SET_VOLUME", value: p.defaultVolume }] };
+  if (action === "restore_sound") return { policy: null, commands: [{ command: "UNMUTE", value: null }, { command: "SET_VOLUME", value: cur?.defaultVolume ?? p.defaultVolume }] };
+  throw new Error("UNKNOWN_RESET");
+}
+
+/** Per-room result shown after a reset: the command chain's state, never «success» without the TV's report. */
+export function resetRoomStatus({ appVersion, online, commands, policyRev, appliedRev, needsPolicyAck }) {
+  if (appVersion === null || appVersion === undefined || appVersion < 10) return "APP_TOO_OLD";
+  const st = commands.map((c) => c.status);
+  if (st.includes("FAILED")) return "FAILED";
+  if (st.includes("CANCELLED")) return "SUPERSEDED"; // a newer command / reset for the room replaced it
+  if (st.includes("TIMEOUT")) return "OFFLINE";
+  if (st.includes("UNVERIFIED")) return "UNVERIFIED";
+  if (st.some((s) => s === "PENDING")) return online ? "PENDING" : "OFFLINE";
+  if (st.some((s) => s === "DELIVERED")) return "DELIVERED";
+  if (needsPolicyAck && policyRev !== null && policyRev !== undefined) {
+    if (appliedRev === null || appliedRev === undefined) return appVersion < 11 ? "UNVERIFIED" : online ? "PENDING" : "OFFLINE";
+    if (Number(appliedRev) < Number(policyRev)) return online ? "PENDING" : "OFFLINE";
+  }
+  return "EXECUTED";
+}

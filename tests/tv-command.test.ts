@@ -58,3 +58,23 @@ test("sound commands: EXECUTED only with a matching volume / mute read back", as
   assert.deepEqual(normalizeSoundPolicy({ defaultVolume: "", maxVolume: null, enforceMax: true }), { defaultVolume: null, maxVolume: null, enforceMax: false });
   assert.deepEqual(normalizeSoundPolicy({ defaultVolume: 250 }), { defaultVolume: 100, maxVolume: null, enforceMax: false });
 });
+
+test("v160 resets: software policies only, never success without the TV's report", async () => {
+  const { resetPlan, resetRoomStatus, normalizeSoundPreset } = await import("../scripts/tv-command-core.mjs");
+  assert.deepEqual(normalizeSoundPreset(null), { defaultVolume: 8, maxVolume: 30, enforceMax: true });
+  const cur = { defaultVolume: 20, maxVolume: 50, enforceMax: true };
+  assert.deepEqual(resetPlan("hotel_default", cur, null), { policy: { defaultVolume: 8, maxVolume: 30, enforceMax: true }, commands: [{ command: "UNMUTE", value: null }] });
+  assert.deepEqual(resetPlan("no_max_enforcement", cur, null), { policy: { defaultVolume: 20, maxVolume: 50, enforceMax: false }, commands: [] });
+  assert.deepEqual(resetPlan("hotel_mode", cur, null).commands, [{ command: "UNMUTE", value: null }, { command: "SET_VOLUME", value: 8 }]);
+  assert.deepEqual(resetPlan("restore_sound", cur, null), { policy: null, commands: [{ command: "UNMUTE", value: null }, { command: "SET_VOLUME", value: 20 }] });
+  assert.deepEqual(resetPlan("restore_sound", null, { defaultVolume: 12, maxVolume: 40, enforceMax: true }).commands[1], { command: "SET_VOLUME", value: 12 });
+  const base = { appVersion: 11, online: true, policyRev: 5, appliedRev: 5, needsPolicyAck: true };
+  assert.equal(resetRoomStatus({ ...base, appVersion: 9, commands: [] }), "APP_TOO_OLD");
+  assert.equal(resetRoomStatus({ ...base, commands: [{ status: "EXECUTED" }, { status: "EXECUTED" }] }), "EXECUTED");
+  assert.equal(resetRoomStatus({ ...base, commands: [{ status: "EXECUTED" }, { status: "FAILED" }] }), "FAILED");
+  assert.equal(resetRoomStatus({ ...base, online: false, commands: [{ status: "PENDING" }] }), "OFFLINE");
+  assert.equal(resetRoomStatus({ ...base, commands: [{ status: "TIMEOUT" }] }), "OFFLINE");
+  assert.equal(resetRoomStatus({ ...base, commands: [{ status: "CANCELLED" }] }), "SUPERSEDED");
+  assert.equal(resetRoomStatus({ ...base, appliedRev: 4, commands: [] }), "PENDING");
+  assert.equal(resetRoomStatus({ ...base, appVersion: 10, appliedRev: null, commands: [] }), "UNVERIFIED");
+});

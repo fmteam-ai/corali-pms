@@ -3,6 +3,7 @@
 // and POST …/v2/devices/api/get?auth_key=… {ids,select:["status"]}. The cloud allows about 1 request per second.
 
 import { normalizeClimateSettings } from "./room-climate-core.mjs";
+import { normalizeSoundPreset } from "./tv-command-core.mjs";
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -40,6 +41,8 @@ export function normalizePowerSettings(raw) {
     appScreen: x.appScreen === true || x.appScreen === 1,
     // Urgent "turn the TV on" may power-cycle a plug (off, then on) only when explicitly allowed after a test.
     allowCycle: x.allowCycle === true || x.allowCycle === 1,
+    // v160: what «Επαναφορά προεπιλογών ξενοδοχείου» applies (power-on %, maximum %, enforce).
+    soundPreset: normalizeSoundPreset(x.soundPreset),
     // Room air conditioners on their own Shelly relay (e.g. 1PM Gen4): power only while a guest is checked in.
     acEnabled: x.acEnabled === true || x.acEnabled === 1,
     // With a presence sensor (Tuya mmWave): cut the A/C when nobody has been in the room for this many minutes.
