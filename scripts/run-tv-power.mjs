@@ -32,7 +32,10 @@ try {
   // Room air conditioners: power only while a guest is checked in / present (see room-ac-worker.mjs).
   const ac = await runRoomAc({ pool, owner, unseal }).catch((e) => { console.error("A/C power failed", e); return null; });
   if (ac) console.log(`A/C power: ${ac.rooms} rooms checked, ${ac.switched} switched${ac.failed ? `, ${ac.failed} failed` : ""}`);
-  if (!settings.enabled || !settings.server || !s?.auth_key_encrypted) {
+  if (settings.appScreen) {
+    // The Corali TV app turns the screen on / off itself; the TV stays powered (a plug cut would stop the app).
+    console.log("TV power: screen controlled by the Corali TV app; plugs left on");
+  } else if (!settings.enabled || !settings.server || !s?.auth_key_encrypted) {
     console.log("TV power: automation off or Shelly not configured");
   } else {
     const key = unseal(s.auth_key_encrypted);

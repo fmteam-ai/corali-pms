@@ -66,7 +66,7 @@ export async function screenMessages(ownerId: string, roomId: number, lang: stri
   return r.rows.map((m) => ({ id: Number(m.id), text: personalize(messageText(parseBody(m.body_json), lang), firstName), urgent: Number(m.urgent) === 1, theme: tvMessageTheme(m.theme), sound: Number(m.sound) === 1, createdAt: Number(m.created_at), image: m.has_image ? `/api/public/tv/${encodeURIComponent(token)}/message-image/${Number(m.id)}` : null })).filter((m) => m.text || m.image);
 }
 
-async function screenRoom(token: string): Promise<{ ownerId: string; roomId: number } | null> {
+export async function screenRoom(token: string): Promise<{ ownerId: string; roomId: number } | null> {
   if (!/^[A-Za-z0-9_-]{20,80}$/.test(token)) return null;
   const s = (await db().query(`SELECT owner_id,room_id FROM tv_screens WHERE token=$1 AND active=1`, [token])).rows[0];
   return s ? { ownerId: String(s.owner_id), roomId: Number(s.room_id) } : null;

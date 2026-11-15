@@ -31,12 +31,12 @@ export async function ensureScreens(ownerId: string) {
   }
 }
 
-export type TvScreenRow = { room_id: number; room_code: string; room_type: string; token: string; wifi_ssid: string; wifi_password: string; active: number; last_seen_at: number | null; url: string; power_device_id: string; power_channel: number; power_state: number | null; power_changed_at: number | null; power_error: string };
+export type TvScreenRow = { room_id: number; room_code: string; room_type: string; token: string; wifi_ssid: string; wifi_password: string; active: number; last_seen_at: number | null; url: string; power_device_id: string; power_channel: number; power_state: number | null; power_changed_at: number | null; power_error: string ; screen_seen_at: number | null; screen_cmd_id: number; screen_cmd_on: number };
 
 export async function listScreens(ownerId: string): Promise<TvScreenRow[]> {
   await ensureScreens(ownerId);
-  const r = await db().query(`SELECT s.room_id,r.code AS room_code,r.room_type,s.token,s.wifi_ssid,s.wifi_password,s.active,s.last_seen_at,s.power_device_id,s.power_channel,s.power_state,s.power_changed_at,s.power_error FROM tv_screens s JOIN rooms r ON r.id=s.room_id AND r.owner_id=s.owner_id WHERE s.owner_id=$1 AND r.active=1 ORDER BY r.code`, [ownerId]);
-  return r.rows.map((x) => ({ ...x, room_id: Number(x.room_id), active: Number(x.active), last_seen_at: x.last_seen_at === null ? null : Number(x.last_seen_at), url: tvUrl(String(x.token)), power_channel: Number(x.power_channel), power_state: x.power_state === null ? null : Number(x.power_state), power_changed_at: x.power_changed_at === null ? null : Number(x.power_changed_at) })) as TvScreenRow[];
+  const r = await db().query(`SELECT s.room_id,r.code AS room_code,r.room_type,s.token,s.wifi_ssid,s.wifi_password,s.active,s.last_seen_at,s.power_device_id,s.power_channel,s.power_state,s.power_changed_at,s.power_error,s.screen_seen_at,s.screen_cmd_id,s.screen_cmd_on FROM tv_screens s JOIN rooms r ON r.id=s.room_id AND r.owner_id=s.owner_id WHERE s.owner_id=$1 AND r.active=1 ORDER BY r.code`, [ownerId]);
+  return r.rows.map((x) => ({ ...x, room_id: Number(x.room_id), active: Number(x.active), last_seen_at: x.last_seen_at === null ? null : Number(x.last_seen_at), url: tvUrl(String(x.token)), power_channel: Number(x.power_channel), power_state: x.power_state === null ? null : Number(x.power_state), power_changed_at: x.power_changed_at === null ? null : Number(x.power_changed_at), screen_seen_at: x.screen_seen_at === null ? null : Number(x.screen_seen_at), screen_cmd_id: Number(x.screen_cmd_id), screen_cmd_on: Number(x.screen_cmd_on) })) as TvScreenRow[];
 }
 
 /** TV app setup codes (PMS → Corali TV → "App code"): 6 digits, one use, valid 30 minutes; only the hash is stored. */

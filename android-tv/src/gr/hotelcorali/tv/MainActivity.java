@@ -71,7 +71,7 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.6");
+        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.7");
         // Lets the page open the streaming apps installed on this TV (Apps tab).
         web.addJavascriptInterface(new AppBridge(this), "CoraliTVApp");
         // Assistant tab: voice input through the remote's microphone and answers read aloud.

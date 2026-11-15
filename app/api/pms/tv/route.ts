@@ -12,7 +12,7 @@ import { assertTrustedOrigin } from "@/lib/security/origin";
 import { newOpaqueToken } from "@/lib/security/tokens";
 import { listScreens, loadTvSettings, setupCodeHash, SETUP_CODE_MS } from "@/lib/tv";
 import { normalizeTvSettings } from "@/lib/tv-core";
-import { loadPowerSettings, roomPowerStates, savePowerSettings, setRoomPower, syncRoomPower } from "@/lib/tv-power";
+import { commandScreen, loadPowerSettings, roomPowerStates, savePowerSettings, setRoomPower, syncRoomPower } from "@/lib/tv-power";
 import { validDeviceId } from "../../../../scripts/tv-power-core.mjs";
 
 const input = z.discriminatedUnion("action", [
@@ -23,6 +23,7 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("powerSettings"), settings: z.record(z.string(), z.unknown()), authKey: z.string().trim().max(400).default("") }),
   z.object({ action: z.literal("powerDevice"), roomId: z.number().int().positive(), deviceId: z.string().trim().max(64).refine((v) => v === "" || validDeviceId(v)), channel: z.number().int().min(0).max(3).default(0) }),
   z.object({ action: z.literal("power"), roomId: z.number().int().positive(), on: z.boolean() }),
+  z.object({ action: z.literal("screenPower"), roomId: z.number().int().positive(), on: z.boolean() }),
   z.object({ action: z.literal("powerStatus") }),
   z.object({ action: z.literal("nearbyPreview"), refresh: z.boolean().default(false) }),
   z.object({ action: z.literal("locateHotel"), query: z.string().trim().max(150).default("") }),
@@ -71,6 +72,10 @@ async function handlePOST(request: Request) {
     if (x.action === "power") {
       const error = await setRoomPower(u.ownerId, x.roomId, x.on);
       return Response.json({ ok: !error, error: error || undefined, screens: await listScreens(u.ownerId) }, { status: error ? 502 : 200 });
+    }
+    if (x.action === "screenPower") {
+      const ok = await commandScreen(u.ownerId, x.roomId, x.on);
+      return Response.json({ ok, error: ok ? undefined : "NOT_FOUND", screens: await listScreens(u.ownerId) }, { status: ok ? 200 : 404 });
     }
     if (x.action === "powerStatus") return Response.json({ ok: true, states: await roomPowerStates(u.ownerId) });
     if (x.action === "setupCode") {

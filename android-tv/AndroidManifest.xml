@@ -2,8 +2,8 @@
 <!-- Corali TV: shows a room's welcome screen (booking.hotelcorali.gr/tv/…) full screen on Google TV / Android TV. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="gr.hotelcorali.tv"
-    android:versionCode="7"
-    android:versionName="1.6">
+    android:versionCode="8"
+    android:versionName="1.7">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="30" />
 
@@ -34,6 +34,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- Urgent messages with "turn the TV on" wake the screen from standby. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Keep Wi-Fi awake with the screen off, so the PMS can turn the screen on at arrival / check-in. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -74,5 +78,15 @@
         </receiver>
 
         <service android:name=".WakeService" android:exported="false" />
+
+        <receiver
+            android:name=".ScreenAdmin"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

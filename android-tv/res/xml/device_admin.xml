@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Corali TV only needs to turn the screen off (lockNow) at check-out or from PMS → Corali TV. -->
+<device-admin>
+    <uses-policies>
+        <force-lock />
+    </uses-policies>
+</device-admin>

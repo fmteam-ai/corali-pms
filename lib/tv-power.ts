@@ -67,7 +67,7 @@ export async function setRoomPower(ownerId: string, roomId: number, on: boolean,
  */
 export async function syncRoomPower(ownerId: string, roomId: number): Promise<void> {
   const { settings } = await loadPowerSettings(ownerId);
-  if (!settings.enabled) return;
+  if (!settings.enabled || settings.appScreen) return;
   const row = (await db().query(`SELECT power_device_id,power_auto_state FROM tv_screens WHERE owner_id=$1 AND room_id=$2 AND active=1`, [ownerId, roomId])).rows[0];
   if (!row?.power_device_id) return;
   const today = hotelToday();
@@ -120,4 +120,25 @@ export async function wakeRoomTvs(ownerId: string, roomIds: number[]): Promise<v
     }
     if (action !== "none") await new Promise((ok) => setTimeout(ok, 1100)); // Shelly Cloud: ~1 request per second
   }
+}
+
+/**
+ * For the Corali TV app (screen on / off by the app itself): the automatic decision for the room ("on" / "off", the
+ * same rule as the plugs; null when off in settings) and the last manual command. The app acts when either changes.
+ */
+export async function screenControl(ownerId: string, roomId: number): Promise<{ auto: "on" | "off" | null; autoOn: boolean; autoOff: boolean; cmd: { id: number; on: boolean } | null }> {
+  const { settings } = await loadPowerSettings(ownerId);
+  const row = (await db().query(`UPDATE tv_screens SET screen_seen_at=$3 WHERE owner_id=$1 AND room_id=$2 RETURNING screen_cmd_id,screen_cmd_on`, [ownerId, roomId, Date.now()])).rows[0];
+  if (!settings.enabled || !settings.appScreen) return { auto: null, autoOn: false, autoOff: false, cmd: null };
+  const today = hotelToday();
+  const stays = (await db().query(`SELECT status,check_in,check_out FROM bookings WHERE owner_id=$1 AND room_id=$2 AND status IN ('confirmed','checked_in') AND check_in<=$3 AND check_out>=$3`, [ownerId, roomId, today])).rows;
+  const want = desiredPower(stays.map((x) => ({ status: String(x.status), check_in: String(x.check_in), check_out: String(x.check_out) })), today, hotelTime(), settings.onTime);
+  const id = Number(row?.screen_cmd_id ?? 0);
+  return { auto: want ? "on" : "off", autoOn: settings.autoOn, autoOff: settings.autoOff, cmd: id > 0 ? { id, on: Number(row?.screen_cmd_on) === 1 } : null };
+}
+
+/** Manual «Οθόνη: Άναμμα / Σβήσιμο» from the PMS: the room's app picks it up within about 20 seconds. */
+export async function commandScreen(ownerId: string, roomId: number, on: boolean): Promise<boolean> {
+  const r = await db().query(`UPDATE tv_screens SET screen_cmd_id=$3,screen_cmd_on=$4 WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId, Date.now(), on ? 1 : 0]);
+  return Boolean(r.rowCount);
 }

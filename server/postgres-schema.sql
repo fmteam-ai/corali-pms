@@ -2163,3 +2163,9 @@ CREATE TABLE IF NOT EXISTS "message_brand" (
 ALTER TABLE "pms_sessions" ADD COLUMN IF NOT EXISTS "ip_address" TEXT NOT NULL DEFAULT '';
 ALTER TABLE "pms_sessions" ADD COLUMN IF NOT EXISTS "ended_reason" TEXT;
 CREATE INDEX IF NOT EXISTS "idx_pms_sessions_owner_created" ON "pms_sessions" ("owner_id", "created_at" DESC);
+
+-- v157: the Corali TV app turns the screen on / off itself (TV left powered). screen_cmd_* is the last manual
+-- command from PMS → Corali TV; the app acts once per command id. screen_seen_at: the app's last check.
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS screen_cmd_id BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS screen_cmd_on BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS screen_seen_at BIGINT;

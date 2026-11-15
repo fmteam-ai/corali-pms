@@ -102,6 +102,10 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
     const d = await call({ action: "power", roomId: s.room_id, on });
     setMsg(d.ok ? t(on ? "tv.powerOnDone" : "tv.powerOffDone").replace("{room}", s.room_code) : `${t("tv.powerFailed")} (${d.error ?? "?"})`);
   }
+  async function switchScreen(s: TvScreenRow, on: boolean) {
+    const d = await call({ action: "screenPower", roomId: s.room_id, on });
+    setMsg(d.ok ? t(on ? "tv.screenOnSent" : "tv.screenOffSent").replace("{room}", s.room_code) : t("tv.failed"));
+  }
   async function checkPlugs() {
     const d = await call({ action: "powerStatus" });
     if (!d.ok) { setMsg(t("tv.failed")); return; }
@@ -297,6 +301,12 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
                     {canEdit && powerReady && <span><button type="button" className="secondaryButton" disabled={busy} onClick={() => void switchPower(s, true)}>{t("tv.powerOn")}</button><button type="button" className="secondaryButton" disabled={busy} onClick={() => void switchPower(s, false)}>{t("tv.powerOff")}</button></span>}
                   </span>
                 )}
+                {power.enabled && power.appScreen && (
+                  <span className="tvPlugState">
+                    <small className={s.screen_seen_at && checkedAt - s.screen_seen_at < 120_000 ? "credit" : "muted"}>📺 {s.screen_seen_at && checkedAt - s.screen_seen_at < 120_000 ? t("tv.appOnline") : t("tv.appOffline")}</small>
+                    {canEdit && <span><button type="button" className="secondaryButton" disabled={busy} onClick={() => void switchScreen(s, true)}>{t("tv.screenOn")}</button><button type="button" className="secondaryButton" disabled={busy} onClick={() => void switchScreen(s, false)}>{t("tv.screenOff")}</button></span>}
+                  </span>
+                )}
               </div></td>
               <td><input type="checkbox" aria-label={t("tv.active")} checked={s.active === 1} disabled={!canEdit} onChange={(e) => void saveScreen(s, { active: e.target.checked ? 1 : 0 })} /></td>
               <td className="rowActions">{canEdit && <><button type="button" disabled={busy} onClick={() => saveScreen(s, {})}>{t("tv.save")}</button><button type="button" className="secondaryButton" disabled={busy} onClick={() => confirm(t("tv.regenerateConfirm")) && post({ action: "regenerate", roomId: s.room_id }, t("tv.regenerated"))}>{t("tv.regenerate")}</button><button type="button" className="secondaryButton" disabled={busy || s.active !== 1} onClick={() => void makeAppCode(s)}>{t("tv.appCode")}</button></>}
@@ -332,6 +342,8 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
           <label className="inline"><input type="checkbox" checked={power.autoOn} disabled={!canEdit} onChange={(e) => setPower({ ...power, autoOn: e.target.checked })} /> {t("tv.powerAutoOn")}</label>
           <label className="inline"><input type="checkbox" checked={power.autoOff} disabled={!canEdit} onChange={(e) => setPower({ ...power, autoOff: e.target.checked })} /> {t("tv.powerAutoOff")}</label>
         </div>
+        <div className="tvAdminChecks"><label className="inline"><input type="checkbox" checked={power.appScreen} disabled={!canEdit} onChange={(e) => setPower({ ...power, appScreen: e.target.checked })} /> <b>{t("tv.appScreen")}</b></label></div>
+        {power.appScreen && <small>{t("tv.appScreenHelp")}</small>}
         <small>{t("tv.shellyWhere")}</small>
         <div className="tvInfoAdd">
           {canEdit && <button type="button" disabled={busy} onClick={() => void savePower()}>{t("tv.save")}</button>}

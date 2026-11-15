@@ -40,6 +40,7 @@ public class SetupActivity extends Activity {
     private EditText server;
     private TextView status;
     private TextView autoStart;
+    private TextView screenOff;
     private Button connect;
 
     @Override
@@ -87,6 +88,34 @@ public class SetupActivity extends Activity {
             public void onClick(View v) { openOverlaySettings(); }
         });
         box.addView(allow);
+
+        // Screen off from the PMS (check-out / «Σβήσιμο οθόνης»): device admin with the force-lock policy only.
+        screenOff = text("", 20, false);
+        box.addView(screenOff);
+        Button admin = button(Prefs.t("Άδεια σβησίματος οθόνης", "Allow turning the screen off"));
+        admin.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent i = new Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+                        .putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, ScreenAdmin.name(SetupActivity.this))
+                        .putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                                Prefs.t("Το Corali TV σβήνει μόνο την οθόνη στο check-out ή από το PMS.", "Corali TV only turns the screen off at check-out or from the PMS."));
+                try { startActivity(i); } catch (RuntimeException e) { screenOff.setText(Prefs.t("Η τηλεόραση δεν δείχνει αυτή την άδεια.", "This TV does not offer this permission.")); }
+            }
+        });
+        box.addView(admin);
+        Button battery = button(Prefs.t("Χωρίς περιορισμό ενέργειας", "No battery / power limits"));
+        battery.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                try {
+                    startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:" + getPackageName())));
+                } catch (RuntimeException e) {
+                    try { startActivity(new Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)); } catch (RuntimeException ignored) { }
+                }
+            }
+        });
+        box.addView(battery);
 
         CheckBox wake = new CheckBox(this);
         wake.setText(Prefs.t("Άνοιγμα της οθόνης όταν ανάβει η τηλεόραση από αναμονή", "Open the screen when the TV wakes from standby"));
@@ -136,6 +165,9 @@ public class SetupActivity extends Activity {
                 ? Prefs.t("✓ Αυτόματη εκκίνηση: επιτρέπεται", "✓ Auto-start: allowed")
                 : Prefs.t("✗ Αυτόματη εκκίνηση: δεν επιτρέπεται ακόμα — ενεργοποιήστε «Εμφάνιση πάνω από άλλες εφαρμογές».",
                           "✗ Auto-start: not allowed yet — turn on “Display over other apps”."));
+        screenOff.setText(ScreenAdmin.active(this)
+                ? Prefs.t("✓ Σβήσιμο οθόνης από το PMS: επιτρέπεται", "✓ Screen off from the PMS: allowed")
+                : Prefs.t("✗ Σβήσιμο οθόνης από το PMS: δεν επιτρέπεται ακόμα", "✗ Screen off from the PMS: not allowed yet"));
     }
 
     @Override
