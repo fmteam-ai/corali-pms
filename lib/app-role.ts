@@ -5,10 +5,11 @@ export type RoleRouteDecision =
   | { action: "redirect"; destination: string }
   | { action: "not-found" };
 
-// /api/v1 is the open API (API keys) on the PMS address only.
+// /api/v1 is the open API (API keys) on the PMS address only; /api/gateway is for the hotel's on-prem gateways
+// (bearer token, no cookies — e.g. the TV privacy gateway, v161), also PMS only.
 // /staff is the Corali Staff phone app (PMS login, its own layout); /hk is its v94 address.
 const pmsPage = (pathname: string) => pathname === "/login" || pathname === "/pms" || pathname.startsWith("/pms/") || pathname === "/hk" || pathname === "/staff";
-const pmsApi = (pathname: string) => pathname === "/api/auth" || pathname.startsWith("/api/auth/") || pathname === "/api/pms" || pathname.startsWith("/api/pms/") || pathname === "/api/v1" || pathname.startsWith("/api/v1/");
+const pmsApi = (pathname: string) => pathname === "/api/auth" || pathname.startsWith("/api/auth/") || pathname === "/api/pms" || pathname.startsWith("/api/pms/") || pathname === "/api/v1" || pathname.startsWith("/api/v1/") || pathname === "/api/gateway" || pathname.startsWith("/api/gateway/");
 const bookingPage = (pathname: string) => ["/book", "/check-in", "/manage-booking", "/pay-balance", "/review", "/tv", "/card", "/partner", "/unsubscribe"].some((path) => pathname === path || pathname.startsWith(`${path}/`));
 const bookingApi = (pathname: string) => pathname === "/api/public" || pathname.startsWith("/api/public/") || pathname === "/api/webhooks" || pathname.startsWith("/api/webhooks/");
 

@@ -1,0 +1,14 @@
+{
+  "pmsUrl": "https://pms.hotelcorali.gr/api/gateway/tv-privacy",
+  "pollSeconds": 20,
+  "dryRun": true,
+  "unverifiedAppPilotsApproved": false,
+  "roomMap": {
+    "112": {
+      "label": "112",
+      "serial": "192.168.10.120:5555",
+      "androidId": "9191d72e5960ece5",
+      "baselineFile": "baseline/tv112-third-party-baseline.txt"
+    }
+  }
+}

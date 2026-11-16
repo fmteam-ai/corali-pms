@@ -27,3 +27,8 @@ test("PMS role never serves booking pages or public booking APIs", () => {
   assert.deepEqual(routeForRole("pms", "/login"), { action: "allow" });
   assert.deepEqual(routeForRole("pms", "/api/auth/login"), { action: "allow" });
 });
+
+test("v161: the on-prem gateway API is served by the PMS only", () => {
+  assert.deepEqual(routeForRole("pms", "/api/gateway/tv-privacy"), { action: "allow" });
+  assert.deepEqual(routeForRole("booking", "/api/gateway/tv-privacy"), { action: "not-found" });
+});

@@ -1,0 +1,3 @@
+package:com.disney.disneyplus
+package:gr.hotelcorali.tv
+package:com.amazon.amazonvideo.livingroom

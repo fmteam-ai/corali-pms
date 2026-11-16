@@ -2241,3 +2241,81 @@ CREATE TABLE IF NOT EXISTS tv_reset_requests (
  UNIQUE (owner_id, idempotency_key)
 );
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS policy_rev_applied BIGINT;
+
+-- v161: guest app data clearing at check-out (YouTube / Netflix / Prime Video / Disney+ / YouTube Music) through the
+-- hotel's on-prem gateway (tools/tv-privacy-gateway: Windows + ADB, outbound HTTPS only). A job is created by the
+-- trigger below only on a real transition to checked_out after a check-in, and only for rooms an admin enabled
+-- (tv_screens.privacy_clear). No login, email, token or viewing history is ever stored here.
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS privacy_clear BIGINT NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS tv_privacy_jobs (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  booking_id BIGINT NOT NULL,
+  room_id BIGINT NOT NULL,
+  tv_screen_id BIGINT NOT NULL,
+  checkout_at_ms BIGINT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'QUEUED'
+    CHECK (status IN ('QUEUED','RUNNING','CLEARED_LOCAL_NEEDS_REVIEW','PARTIAL','FAILED',
+      'BLOCKED_NEW_GUEST','BLOCKED_UNREGISTERED','BLOCKED_SECURITY','UNVERIFIED','DRY_RUN')),
+  policy_version INT NOT NULL DEFAULT 2,
+  attempt_count INT NOT NULL DEFAULT 0,
+  claim_hash TEXT,
+  lease_until_ms BIGINT,
+  package_results JSONB NOT NULL DEFAULT '[]'::jsonb,
+  error_code TEXT NOT NULL DEFAULT '',
+  created_at_ms BIGINT NOT NULL,
+  started_at_ms BIGINT,
+  finished_at_ms BIGINT,
+  staff_checked_at_ms BIGINT,
+  staff_checked_by BIGINT,
+  UNIQUE (owner_id, booking_id, room_id)
+);
+CREATE INDEX IF NOT EXISTS tv_privacy_jobs_queue_idx ON tv_privacy_jobs(owner_id, status, id);
+CREATE INDEX IF NOT EXISTS tv_privacy_jobs_room_idx ON tv_privacy_jobs(owner_id, room_id, id DESC);
+-- The gateway's last contact (PMS → Corali TV shows whether it is online and in dry-run).
+CREATE TABLE IF NOT EXISTS tv_privacy_gateway (
+  owner_id TEXT PRIMARY KEY,
+  last_seen_at BIGINT NOT NULL,
+  dry_run BIGINT
+);
+CREATE OR REPLACE FUNCTION tv_privacy_enqueue_on_checkout() RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+DECLARE tv_id BIGINT;
+BEGIN
+  -- Only a real check-out: status changes to checked_out from a stay that was checked in (not a date edit).
+  IF NEW.status <> 'checked_out' OR OLD.status IS NOT DISTINCT FROM NEW.status THEN RETURN NEW; END IF;
+  IF OLD.status <> 'checked_in' AND OLD.checked_in_at IS NULL THEN RETURN NEW; END IF;
+  -- Without a single resolved room, never clear automatically.
+  IF NEW.room_id IS NULL THEN RETURN NEW; END IF;
+  SELECT id INTO tv_id FROM tv_screens WHERE owner_id=NEW.owner_id AND room_id=NEW.room_id AND active=1 AND privacy_clear=1;
+  IF tv_id IS NULL THEN RETURN NEW; END IF;
+  INSERT INTO tv_privacy_jobs(owner_id,booking_id,room_id,tv_screen_id,checkout_at_ms,created_at_ms)
+  VALUES (NEW.owner_id,NEW.id,NEW.room_id,tv_id,
+          COALESCE(NEW.checked_out_at, FLOOR(EXTRACT(EPOCH FROM clock_timestamp())*1000)::BIGINT),
+          FLOOR(EXTRACT(EPOCH FROM clock_timestamp())*1000)::BIGINT)
+  ON CONFLICT (owner_id,booking_id,room_id) DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_tv_privacy_checkout ON bookings;
+CREATE TRIGGER trg_tv_privacy_checkout AFTER UPDATE OF status ON bookings FOR EACH ROW EXECUTE FUNCTION tv_privacy_enqueue_on_checkout();
+-- Guest-installed apps found at check-out (gateway: third-party packages not in the room's baseline) and the
+-- removals an admin approved one by one. The gateway re-checks identity, protection and «no new guest» first.
+ALTER TABLE tv_privacy_jobs ADD COLUMN IF NOT EXISTS added_packages JSONB NOT NULL DEFAULT '[]'::jsonb;
+CREATE TABLE IF NOT EXISTS tv_privacy_uninstalls (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  job_id BIGINT NOT NULL,
+  room_id BIGINT NOT NULL,
+  package TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'APPROVED'
+    CHECK (status IN ('APPROVED','RUNNING','REMOVED','NOT_INSTALLED','FAILED','BLOCKED_NEW_GUEST','BLOCKED_SECURITY','BLOCKED_PROTECTED')),
+  approved_by BIGINT,
+  approved_at_ms BIGINT NOT NULL,
+  attempt_count INT NOT NULL DEFAULT 0,
+  claim_hash TEXT,
+  lease_until_ms BIGINT,
+  error_code TEXT NOT NULL DEFAULT '',
+  finished_at_ms BIGINT,
+  UNIQUE (owner_id, job_id, package)
+);

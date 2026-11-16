@@ -8,6 +8,7 @@ import { placesUsage } from "@/lib/nearby-places";
 import { providerCredentials } from "@/lib/provider-connections";
 import { TvManager } from "./tv-manager";
 import { SoundManager } from "./sound-manager";
+import { PrivacyManager } from "./privacy-manager";
 
 export default async function TvPage() {
   const u = await requireUser("integrations.read");
@@ -18,6 +19,7 @@ export default async function TvPage() {
       <div className="pageTitle"><div><h1>{t("tv.title")}</h1><p>{t("tv.subtitle")}</p></div><Link className="secondaryLink" href="/pms/tv/cards">{t("tv.printCards")}</Link></div>
       <TvManager lang={lang} initialSettings={settings} initialScreens={screens} initialPower={power} places={{ google: Boolean(google?.active && google.secrets.apiKey), ...usage }} canEdit={can(u.role, "integrations.write", u.permissions)} />
       <SoundManager lang={lang} canCommand={can(u.role, "reservations.write", u.permissions)} canPolicy={can(u.role, "integrations.write", u.permissions)} />
+      <PrivacyManager lang={lang} canAdmin={can(u.role, "integrations.write", u.permissions)} canReview={can(u.role, "reservations.write", u.permissions)} />
     </section>
   );
 }
