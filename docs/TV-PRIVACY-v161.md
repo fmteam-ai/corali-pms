@@ -7,7 +7,7 @@
 
 | # | Απαίτηση | Κατάσταση |
 |---|---|---|
-| 1 | Αυτόματος καθαρισμός YouTube, Netflix, Prime Video, Disney+, YouTube Music στο check-out | **Υλοποιήθηκε**, δοκιμάστηκε στο περιβάλλον ανάπτυξης. Στη HORIZON (εκτός PMS) έχει επιβεβαιωθεί `pm clear` για YouTube· Netflix / Prime Video ελεγμένα από το kit· Disney+ / YouTube Music **μόνο με ρητή έγκριση** (`unverifiedAppPilotsApproved`) |
+| 1 | Αυτόματος καθαρισμός YouTube, Netflix, Prime Video, Disney+, YouTube Music στο check-out | **Υλοποιήθηκε**, δοκιμάστηκε στο περιβάλλον ανάπτυξης. Στη HORIZON (εκτός PMS) έχει επιβεβαιωθεί `pm clear` για YouTube· Netflix / Prime Video ελεγμένα από το kit· Disney+ / YouTube Music δεν έχουν δοκιμαστεί: το gateway **δεν ξεκινά σε κανονική λειτουργία** (`dryRun:false`) πριν δοκιμαστούν και δηλωθούν (`unverifiedAppPilotsApproved:true`), γιατί κάθε check-out καθαρίζει και τις 5 μαζί |
 | 2 | Εντοπισμός & ασφαλής αφαίρεση εφαρμογών επισκέπτη | **Υλοποιήθηκε**: εντοπισμός με διαφορά από τη λίστα αναφοράς (baseline) της TV· αφαίρεση **μόνο** με έγκριση προσωπικού, μία-μία. Εκκρεμεί δοκιμή στη 112 |
 | 3 | Προστασία λογαριασμού Google ξενοδοχείου, Corali TV, Welcome Screen, Hotel Mode | Καμία ενέργεια δεν αγγίζει λογαριασμούς ή αυτές τις εφαρμογές (προστατευμένη λίστα σε PMS **και** gateway). Το **κλείδωμα** αφαίρεσης λογαριασμού από επισκέπτη δεν είναι εφικτό χωρίς OEM/MDM → `NOT_FULLY_VERIFIED` |
 | 4 | Menu Lock / Channel Scan Lock | **Δεν υλοποιήθηκε**: δεν υπάρχει επιβεβαιωμένος ασφαλής μηχανισμός (`OEM_BRIDGE_REQUIRED`). Χειροκίνητα από το Factory Menu. Βλ. `docs/TV-LOCK-RESEARCH-v161.md` |
@@ -61,9 +61,9 @@ PMS: κατάσταση, ιστορικό, «Αφαίρεση» (έγκριση)
    `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`.
    **Μην το στείλετε σε chat/email.** Το ίδιο ακριβώς token μπαίνει μόνο στον υπολογιστή-gateway.
 3. **Gateway (Windows, μένει ανοιχτός, στο ίδιο δίκτυο με τις TV)**: αποσυμπιέστε `corali-tv-privacy-gateway-v161.zip`, εγκαταστήστε Node 22+ και Android platform-tools. Αντιγράψτε `gateway/config.example.json` → `gateway/config.json`:
-   - `roomMap`: κλειδί = **εσωτερικό** `rooms.id` του 112 (φαίνεται στο PMS, όχι «112»), `serial` = IP:5555 της TV, `androidId` από
+   - `roomMap`: κλειδί = **εσωτερικό** `rooms.id` του 112, όχι «112» (συνδεδεμένοι στο PMS, ανοίξτε `/api/pms/tv-privacy` και δείτε το `room_id` δίπλα στο `"room_code":"112"`), `serial` = IP:5555 της TV, `androidId` από
      `adb shell settings get secure android_id`, `baselineFile` = λίστα εφαρμογών της TV χωρίς επισκέπτη
-     (`adb shell pm list packages -3 > baseline\tv112-third-party-baseline.txt`).
+     (`adb shell pm list packages -3 > baseline\tv112-third-party-baseline.txt`, από τη Γραμμή εντολών cmd — όχι PowerShell).
    - `dryRun: true` αρχικά. `unverifiedAppPilotsApproved: false` μέχρι να δοκιμαστούν Disney+ / YouTube Music.
    - Μεταβλητές περιβάλλοντος Windows: `TV_PRIVACY_BRIDGE_TOKEN`, `ADB_PATH` (πλήρης διαδρομή `adb.exe`).
    - Εκκίνηση: `node gateway\worker.mjs`. Στο PMS το gateway πρέπει να φανεί «● συνδεδεμένο · δοκιμαστική λειτουργία».
@@ -91,7 +91,7 @@ PMS: κατάσταση, ιστορικό, «Αφαίρεση» (έγκριση)
 5. Εγκατάσταση μιας δοκιμαστικής εφαρμογής → εμφανίζεται στις «Εφαρμογές επισκέπτη» → «Αφαίρεση» → `REMOVED`.
 6. Νέο check-in πριν τρέξει το gateway → `BLOCKED_NEW_GUEST`.
 7. TV κλειστή στο check-out → η εργασία περιμένει, δεν δείχνει ποτέ επιτυχία.
-8. Disney+ / YouTube Music: μόνο μετά από χωριστή δοκιμή → `unverifiedAppPilotsApproved:true`.
+8. Disney+ / YouTube Music: χωριστή δοκιμή → `unverifiedAppPilotsApproved:true` (προϋπόθεση για το βήμα 3).
 9. cast-wake (§6).
 
 ## 8. Rollback
