@@ -117,6 +117,42 @@ public class SetupActivity extends Activity {
         });
         box.addView(battery);
 
+        // 1.11 pilot: can this app reach the TV's own ADB? Read-only (pm list packages -3); changes nothing.
+        final TextView adbResult = text("", 18, false);
+        final Button adb = button(Prefs.t("Έλεγχος τοπικού ADB (μόνο ανάγνωση)", "Local ADB check (read-only)"));
+        adb.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                adb.setEnabled(false);
+                adbResult.setText(Prefs.t("Έλεγχος… Αν εμφανιστεί «Να επιτρέπεται ο εντοπισμός σφαλμάτων;», τσεκάρετε «Να επιτρέπεται πάντα» και πατήστε OK (έως 60″).",
+                        "Checking… If “Allow USB debugging?” appears, tick “Always allow” and press OK (up to 60 s)."));
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        final SelfAdbProbe.Result r = SelfAdbProbe.run(getFilesDir(), 60000);
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                adb.setEnabled(true);
+                                StringBuilder sb = new StringBuilder();
+                                sb.append(r.status == SelfAdbProbe.Status.PASS ? "✓ PASS" : "✗ " + r.status.name()).append(" — ").append(r.detail);
+                                if (r.status == SelfAdbProbe.Status.PASS) {
+                                    sb.append("\n").append(r.keyAlreadyTrusted
+                                            ? Prefs.t("Χωρίς νέα έγκριση (το κλειδί ήταν ήδη εγκεκριμένο)", "No new approval needed (key already trusted)")
+                                            : Prefs.t("Χρειάστηκε έγκριση στην TV αυτή τη φορά", "Approval on the TV was needed this time"));
+                                    sb.append("\n").append(r.packages.size()).append(Prefs.t(" εφαρμογές τρίτων:", " third-party apps:"));
+                                    for (String p : r.packages) sb.append("\n  ").append(p);
+                                }
+                                adbResult.setText(sb.toString());
+                            }
+                        });
+                    }
+                }, "corali-self-adb-probe").start();
+            }
+        });
+        box.addView(adb);
+        box.addView(adbResult);
+
         CheckBox wake = new CheckBox(this);
         wake.setText(Prefs.t("Άνοιγμα της οθόνης όταν ανάβει η τηλεόραση από αναμονή", "Open the screen when the TV wakes from standby"));
         wake.setTextColor(Color.WHITE);
