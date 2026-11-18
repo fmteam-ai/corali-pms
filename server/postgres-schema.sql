@@ -2298,7 +2298,7 @@ BEGIN
 END;
 $$;
 DROP TRIGGER IF EXISTS trg_tv_privacy_checkout ON bookings;
-CREATE TRIGGER trg_tv_privacy_checkout AFTER UPDATE OF status ON bookings FOR EACH ROW EXECUTE FUNCTION tv_privacy_enqueue_on_checkout();
+CREATE TRIGGER trg_tv_privacy_checkout AFTER UPDATE OF status ON bookings FOR EACH ROW EXECUTE PROCEDURE tv_privacy_enqueue_on_checkout();
 -- Guest-installed apps found at check-out (gateway: third-party packages not in the room's baseline) and the
 -- removals an admin approved one by one. The gateway re-checks identity, protection and «no new guest» first.
 ALTER TABLE tv_privacy_jobs ADD COLUMN IF NOT EXISTS added_packages JSONB NOT NULL DEFAULT '[]'::jsonb;
