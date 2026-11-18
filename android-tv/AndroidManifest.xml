@@ -2,8 +2,8 @@
 <!-- Corali TV: shows a room's welcome screen (booking.hotelcorali.gr/tv/…) full screen on Google TV / Android TV. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="gr.hotelcorali.tv"
-    android:versionCode="16"
-    android:versionName="1.15">
+    android:versionCode="17"
+    android:versionName="1.16">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="30" />
 
@@ -85,6 +85,19 @@
         </receiver>
 
         <service android:name=".WakeService" android:exported="false" />
+
+        <!-- 1.16: «Lock Menu Key» from the PMS. Only Android can bind it (BIND_ACCESSIBILITY_SERVICE); it sees only the
+             factory app's windows and acts only when a PMS command armed it. Switched on once per TV. -->
+        <service
+            android:name=".MenuLockService"
+            android:exported="true"
+            android:label="Corali TV — κλείδωμα μενού"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/menu_lock_service" />
+        </service>
 
         <receiver
             android:name=".ScreenAdmin"

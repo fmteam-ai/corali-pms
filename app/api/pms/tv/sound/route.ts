@@ -6,6 +6,7 @@ import { assertTrustedOrigin } from "@/lib/security/origin";
 import { listScreens } from "@/lib/tv";
 import { latestCommands, queueCommand, resetResults, runReset, saveSoundPolicy, soundPolicies, SOUND_APP } from "@/lib/tv-commands";
 import { allowAttempt } from "@/lib/request-limit";
+import { MENU_LOCK_APP } from "../../../../../scripts/tv-command-core.mjs";
 import { loadPowerSettings, savePowerSettings } from "@/lib/tv-power";
 
 const rooms = z.array(z.number().int().positive()).min(1).max(200);
@@ -23,6 +24,8 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("reset_status"), requestId: z.number().int().positive() }),
   // v163: open the Factory Menu on ONE room's TV for a technician there (owner only, confirmed in the browser).
   z.object({ action: z.literal("factory_menu"), roomId: z.number().int().positive(), confirm: z.literal(true) }),
+  // v167: «Lock Menu Key» on / off through Corali TV 1.16, one room or several (owner / admin, confirmed in the browser).
+  z.object({ action: z.literal("menu_lock"), roomIds: rooms, lock: z.boolean(), confirm: z.literal(true) }),
   // The hotel's preset (owner / admin): what «Επαναφορά προεπιλογών ξενοδοχείου» applies.
   z.object({ action: z.literal("preset"), preset: z.object({ defaultVolume: z.number().int().min(0).max(100), maxVolume: z.number().int().min(0).max(100), enforceMax: z.boolean() }) }),
 ]);
@@ -32,7 +35,7 @@ export async function GET() {
   const u = await requireApiUser("reservations.read");
   if (u instanceof Response) return u;
   const { settings } = await loadPowerSettings(u.ownerId);
-  return Response.json({ ok: true, screens: await listScreens(u.ownerId), policies: await soundPolicies(u.ownerId), commands: await latestCommands(u.ownerId), soundApp: SOUND_APP, preset: settings.soundPreset, factoryMenuApp: FACTORY_MENU_APP, isOwner: u.role === "owner" }, { headers: { "Cache-Control": "no-store" } });
+  return Response.json({ ok: true, screens: await listScreens(u.ownerId), policies: await soundPolicies(u.ownerId), commands: await latestCommands(u.ownerId), soundApp: SOUND_APP, preset: settings.soundPreset, factoryMenuApp: FACTORY_MENU_APP, menuLockApp: MENU_LOCK_APP, isOwner: u.role === "owner", canMenuLock: u.role === "owner" || u.role === "admin" }, { headers: { "Cache-Control": "no-store" } });
 }
 
 async function handlePOST(request: Request) {
@@ -52,6 +55,22 @@ async function handlePOST(request: Request) {
     if (app.app_version === null || Number(app.app_version) < FACTORY_MENU_APP) return Response.json({ ok: false, error: "APP_TOO_OLD" }, { status: 409 });
     const cmd = await queueCommand(u.ownerId, x.roomId, "OPEN_FACTORY_MENU", "manual", u.id, null, { ttlMs: 2 * 60_000 });
     return Response.json({ ok: Boolean(cmd), id: cmd?.id, commands: await latestCommands(u.ownerId) });
+  }
+  if (x.action === "menu_lock") {
+    // Owner / admin only. The TV changes ONLY Engineer Mode Option → Lock Menu Key (never Hotel Status / other factory
+    // settings) and reports the state Android shows afterwards; queued is not success (see menuLockVerdict).
+    if (u.role !== "owner" && u.role !== "admin") return Response.json({ ok: false, error: "OWNER_ADMIN_ONLY" }, { status: 403 });
+    if (!(await allowAttempt(`tv-menu-lock:${u.ownerId}:${u.id}`, 30, 15 * 60_000, 15 * 60_000))) return Response.json({ ok: false, error: "TOO_MANY_ATTEMPTS" }, { status: 429 });
+    const apps = new Map((await db().query(`SELECT room_id,app_version FROM tv_screens WHERE owner_id=$1 AND active=1`, [u.ownerId])).rows.map((r) => [Number(r.room_id), r.app_version === null ? null : Number(r.app_version)]));
+    const results: Record<number, { queued: boolean; id?: number; error?: string }> = {};
+    for (const roomId of x.roomIds) {
+      const version = apps.get(roomId);
+      if (version === undefined) { results[roomId] = { queued: false, error: "NO_SCREEN" }; continue; }
+      if (version === null || version < MENU_LOCK_APP) { results[roomId] = { queued: false, error: "LOCK_APP_TOO_OLD" }; continue; }
+      const cmd = await queueCommand(u.ownerId, roomId, x.lock ? "MENU_LOCK" : "MENU_UNLOCK", "manual", u.id, null, { ttlMs: 5 * 60_000 });
+      results[roomId] = cmd ? { queued: true, id: cmd.id } : { queued: false, error: "NO_SCREEN" };
+    }
+    return Response.json({ ok: true, results, commands: await latestCommands(u.ownerId) });
   }
   if (x.action === "reset_status") {
     const r = await resetResults(u.ownerId, x.requestId);

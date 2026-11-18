@@ -1,6 +1,6 @@
 export type ScreenCommand = "SCREEN_ON" | "SCREEN_OFF" | "SHOW_WELCOME";
 export type VolumeCommand = "SET_VOLUME" | "VOLUME_UP" | "VOLUME_DOWN" | "MUTE" | "UNMUTE";
-export type FactoryCommand = "OPEN_FACTORY_MENU";
+export type FactoryCommand = "OPEN_FACTORY_MENU" | "MENU_LOCK" | "MENU_UNLOCK";
 export type DiagCommand = "NETWORK_DIAGNOSTICS";
 export type TvCommand = ScreenCommand | VolumeCommand | FactoryCommand | DiagCommand;
 export type SoundPolicy = { defaultVolume: number | null; maxVolume: number | null; enforceMax: boolean };
@@ -9,6 +9,8 @@ export type PowerMethod = "manual" | "shelly" | "android_agent" | "ir_controller
 export declare const SCREEN_COMMANDS: ScreenCommand[];
 export declare const VOLUME_COMMANDS: VolumeCommand[];
 export declare const FACTORY_COMMANDS: FactoryCommand[];
+export declare const MENU_LOCK_COMMANDS: ("MENU_LOCK" | "MENU_UNLOCK")[];
+export declare const MENU_LOCK_APP: number;
 export declare const DIAG_COMMANDS: DiagCommand[];
 export declare const ALL_COMMANDS: TvCommand[];
 export declare const VOLUME_TOLERANCE: number;
@@ -21,7 +23,7 @@ export declare const POWER_METHODS: PowerMethod[];
 export declare const AVAILABLE_POWER_METHODS: PowerMethod[];
 export declare function validPowerMethod(m: unknown): boolean;
 export declare function expiredStatus(cmd: { status: string; expires_at: number; delivered_at: number | null }, now: number): string;
-type Report = { status?: string; interactive?: boolean; volume?: number; muted?: boolean; fixed?: boolean; opened?: boolean; detail?: string };
+type Report = { status?: string; interactive?: boolean; error?: string; volume?: number; muted?: boolean; fixed?: boolean; opened?: boolean; detail?: string; menuLock?: string };
 export declare function reportStatus(cmd: { status: string; command: string; value?: number | null; cap?: number | null }, report: Report | null): CommandStatus | null;
 export declare function volumeStatus(cmd: { command: string; value?: number | null; cap?: number | null }, report: Report | null): CommandStatus;
 export declare function normalizeSoundPolicy(raw: unknown): SoundPolicy;
@@ -37,8 +39,9 @@ export type ResetStatus = "PENDING" | "DELIVERED" | "EXECUTED" | "UNVERIFIED" | 
 export declare function resetRoomStatus(x: { appVersion: number | null; online: boolean; commands: { status: string }[]; policyRev: number | null; appliedRev: number | null; needsPolicyAck: boolean }): ResetStatus;
 export type MenuLockState = "LOCKED" | "UNLOCKED" | "PARTIAL" | "UNKNOWN";
 export declare const MENU_LOCK_STATES: MenuLockState[];
-export declare function parseMenuLockRaw(raw: unknown): { settings: number | null; dashboardActivity: number | null; dashboardHandler: number | null } | null;
+export declare function parseMenuLockRaw(raw: unknown): { settings: number | null; dashboardActivity: number | null; dashboardHandler: number | null; menuKeyLock: number | null; hotelEnable: number | null } | null;
 export declare function menuLockState(raw: unknown): MenuLockState;
+export declare function menuLockVerdict(command: string, report: Report | null): { status: CommandStatus; error: string };
 export type PowerState = "ON" | "STANDBY" | "WAKING" | "UNKNOWN" | "ERROR";
 export declare const POWER_STATES: PowerState[];
 export declare const POWER_OFF_MODES: string[];

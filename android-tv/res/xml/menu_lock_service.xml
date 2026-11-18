@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Corali TV 1.16: sees only the TV maker's Factory Menu (com.expressluck.tvfactory), for «Lock Menu Key» from the PMS. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/menu_lock_service"
+    android:packageNames="com.expressluck.tvfactory"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds"
+    android:notificationTimeout="200"
+    android:canRetrieveWindowContent="true" />

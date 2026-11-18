@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { hotelToday } from "@/lib/tape-chart";
 import { hotelTime } from "@/lib/tv";
 import { loadPowerSettings, POWER_METHOD_SQL } from "@/lib/tv-power";
-import { GAP_MS, menuLockState, parseMenuLockRaw, type StandbyDiag } from "../scripts/tv-command-core.mjs";
+import { GAP_MS, MENU_LOCK_COMMANDS, menuLockState, menuLockVerdict, parseMenuLockRaw, type StandbyDiag } from "../scripts/tv-command-core.mjs";
 import { agentState, autoCommand, COMMAND_TTL_MS, expiredStatus, normalizeSoundPolicy, parseCapabilities, reportStatus, resetPlan, resetRoomStatus, type ResetAction, type ResetStatus, type SoundPolicy, type TvCommand } from "../scripts/tv-command-core.mjs";
 import { desiredPower } from "../scripts/tv-power-core.mjs";
 
@@ -132,7 +132,7 @@ export async function saveSoundPolicy(ownerId: string, roomIds: number[], raw: u
 }
 
 /** The app's report for a delivered command; applied once. */
-export async function agentReport(ownerId: string, roomId: number, id: number, report: { status?: string; interactive?: boolean; error?: string; volume?: number; muted?: boolean; fixed?: boolean; opened?: boolean; detail?: string }): Promise<string | null> {
+export async function agentReport(ownerId: string, roomId: number, id: number, report: { status?: string; interactive?: boolean; error?: string; volume?: number; muted?: boolean; fixed?: boolean; opened?: boolean; detail?: string; menuLock?: string }): Promise<string | null> {
   const r = (await db().query(`SELECT id,command,status,value,cap,created_at FROM tv_screen_commands WHERE id=$1 AND owner_id=$2 AND room_id=$3`, [id, ownerId, roomId])).rows[0];
   if (!r) return null;
   let next = reportStatus({ status: String(r.status), command: String(r.command), value: num(r.value), cap: num(r.cap) }, report);
@@ -147,8 +147,13 @@ export async function agentReport(ownerId: string, roomId: number, id: number, r
     )).rowCount);
     if (byOther) next = "FAILED";
   }
-  const error = byOther ? "TURNED_ON_BY_REMOTE" : next === "EXECUTED" ? "" : String(report.error ?? (next === "UNVERIFIED" ? "NO_STATE" : "STATE_DID_NOT_CHANGE")).replace(/[^A-Za-z0-9_ .:-]/g, "").slice(0, 120);
+  // v167: Lock / Unlock — the server's own verdict from the reported state (the TV's code when it refused).
+  const lockVerdict = MENU_LOCK_COMMANDS.includes(String(r.command) as never) ? menuLockVerdict(String(r.command), report) : null;
+  const error = (byOther ? "TURNED_ON_BY_REMOTE" : next === "EXECUTED" ? "" : String(lockVerdict?.error || report.error || (next === "UNVERIFIED" ? "NO_STATE" : "STATE_DID_NOT_CHANGE"))).replace(/[^A-Za-z0-9_ .:-]/g, "").slice(0, 120);
   const now = Date.now();
+  if (report.menuLock && parseMenuLockRaw(report.menuLock)) {
+    await db().query(`UPDATE tv_screens SET menu_lock_raw=$3,menu_lock_state=$4,menu_lock_seen_at=$5 WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId, report.menuLock, menuLockState(report.menuLock), now]);
+  }
   const error2 = next === "FAILED" && report.fixed === true && !report.error ? "FIXED_VOLUME" : error;
   // v164: the TV's own text (wake method used, diagnostics), printable characters only, at most 4000.
   const detail = typeof report.detail === "string" ? report.detail.replace(/[^\x20-\x7E\n\u0370-\u03FF]/g, "").slice(0, 4000) : null;

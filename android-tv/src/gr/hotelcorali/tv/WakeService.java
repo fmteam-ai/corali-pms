@@ -35,7 +35,7 @@ public class WakeService extends Service {
     private static final String CHANNEL = "corali_tv";
     private static final String TAG = "CoraliTV";
     /** Sent with every check; must match android:versionCode. */
-    static final int VERSION_CODE = 16;
+    static final int VERSION_CODE = 17;
     private static final long CAPS_EVERY_MS = 10 * 60_000;
     private static final long URGENT_CHECK_MS = 20_000;
 
@@ -133,6 +133,10 @@ public class WakeService extends Service {
         }
         if ("OPEN_FACTORY_MENU".equals(type)) {
             factoryMenu(id, pm);
+            return;
+        }
+        if ("MENU_LOCK".equals(type) || "MENU_UNLOCK".equals(type)) {
+            menuLock(id, "MENU_LOCK".equals(type), pm);
             return;
         }
         if ("NETWORK_DIAGNOSTICS".equals(type)) {
@@ -250,6 +254,7 @@ public class WakeService extends Service {
                 if (sound.has("fixed")) body.put("fixed", sound.getBoolean("fixed"));
                 if (sound.has("opened")) body.put("opened", sound.getBoolean("opened"));
                 if (sound.has("detail")) body.put("detail", sound.getString("detail"));
+                if (sound.has("menuLock")) body.put("menuLock", sound.getString("menuLock"));
             }
             URL url = new URL(screen.getScheme() + "://" + screen.getAuthority() + "/api/public/tv/" + Uri.encode(token) + "/command");
             http = (HttpURLConnection) url.openConnection();
@@ -422,6 +427,83 @@ public class WakeService extends Service {
         }, 3_000);
     }
 
+    // ---- 1.16: «Lock Menu Key» from the PMS (MenuLockService), verified by what Android reports afterwards.
+
+    /**
+     * MENU_LOCK / MENU_UNLOCK. Never while a guest app is in front, never with the screen off, never when Hotel Status
+     * (hotel_enable) is on. EXECUTED is sent only when the Settings app, the side panel and hotel_menu_key_lock all
+     * show the target state afterwards and hotel_enable is still 0; the PMS checks the reported values again.
+     */
+    private void menuLock(final long id, final boolean lock, final PowerManager pm) {
+        final String before = MenuLock.readFull(this);
+        final String want = lock ? "lock" : "unlock";
+        BootLog.add(this, "menu " + want + " " + id + ": before " + before);
+        if (MenuLock.globalInt(this, "hotel_enable") != 0) { lockReport(id, false, pm, "HOTEL_MODE_ON", before, "before=" + before); return; }
+        if (MenuLock.matches(this, lock)) { lockReport(id, true, pm, "", before, "already " + (lock ? "locked" : "unlocked") + " · " + before); return; }
+        if (Build.VERSION.SDK_INT < MenuLockService.SDK_DPAD) { lockReport(id, false, pm, "ANDROID_TOO_OLD", before, "sdk=" + Build.VERSION.SDK_INT); return; }
+        if (!pm.isInteractive()) { lockReport(id, false, pm, "SCREEN_IS_OFF", before, "before=" + before); return; }
+        StringBuilder who = new StringBuilder();
+        if (Foreground.guestAppInFront(this, who)) { lockReport(id, false, pm, "GUEST_APP_IN_FRONT", before, who.toString()); return; }
+        String enabledVia = "";
+        if (!MenuLockService.enabled(this)) {
+            String e = MenuLockService.enableViaSelfAdb(this);
+            BootLog.add(this, "menu lock service off → self-ADB enable: " + (e.isEmpty() ? "PASS" : e));
+            if (!e.isEmpty()) { lockReport(id, false, pm, "ACCESSIBILITY_OFF", before, e); return; }
+            enabledVia = " · service switched on via the TV's own ADB";
+        }
+        final String via = enabledVia;
+        final long start = System.currentTimeMillis();
+        // The service binds a moment after it is switched on.
+        background.post(new Runnable() {
+            @Override
+            public void run() {
+                if (!MenuLockService.connected()) {
+                    if (System.currentTimeMillis() - start < 8_000) { background.postDelayed(this, 500); return; }
+                    lockReport(id, false, pm, "ACCESSIBILITY_NOT_CONNECTED", before, "before=" + before + via);
+                    return;
+                }
+                final MenuLockService.Job job = MenuLockService.arm(lock);
+                if (!MenuLock.openEngineerPage(WakeService.this)) {
+                    MenuLockService.disarm();
+                    lockReport(id, false, pm, "FACTORY_MENU_NOT_AVAILABLE", before, "before=" + before + via);
+                    return;
+                }
+                background.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!job.done && System.currentTimeMillis() < job.deadline + 2_000) { background.postDelayed(this, 500); return; }
+                        if (!job.done) MenuLockService.disarm();
+                        // Let the factory app apply the change and the service leave the menu, then read Android.
+                        background.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                MainActivity.bringToFront(WakeService.this, false, false, "menu-lock");
+                                String after = MenuLock.readFull(WakeService.this);
+                                String detail = "before=" + before + " after=" + after + " step=" + (job.done ? job.result : "NO_RESULT") + " screen=" + job.screenValue + via;
+                                BootLog.add(WakeService.this, "menu " + want + " " + id + ": " + detail);
+                                String err;
+                                if (MenuLock.globalInt(WakeService.this, "hotel_enable") != 0) err = "HOTEL_MODE_CHANGED";
+                                else if (MenuLock.matches(WakeService.this, lock)) err = "";
+                                else if (!job.done) err = "NO_RESULT";
+                                else if (!"OK".equals(job.result)) err = job.result;
+                                else err = "STATE_NOT_CONFIRMED";
+                                lockReport(id, err.isEmpty(), pm, err, after, detail);
+                            }
+                        }, 2_500);
+                    }
+                }, 1_000);
+            }
+        });
+    }
+
+    private void lockReport(long id, boolean ok, PowerManager pm, String error, String raw, String detail) {
+        try {
+            report(id, ok, pm.isInteractive(), error, new JSONObject().put("menuLock", raw).put("detail", detail));
+        } catch (Exception e) {
+            report(id, ok, pm.isInteractive(), error.isEmpty() ? "REPORT_ERROR" : error);
+        }
+    }
+
     /** After power-on / reboot: run as a foreground service and make sure the welcome screen ends up visible. */
     static void startAfterBoot(Context c, boolean wake) {
         Intent i = new Intent(c, WakeService.class).putExtra("boot", true).putExtra("power_on", wake);
@@ -535,7 +617,7 @@ public class WakeService extends Service {
             if (rev > 0) state += "&prev=" + rev;
         } catch (Exception ignored) { }
         // 1.14: the factory menu lock as it really is (enabled states, read without ADB).
-        state += "&lk=" + MenuLock.read(this);
+        state += "&lk=" + MenuLock.read(this) + "&mk=" + MenuLock.flags(this);
         state += NetworkStandbyManager.get(this).query();
         long bl = PrivacyAgent.baselineAt(this);
         if (bl > 0) state += "&bl=" + bl;

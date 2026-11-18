@@ -6,8 +6,15 @@
 export const SCREEN_COMMANDS = ["SCREEN_ON", "SCREEN_OFF", "SHOW_WELCOME"];
 /** v159: sound, through Android AudioManager (STREAM_MUSIC) in the Corali TV app ≥ 1.9. */
 export const VOLUME_COMMANDS = ["SET_VOLUME", "VOLUME_UP", "VOLUME_DOWN", "MUTE", "UNMUTE"];
-/** v163: open the TV maker's Factory Menu for a technician in the room (owner only). Changes no setting by itself. */
-export const FACTORY_COMMANDS = ["OPEN_FACTORY_MENU"];
+/**
+ * v163: open the TV maker's Factory Menu for a technician in the room (owner only). Changes no setting by itself.
+ * v167 (Corali TV 1.16): MENU_LOCK / MENU_UNLOCK — the factory «Lock Menu Key» set by the app's accessibility service
+ * on that one row of «Engineer Mode Option», verified afterwards by what Android reports (menuLockVerdict).
+ */
+export const FACTORY_COMMANDS = ["OPEN_FACTORY_MENU", "MENU_LOCK", "MENU_UNLOCK"];
+export const MENU_LOCK_COMMANDS = ["MENU_LOCK", "MENU_UNLOCK"];
+/** Corali TV versionCode that can run MENU_LOCK / MENU_UNLOCK (1.16). */
+export const MENU_LOCK_APP = 17;
 /** v164: the app reports its power / network diagnostics (Corali TV ≥ 1.15). */
 export const DIAG_COMMANDS = ["NETWORK_DIAGNOSTICS"];
 export const ALL_COMMANDS = [...SCREEN_COMMANDS, ...VOLUME_COMMANDS, ...FACTORY_COMMANDS, ...DIAG_COMMANDS];
@@ -50,6 +57,7 @@ export function reportStatus(cmd, report) {
   // Factory Menu: EXECUTED only when the app saw it come to the front (the welcome screen left the foreground).
   if (cmd.command === "NETWORK_DIAGNOSTICS") return typeof report?.detail === "string" && report.detail.length > 0 ? "EXECUTED" : "UNVERIFIED";
   if (cmd.command === "OPEN_FACTORY_MENU") return report?.opened === true ? "EXECUTED" : report?.opened === false ? "FAILED" : "UNVERIFIED";
+  if (MENU_LOCK_COMMANDS.includes(cmd.command)) return menuLockVerdict(cmd.command, report).status;
   if (interactive === null) return "UNVERIFIED";
   if (cmd.command === "SCREEN_OFF") return interactive ? "FAILED" : "EXECUTED";
   return interactive ? "EXECUTED" : "FAILED"; // SCREEN_ON, SHOW_WELCOME
@@ -164,11 +172,12 @@ export function resetRoomStatus({ appVersion, online, commands, policyRev, appli
 // reads the three enabled states with PackageManager (no ADB, no permission) and sends them as "s<n>a<n>h<n>"
 // (n = Android COMPONENT_ENABLED_STATE 0..4, or x when it could not be read).
 export const MENU_LOCK_STATES = ["LOCKED", "UNLOCKED", "PARTIAL", "UNKNOWN"];
+// 1.16 adds "g<n>e<n>": Settings.Global hotel_menu_key_lock and hotel_enable (Hotel Status), 0..9 or x.
 export function parseMenuLockRaw(raw) {
-  const m = /^s([0-4x])a([0-4x])h([0-4x])$/.exec(String(raw ?? ""));
+  const m = /^s([0-4x])a([0-4x])h([0-4x])(?:g([0-9x])e([0-9x]))?$/.exec(String(raw ?? ""));
   if (!m) return null;
-  const n = (v) => (v === "x" ? null : Number(v));
-  return { settings: n(m[1]), dashboardActivity: n(m[2]), dashboardHandler: n(m[3]) };
+  const n = (v) => (v === undefined || v === "x" ? null : Number(v));
+  return { settings: n(m[1]), dashboardActivity: n(m[2]), dashboardHandler: n(m[3]), menuKeyLock: n(m[4]), hotelEnable: n(m[5]) };
 }
 /** LOCKED only when all three are disabled; UNLOCKED when all three are enabled / default; anything else PARTIAL. */
 export function menuLockState(raw) {
@@ -180,6 +189,22 @@ export function menuLockState(raw) {
   if (parts.length === 3 && parts.every(off)) return "LOCKED";
   if (parts.every(on)) return parts.length === 3 ? "UNLOCKED" : "UNKNOWN";
   return "PARTIAL";
+}
+
+/**
+ * MENU_LOCK / MENU_UNLOCK result. EXECUTED only when the TV's report (read after the change) shows the target state
+ * everywhere: the Settings app and both side-panel components (menuLockState), hotel_menu_key_lock = 1 / 0, and
+ * Hotel Status (hotel_enable) still 0. A refusal keeps the TV's own error code (e.g. GUEST_APP_IN_FRONT).
+ */
+export function menuLockVerdict(command, report) {
+  const lock = command === "MENU_LOCK";
+  const p = parseMenuLockRaw(report?.menuLock);
+  if (report?.status !== "EXECUTED") return { status: "FAILED", error: String(report?.error || "REJECTED") };
+  if (!p || p.menuKeyLock === null || p.hotelEnable === null) return { status: "UNVERIFIED", error: "NO_STATE" };
+  if (p.hotelEnable !== 0) return { status: "FAILED", error: "HOTEL_MODE_ON" };
+  const state = menuLockState(report.menuLock);
+  if (state === (lock ? "LOCKED" : "UNLOCKED") && p.menuKeyLock === (lock ? 1 : 0)) return { status: "EXECUTED", error: "" };
+  return { status: "FAILED", error: state === "PARTIAL" ? "STATE_PARTIAL" : "STATE_NOT_CONFIRMED" };
 }
 
 // v164: power state of a room's TV as the PMS may show it. Never ON because the agent is connected or a wake lock is

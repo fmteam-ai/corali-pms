@@ -1,3 +1,5 @@
+> **Ενημέρωση (Corali TV 1.16):** βρέθηκε ασφαλής δρόμος χωρίς ADB για Lock / Unlock από το PMS: μια υπηρεσία προσβασιμότητας χειρίζεται μόνο τη γραμμή «Lock Menu Key» της σελίδας Engineer Mode Option. Δείτε `docs/TV-MENU-LOCK-1.16.md`. Η ενότητα 2 παρακάτω ισχύει ακόμα για *άμεση* εγγραφή (API): δεν υπάρχει.
+
 # Lock / Unlock TV Settings — τεχνική αναφορά (HORIZON 43HQ8590U/D, TvEplFactoryGTV.apk V2.2.36)
 
 Πηγή: ανάλυση του `TvEplFactoryGTV.apk` (`com.expressluck.tvfactory`, versionName V2.2.36, `sharedUserId=android.uid.system`) με απομεταγλώττιση (androguard 4.1.4). Δεν έγινε καμία αλλαγή στην TV.
