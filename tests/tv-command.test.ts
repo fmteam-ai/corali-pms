@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ACK_TIMEOUT_MS, AGENT_ONLINE_MS, agentState, autoCommand, expiredStatus, reportStatus, validPowerMethod } from "../scripts/tv-command-core.mjs";
+import { ACK_TIMEOUT_MS, AGENT_ONLINE_MS, agentState, autoCommand, expiredStatus, reportStatus, validPowerMethod, menuLockState, parseMenuLockRaw } from "../scripts/tv-command-core.mjs";
 
 test("commands expire: not delivered → TIMEOUT, delivered without report → UNVERIFIED, final never changes", () => {
   const now = 1_000_000;
@@ -77,4 +77,30 @@ test("v160 resets: software policies only, never success without the TV's report
   assert.equal(resetRoomStatus({ ...base, commands: [{ status: "CANCELLED" }] }), "SUPERSEDED");
   assert.equal(resetRoomStatus({ ...base, appliedRev: 4, commands: [] }), "PENDING");
   assert.equal(resetRoomStatus({ ...base, appVersion: 10, appliedRev: null, commands: [] }), "UNVERIFIED");
+});
+
+
+// ---- v163: Factory Menu command and the real «Lock Menu Key» state
+test("v163: Factory Menu is EXECUTED only when the TV saw it come to the front", () => {
+  const cmd = { status: "DELIVERED", command: "OPEN_FACTORY_MENU" };
+  assert.equal(reportStatus(cmd, { status: "EXECUTED", opened: true }), "EXECUTED");
+  assert.equal(reportStatus(cmd, { status: "EXECUTED", opened: false }), "FAILED");
+  assert.equal(reportStatus(cmd, { status: "EXECUTED" }), "UNVERIFIED");
+  assert.equal(reportStatus(cmd, { status: "FAILED" }), "FAILED");
+  assert.equal(reportStatus({ ...cmd, status: "EXECUTED" }, { status: "EXECUTED", opened: true }), null);
+});
+
+test("v163: menu lock state from the TV's enabled states", () => {
+  assert.equal(menuLockState("s2a2h2"), "LOCKED");
+  assert.equal(menuLockState("s0a0h0"), "UNLOCKED");
+  assert.equal(menuLockState("s1a1h1"), "UNLOCKED");
+  assert.equal(menuLockState("s2a0h0"), "PARTIAL");
+  assert.equal(menuLockState("s3a0h0"), "PARTIAL");
+  assert.equal(menuLockState("s0a2h2"), "PARTIAL");
+  assert.equal(menuLockState("sxa2h2"), "UNKNOWN");
+  assert.equal(menuLockState("s0axhx"), "UNKNOWN");
+  assert.equal(menuLockState("s2axhx"), "PARTIAL");
+  assert.equal(menuLockState("LOCKED"), "UNKNOWN");
+  assert.equal(menuLockState(null), "UNKNOWN");
+  assert.equal(parseMenuLockRaw("s9a0h0"), null);
 });

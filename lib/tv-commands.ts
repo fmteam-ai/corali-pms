@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { hotelToday } from "@/lib/tape-chart";
 import { hotelTime } from "@/lib/tv";
 import { loadPowerSettings, POWER_METHOD_SQL } from "@/lib/tv-power";
+import { menuLockState, parseMenuLockRaw } from "../scripts/tv-command-core.mjs";
 import { agentState, autoCommand, COMMAND_TTL_MS, expiredStatus, normalizeSoundPolicy, parseCapabilities, reportStatus, resetPlan, resetRoomStatus, type ResetAction, type ResetStatus, type SoundPolicy, type TvCommand } from "../scripts/tv-command-core.mjs";
 import { desiredPower } from "../scripts/tv-power-core.mjs";
 
@@ -44,7 +45,7 @@ export async function queueCommand(ownerId: string, roomId: number, command: TvC
  * The app's check (every ~20 s): records what it measured (screen on/off, version, screen-off permission), applies the
  * automatic arrival / check-out rule for «android_agent» rooms, and hands over the newest waiting command (once).
  */
-export type AgentReport = { interactive: boolean | null; version: number | null; admin: boolean | null; volume?: number | null; muted?: boolean | null; fixed?: boolean | null; caps?: Record<string, unknown> | null; clamped?: boolean; policyRev?: number | null };
+export type AgentReport = { interactive: boolean | null; version: number | null; admin: boolean | null; volume?: number | null; muted?: boolean | null; fixed?: boolean | null; caps?: Record<string, unknown> | null; clamped?: boolean; policyRev?: number | null; menuLock?: string | null };
 export type AgentAnswer = { command: { id: number; command: string; value: number | null; cap: number | null } | null; policy: (SoundPolicy & { rev: number }) | null };
 
 export async function agentCheck(ownerId: string, roomId: number, report: AgentReport): Promise<AgentAnswer> {
@@ -57,6 +58,10 @@ export async function agentCheck(ownerId: string, roomId: number, report: AgentR
       WHERE owner_id=$1 AND room_id=$2 RETURNING ${POWER_METHOD_SQL} AS method,screen_auto_state`,
     [ownerId, roomId, now, b(report.interactive), report.version, b(report.admin), report.volume ?? null, b(report.muted), b(report.fixed), report.caps ? JSON.stringify(parseCapabilities(report.caps)) : null, report.clamped === true, report.policyRev ?? null],
   )).rows[0];
+  // v163: the menu lock as the TV read it (≥ 1.14); the state is derived here, never taken from the app as text.
+  if (row && report.menuLock && parseMenuLockRaw(report.menuLock)) {
+    await db().query(`UPDATE tv_screens SET menu_lock_raw=$3,menu_lock_state=$4,menu_lock_seen_at=$5 WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId, report.menuLock, menuLockState(report.menuLock), now]);
+  }
   // Sound policy for apps that apply it (≥ 1.9), whatever the power method.
   const policy = row && report.version !== null && report.version >= 10 ? (await soundPolicies(ownerId))[roomId] ?? null : null;
   // Only apps that report their state (≥ 1.8) take commands; older apps keep working without remote control.
@@ -112,7 +117,7 @@ export async function saveSoundPolicy(ownerId: string, roomIds: number[], raw: u
 }
 
 /** The app's report for a delivered command; applied once. */
-export async function agentReport(ownerId: string, roomId: number, id: number, report: { status?: string; interactive?: boolean; error?: string; volume?: number; muted?: boolean; fixed?: boolean }): Promise<string | null> {
+export async function agentReport(ownerId: string, roomId: number, id: number, report: { status?: string; interactive?: boolean; error?: string; volume?: number; muted?: boolean; fixed?: boolean; opened?: boolean }): Promise<string | null> {
   const r = (await db().query(`SELECT id,command,status,value,cap FROM tv_screen_commands WHERE id=$1 AND owner_id=$2 AND room_id=$3`, [id, ownerId, roomId])).rows[0];
   if (!r) return null;
   const next = reportStatus({ status: String(r.status), command: String(r.command), value: num(r.value), cap: num(r.cap) }, report);

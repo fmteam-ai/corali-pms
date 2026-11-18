@@ -2352,3 +2352,9 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+-- v163: the TV's «Lock Menu Key» as read on the TV by the Corali TV app ≥ 1.14 (PackageManager enabled states of the
+-- Settings app and the Google TV side panel; no ADB). Raw "s<n>a<n>h<n>", the state derived from it, and when.
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS menu_lock_raw TEXT;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS menu_lock_state TEXT;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS menu_lock_seen_at BIGINT;

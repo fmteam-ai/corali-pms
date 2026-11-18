@@ -10,6 +10,8 @@ const input = z.object({
   volume: z.number().int().min(0).max(100).optional(),
   muted: z.boolean().optional(),
   fixed: z.boolean().optional(),
+  // ≥ 1.14: OPEN_FACTORY_MENU — whether the Factory Menu came to the front (the welcome screen left the foreground).
+  opened: z.boolean().optional(),
 });
 const noStore = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 

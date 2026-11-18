@@ -36,7 +36,7 @@ public class WakeService extends Service {
     private static final String CHANNEL = "corali_tv";
     private static final String TAG = "CoraliTV";
     /** Sent with every check; must match android:versionCode. */
-    static final int VERSION_CODE = 14;
+    static final int VERSION_CODE = 15;
     private static final long CAPS_EVERY_MS = 10 * 60_000;
     private static final long URGENT_CHECK_MS = 20_000;
 
@@ -119,6 +119,10 @@ public class WakeService extends Service {
         Log.i(TAG, "command " + id + " " + type + " (screen " + (pm.isInteractive() ? "on" : "off") + ")");
         if (type.equals("SET_VOLUME") || type.equals("VOLUME_UP") || type.equals("VOLUME_DOWN") || type.equals("MUTE") || type.equals("UNMUTE")) {
             soundCommand(id, type, c);
+            return;
+        }
+        if ("OPEN_FACTORY_MENU".equals(type)) {
+            factoryMenu(id, pm);
             return;
         }
         long verifyAfter;
@@ -230,6 +234,7 @@ public class WakeService extends Service {
                 if (sound.has("volume")) body.put("volume", sound.getInt("volume"));
                 if (sound.has("muted")) body.put("muted", sound.getBoolean("muted"));
                 if (sound.has("fixed")) body.put("fixed", sound.getBoolean("fixed"));
+                if (sound.has("opened")) body.put("opened", sound.getBoolean("opened"));
             }
             URL url = new URL(screen.getScheme() + "://" + screen.getAuthority() + "/api/public/tv/" + Uri.encode(token) + "/command");
             http = (HttpURLConnection) url.openConnection();
@@ -257,6 +262,34 @@ public class WakeService extends Service {
         } catch (RuntimeException ignored) {
             // Not allowed right now (background limits); the next start-up or app launch tries again.
         }
+    }
+
+    /**
+     * 1.14: open the Factory Menu for a technician. Evidence: the welcome screen is brought to the front first, then the
+     * Factory Menu is started; «opened» only if the welcome screen then left the foreground. Changes no setting.
+     */
+    private void factoryMenu(final long id, final PowerManager pm) {
+        if (!pm.isInteractive()) { report(id, false, false, "SCREEN_IS_OFF"); return; }
+        MainActivity.bringToFront(this, false, false, "factory-menu");
+        background.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (!MainActivity.visible) { report(id, true, pm.isInteractive(), "WELCOME_NOT_IN_FRONT"); return; } // → UNVERIFIED
+                if (!MenuLock.openFactoryMenu(WakeService.this)) { report(id, false, pm.isInteractive(), "FACTORY_MENU_NOT_AVAILABLE"); return; }
+                background.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        boolean opened = !MainActivity.visible;
+                        BootLog.add(WakeService.this, "factory menu: " + (opened ? "in front" : "did not come to the front"));
+                        try {
+                            report(id, true, pm.isInteractive(), opened ? "" : "FACTORY_MENU_NOT_IN_FRONT", new JSONObject().put("opened", opened));
+                        } catch (Exception e) {
+                            report(id, true, pm.isInteractive(), "REPORT_ERROR");
+                        }
+                    }
+                }, 3_000);
+            }
+        }, 3_000);
     }
 
     /** After power-on / reboot: run as a foreground service and make sure the welcome screen ends up visible. */
@@ -365,6 +398,8 @@ public class WakeService extends Service {
             long rev = new JSONObject(new Prefs(this).soundPolicy()).optLong("rev", 0);
             if (rev > 0) state += "&prev=" + rev;
         } catch (Exception ignored) { }
+        // 1.14: the factory menu lock as it really is (enabled states, read without ADB).
+        state += "&lk=" + MenuLock.read(this);
         long bl = PrivacyAgent.baselineAt(this);
         if (bl > 0) state += "&bl=" + bl;
         if (System.currentTimeMillis() - capsSentAt > CAPS_EVERY_MS) {

@@ -29,6 +29,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
       volume: q.has("vol") && Number.isInteger(vol) && vol >= 0 && vol <= 100 ? vol : null, muted: flag("mute"), fixed: flag("fixed"), caps, clamped: q.get("clamped") === "1",
       // ≥ 1.10: the policy revision the TV applied (confirms resets and policy changes).
       policyRev: /^\d{1,15}$/.test(q.get("prev") ?? "") ? Number(q.get("prev")) : null,
+      // ≥ 1.14 (v163): enabled states of Settings / side panel, "s<n>a<n>h<n>" — the real «Lock Menu Key».
+      menuLock: /^s[0-4x]a[0-4x]h[0-4x]$/.test(q.get("lk") ?? "") ? q.get("lk") : null,
     }) : { command: null, policy: null };
     const version = Number.isInteger(v) && v > 0 && v < 100000 ? v : null;
     let privacy = null;

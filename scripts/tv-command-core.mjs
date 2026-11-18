@@ -6,7 +6,9 @@
 export const SCREEN_COMMANDS = ["SCREEN_ON", "SCREEN_OFF", "SHOW_WELCOME"];
 /** v159: sound, through Android AudioManager (STREAM_MUSIC) in the Corali TV app ≥ 1.9. */
 export const VOLUME_COMMANDS = ["SET_VOLUME", "VOLUME_UP", "VOLUME_DOWN", "MUTE", "UNMUTE"];
-export const ALL_COMMANDS = [...SCREEN_COMMANDS, ...VOLUME_COMMANDS];
+/** v163: open the TV maker's Factory Menu for a technician in the room (owner only). Changes no setting by itself. */
+export const FACTORY_COMMANDS = ["OPEN_FACTORY_MENU"];
+export const ALL_COMMANDS = [...SCREEN_COMMANDS, ...VOLUME_COMMANDS, ...FACTORY_COMMANDS];
 /** A volume read back within this many percentage points of the target counts as applied (Android volume steps). */
 export const VOLUME_TOLERANCE = 7;
 export const COMMAND_STATUSES = ["PENDING", "DELIVERED", "EXECUTED", "FAILED", "TIMEOUT", "UNVERIFIED", "CANCELLED"];
@@ -43,6 +45,8 @@ export function reportStatus(cmd, report) {
   const interactive = report && typeof report.interactive === "boolean" ? report.interactive : null;
   if (report?.status !== "EXECUTED") return "FAILED";
   if (VOLUME_COMMANDS.includes(cmd.command)) return volumeStatus(cmd, report);
+  // Factory Menu: EXECUTED only when the app saw it come to the front (the welcome screen left the foreground).
+  if (cmd.command === "OPEN_FACTORY_MENU") return report?.opened === true ? "EXECUTED" : report?.opened === false ? "FAILED" : "UNVERIFIED";
   if (interactive === null) return "UNVERIFIED";
   if (cmd.command === "SCREEN_OFF") return interactive ? "FAILED" : "EXECUTED";
   return interactive ? "EXECUTED" : "FAILED"; // SCREEN_ON, SHOW_WELCOME
@@ -149,4 +153,28 @@ export function resetRoomStatus({ appVersion, online, commands, policyRev, appli
     if (Number(appliedRev) < Number(policyRev)) return online ? "PENDING" : "OFFLINE";
   }
   return "EXECUTED";
+}
+
+// v163: the TV's «Lock Menu Key» as it really is on the TV. The factory app locks by DISABLING the Settings app
+// (com.android.tv.settings, state 2) and the Google TV side panel (launcherx …dashboard.DashboardActivity and
+// …DashboardHandler, state 2); the global setting hotel_menu_key_lock alone is not proof. The Corali TV app (≥ 1.14)
+// reads the three enabled states with PackageManager (no ADB, no permission) and sends them as "s<n>a<n>h<n>"
+// (n = Android COMPONENT_ENABLED_STATE 0..4, or x when it could not be read).
+export const MENU_LOCK_STATES = ["LOCKED", "UNLOCKED", "PARTIAL", "UNKNOWN"];
+export function parseMenuLockRaw(raw) {
+  const m = /^s([0-4x])a([0-4x])h([0-4x])$/.exec(String(raw ?? ""));
+  if (!m) return null;
+  const n = (v) => (v === "x" ? null : Number(v));
+  return { settings: n(m[1]), dashboardActivity: n(m[2]), dashboardHandler: n(m[3]) };
+}
+/** LOCKED only when all three are disabled; UNLOCKED when all three are enabled / default; anything else PARTIAL. */
+export function menuLockState(raw) {
+  const p = parseMenuLockRaw(raw);
+  if (!p || p.settings === null) return "UNKNOWN";
+  const off = (v) => v === 2 || v === 3 || v === 4;
+  const on = (v) => v === 0 || v === 1;
+  const parts = [p.settings, p.dashboardActivity, p.dashboardHandler].filter((v) => v !== null);
+  if (parts.length === 3 && parts.every(off)) return "LOCKED";
+  if (parts.every(on)) return parts.length === 3 ? "UNLOCKED" : "UNKNOWN";
+  return "PARTIAL";
 }

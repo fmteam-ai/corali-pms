@@ -8,7 +8,7 @@ import type { CommandRow } from "@/lib/tv-commands";
 import { agentState, FINAL_STATUSES, type SoundPolicy } from "../../../scripts/tv-command-core.mjs";
 
 type Policy = SoundPolicy & { rev?: number };
-type Data = { screens: TvScreenRow[]; policies: Record<number, Policy>; commands: Record<number, CommandRow>; soundApp: number; preset: SoundPolicy };
+type Data = { screens: TvScreenRow[]; policies: Record<number, Policy>; commands: Record<number, CommandRow>; soundApp: number; preset: SoundPolicy; factoryMenuApp?: number; isOwner?: boolean };
 type ResetResult = { roomId: number; roomCode: string; policySaved: boolean; commandIds: number[]; status: string };
 const FINAL_RESET = ["EXECUTED", "FAILED", "UNVERIFIED", "APP_TOO_OLD", "SUPERSEDED"];
 
@@ -30,6 +30,10 @@ const EL = {
   unsupported: "Δεν υποστηρίζεται",
   unsupportedHelp: "Κλείδωμα μενού, κλείδωμα πηγής (HDMI) και εργοστασιακό όριο έντασης: η τηλεόραση έχει εργοστασιακές ρυθμίσεις Hotel Mode, αλλά καμία εξουσιοδοτημένη πρόσβαση για εφαρμογές. Οι τιμές τους εμφανίζονται μόνο για ενημέρωση (ανάγνωση) και δεν αλλάζουν από το PMS.",
   menuLock: "Κλείδωμα μενού", sourceLock: "Κλείδωμα πηγής",
+  lockCol: "Κλείδωμα μενού (πραγματικό)", lk_LOCKED: "🔒 LOCKED", lk_UNLOCKED: "🔓 UNLOCKED", lk_PARTIAL: "⚠ PARTIAL", lk_UNKNOWN: "UNKNOWN", lk_none: "UNKNOWN — χρειάζεται Corali TV 1.14",
+  lockHelp: "Διαβάζεται από την ίδια την TV: «κλειδωμένο» σημαίνει ότι οι Ρυθμίσεις της TV και το πλαϊνό πάνελ του Google TV είναι απενεργοποιημένα (Factory Menu → Engineer Mode Option → Lock Menu Key). Lock / Unlock από το PMS: UNSUPPORTED — η TV δεν επιτρέπει σε εφαρμογές να το αλλάξουν· γίνεται μία φορά από τεχνικό και μένει μετά από επανεκκίνηση.",
+  openFactory: "Άνοιγμα Factory Menu στην TV", factoryConfirm: "Άνοιγμα του Factory Menu στην τηλεόραση του δωματίου {r};\n\nΜόνο για τεχνικό που βρίσκεται στο δωμάτιο. Στο μενού αλλάξτε ΜΟΝΟ: Engineer Mode Option → Lock Menu Key.\n\nΜην ενεργοποιήσετε το «Hotel Status / Hotel Mode»: σε κάθε εκκίνηση απεγκαθιστά το Corali TV και τις εφαρμογές τρίτων.",
+  cmd_OPEN_FACTORY_MENU: "Factory Menu",
   noPerm: "Μόνο ανάγνωση (χρειάζεται δικαίωμα κρατήσεων για την ένταση / διαχειριστή για την πολιτική).",
   policyApplied: "πολιτική στην TV ✓", policyWaiting: "η TV δεν έχει πάρει ακόμα τη νέα πολιτική", policyUnknown: "επιβεβαίωση πολιτικής: χρειάζεται Corali TV 1.10",
   resets: "Επαναφορές (μόνο στα επιλεγμένα δωμάτια)", resetsHelp: "Αλλάζουν μόνο τις πολιτικές ήχου του ξενοδοχείου στην εφαρμογή. Δεν γίνεται εργοστασιακή επαναφορά, δεν αγγίζονται ρυθμίσεις του κατασκευαστή, ο σύνδεσμος του δωματίου, το Wi-Fi, η μέθοδος ρεύματος ή το καλωσόρισμα.",
@@ -64,6 +68,10 @@ const EN: typeof EL = {
   unsupported: "Not supported",
   unsupportedHelp: "Menu lock, source (HDMI) lock and the factory volume limit: the TV has factory Hotel Mode settings, but no authorised access for apps. Their values are shown for information only (read) and are not changed by the PMS.",
   menuLock: "Menu lock", sourceLock: "Source lock",
+  lockCol: "Menu lock (actual)", lk_LOCKED: "🔒 LOCKED", lk_UNLOCKED: "🔓 UNLOCKED", lk_PARTIAL: "⚠ PARTIAL", lk_UNKNOWN: "UNKNOWN", lk_none: "UNKNOWN — needs Corali TV 1.14",
+  lockHelp: "Read on the TV itself: “locked” means the TV's Settings app and the Google TV side panel are disabled (Factory Menu → Engineer Mode Option → Lock Menu Key). Lock / Unlock from the PMS: UNSUPPORTED — the TV lets no app change it; a technician sets it once and it stays after restarts.",
+  openFactory: "Open Factory Menu on the TV", factoryConfirm: "Open the Factory Menu on the TV of room {r}?\n\nOnly for a technician in the room. Change ONLY: Engineer Mode Option → Lock Menu Key.\n\nDo not turn on “Hotel Status / Hotel Mode”: it uninstalls Corali TV and third-party apps at every start.",
+  cmd_OPEN_FACTORY_MENU: "Factory Menu",
   noPerm: "Read only (volume needs the reservations permission, the policy needs admin).",
   policyApplied: "policy on the TV ✓", policyWaiting: "the TV has not taken the new policy yet", policyUnknown: "policy confirmation needs Corali TV 1.10",
   resets: "Resets (selected rooms only)", resetsHelp: "They change only the hotel's sound policies in the app. No factory reset, no vendor settings; room link, Wi-Fi, power method and welcome screen are not touched.",
@@ -180,7 +188,7 @@ export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; ca
       <h2>{T.title}</h2>
       <small>{T.help}</small>
       {!canCommand && !canPolicy && <p className="muted">{T.noPerm}</p>}
-      <p className="notice"><b>{T.menuLock}: {T.unsupported} · {T.sourceLock}: {T.unsupported}</b><br /><small>{T.unsupportedHelp}</small></p>
+      <p className="notice"><b>{T.menuLock} (Lock / Unlock): {T.unsupported} · {T.sourceLock}: {T.unsupported}</b><br /><small>{T.lockHelp}</small><br /><small>{T.unsupportedHelp}</small></p>
 
       <div className="tvAdminChecks">
         <b>{T.selected}: {selected.length}</b>
@@ -233,7 +241,7 @@ export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; ca
       )}
 
       <div className="tableWrap"><table>
-        <thead><tr><th /><th>{T.room}</th><th>{T.state}</th><th>{T.volume}</th><th>{T.policy}</th><th>{T.caps}</th><th>{T.last}</th></tr></thead>
+        <thead><tr><th /><th>{T.room}</th><th>{T.state}</th><th>{T.volume}</th><th>{T.policy}</th><th>{T.lockCol}</th><th>{T.caps}</th><th>{T.last}</th></tr></thead>
         <tbody>{screens.map((s) => {
           const st = agentState(s.screen_seen_at, s.screen_interactive, now);
           const old = s.app_version === null || s.app_version < data.soundApp;
@@ -265,6 +273,10 @@ export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; ca
                 <label className="inline"><input type="checkbox" checked={p.enforceMax} disabled={!canPolicy || busy} onChange={(e) => setEdit({ ...edit, [s.room_id]: { ...p, enforceMax: e.target.checked } })} /> {T.enforce}</label>
                 {canPolicy && edit[s.room_id] && <button type="button" className="secondaryButton" disabled={busy} onClick={() => void savePolicy([s.room_id], p)}>{T.save}</button>}
                 {data.policies[s.room_id] && !old && <small className={s.policy_rev_applied !== null && data.policies[s.room_id].rev !== undefined && s.policy_rev_applied >= Number(data.policies[s.room_id].rev) ? "credit" : "muted"}>{s.app_version !== null && s.app_version < 11 ? T.policyUnknown : s.policy_rev_applied !== null && s.policy_rev_applied >= Number(data.policies[s.room_id].rev) ? T.policyApplied : T.policyWaiting}</small>}
+              </td>
+              <td>
+                {s.menu_lock_state ? <><b className={s.menu_lock_state === "LOCKED" ? "credit" : s.menu_lock_state === "UNKNOWN" ? "muted" : "debit"}>{tx(`lk_${s.menu_lock_state}`)}</b>{s.menu_lock_seen_at ? <small className="muted"> · {at(s.menu_lock_seen_at)}</small> : null}</> : <small className="muted">{T.lk_none}</small>}
+                {data.isOwner && s.app_version !== null && s.app_version >= (data.factoryMenuApp ?? 15) && <><br /><button type="button" className="secondaryButton" disabled={busy} onClick={() => { if (window.confirm(T.factoryConfirm.replace("{r}", s.room_code))) void post({ action: "factory_menu", roomId: s.room_id, confirm: true }).then((d) => { if (d) void load(); }); }}>{T.openFactory}</button></>}
               </td>
               <td>{caps.length ? <small>{caps.map(([k, val]) => `${tx(`cap_${k}`)}: ${val ?? "—"}`).join(" · ")}</small> : <span className="muted">—</span>}</td>
               <td>{c ? <small className={c.status === "EXECUTED" ? "credit" : ["FAILED", "TIMEOUT", "UNVERIFIED"].includes(c.status) ? "debit" : ""}>{tx(`cmd_${c.command}`)}{c.value !== null ? ` ${c.value}%` : ""}{c.cap !== null ? ` (≤${c.cap}%)` : ""} · {at(c.created_at)} → <b>{tx(`st_${c.status}`)}</b>{c.result_volume !== null ? ` · ${c.result_volume}%` : ""}{c.result_muted === 1 ? ` · ${T.muted}` : ""}{c.error ? ` · ${c.error}` : ""}</small> : <span className="muted">—</span>}</td>

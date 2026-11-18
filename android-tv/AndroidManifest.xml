@@ -2,8 +2,8 @@
 <!-- Corali TV: shows a room's welcome screen (booking.hotelcorali.gr/tv/…) full screen on Google TV / Android TV. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="gr.hotelcorali.tv"
-    android:versionCode="14"
-    android:versionName="1.13">
+    android:versionCode="15"
+    android:versionName="1.14">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="30" />
 
@@ -13,6 +13,9 @@
     <queries>
         <!-- Read-only capability report: is the factory (Hotel Mode) app installed? -->
         <package android:name="com.expressluck.tvfactory" />
+        <!-- 1.14: read whether the factory «Lock Menu Key» is on (Settings app / Google TV side panel enabled or not). -->
+        <package android:name="com.android.tv.settings" />
+        <package android:name="com.google.android.apps.tv.launcherx" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
