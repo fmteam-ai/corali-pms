@@ -100,3 +100,57 @@ export function normalizeUninstallResult(r) {
   const status = ['REMOVED', 'NOT_INSTALLED', 'FAILED', 'BLOCKED_SECURITY', 'BLOCKED_PROTECTED'].includes(r?.status) ? r.status : 'FAILED';
   return { status, code: String(r?.code ?? '').replace(/[^A-Z0-9_]/g, '').slice(0, 48) };
 }
+
+// v162: the Corali TV app itself clears the TV at check-out through its own ADB (Self-ADB, proven on HORIZON 112).
+// The job stays «pending personal-data clearing» until the TV proves every step; it retries (TV offline, ADB not
+// ready, a failed clear) and asks staff for what Android lets no app remove (a guest Google account, Bluetooth pairing).
+export const AGENT_MIN_VERSION = 14; // Corali TV 1.13
+export const AGENT_LEASE_MS = 10 * 60_000;
+export const AGENT_JOB_STATUSES = Object.freeze(['QUEUED', 'RUNNING', 'RETRY_PENDING', 'NEEDS_STAFF', 'READY', 'BLOCKED_NEW_GUEST', 'BLOCKED_UNREGISTERED']);
+/** Waiting time before the next attempt: 2, 5, 10, 20, then every 30 minutes, without end (until ready or a new guest). */
+export function agentRetryDelayMs(attempt) {
+  const steps = [2, 5, 10, 20, 30];
+  return steps[Math.min(Math.max(1, Number(attempt) || 1), steps.length) - 1] * 60_000;
+}
+/** Staff checks are re-verified by the TV every 5 minutes: once the account / pairing is gone, the room becomes ready. */
+export const STAFF_RECHECK_MS = 5 * 60_000;
+const count = (v) => (Number.isSafeInteger(Number(v)) && Number(v) >= 0 && Number(v) < 100 ? Number(v) : null);
+/**
+ * The outcome of one run reported by the TV. READY only with positive evidence for every step; anything missing,
+ * unknown or failed keeps the job pending. Returns {status, code, pending: [reasons], checks}.
+ */
+export function agentOutcome(report) {
+  const r = report && typeof report === 'object' ? report : {};
+  const apps = Array.isArray(r.results) ? r.results : [];
+  const found = new Map();
+  for (const a of apps) if (a && APPROVED_PACKAGES.includes(a.package) && ['CLEARED_LOCAL', 'NOT_INSTALLED', 'FAILED'].includes(a.status)) found.set(a.package, a.status);
+  const guestApps = (Array.isArray(r.guestApps) ? r.guestApps : []).filter((g) => g && isRemovableGuestPackage(g.package)).slice(0, 30)
+    .map((g) => ({ package: g.package, status: ['CLEARED_LOCAL', 'FAILED'].includes(g.status) ? g.status : 'FAILED' }));
+  const checks = {
+    adb: r.adb === 'PASS' ? 'PASS' : String(r.adb ?? 'UNKNOWN').replace(/[^A-Z_]/g, '').slice(0, 24) || 'UNKNOWN',
+    baseline: r.baseline === true,
+    apps: APPROVED_PACKAGES.map((p) => ({ package: p, status: found.get(p) ?? 'MISSING' })),
+    guestApps,
+    cache: r.cache === true,
+    accounts: count(r.accounts),
+    profiles: count(r.profiles),
+    profilesRemoved: count(r.profilesRemoved) ?? 0,
+    bluetooth: count(r.bluetooth),
+    welcome: r.welcome === true,
+  };
+  if (checks.adb !== 'PASS') return { status: 'RETRY_PENDING', code: `ADB_${checks.adb}`.slice(0, 32), pending: ['ADB'], checks };
+  if (!checks.baseline) return { status: 'NEEDS_STAFF', code: 'BASELINE_MISSING', pending: ['BASELINE'], checks };
+  const failed = [];
+  if (checks.apps.some((a) => a.status === 'FAILED' || a.status === 'MISSING')) failed.push('APPS');
+  if (guestApps.some((g) => g.status === 'FAILED')) failed.push('GUEST_APPS');
+  if (!checks.cache) failed.push('CACHE');
+  if (checks.accounts === null || checks.profiles === null || checks.bluetooth === null) failed.push('CHECKS');
+  if (!checks.welcome) failed.push('WELCOME');
+  if (failed.length) return { status: 'RETRY_PENDING', code: `FAILED_${failed[0]}`, pending: failed, checks };
+  const staff = [];
+  if (checks.accounts > 0) staff.push('GUEST_GOOGLE_ACCOUNT');
+  if (checks.profiles > 0) staff.push('GUEST_PROFILE');
+  if (checks.bluetooth > 0) staff.push('GUEST_BLUETOOTH');
+  if (staff.length) return { status: 'NEEDS_STAFF', code: staff[0], pending: staff, checks };
+  return { status: 'READY', code: '', pending: [], checks };
+}

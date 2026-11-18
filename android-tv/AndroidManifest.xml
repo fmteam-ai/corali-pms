@@ -2,8 +2,8 @@
 <!-- Corali TV: shows a room's welcome screen (booking.hotelcorali.gr/tv/…) full screen on Google TV / Android TV. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="gr.hotelcorali.tv"
-    android:versionCode="13"
-    android:versionName="1.12">
+    android:versionCode="14"
+    android:versionName="1.13">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="30" />
 
@@ -30,6 +30,8 @@
         </intent>
     </queries>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 1.13: count Bluetooth pairings added by a guest (addresses are hashed on the TV, only the count is sent). -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Lets the app bring itself to the front at start-up / wake (Android 10+ blocks it otherwise). -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />

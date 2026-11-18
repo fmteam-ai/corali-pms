@@ -36,7 +36,7 @@ public class WakeService extends Service {
     private static final String CHANNEL = "corali_tv";
     private static final String TAG = "CoraliTV";
     /** Sent with every check; must match android:versionCode. */
-    static final int VERSION_CODE = 13;
+    static final int VERSION_CODE = 14;
     private static final long CAPS_EVERY_MS = 10 * 60_000;
     private static final long URGENT_CHECK_MS = 20_000;
 
@@ -75,6 +75,8 @@ public class WakeService extends Service {
                     urgent(r);
                     policy(r.optJSONObject("policy"));
                     command(r.optJSONObject("command"));
+                    // v162: a check-out clearing for this TV (Self-ADB), run in its own thread.
+                    PrivacyAgent.start(WakeService.this, r.optJSONObject("privacy"));
                 }
             } catch (Exception ignored) {
                 // Offline or server busy: try again shortly.
@@ -363,6 +365,8 @@ public class WakeService extends Service {
             long rev = new JSONObject(new Prefs(this).soundPolicy()).optLong("rev", 0);
             if (rev > 0) state += "&prev=" + rev;
         } catch (Exception ignored) { }
+        long bl = PrivacyAgent.baselineAt(this);
+        if (bl > 0) state += "&bl=" + bl;
         if (System.currentTimeMillis() - capsSentAt > CAPS_EVERY_MS) {
             state += "&caps=" + Uri.encode(volume.capabilities().toString());
             capsSentAt = System.currentTimeMillis();

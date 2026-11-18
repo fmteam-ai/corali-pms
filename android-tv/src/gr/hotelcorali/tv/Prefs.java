@@ -27,6 +27,14 @@ final class Prefs {
     String soundPolicy() { return p.getString("sound_policy", "{}"); }
     void setSoundPolicy(String json) { p.edit().putString("sound_policy", json).apply(); }
     void setLastUrgent(long id) { p.edit().putLong("last_urgent", id).apply(); }
+    /** 1.13: the TV's guest-free reference state (JSON: at, packages, accounts (hashes), users, bluetooth (hashes)). */
+    String privacyBaseline() { return p.getString("privacy_baseline", ""); }
+    void setPrivacyBaseline(String json) { p.edit().putString("privacy_baseline", json).commit(); }
+    /** 1.13: when the welcome screen last went back to the room's home page (proof for the check-out clearing). */
+    long homeAt() { return p.getLong("home_at", 0); }
+    void setHomeAt(long t) { p.edit().putLong("home_at", t).commit(); }
+    boolean homePending() { return p.getBoolean("home_pending", false); }
+    void setHomePending(boolean on) { p.edit().putBoolean("home_pending", on).commit(); }
 
     void saveScreen(String url, String room, String server) {
         p.edit().putString("screen_url", url).putString("room", room).putString("server", server).apply();

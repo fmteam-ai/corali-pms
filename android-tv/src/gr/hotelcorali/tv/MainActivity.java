@@ -77,6 +77,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         BootLog.add(this, "MainActivity created (" + srcOf(getIntent()) + ")");
+        if (getIntent().getBooleanExtra("home", false)) new Prefs(this).setHomePending(true);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (getIntent().getBooleanExtra("wake", false)) turnScreenOn();
 
@@ -86,7 +87,7 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.12");
+        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.13");
         // Lets the page open the streaming apps installed on this TV (Apps tab).
         web.addJavascriptInterface(new AppBridge(this), "CoraliTVApp");
         // Assistant tab: voice input through the remote's microphone and answers read aloud.
@@ -132,6 +133,7 @@ public class MainActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (intent.hasExtra("src")) BootLog.add(this, "MainActivity brought to front (" + srcOf(intent) + ")");
+        if (intent.getBooleanExtra("home", false)) new Prefs(this).setHomePending(true);
         if (intent.getBooleanExtra("wake", false)) turnScreenOn();
         // Urgent message: show it now instead of waiting for the screen's next refresh.
         if (intent.getBooleanExtra("reload", false) && !loadedUrl.isEmpty()) web.reload();
@@ -151,7 +153,15 @@ public class MainActivity extends Activity {
         }
         WakeService.start(this);
         web.onResume();
-        if (!prefs.screenUrl().equals(loadedUrl)) {
+        if (prefs.homePending()) {
+            // 1.13: after a check-out clearing, back to the room's welcome home page (same link and settings).
+            web.clearHistory();
+            loadedUrl = prefs.screenUrl();
+            web.loadUrl(loadedUrl);
+            prefs.setHomePending(false);
+            prefs.setHomeAt(System.currentTimeMillis());
+            BootLog.add(this, "welcome home page reloaded after check-out clearing");
+        } else if (!prefs.screenUrl().equals(loadedUrl)) {
             loadedUrl = prefs.screenUrl();
             web.loadUrl(loadedUrl);
         } else if (failed) {

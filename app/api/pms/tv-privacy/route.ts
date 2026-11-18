@@ -8,7 +8,7 @@ import { isRemovableGuestPackage } from "../../../../scripts/tv-privacy-core.mjs
 
 const input = z.discriminatedUnion("action", [
   // Admin: which rooms' TVs are cleared at check-out.
-  z.object({ action: z.literal("room"), roomId: z.number().int().positive(), enabled: z.boolean() }),
+  z.object({ action: z.literal("room"), roomId: z.number().int().positive(), enabled: z.boolean(), executor: z.enum(["gateway", "tv_agent"]).optional() }),
   // Reception / housekeeping lead: the app screens were checked on the TV after the clearing.
   z.object({ action: z.literal("review"), jobId: z.number().int().positive() }),
   // Admin: try a failed / unverified job again (the gateway re-checks for a new guest before every clear).
@@ -32,7 +32,7 @@ async function handlePOST(request: Request) {
   try { assertTrustedOrigin(request); } catch { return Response.json({ ok: false, error: "FORBIDDEN" }, { status: 403 }); }
   let r;
   if (x.action === "room") {
-    r = await db().query(`UPDATE tv_screens SET privacy_clear=$3 WHERE owner_id=$1 AND room_id=$2`, [u.ownerId, x.roomId, x.enabled ? 1 : 0]);
+    r = await db().query(`UPDATE tv_screens SET privacy_clear=$3,privacy_executor=COALESCE($4,privacy_executor) WHERE owner_id=$1 AND room_id=$2`, [u.ownerId, x.roomId, x.enabled ? 1 : 0, x.executor ?? null]);
   } else if (x.action === "review") {
     // Only a finished clearing can be marked as checked; the review never changes the job's own result.
     r = await db().query(
@@ -50,10 +50,14 @@ async function handlePOST(request: Request) {
        ON CONFLICT (owner_id,job_id,package) DO NOTHING`,
       [u.ownerId, x.jobId, x.package, u.id, Date.now()],
     );
+    // v162: a TV that clears itself removes it on its next run (the room is pending again until then).
+    if (r.rowCount) await db().query(`UPDATE tv_privacy_jobs SET status='RETRY_PENDING',next_retry_ms=0,error_code='GUEST_APP_REMOVAL' WHERE owner_id=$1 AND id=$2 AND executor='tv_agent' AND status IN ('READY','NEEDS_STAFF','RETRY_PENDING')`, [u.ownerId, x.jobId]);
   } else {
+    // Gateway jobs start again; TV jobs (v162) that wait for a retry / a staff re-check run at the TV's next check.
     r = await db().query(
-      `UPDATE tv_privacy_jobs SET status='QUEUED',attempt_count=0,error_code='',claim_hash=NULL,lease_until_ms=NULL,finished_at_ms=NULL
-        WHERE owner_id=$1 AND id=$2 AND status IN ('FAILED','PARTIAL','UNVERIFIED','DRY_RUN','BLOCKED_SECURITY')`,
+      `UPDATE tv_privacy_jobs SET status=CASE WHEN executor='tv_agent' THEN status ELSE 'QUEUED' END,attempt_count=CASE WHEN executor='tv_agent' THEN attempt_count ELSE 0 END,
+              error_code=CASE WHEN executor='tv_agent' THEN error_code ELSE '' END,next_retry_ms=0,claim_hash=NULL,lease_until_ms=NULL,finished_at_ms=CASE WHEN executor='tv_agent' THEN finished_at_ms ELSE NULL END
+        WHERE owner_id=$1 AND id=$2 AND (status IN ('FAILED','PARTIAL','UNVERIFIED','DRY_RUN','BLOCKED_SECURITY') OR (executor='tv_agent' AND status IN ('RETRY_PENDING','NEEDS_STAFF')))`,
       [u.ownerId, x.jobId],
     );
   }

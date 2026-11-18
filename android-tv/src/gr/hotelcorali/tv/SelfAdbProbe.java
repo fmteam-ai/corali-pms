@@ -38,8 +38,49 @@ public final class SelfAdbProbe {
     static final String HOST = "127.0.0.1";
     static final int PORT = 5555;
     static final String COMMAND = "shell:pm list packages -3";
-    /** 1.12: the only other command — open the welcome screen when Android did not bring it forward after boot. */
+    /** 1.12: open the welcome screen when Android did not bring it forward after boot. */
     static final String START_WELCOME = "shell:am start -n gr.hotelcorali.tv/.MainActivity --es src self-adb";
+    /** 1.13: back to the room's welcome home page after a check-out clearing. */
+    static final String START_HOME = "shell:am start -n gr.hotelcorali.tv/.MainActivity --ez home true --es src privacy";
+
+    // 1.13 (v162): the check-out clearing. A closed list of command shapes, each argument checked; nothing else can
+    // be sent. Never the hotel's or Android's own packages, never user 0, never Wi-Fi / settings / accounts commands.
+    private static final String PKG = "[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)+";
+    private static final Pattern[] ALLOWED = {
+        Pattern.compile("shell:pm list packages( -3)?"),
+        Pattern.compile("shell:pm list users"),
+        Pattern.compile("shell:dumpsys account"),
+        Pattern.compile("shell:pm trim-caches 999G"),
+        Pattern.compile("shell:pm clear (" + PKG + ")"),
+        Pattern.compile("shell:pm uninstall --user 0 (" + PKG + ")"),
+        Pattern.compile("shell:pm remove-user [1-9][0-9]{1,4}"),
+    };
+    /** Packages no command may clear or remove: this app, Google's / Android's / the TV maker's (except the two YouTube apps). */
+    static boolean protectedPackage(String p) {
+        if (p.equals("com.google.android.youtube.tv") || p.equals("com.google.android.youtube.tvmusic")) return false;
+        return p.equals("gr.hotelcorali.tv") || p.startsWith("com.google.") || p.startsWith("com.android.") || p.startsWith("android")
+                || p.startsWith("com.realtek.") || p.startsWith("com.expressluck.") || p.startsWith("com.mediatek.") || p.startsWith("com.amlogic.");
+    }
+    static boolean allowed(String command) {
+        if (COMMAND.equals(command) || START_WELCOME.equals(command) || START_HOME.equals(command)) return true;
+        for (Pattern pattern : ALLOWED) {
+            java.util.regex.Matcher m = pattern.matcher(command);
+            if (!m.matches()) continue;
+            return m.groupCount() == 0 || m.group(1) == null || !protectedPackage(m.group(1));
+        }
+        return false;
+    }
+
+    /** One allowed command through the TV's own ADB (no approval wait); on PASS {@code detail} is the raw output. */
+    public static Result shell(File privateDir, String command) {
+        if (!allowed(command)) return new Result(Status.COMMAND_FAILED, false, Collections.<String>emptyList(), "NOT_ALLOWED");
+        return exec(privateDir, HOST, PORT, 5000, command);
+    }
+
+    static Result shell(File privateDir, String host, int port, String command) {
+        if (!allowed(command)) return new Result(Status.COMMAND_FAILED, false, Collections.<String>emptyList(), "NOT_ALLOWED");
+        return exec(privateDir, host, port, 5000, command);
+    }
     private static final Pattern PACKAGE = Pattern.compile("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)+");
 
     static final int A_CNXN = 0x4e584e43, A_AUTH = 0x48545541, A_OPEN = 0x4e45504f, A_OKAY = 0x59414b4f,
@@ -138,7 +179,7 @@ public final class SelfAdbProbe {
                     return new Result(Status.AUTH_REJECTED, false, none, "Η TV απέρριψε το κλειδί της εφαρμογής");
                 }
             }
-            if (!COMMAND.equals(command) && !START_WELCOME.equals(command)) throw new IllegalArgumentException("command");
+            if (!allowed(command)) throw new IllegalArgumentException("command");
             write(out, A_OPEN, 1, 0, (command + "\0").getBytes(StandardCharsets.UTF_8));
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             deadline = System.currentTimeMillis() + 10000;
@@ -147,7 +188,7 @@ public final class SelfAdbProbe {
                 if (m == null) return new Result(Status.TIMEOUT, trusted, none, "Η εντολή δεν ολοκληρώθηκε εγκαίρως");
                 if (m.cmd == A_OKAY) continue;
                 if (m.cmd == A_WRTE) {
-                    if (output.size() + m.data.length > 256 * 1024) return new Result(Status.COMMAND_FAILED, trusted, none, "Υπερβολικά μεγάλη απάντηση");
+                    if (output.size() + m.data.length > 1024 * 1024) return new Result(Status.COMMAND_FAILED, trusted, none, "Υπερβολικά μεγάλη απάντηση");
                     output.write(m.data);
                     write(out, A_OKAY, 1, m.arg0, new byte[0]);
                     continue;

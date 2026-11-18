@@ -2319,3 +2319,36 @@ CREATE TABLE IF NOT EXISTS tv_privacy_uninstalls (
   finished_at_ms BIGINT,
   UNIQUE (owner_id, job_id, package)
 );
+
+-- v162: the Corali TV app (1.13, Self-ADB) can clear its own TV at check-out instead of the on-prem gateway
+-- (tv_screens.privacy_executor). Its jobs stay pending until every step is proven, retry without end, and ask staff
+-- for what no app can remove (guest Google account, Bluetooth pairing). No account name or device name is stored:
+-- the TV compares hashes with its own baseline and reports only counts.
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS privacy_executor TEXT NOT NULL DEFAULT 'gateway' CHECK (privacy_executor IN ('gateway','tv_agent'));
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS privacy_baseline_at BIGINT;
+ALTER TABLE tv_privacy_jobs ADD COLUMN IF NOT EXISTS executor TEXT NOT NULL DEFAULT 'gateway';
+ALTER TABLE tv_privacy_jobs ADD COLUMN IF NOT EXISTS checks JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE tv_privacy_jobs ADD COLUMN IF NOT EXISTS next_retry_ms BIGINT;
+ALTER TABLE tv_privacy_jobs ADD COLUMN IF NOT EXISTS ready_at_ms BIGINT;
+ALTER TABLE tv_privacy_jobs DROP CONSTRAINT IF EXISTS tv_privacy_jobs_status_check;
+ALTER TABLE tv_privacy_jobs ADD CONSTRAINT tv_privacy_jobs_status_check CHECK (status IN ('QUEUED','RUNNING','CLEARED_LOCAL_NEEDS_REVIEW','PARTIAL','FAILED',
+  'BLOCKED_NEW_GUEST','BLOCKED_UNREGISTERED','BLOCKED_SECURITY','UNVERIFIED','DRY_RUN','RETRY_PENDING','NEEDS_STAFF','READY'));
+CREATE OR REPLACE FUNCTION tv_privacy_enqueue_on_checkout() RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+DECLARE tv_id BIGINT; tv_exec TEXT;
+BEGIN
+  -- Only a real check-out: status changes to checked_out from a stay that was checked in (not a date edit).
+  IF NEW.status <> 'checked_out' OR OLD.status IS NOT DISTINCT FROM NEW.status THEN RETURN NEW; END IF;
+  IF OLD.status <> 'checked_in' AND OLD.checked_in_at IS NULL THEN RETURN NEW; END IF;
+  -- Without a single resolved room, never clear automatically.
+  IF NEW.room_id IS NULL THEN RETURN NEW; END IF;
+  SELECT id,privacy_executor INTO tv_id,tv_exec FROM tv_screens WHERE owner_id=NEW.owner_id AND room_id=NEW.room_id AND active=1 AND privacy_clear=1;
+  IF tv_id IS NULL THEN RETURN NEW; END IF;
+  INSERT INTO tv_privacy_jobs(owner_id,booking_id,room_id,tv_screen_id,checkout_at_ms,created_at_ms,executor)
+  VALUES (NEW.owner_id,NEW.id,NEW.room_id,tv_id,
+          COALESCE(NEW.checked_out_at, FLOOR(EXTRACT(EPOCH FROM clock_timestamp())*1000)::BIGINT),
+          FLOOR(EXTRACT(EPOCH FROM clock_timestamp())*1000)::BIGINT, COALESCE(tv_exec,'gateway'))
+  ON CONFLICT (owner_id,booking_id,room_id) DO NOTHING;
+  RETURN NEW;
+END;
+$$;

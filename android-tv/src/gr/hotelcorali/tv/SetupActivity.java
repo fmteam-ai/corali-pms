@@ -153,6 +153,37 @@ public class SetupActivity extends Activity {
         box.addView(adb);
         box.addView(adbResult);
 
+        // 1.13: the guest-free reference state used by the check-out clearing (apps, accounts, profiles, Bluetooth).
+        final TextView baseResult = text(PrivacyAgent.baselineAt(this) > 0
+                ? Prefs.t("Αρχική κατάσταση αποθηκευμένη: ", "Baseline saved: ") + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.US).format(new java.util.Date(PrivacyAgent.baselineAt(this)))
+                : Prefs.t("Δεν έχει αποθηκευτεί αρχική κατάσταση — ο καθαρισμός στο check-out δεν μπορεί να ολοκληρωθεί.", "No baseline saved — the check-out clearing cannot complete."), 18, false);
+        final Button baseline = button(Prefs.t("Αποθήκευση αρχικής κατάστασης (TV χωρίς επισκέπτη)", "Save baseline (TV without a guest)"));
+        baseline.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                new android.app.AlertDialog.Builder(SetupActivity.this)
+                        .setMessage(Prefs.t("Μόνο όταν η TV δεν έχει τίποτα από επισκέπτη: μόνο ο λογαριασμός Google του ξενοδοχείου, οι εφαρμογές του ξενοδοχείου και το τηλεχειριστήριο. Ό,τι υπάρχει τώρα θεωρείται «του ξενοδοχείου» και δεν θα καθαρίζεται.",
+                                "Only when the TV has nothing from a guest: just the hotel's Google account, the hotel's apps and the remote. Whatever is there now counts as the hotel's and will not be cleared."))
+                        .setPositiveButton(Prefs.t("Αποθήκευση", "Save"), new android.content.DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(android.content.DialogInterface d, int w) {
+                                baseline.setEnabled(false);
+                                baseResult.setText(Prefs.t("Ανάγνωση…", "Reading…"));
+                                new Thread(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        final String r = PrivacyAgent.saveBaseline(SetupActivity.this);
+                                        runOnUiThread(new Runnable() { @Override public void run() { baseline.setEnabled(true); baseResult.setText(r); } });
+                                    }
+                                }, "corali-baseline").start();
+                            }
+                        })
+                        .setNegativeButton(Prefs.t("Άκυρο", "Cancel"), null).show();
+            }
+        });
+        box.addView(baseline);
+        box.addView(baseResult);
+
         // 1.12 pilot: what happened at the last start-ups (receiver, service, attempts, visible or not).
         box.addView(text(Prefs.t("Καταγραφή εκκίνησης (τελευταίες εγγραφές)", "Start-up log (latest entries)"), 20, true));
         final TextView bootLog = text("", 14, false);

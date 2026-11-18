@@ -6,6 +6,7 @@ import fs from "node:fs";
 import {
   APPROVED_PACKAGES, PROTECTED_PACKAGES, PILOT_VERIFIED_PACKAGES, parseThirdPartyPackages, addedThirdPartyPackages,
   normalizeAppResult, classifyResults, containsNewGuest, isSafeJob, isRemovableGuestPackage, normalizeUninstallResult, TV_CAPABILITIES,
+  agentOutcome, agentRetryDelayMs,
 } from "../scripts/tv-privacy-core.mjs";
 // @ts-expect-error plain .mjs from the on-prem gateway (no type declarations)
 import { createAdbAdapter } from "../tools/tv-privacy-gateway/gateway/adb-adapter.mjs";
@@ -104,4 +105,42 @@ test("capabilities never claim Power ON or remote locks as working", () => {
 });
 test("the gateway's shared copy is identical to the PMS core", () => {
   assert.equal(fs.readFileSync("tools/tv-privacy-gateway/shared/privacy-core.mjs", "utf8"), fs.readFileSync("scripts/tv-privacy-core.mjs", "utf8"));
+});
+
+// ---- v162: the TV clears itself (Corali TV 1.13)
+const allApps = (status = "CLEARED_LOCAL") => APPROVED_PACKAGES.map((p) => ({ package: p, status }));
+const clean = { adb: "PASS", baseline: true, results: allApps(), guestApps: [], cache: true, accounts: 0, profiles: 0, profilesRemoved: 0, bluetooth: 0, welcome: true };
+
+test("v162: READY only with evidence for every step", () => {
+  assert.equal(agentOutcome(clean).status, "READY");
+  assert.equal(agentOutcome({ ...clean, results: [...allApps().slice(0, 4), { package: APPROVED_PACKAGES[4], status: "NOT_INSTALLED" }] }).status, "READY");
+  for (const missing of ["cache", "welcome"]) assert.equal(agentOutcome({ ...clean, [missing]: undefined }).status, "RETRY_PENDING", missing);
+  for (const missing of ["accounts", "profiles", "bluetooth"]) assert.equal(agentOutcome({ ...clean, [missing]: undefined }).status, "RETRY_PENDING", missing);
+  assert.equal(agentOutcome({ ...clean, results: allApps().slice(0, 4) }).status, "RETRY_PENDING");
+  assert.equal(agentOutcome({}).status, "RETRY_PENDING");
+  assert.equal(agentOutcome(null).status, "RETRY_PENDING");
+});
+
+test("v162: failures retry, ADB unavailable retries, missing baseline needs staff", () => {
+  const f = agentOutcome({ ...clean, results: [...allApps().slice(0, 4), { package: APPROVED_PACKAGES[4], status: "FAILED" }] });
+  assert.equal(f.status, "RETRY_PENDING"); assert.deepEqual(f.pending, ["APPS"]);
+  assert.equal(agentOutcome({ ...clean, adb: "PORT_CLOSED" }).code, "ADB_PORT_CLOSED");
+  assert.equal(agentOutcome({ ...clean, guestApps: [{ package: "com.spotify.tv.android", status: "FAILED" }] }).status, "RETRY_PENDING");
+  assert.equal(agentOutcome({ ...clean, baseline: false }).status, "NEEDS_STAFF");
+});
+
+test("v162: guest Google account / profile / Bluetooth pairing keep the room pending for staff", () => {
+  const r = agentOutcome({ ...clean, accounts: 1, bluetooth: 2 });
+  assert.equal(r.status, "NEEDS_STAFF");
+  assert.deepEqual(r.pending, ["GUEST_GOOGLE_ACCOUNT", "GUEST_BLUETOOTH"]);
+  assert.equal(agentOutcome({ ...clean, profiles: 1, profilesRemoved: 1 }).status, "NEEDS_STAFF");
+  assert.equal(agentOutcome({ ...clean, profiles: 0, profilesRemoved: 1 }).status, "READY");
+});
+
+test("v162: protected packages are never accepted as guest apps; counts are bounded; retries never stop", () => {
+  const r = agentOutcome({ ...clean, guestApps: [{ package: "com.google.android.gms", status: "CLEARED_LOCAL" }, { package: "gr.hotelcorali.tv", status: "CLEARED_LOCAL" }, { package: "x; rm -rf /", status: "CLEARED_LOCAL" }, { package: "com.spotify.tv.android", status: "CLEARED_LOCAL" }] });
+  assert.deepEqual(r.checks.guestApps.map((g) => g.package), ["com.spotify.tv.android"]);
+  assert.equal(agentOutcome({ ...clean, accounts: -1 }).status, "RETRY_PENDING");
+  assert.equal(agentOutcome({ ...clean, accounts: "1e9" }).status, "RETRY_PENDING");
+  assert.deepEqual([1, 2, 3, 4, 5, 50].map((n) => agentRetryDelayMs(n) / 60_000), [2, 5, 10, 20, 30, 30]);
 });
