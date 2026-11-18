@@ -26,8 +26,9 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * Corali TV 1.11 pilot — READ-ONLY check that this app can reach the TV's own ADB (127.0.0.1:5555), authenticate,
- * and run ONE fixed command: {@code pm list packages -3}. Nothing is changed on the TV.
+ * Corali TV 1.11 pilot — check that this app can reach the TV's own ADB (127.0.0.1:5555), authenticate, and run ONE
+ * fixed read-only command: {@code pm list packages -3}. 1.12 adds a second fixed command, used only when the welcome
+ * screen did not appear after boot: {@code am start} of this app's own MainActivity. No other command exists.
  *
  * Plain ADB wire protocol (no third-party library): CNXN → AUTH (signature, then public key if the TV does not know
  * it yet: the TV shows "Allow debugging?") → OPEN "shell:…" → WRTE… → CLSE. The host and the command are constants;
@@ -37,6 +38,8 @@ public final class SelfAdbProbe {
     static final String HOST = "127.0.0.1";
     static final int PORT = 5555;
     static final String COMMAND = "shell:pm list packages -3";
+    /** 1.12: the only other command — open the welcome screen when Android did not bring it forward after boot. */
+    static final String START_WELCOME = "shell:am start -n gr.hotelcorali.tv/.MainActivity --es src self-adb";
     private static final Pattern PACKAGE = Pattern.compile("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)+");
 
     static final int A_CNXN = 0x4e584e43, A_AUTH = 0x48545541, A_OPEN = 0x4e45504f, A_OKAY = 0x59414b4f,
@@ -70,6 +73,36 @@ public final class SelfAdbProbe {
 
     /** Package-private for the JVM test against a fake adbd; the app only calls {@link #run(File, int)}. */
     static Result run(File privateDir, String host, int port, int authWaitMs) {
+        Result r = exec(privateDir, host, port, authWaitMs, COMMAND);
+        if (r.status != Status.PASS) return r;
+        List<String> packages = new ArrayList<String>();
+        for (String line : r.detail.split("\\r?\\n")) {
+            line = line.trim();
+            if (line.startsWith("package:") && PACKAGE.matcher(line.substring(8)).matches()) packages.add(line.substring(8));
+        }
+        Collections.sort(packages);
+        if (!packages.contains("gr.hotelcorali.tv"))
+            return new Result(Status.COMMAND_FAILED, r.keyAlreadyTrusted, packages, "Η λίστα δεν περιέχει το Corali TV (λάθος συσκευή ή απάντηση)");
+        return new Result(Status.PASS, r.keyAlreadyTrusted, packages, "Επιτυχής σύνδεση ADB στην ίδια TV — μόνο ανάγνωση");
+    }
+
+    /** Opens this app's welcome screen through the TV's own ADB. Does not wait for an approval prompt (5 s). */
+    public static Result startWelcomeScreen(File privateDir) {
+        return startWelcomeScreen(privateDir, HOST, PORT);
+    }
+
+    static Result startWelcomeScreen(File privateDir, String host, int port) {
+        Result r = exec(privateDir, host, port, 5000, START_WELCOME);
+        if (r.status != Status.PASS) return r;
+        String out = r.detail;
+        boolean ok = out.contains("Starting") && !out.contains("Error");
+        String first = out.trim().split("\\r?\\n")[0];
+        return new Result(ok ? Status.PASS : Status.COMMAND_FAILED, r.keyAlreadyTrusted, Collections.<String>emptyList(),
+                (first.length() > 120 ? first.substring(0, 120) : first));
+    }
+
+    /** Runs one of the two constant commands above; on PASS {@code detail} holds the raw output. */
+    private static Result exec(File privateDir, String host, int port, int authWaitMs, String command) {
         List<String> none = Collections.emptyList();
         Socket socket = new Socket();
         boolean trusted = false;
@@ -105,7 +138,8 @@ public final class SelfAdbProbe {
                     return new Result(Status.AUTH_REJECTED, false, none, "Η TV απέρριψε το κλειδί της εφαρμογής");
                 }
             }
-            write(out, A_OPEN, 1, 0, (COMMAND + "\0").getBytes(StandardCharsets.UTF_8));
+            if (!COMMAND.equals(command) && !START_WELCOME.equals(command)) throw new IllegalArgumentException("command");
+            write(out, A_OPEN, 1, 0, (command + "\0").getBytes(StandardCharsets.UTF_8));
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             deadline = System.currentTimeMillis() + 10000;
             while (true) {
@@ -121,15 +155,7 @@ public final class SelfAdbProbe {
                 if (m.cmd == A_CLSE) break;
                 return new Result(Status.PROTOCOL_ERROR, trusted, none, "Απρόσμενη απάντηση ADB στην εντολή");
             }
-            List<String> packages = new ArrayList<String>();
-            for (String line : new String(output.toByteArray(), StandardCharsets.UTF_8).split("\\r?\\n")) {
-                line = line.trim();
-                if (line.startsWith("package:") && PACKAGE.matcher(line.substring(8)).matches()) packages.add(line.substring(8));
-            }
-            Collections.sort(packages);
-            if (!packages.contains("gr.hotelcorali.tv"))
-                return new Result(Status.COMMAND_FAILED, trusted, packages, "Η λίστα δεν περιέχει το Corali TV (λάθος συσκευή ή απάντηση)");
-            return new Result(Status.PASS, trusted, packages, "Επιτυχής σύνδεση ADB στην ίδια TV — μόνο ανάγνωση");
+            return new Result(Status.PASS, trusted, none, new String(output.toByteArray(), StandardCharsets.UTF_8));
         } catch (Exception e) {
             return new Result(Status.PROTOCOL_ERROR, trusted, none, "Σφάλμα: " + e.getClass().getSimpleName());
         } finally {

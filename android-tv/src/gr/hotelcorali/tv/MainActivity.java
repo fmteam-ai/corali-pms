@@ -46,22 +46,37 @@ public class MainActivity extends Activity {
         }
     };
 
+    /** true while the welcome screen is on screen (onResume … onPause). */
+    static volatile boolean visible;
+    static volatile long visibleSince;
+
     /** Open (or return to) the welcome screen from the background: start-up, wake, urgent message (reload at once). */
     static void bringToFront(Context c, boolean reload, boolean wake) {
+        bringToFront(c, reload, wake, null);
+    }
+
+    /** As above; with {@code src} the attempt and its outcome are written to BootLog. Returns false if Android refused. */
+    static boolean bringToFront(Context c, boolean reload, boolean wake, String src) {
         Intent i = new Intent(c, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
                 .putExtra("reload", reload)
                 .putExtra("wake", wake);
+        if (src != null) i.putExtra("src", src);
         try {
             c.startActivity(i);
-        } catch (RuntimeException ignored) {
+            if (src != null) BootLog.add(c, "startActivity(" + src + ") sent");
+            return true;
+        } catch (RuntimeException e) {
             // Blocked without "Display over other apps"; the guest can still open Corali TV from the home screen.
+            if (src != null) BootLog.add(c, "startActivity(" + src + ") REFUSED: " + e.getClass().getSimpleName());
+            return false;
         }
     }
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        BootLog.add(this, "MainActivity created (" + srcOf(getIntent()) + ")");
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (getIntent().getBooleanExtra("wake", false)) turnScreenOn();
 
@@ -71,7 +86,7 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.10");
+        s.setUserAgentString(s.getUserAgentString() + " CoraliTV/1.12");
         // Lets the page open the streaming apps installed on this TV (Apps tab).
         web.addJavascriptInterface(new AppBridge(this), "CoraliTVApp");
         // Assistant tab: voice input through the remote's microphone and answers read aloud.
@@ -116,6 +131,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (intent.hasExtra("src")) BootLog.add(this, "MainActivity brought to front (" + srcOf(intent) + ")");
         if (intent.getBooleanExtra("wake", false)) turnScreenOn();
         // Urgent message: show it now instead of waiting for the screen's next refresh.
         if (intent.getBooleanExtra("reload", false) && !loadedUrl.isEmpty()) web.reload();
@@ -124,6 +140,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (!visible) BootLog.add(this, "VISIBLE: welcome screen on screen");
+        visible = true;
+        visibleSince = System.currentTimeMillis();
         hideSystemBars();
         Prefs prefs = new Prefs(this);
         if (!prefs.configured()) {
@@ -143,9 +162,15 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
+        visible = false;
         web.onPause();
         handler.removeCallbacks(retry);
         super.onPause();
+    }
+
+    private static String srcOf(Intent i) {
+        String src = i == null ? null : i.getStringExtra("src");
+        return src != null ? src : i != null && Intent.ACTION_MAIN.equals(i.getAction()) ? "launcher/manual" : "app";
     }
 
     /** Hands the recognised words (or null: nothing heard / cancelled) to the page's Assistant tab. */

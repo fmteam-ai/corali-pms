@@ -28,10 +28,12 @@ net.createServer(sock=>{let buf=Buffer.alloc(0);let token=crypto.randomBytes(20)
       if(mode==='reject'){send(C.AUTH,1,0,crypto.randomBytes(20));return;}
       trusted=k;setTimeout(()=>send(C.CNXN,0x01000001,4096,Buffer.from('device::\0')),1500);}
     else if(cmd===C.OPEN){console.log('OPEN',JSON.stringify(data.toString()));
+      if(data.toString()==='shell:am start -n gr.hotelcorali.tv/.MainActivity --es src self-adb\0'){
+        send(C.OKAY,77,a0);send(C.WRTE,77,a0,Buffer.from('Starting: Intent { cmp=gr.hotelcorali.tv/.MainActivity (has extras) }\n'));sock.amStart=true;return;}
       if(data.toString()!=='shell:pm list packages -3\0'){console.log('WRONG_COMMAND');process.exit(4);}
       send(C.OKAY,77,a0);send(C.WRTE,77,a0,Buffer.from('package:com.disney.disneyplus\npackage:gr.hotelcorali.tv\n'));
       send(C.WRTE,77,a0,Buffer.from('package:com.amazon.amazonvideo.livingroom\r\npackage:bad name\n'));}
-    else if(cmd===C.OKAY){if(!sock.okays){sock.okays=0;}sock.okays++; if(sock.okays===2){console.log('GOT_OKAYS');send(C.CLSE,77,1);}}
+    else if(cmd===C.OKAY){if(!sock.okays){sock.okays=0;}sock.okays++; if(sock.amStart||sock.okays===2){console.log('GOT_OKAYS');send(C.CLSE,77,1);}}
   }});
   sock.on('error',()=>{});
 }).listen(port,'127.0.0.1',()=>console.log('listening',port));

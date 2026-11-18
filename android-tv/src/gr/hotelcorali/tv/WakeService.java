@@ -36,7 +36,7 @@ public class WakeService extends Service {
     private static final String CHANNEL = "corali_tv";
     private static final String TAG = "CoraliTV";
     /** Sent with every check; must match android:versionCode. */
-    static final int VERSION_CODE = 12;
+    static final int VERSION_CODE = 13;
     private static final long CAPS_EVERY_MS = 10 * 60_000;
     private static final long URGENT_CHECK_MS = 20_000;
 
@@ -55,7 +55,12 @@ public class WakeService extends Service {
         @Override
         public void onReceive(Context context, Intent intent) {
             Prefs prefs = new Prefs(context);
-            if (prefs.configured() && prefs.openOnWake()) MainActivity.bringToFront(context, false, false);
+            if (prefs.configured() && prefs.openOnWake()) {
+                BootLog.add(context, "SCREEN_ON (TV turned on)");
+                MainActivity.bringToFront(context, false, false, "screen-on");
+                // 1.12: check that it really came to the front; otherwise retry, then the TV's own ADB.
+                scheduleVisibleChecks("screen-on", new long[]{6_000, 15_000, 30_000});
+            }
             // Power-on volume of the room's policy, each time the TV is turned on.
             if (background != null) background.post(new Runnable() { @Override public void run() { applyPowerOnVolume(); } });
         }
@@ -252,6 +257,60 @@ public class WakeService extends Service {
         }
     }
 
+    /** After power-on / reboot: run as a foreground service and make sure the welcome screen ends up visible. */
+    static void startAfterBoot(Context c, boolean wake) {
+        Intent i = new Intent(c, WakeService.class).putExtra("boot", true).putExtra("power_on", wake);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) c.startForegroundService(i); else c.startService(i);
+            BootLog.add(c, "service start requested (wake screen: " + (wake ? "yes, daytime" : "no, night") + ")");
+        } catch (RuntimeException e) {
+            BootLog.add(c, "service start REFUSED: " + e.getClass().getSimpleName());
+        }
+    }
+
+    // ---- 1.12: is the welcome screen really visible after boot / power-on? Retry, then the TV's own ADB.
+
+    private int checkRound;
+
+    private void scheduleVisibleChecks(final String why, long[] delays) {
+        if (background == null) return;
+        final int round = ++checkRound;
+        for (int n = 0; n < delays.length; n++) {
+            final int attempt = n + 1, last = delays.length;
+            background.postDelayed(new Runnable() {
+                @Override
+                public void run() { checkVisible(round, why, attempt, last); }
+            }, delays[n]);
+        }
+    }
+
+    private void checkVisible(int round, String why, int attempt, int last) {
+        if (round != checkRound) return; // a newer start-up / power-on took over
+        Prefs prefs = new Prefs(this);
+        if (!prefs.configured()) return;
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        String tag = why + " check " + attempt + "/" + last + ": ";
+        if (MainActivity.visible) {
+            BootLog.add(this, tag + "OK — welcome screen visible");
+            checkRound++; // stop the remaining checks of this round
+            return;
+        }
+        if (!pm.isInteractive()) {
+            BootLog.add(this, tag + "screen off (standby) — it opens when the TV is turned on");
+            return;
+        }
+        if (attempt < last - 1) {
+            BootLog.add(this, tag + "not visible → startActivity again");
+            MainActivity.bringToFront(this, false, false, why + "-retry" + attempt);
+            return;
+        }
+        // Android did not bring the app forward (background-start limit or the home screen took over): ask the TV's
+        // own ADB (authorised in 1.11) to start it. One fixed command; nothing else can be sent this way.
+        BootLog.add(this, tag + "not visible → fallback: TV's own ADB «am start»");
+        SelfAdbProbe.Result r = SelfAdbProbe.startWelcomeScreen(getFilesDir());
+        BootLog.add(this, "self-ADB am start: " + r.status + " — " + r.detail);
+    }
+
     /** 08:00–22:59 on the TV's clock. */
     static boolean dayTime() {
         int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
@@ -273,8 +332,9 @@ public class WakeService extends Service {
         public void run() {
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             if (pm.isInteractive()) return;
+            BootLog.add(WakeService.this, "power-on: waking the screen (daytime)");
             wakeScreen(pm);
-            MainActivity.bringToFront(WakeService.this, false, true);
+            MainActivity.bringToFront(WakeService.this, false, true, "power-on");
         }
     };
 
@@ -370,6 +430,10 @@ public class WakeService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null && intent.getBooleanExtra("boot", false)) {
+            BootLog.add(this, "SERVICE running after boot");
+            scheduleVisibleChecks("boot", new long[]{4_000, 12_000, 25_000, 45_000, 75_000});
+        }
         if (intent != null && intent.getBooleanExtra("power_on", false)) {
             // A few tries: some TVs finish starting (and go to standby) a few seconds after boot.
             for (long delay : new long[]{2_000, 8_000, 20_000}) background.postDelayed(powerOn, delay);

@@ -153,6 +153,14 @@ public class SetupActivity extends Activity {
         box.addView(adb);
         box.addView(adbResult);
 
+        // 1.12 pilot: what happened at the last start-ups (receiver, service, attempts, visible or not).
+        box.addView(text(Prefs.t("Καταγραφή εκκίνησης (τελευταίες εγγραφές)", "Start-up log (latest entries)"), 20, true));
+        final TextView bootLog = text("", 14, false);
+        bootLog.setTypeface(Typeface.MONOSPACE);
+        String log = BootLog.tail(this, 40);
+        bootLog.setText(log.isEmpty() ? Prefs.t("— καμία εγγραφή ακόμα —", "— no entries yet —") : log);
+        box.addView(bootLog);
+
         CheckBox wake = new CheckBox(this);
         wake.setText(Prefs.t("Άνοιγμα της οθόνης όταν ανάβει η τηλεόραση από αναμονή", "Open the screen when the TV wakes from standby"));
         wake.setTextColor(Color.WHITE);
