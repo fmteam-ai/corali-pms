@@ -4,14 +4,14 @@ import { db } from "@/lib/db";
 import { hotelToday } from "@/lib/tape-chart";
 import { hotelTime } from "@/lib/tv";
 import { loadPowerSettings, POWER_METHOD_SQL } from "@/lib/tv-power";
-import { menuLockState, parseMenuLockRaw } from "../scripts/tv-command-core.mjs";
+import { GAP_MS, menuLockState, parseMenuLockRaw, type StandbyDiag } from "../scripts/tv-command-core.mjs";
 import { agentState, autoCommand, COMMAND_TTL_MS, expiredStatus, normalizeSoundPolicy, parseCapabilities, reportStatus, resetPlan, resetRoomStatus, type ResetAction, type ResetStatus, type SoundPolicy, type TvCommand } from "../scripts/tv-command-core.mjs";
 import { desiredPower } from "../scripts/tv-power-core.mjs";
 
-export type CommandRow = { id: number; room_id: number; command: string; source: string; status: string; error: string; created_at: number; delivered_at: number | null; finished_at: number | null; value: number | null; cap: number | null; result_volume: number | null; result_muted: number | null };
+export type CommandRow = { id: number; room_id: number; command: string; source: string; status: string; error: string; created_at: number; delivered_at: number | null; finished_at: number | null; value: number | null; cap: number | null; result_volume: number | null; result_muted: number | null; not_before: number | null; result_text: string };
 
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
-const toRow = (x: Record<string, unknown>): CommandRow => ({ id: Number(x.id), room_id: Number(x.room_id), command: String(x.command), source: String(x.source), status: String(x.status), error: String(x.error ?? ""), created_at: Number(x.created_at), delivered_at: num(x.delivered_at), finished_at: num(x.finished_at), value: num(x.value), cap: num(x.cap), result_volume: num(x.result_volume), result_muted: num(x.result_muted) });
+const toRow = (x: Record<string, unknown>): CommandRow => ({ id: Number(x.id), room_id: Number(x.room_id), command: String(x.command), source: String(x.source), status: String(x.status), error: String(x.error ?? ""), created_at: Number(x.created_at), delivered_at: num(x.delivered_at), finished_at: num(x.finished_at), value: num(x.value), cap: num(x.cap), result_volume: num(x.result_volume), result_muted: num(x.result_muted), not_before: num(x.not_before), result_text: String(x.result_text ?? "") });
 
 /** Close commands whose time ran out (TIMEOUT / UNVERIFIED), for one room or all. */
 async function expire(ownerId: string, roomId: number | null, now: number) {
@@ -25,7 +25,7 @@ async function expire(ownerId: string, roomId: number | null, now: number) {
 }
 
 /** Queue a command for the room; an older one still waiting is CANCELLED (the newest wins). */
-export async function queueCommand(ownerId: string, roomId: number, command: TvCommand, source: "manual" | "auto" | "reset", userId: number | null, value: number | null = null, opts: { supersede?: boolean; ttlMs?: number } = {}): Promise<CommandRow | null> {
+export async function queueCommand(ownerId: string, roomId: number, command: TvCommand, source: "manual" | "auto" | "reset", userId: number | null, value: number | null = null, opts: { supersede?: boolean; ttlMs?: number; notBefore?: number } = {}): Promise<CommandRow | null> {
   const now = Date.now();
   const room = (await db().query(`SELECT 1 FROM tv_screens WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId])).rows[0];
   if (!room) return null;
@@ -35,8 +35,9 @@ export async function queueCommand(ownerId: string, roomId: number, command: TvC
   const policy = (await soundPolicies(ownerId))[roomId];
   const cap = policy?.enforceMax ? policy.maxVolume : null;
   const r = await db().query(
-    `INSERT INTO tv_screen_commands(owner_id,room_id,command,source,status,created_by,created_at,expires_at,value,cap) VALUES($1,$2,$3,$4,'PENDING',$5,$6,$7,$8,$9) RETURNING *`,
-    [ownerId, roomId, command, source, userId, now, now + (opts.ttlMs ?? COMMAND_TTL_MS), value, cap],
+    `INSERT INTO tv_screen_commands(owner_id,room_id,command,source,status,created_by,created_at,expires_at,value,cap,not_before) VALUES($1,$2,$3,$4,'PENDING',$5,$6,$7,$8,$9,$10) RETURNING *`,
+    // v164: a scheduled command (standby test) is handed over only from not_before, and expires ttl after it.
+    [ownerId, roomId, command, source, userId, now, (opts.notBefore ?? now) + (opts.ttlMs ?? COMMAND_TTL_MS), value, cap, opts.notBefore ?? null],
   );
   return toRow(r.rows[0]);
 }
@@ -45,31 +46,45 @@ export async function queueCommand(ownerId: string, roomId: number, command: TvC
  * The app's check (every ~20 s): records what it measured (screen on/off, version, screen-off permission), applies the
  * automatic arrival / check-out rule for «android_agent» rooms, and hands over the newest waiting command (once).
  */
-export type AgentReport = { interactive: boolean | null; version: number | null; admin: boolean | null; volume?: number | null; muted?: boolean | null; fixed?: boolean | null; caps?: Record<string, unknown> | null; clamped?: boolean; policyRev?: number | null; menuLock?: string | null };
-export type AgentAnswer = { command: { id: number; command: string; value: number | null; cap: number | null } | null; policy: (SoundPolicy & { rev: number }) | null };
+export type AgentReport = { interactive: boolean | null; version: number | null; admin: boolean | null; volume?: number | null; muted?: boolean | null; fixed?: boolean | null; caps?: Record<string, unknown> | null; clamped?: boolean; policyRev?: number | null; menuLock?: string | null; standby?: StandbyDiag | null };
+export type AgentAnswer = { command: { id: number; command: string; value: number | null; cap: number | null } | null; policy: (SoundPolicy & { rev: number }) | null; standby?: { network: boolean; offMode: string } | null };
 
 export async function agentCheck(ownerId: string, roomId: number, report: AgentReport): Promise<AgentAnswer> {
   const now = Date.now();
   const b = (v: boolean | null | undefined) => (v === null || v === undefined ? null : v ? 1 : 0);
+  // v164: what the PMS knew before this check — to record silences (TV / Wi-Fi asleep) and screen changes.
+  const before = (await db().query(`SELECT screen_seen_at,screen_interactive FROM tv_screens WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId])).rows[0];
   const row = (await db().query(
     `UPDATE tv_screens SET screen_seen_at=$3,screen_interactive=$4,app_version=COALESCE($5,app_version),app_admin=COALESCE($6,app_admin),
        volume_percent=COALESCE($7,volume_percent),volume_muted=COALESCE($8,volume_muted),volume_fixed=COALESCE($9,volume_fixed),
        caps_json=COALESCE($10,caps_json),policy_clamped_at=CASE WHEN $11::boolean THEN $3 ELSE policy_clamped_at END,policy_rev_applied=COALESCE($12,policy_rev_applied)
-      WHERE owner_id=$1 AND room_id=$2 RETURNING ${POWER_METHOD_SQL} AS method,screen_auto_state`,
+      WHERE owner_id=$1 AND room_id=$2 RETURNING ${POWER_METHOD_SQL} AS method,screen_auto_state,network_standby,power_off_mode`,
     [ownerId, roomId, now, b(report.interactive), report.version, b(report.admin), report.volume ?? null, b(report.muted), b(report.fixed), report.caps ? JSON.stringify(parseCapabilities(report.caps)) : null, report.clamped === true, report.policyRev ?? null],
   )).rows[0];
+  if (row && before) {
+    const prevSeen = num(before.screen_seen_at), prevOn = num(before.screen_interactive), nowOn = b(report.interactive);
+    if (prevSeen !== null && now - prevSeen > GAP_MS) {
+      await db().query(`INSERT INTO tv_power_events(owner_id,room_id,at,kind,detail) VALUES($1,$2,$3,'GAP',$4::jsonb)`, [ownerId, roomId, now, JSON.stringify({ from: prevSeen, to: now, seconds: Math.round((now - prevSeen) / 1000), screenBefore: prevOn, screenAfter: nowOn })]);
+    }
+    if (nowOn !== null && prevOn !== null && nowOn !== prevOn) {
+      await db().query(`INSERT INTO tv_power_events(owner_id,room_id,at,kind,detail) VALUES($1,$2,$3,'SCREEN',$4::jsonb)`, [ownerId, roomId, now, JSON.stringify({ on: nowOn === 1, standby: report.standby ?? null })]);
+    }
+  }
+  if (row && report.standby) await db().query(`UPDATE tv_screens SET standby_diag=$3 WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId, JSON.stringify(report.standby)]);
   // v163: the menu lock as the TV read it (≥ 1.14); the state is derived here, never taken from the app as text.
   if (row && report.menuLock && parseMenuLockRaw(report.menuLock)) {
     await db().query(`UPDATE tv_screens SET menu_lock_raw=$3,menu_lock_state=$4,menu_lock_seen_at=$5 WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId, report.menuLock, menuLockState(report.menuLock), now]);
   }
   // Sound policy for apps that apply it (≥ 1.9), whatever the power method.
   const policy = row && report.version !== null && report.version >= 10 ? (await soundPolicies(ownerId))[roomId] ?? null : null;
+  // v164 (≥ 1.15): keep CPU / Wi-Fi awake in standby or not, and how PMS OFF is done in this room.
+  const standby = row && report.version !== null && report.version >= 16 ? { network: Number(row.network_standby) !== 0, offMode: String(row.power_off_mode ?? "device_admin") } : null;
   // Only apps that report their state (≥ 1.8) take commands; older apps keep working without remote control.
-  if (!row || report.version === null) return { command: null, policy };
+  if (!row || report.version === null) return { command: null, policy, standby };
   if (row.method !== "android_agent") {
     // Sound commands work in any room with an app ≥ 1.9; screen on / off only with the «android_agent» method.
     await expire(ownerId, roomId, now);
-    return { command: await deliver(ownerId, roomId, now, true), policy };
+    return { command: await deliver(ownerId, roomId, now, true), policy, standby };
   }
   const { settings } = await loadPowerSettings(ownerId);
   if (settings.enabled) {
@@ -81,13 +96,13 @@ export async function agentCheck(ownerId: string, roomId: number, report: AgentR
     if (auto.command) await queueCommand(ownerId, roomId, auto.command, "auto", null);
   }
   await expire(ownerId, roomId, now);
-  return { command: await deliver(ownerId, roomId, now, false), policy };
+  return { command: await deliver(ownerId, roomId, now, false), policy, standby };
 }
 
 /** Hand over the newest waiting command once (atomic). soundOnly: rooms not run by the app keep screen commands back. */
 async function deliver(ownerId: string, roomId: number, now: number, soundOnly: boolean) {
   const next = (await db().query(
-    `UPDATE tv_screen_commands SET status='DELIVERED',delivered_at=$3 WHERE id=(SELECT id FROM tv_screen_commands WHERE owner_id=$1 AND room_id=$2 AND status='PENDING' ${soundOnly ? "AND command NOT IN ('SCREEN_ON','SCREEN_OFF')" : ""} ORDER BY id ASC LIMIT 1) AND status='PENDING' RETURNING id,command,value,cap`,
+    `UPDATE tv_screen_commands SET status='DELIVERED',delivered_at=$3 WHERE id=(SELECT id FROM tv_screen_commands WHERE owner_id=$1 AND room_id=$2 AND status='PENDING' AND COALESCE(not_before,0)<=$3 ${soundOnly ? "AND command NOT IN ('SCREEN_ON','SCREEN_OFF')" : ""} ORDER BY id ASC LIMIT 1) AND status='PENDING' RETURNING id,command,value,cap`,
     [ownerId, roomId, now],
   )).rows[0];
   return next ? { id: Number(next.id), command: String(next.command), value: num(next.value), cap: num(next.cap) } : null;
@@ -117,7 +132,7 @@ export async function saveSoundPolicy(ownerId: string, roomIds: number[], raw: u
 }
 
 /** The app's report for a delivered command; applied once. */
-export async function agentReport(ownerId: string, roomId: number, id: number, report: { status?: string; interactive?: boolean; error?: string; volume?: number; muted?: boolean; fixed?: boolean; opened?: boolean }): Promise<string | null> {
+export async function agentReport(ownerId: string, roomId: number, id: number, report: { status?: string; interactive?: boolean; error?: string; volume?: number; muted?: boolean; fixed?: boolean; opened?: boolean; detail?: string }): Promise<string | null> {
   const r = (await db().query(`SELECT id,command,status,value,cap FROM tv_screen_commands WHERE id=$1 AND owner_id=$2 AND room_id=$3`, [id, ownerId, roomId])).rows[0];
   if (!r) return null;
   const next = reportStatus({ status: String(r.status), command: String(r.command), value: num(r.value), cap: num(r.cap) }, report);
@@ -125,11 +140,20 @@ export async function agentReport(ownerId: string, roomId: number, id: number, r
   const error = next === "EXECUTED" ? "" : String(report.error ?? (next === "UNVERIFIED" ? "NO_STATE" : "STATE_DID_NOT_CHANGE")).replace(/[^A-Za-z0-9_ .:-]/g, "").slice(0, 120);
   const now = Date.now();
   const error2 = next === "FAILED" && report.fixed === true && !report.error ? "FIXED_VOLUME" : error;
-  await db().query(`UPDATE tv_screen_commands SET status=$2,error=$3,finished_at=$4,result_volume=$5,result_muted=$6 WHERE id=$1 AND status='DELIVERED'`, [id, next, error2, now, Number.isInteger(report.volume) ? report.volume : null, typeof report.muted === "boolean" ? (report.muted ? 1 : 0) : null]);
+  // v164: the TV's own text (wake method used, diagnostics), printable characters only, at most 4000.
+  const detail = typeof report.detail === "string" ? report.detail.replace(/[^\x20-\x7E\n\u0370-\u03FF]/g, "").slice(0, 4000) : null;
+  await db().query(`UPDATE tv_screen_commands SET status=$2,error=$3,finished_at=$4,result_volume=$5,result_muted=$6,result_text=COALESCE($7,result_text) WHERE id=$1 AND status='DELIVERED'`, [id, next, error2, now, Number.isInteger(report.volume) ? report.volume : null, typeof report.muted === "boolean" ? (report.muted ? 1 : 0) : null, detail]);
   if (Number.isInteger(report.volume) || typeof report.muted === "boolean") {
     await db().query(`UPDATE tv_screens SET volume_percent=COALESCE($3,volume_percent),volume_muted=COALESCE($4,volume_muted) WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId, Number.isInteger(report.volume) ? report.volume : null, typeof report.muted === "boolean" ? (report.muted ? 1 : 0) : null]);
   }
-  if (typeof report.interactive === "boolean") await db().query(`UPDATE tv_screens SET screen_interactive=$3,screen_seen_at=$4 WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId, report.interactive ? 1 : 0, now]);
+  if (typeof report.interactive === "boolean") {
+    // v164: a screen change reported with a command is recorded as an event too (with the command that caused it).
+    const prev = (await db().query(`SELECT screen_interactive FROM tv_screens WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId])).rows[0];
+    if (prev && prev.screen_interactive !== null && Number(prev.screen_interactive) !== (report.interactive ? 1 : 0)) {
+      await db().query(`INSERT INTO tv_power_events(owner_id,room_id,at,kind,detail) VALUES($1,$2,$3,'SCREEN',$4::jsonb)`, [ownerId, roomId, now, JSON.stringify({ on: report.interactive, command: String(r.command), commandId: id })]);
+    }
+    await db().query(`UPDATE tv_screens SET screen_interactive=$3,screen_seen_at=$4 WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId, report.interactive ? 1 : 0, now]);
+  }
   return next;
 }
 

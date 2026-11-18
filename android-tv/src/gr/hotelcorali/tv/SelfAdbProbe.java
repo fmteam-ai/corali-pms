@@ -42,6 +42,10 @@ public final class SelfAdbProbe {
     static final String START_WELCOME = "shell:am start -n gr.hotelcorali.tv/.MainActivity --es src self-adb";
     /** 1.13: back to the room's welcome home page after a check-out clearing. */
     static final String START_HOME = "shell:am start -n gr.hotelcorali.tv/.MainActivity --ez home true --es src privacy";
+    static final String DUMP_ACTIVITIES = "shell:dumpsys activity activities";
+    static final String DUMP_POWER = "shell:dumpsys power";
+    static final String KEY_WAKEUP = "shell:input keyevent KEYCODE_WAKEUP";
+    static final String KEY_SLEEP = "shell:input keyevent KEYCODE_SLEEP";
 
     // 1.13 (v162): the check-out clearing. A closed list of command shapes, each argument checked; nothing else can
     // be sent. Never the hotel's or Android's own packages, never user 0, never Wi-Fi / settings / accounts commands.
@@ -63,6 +67,8 @@ public final class SelfAdbProbe {
     }
     static boolean allowed(String command) {
         if (COMMAND.equals(command) || START_WELCOME.equals(command) || START_HOME.equals(command)) return true;
+        // 1.15 (v164): read-only power / foreground state, and the TV's own sleep / wake keys (what the remote sends).
+        if (DUMP_ACTIVITIES.equals(command) || DUMP_POWER.equals(command) || KEY_WAKEUP.equals(command) || KEY_SLEEP.equals(command)) return true;
         for (Pattern pattern : ALLOWED) {
             java.util.regex.Matcher m = pattern.matcher(command);
             if (!m.matches()) continue;

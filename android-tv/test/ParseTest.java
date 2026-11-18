@@ -24,6 +24,13 @@ public class ParseTest {
         "shell:pm remove-user 0", "shell:pm remove-user 1", "shell:pm uninstall com.spotify.tv.android", "shell:pm clear com.netflix.ninja; reboot", "shell:pm clear com.netflix.ninja\nreboot",
         "shell:settings put global wifi_on 0", "shell:svc wifi disable", "shell:reboot", "shell:pm clear android", "shell:cmd wifi forget-network 0", "shell:am start -a android.settings.SETTINGS"};
     for (String c : no) check(!SelfAdbProbe.allowed(c), "refused: " + c.replace("\n", "\\n"));
+    // 1.15: foreground app from dumpsys activity activities, and the new fixed commands
+    check("com.google.android.youtube.tv".equals(Foreground.parse("  ResumedActivity: ActivityRecord{6f2b1c7 u0 com.google.android.youtube.tv/com.google.android.apps.youtube.tv.activity.MainActivity t42}\n")), "foreground: youtube");
+    check("com.google.android.apps.mediashell".equals(Foreground.parse("    topResumedActivity=ActivityRecord{a1 u0 com.google.android.apps.mediashell/.MediaShellActivity t9}")), "foreground: cast receiver");
+    check(Foreground.parse("nothing here") == null, "foreground: unknown → null");
+    check(Foreground.HOME.contains("com.google.android.apps.tv.launcherx") && !Foreground.HOME.contains("com.google.android.youtube.tv"), "home list");
+    for (String c : new String[]{"shell:dumpsys activity activities", "shell:dumpsys power", "shell:input keyevent KEYCODE_WAKEUP", "shell:input keyevent KEYCODE_SLEEP"}) check(SelfAdbProbe.allowed(c), "allowed: " + c);
+    for (String c : new String[]{"shell:input keyevent KEYCODE_HOME", "shell:input keyevent 26", "shell:input text x", "shell:dumpsys wifi", "shell:cmd power set-low-power-standby-enabled false", "shell:svc power stayon true"}) check(!SelfAdbProbe.allowed(c), "refused: " + c);
     System.out.println("ALL OK");
   }
 }

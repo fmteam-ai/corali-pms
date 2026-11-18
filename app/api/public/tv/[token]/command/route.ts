@@ -12,6 +12,8 @@ const input = z.object({
   fixed: z.boolean().optional(),
   // ≥ 1.14: OPEN_FACTORY_MENU — whether the Factory Menu came to the front (the welcome screen left the foreground).
   opened: z.boolean().optional(),
+  // ≥ 1.15: the TV's own text — which wake / sleep method was used, or the power & network diagnostics.
+  detail: z.string().max(4000).optional(),
 });
 const noStore = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 

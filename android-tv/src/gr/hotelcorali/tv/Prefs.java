@@ -33,6 +33,10 @@ final class Prefs {
     /** 1.13: when the welcome screen last went back to the room's home page (proof for the check-out clearing). */
     long homeAt() { return p.getLong("home_at", 0); }
     void setHomeAt(long t) { p.edit().putLong("home_at", t).commit(); }
+    /** 1.15: keep CPU / Wi-Fi awake in standby (PMS setting, default on) and how PMS OFF is done. */
+    boolean networkStandby() { return p.getBoolean("network_standby", true); }
+    String offMode() { return p.getString("off_mode", "device_admin"); }
+    void setStandby(boolean network, String offMode) { p.edit().putBoolean("network_standby", network).putString("off_mode", offMode).apply(); }
     boolean homePending() { return p.getBoolean("home_pending", false); }
     void setHomePending(boolean on) { p.edit().putBoolean("home_pending", on).commit(); }
 

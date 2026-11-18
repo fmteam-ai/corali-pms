@@ -9,7 +9,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.Uri;
-import android.net.wifi.WifiManager;
 import android.database.ContentObserver;
 import android.provider.Settings;
 import android.os.Build;
@@ -36,15 +35,13 @@ public class WakeService extends Service {
     private static final String CHANNEL = "corali_tv";
     private static final String TAG = "CoraliTV";
     /** Sent with every check; must match android:versionCode. */
-    static final int VERSION_CODE = 15;
+    static final int VERSION_CODE = 16;
     private static final long CAPS_EVERY_MS = 10 * 60_000;
     private static final long URGENT_CHECK_MS = 20_000;
 
     private HandlerThread worker;
     private Handler background;
     // Keep the processor and Wi-Fi awake while the screen is off, so the PMS can turn the screen on again.
-    private PowerManager.WakeLock cpuLock;
-    private WifiManager.WifiLock wifiLock;
     // Sound (v159): volume / mute, the room's sound policy, and when capabilities were last reported.
     private VolumeController volume;
     private volatile boolean clamped;
@@ -55,11 +52,23 @@ public class WakeService extends Service {
         @Override
         public void onReceive(Context context, Intent intent) {
             Prefs prefs = new Prefs(context);
-            if (prefs.configured() && prefs.openOnWake()) {
+            if (prefs.configured() && prefs.openOnWake() && background != null) {
                 BootLog.add(context, "SCREEN_ON (TV turned on)");
-                MainActivity.bringToFront(context, false, false, "screen-on");
-                // 1.12: check that it really came to the front; otherwise retry, then the TV's own ADB.
-                scheduleVisibleChecks("screen-on", new long[]{6_000, 15_000, 30_000});
+                // 1.15: never over a guest's app (a Google Cast or YouTube session wakes the TV too): ask what is in
+                // front first, off the main thread, and only then bring the welcome screen.
+                background.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        StringBuilder who = new StringBuilder();
+                        if (Foreground.guestAppInFront(WakeService.this, who)) {
+                            BootLog.add(WakeService.this, "screen-on: " + who + " in front — welcome screen not shown");
+                            return;
+                        }
+                        MainActivity.bringToFront(WakeService.this, false, false, "screen-on");
+                        // 1.12: check that it really came to the front; otherwise retry, then the TV's own ADB.
+                        scheduleVisibleChecks("screen-on", new long[]{6_000, 15_000, 30_000});
+                    }
+                });
             }
             // Power-on volume of the room's policy, each time the TV is turned on.
             if (background != null) background.post(new Runnable() { @Override public void run() { applyPowerOnVolume(); } });
@@ -77,6 +86,7 @@ public class WakeService extends Service {
                     command(r.optJSONObject("command"));
                     // v162: a check-out clearing for this TV (Self-ADB), run in its own thread.
                     PrivacyAgent.start(WakeService.this, r.optJSONObject("privacy"));
+                    standby(r.optJSONObject("standby"));
                 }
             } catch (Exception ignored) {
                 // Offline or server busy: try again shortly.
@@ -125,16 +135,20 @@ public class WakeService extends Service {
             factoryMenu(id, pm);
             return;
         }
-        long verifyAfter;
+        if ("NETWORK_DIAGNOSTICS".equals(type)) {
+            diagnostics(id, pm);
+            return;
+        }
         if ("SCREEN_ON".equals(type)) {
-            if (!pm.isInteractive()) wakeScreen(pm);
-            MainActivity.bringToFront(this, false, true);
-            verifyAfter = 5_000;
-        } else if ("SCREEN_OFF".equals(type)) {
-            if (!ScreenAdmin.active(this)) { report(id, false, pm.isInteractive(), "NO_SCREEN_OFF_PERMISSION"); return; }
-            if (pm.isInteractive() && !ScreenAdmin.screenOff(this)) { report(id, false, pm.isInteractive(), "LOCK_FAILED"); return; }
-            verifyAfter = 3_000;
-        } else if ("SHOW_WELCOME".equals(type)) {
+            powerOn(id, pm);
+            return;
+        }
+        if ("SCREEN_OFF".equals(type)) {
+            powerOff(id, pm);
+            return;
+        }
+        long verifyAfter;
+        if ("SHOW_WELCOME".equals(type)) {
             if (!pm.isInteractive()) { report(id, false, false, "SCREEN_IS_OFF"); return; }
             MainActivity.bringToFront(this, true, false);
             verifyAfter = 2_000;
@@ -235,6 +249,7 @@ public class WakeService extends Service {
                 if (sound.has("muted")) body.put("muted", sound.getBoolean("muted"));
                 if (sound.has("fixed")) body.put("fixed", sound.getBoolean("fixed"));
                 if (sound.has("opened")) body.put("opened", sound.getBoolean("opened"));
+                if (sound.has("detail")) body.put("detail", sound.getString("detail"));
             }
             URL url = new URL(screen.getScheme() + "://" + screen.getAuthority() + "/api/public/tv/" + Uri.encode(token) + "/command");
             http = (HttpURLConnection) url.openConnection();
@@ -262,6 +277,121 @@ public class WakeService extends Service {
         } catch (RuntimeException ignored) {
             // Not allowed right now (background limits); the next start-up or app launch tries again.
         }
+    }
+
+    // ---- 1.15 (v164): verified power control and diagnostics
+
+    /**
+     * PMS ON: (1) wake lock with ACQUIRE_CAUSES_WAKEUP + the welcome screen with «turn screen on»; (2) if the screen is
+     * still off after 4 s, the wake key through the TV's own ADB. EXECUTED only if the screen is measured on. The
+     * welcome screen is shown because the PMS turned the TV on. One attempt, no retry loop.
+     */
+    private void powerOn(final long id, final PowerManager pm) {
+        if (pm.isInteractive()) {
+            MainActivity.bringToFront(this, false, false, "pms-on");
+            report(id, true, true, "", detail("already on"));
+            return;
+        }
+        wakeScreen(pm);
+        MainActivity.bringToFront(this, false, true, "pms-on");
+        background.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (pm.isInteractive()) { report(id, true, true, "", detail("wake lock")); return; }
+                SelfAdbProbe.Result r = SelfAdbProbe.shell(getFilesDir(), SelfAdbProbe.KEY_WAKEUP);
+                final String adb = r.status.name();
+                background.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        boolean on = pm.isInteractive();
+                        if (on) MainActivity.bringToFront(WakeService.this, false, false, "pms-on");
+                        BootLog.add(WakeService.this, "PMS ON: wake lock failed, wake key " + adb + " → screen " + (on ? "on" : "OFF"));
+                        report(id, true, on, on ? "" : "WAKE_REFUSED", detail("wake key (" + adb + ")" + (on ? "" : "; " + powerSummary())));
+                    }
+                }, 3_000);
+            }
+        }, 4_000);
+    }
+
+    /** PMS OFF by the room's method: lockNow (device admin, default) or the sleep key through the TV's own ADB. */
+    private void powerOff(final long id, final PowerManager pm) {
+        String mode = new Prefs(this).offMode();
+        String used;
+        if (!pm.isInteractive()) {
+            report(id, true, false, "", detail("already off"));
+            return;
+        }
+        if ("sleep_key".equals(mode)) {
+            SelfAdbProbe.Result r = SelfAdbProbe.shell(getFilesDir(), SelfAdbProbe.KEY_SLEEP);
+            used = "sleep key (" + r.status.name() + ")";
+            if (r.status != SelfAdbProbe.Status.PASS) {
+                // Fallback to the working method, so OFF does not stop working when ADB is unavailable.
+                if (!ScreenAdmin.active(this) || !ScreenAdmin.screenOff(this)) { report(id, false, pm.isInteractive(), "SLEEP_KEY_FAILED", detail(used)); return; }
+                used += " → lockNow";
+            }
+        } else {
+            if (!ScreenAdmin.active(this)) { report(id, false, pm.isInteractive(), "NO_SCREEN_OFF_PERMISSION"); return; }
+            if (!ScreenAdmin.screenOff(this)) { report(id, false, pm.isInteractive(), "LOCK_FAILED"); return; }
+            used = "lockNow";
+        }
+        final String how = used;
+        background.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                boolean on = pm.isInteractive();
+                report(id, true, on, "", detail(how + "; " + NetworkStandbyManager.get(WakeService.this).query()));
+            }
+        }, 3_000);
+    }
+
+    /** Power & network diagnostics for the PMS: the app's own state plus selected read-only lines of dumpsys power. */
+    private void diagnostics(long id, PowerManager pm) {
+        NetworkStandbyManager ns = NetworkStandbyManager.get(this);
+        StringBuilder sb = new StringBuilder();
+        sb.append("agent 1.15 · screen ").append(pm.isInteractive() ? "on" : "off").append('\n');
+        sb.append("network standby ").append(ns.enabled()).append(" · cpu lock ").append(ns.cpuHeld()).append(" · wifi lock ").append(ns.wifiHeld()).append('\n');
+        sb.append("low power standby ").append(NetworkStandbyManager.lowPowerStandby(this, "isLowPowerStandbyEnabled"))
+          .append(" (supported ").append(NetworkStandbyManager.lowPowerStandby(this, "isLowPowerStandbySupported"))
+          .append(", app exempt ").append(NetworkStandbyManager.lowPowerStandby(this, "isExemptFromLowPowerStandby")).append(")\n");
+        sb.append("doze ").append(NetworkStandbyManager.deviceIdle(this)).append(" · internet validated ").append(NetworkStandbyManager.networkValidated(this)).append('\n');
+        sb.append("screen-off permission ").append(ScreenAdmin.active(this)).append(" · off mode ").append(new Prefs(this).offMode()).append('\n');
+        String top = Foreground.topPackage(this);
+        sb.append("in front: ").append(top == null ? "?" : top).append('\n');
+        sb.append(powerSummary());
+        report(id, true, pm.isInteractive(), "", detail(sb.toString()));
+    }
+
+    /** Selected lines of dumpsys power (wakefulness, last sleep / wake reason, Low Power Standby, wake locks). */
+    private String powerSummary() {
+        SelfAdbProbe.Result r = SelfAdbProbe.shell(getFilesDir(), SelfAdbProbe.DUMP_POWER);
+        if (r.status != SelfAdbProbe.Status.PASS) return "dumpsys power: " + r.status.name();
+        StringBuilder sb = new StringBuilder();
+        int n = 0;
+        for (String line : r.detail.split("\r?\n")) {
+            String t = line.trim();
+            if (t.startsWith("mWakefulness=") || t.startsWith("mLastSleepReason") || t.startsWith("mLastWakeReason") || t.startsWith("mLastWakeTime")
+                    || t.startsWith("mLastSleepTime") || t.toLowerCase(java.util.Locale.US).contains("low power standby") || t.startsWith("mLowPowerStandby")
+                    || t.startsWith("mIsActive") || t.startsWith("mIsEnabled") || t.startsWith("mStayOn") || t.startsWith("mDeviceIdleMode")
+                    || t.startsWith("Wake Locks:") || t.contains("CoraliTV") || t.startsWith("Suspend Blockers:") || t.startsWith("mHoldingWakeLockSuspendBlocker")) {
+                sb.append(t.length() > 160 ? t.substring(0, 160) : t).append('\n');
+                if (++n >= 40) break;
+            }
+        }
+        return sb.length() == 0 ? "dumpsys power: no matching lines" : sb.toString();
+    }
+
+    private static JSONObject detail(String text) {
+        try { return new JSONObject().put("detail", text.length() > 3900 ? text.substring(0, 3900) : text); } catch (Exception e) { return null; }
+    }
+
+    /** The room's standby settings from the PMS (≥ v164): applied at once and kept for the next start-up. */
+    private void standby(JSONObject s) {
+        if (s == null) return;
+        boolean network = s.optBoolean("network", true);
+        String off = "sleep_key".equals(s.optString("offMode")) ? "sleep_key" : "device_admin";
+        Prefs prefs = new Prefs(this);
+        if (prefs.networkStandby() != network || !prefs.offMode().equals(off)) prefs.setStandby(network, off);
+        NetworkStandbyManager.get(this).setEnabled(network);
     }
 
     /**
@@ -334,6 +464,12 @@ public class WakeService extends Service {
             BootLog.add(this, tag + "screen off (standby) — it opens when the TV is turned on");
             return;
         }
+        StringBuilder who = new StringBuilder();
+        if (Foreground.guestAppInFront(this, who)) {
+            BootLog.add(this, tag + who + " in front — not interrupting the guest");
+            checkRound++;
+            return;
+        }
         if (attempt < last - 1) {
             BootLog.add(this, tag + "not visible → startActivity again");
             MainActivity.bringToFront(this, false, false, why + "-retry" + attempt);
@@ -400,6 +536,7 @@ public class WakeService extends Service {
         } catch (Exception ignored) { }
         // 1.14: the factory menu lock as it really is (enabled states, read without ADB).
         state += "&lk=" + MenuLock.read(this);
+        state += NetworkStandbyManager.get(this).query();
         long bl = PrivacyAgent.baselineAt(this);
         if (bl > 0) state += "&bl=" + bl;
         if (System.currentTimeMillis() - capsSentAt > CAPS_EVERY_MS) {
@@ -440,19 +577,8 @@ public class WakeService extends Service {
                 .build();
         startForeground(1, n);
         registerReceiver(screenOn, new IntentFilter(Intent.ACTION_SCREEN_ON));
-        try {
-            cpuLock = ((PowerManager) getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CoraliTV:online");
-            cpuLock.setReferenceCounted(false);
-            cpuLock.acquire();
-            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-            if (wm != null) {
-                wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "CoraliTV:online");
-                wifiLock.setReferenceCounted(false);
-                wifiLock.acquire();
-            }
-        } catch (RuntimeException ignored) {
-            // Without the locks the app still works while the screen is on.
-        }
+        // 1.15: the CPU / Wi-Fi locks live in NetworkStandbyManager (on by default; the PMS can switch it off per room).
+        NetworkStandbyManager.get(this).setEnabled(new Prefs(this).networkStandby());
         worker = new HandlerThread("corali-urgent");
         worker.start();
         background = new Handler(worker.getLooper());
@@ -484,8 +610,7 @@ public class WakeService extends Service {
     public void onDestroy() {
         unregisterReceiver(screenOn);
         if (volumeWatch != null) getContentResolver().unregisterContentObserver(volumeWatch);
-        if (cpuLock != null && cpuLock.isHeld()) cpuLock.release();
-        if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
+        NetworkStandbyManager.get(this).release();
         background.removeCallbacks(checkUrgent);
         background.removeCallbacks(powerOn);
         worker.quit();

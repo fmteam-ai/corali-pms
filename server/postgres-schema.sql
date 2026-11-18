@@ -2358,3 +2358,33 @@ $$;
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS menu_lock_raw TEXT;
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS menu_lock_state TEXT;
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS menu_lock_seen_at BIGINT;
+
+-- v164: Network Standby Manager (Corali TV ≥ 1.15) and verified power control. Per room: keep CPU / Wi-Fi awake in
+-- standby (network_standby), how PMS OFF is done (device admin lockNow — the working default — or the sleep key through
+-- the TV's own ADB), the standby diagnostics of the last check, scheduled commands (standby tests), the TV's reply
+-- text (diagnostics / wake method), reachability gaps and screen changes, and the standby tests.
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS network_standby BIGINT NOT NULL DEFAULT 1;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS power_off_mode TEXT NOT NULL DEFAULT 'device_admin' CHECK (power_off_mode IN ('device_admin','sleep_key'));
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS standby_diag TEXT;
+ALTER TABLE tv_screen_commands ADD COLUMN IF NOT EXISTS not_before BIGINT;
+ALTER TABLE tv_screen_commands ADD COLUMN IF NOT EXISTS result_text TEXT;
+CREATE TABLE IF NOT EXISTS tv_power_events (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  room_id BIGINT NOT NULL,
+  at BIGINT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('GAP','SCREEN')),
+  detail JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS tv_power_events_room ON tv_power_events(owner_id, room_id, id DESC);
+CREATE TABLE IF NOT EXISTS tv_power_tests (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  room_id BIGINT NOT NULL,
+  minutes INT NOT NULL,
+  started_at BIGINT NOT NULL,
+  off_command_id BIGINT,
+  on_command_id BIGINT,
+  created_by BIGINT
+);
+CREATE INDEX IF NOT EXISTS tv_power_tests_room ON tv_power_tests(owner_id, room_id, id DESC);

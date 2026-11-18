@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ACK_TIMEOUT_MS, AGENT_ONLINE_MS, agentState, autoCommand, expiredStatus, reportStatus, validPowerMethod, menuLockState, parseMenuLockRaw } from "../scripts/tv-command-core.mjs";
+import { ACK_TIMEOUT_MS, AGENT_ONLINE_MS, agentState, autoCommand, expiredStatus, reportStatus, validPowerMethod, menuLockState, parseMenuLockRaw, powerState, parseStandbyDiag, standbyVerdict } from "../scripts/tv-command-core.mjs";
 
 test("commands expire: not delivered → TIMEOUT, delivered without report → UNVERIFIED, final never changes", () => {
   const now = 1_000_000;
@@ -103,4 +103,43 @@ test("v163: menu lock state from the TV's enabled states", () => {
   assert.equal(menuLockState("LOCKED"), "UNKNOWN");
   assert.equal(menuLockState(null), "UNKNOWN");
   assert.equal(parseMenuLockRaw("s9a0h0"), null);
+});
+
+
+// ---- v164: power state, standby diagnostics, standby test verdict
+test("v164: power state is measured, never assumed from the connection", () => {
+  const now = 1_000_000_000;
+  assert.deepEqual(powerState({ seenAt: now - 10_000, interactive: 1, now }), { state: "ON", reachable: true });
+  assert.deepEqual(powerState({ seenAt: now - 10_000, interactive: 0, now }), { state: "STANDBY", reachable: true });
+  assert.deepEqual(powerState({ seenAt: now - 10_000, interactive: null, now }), { state: "UNKNOWN", reachable: true });
+  assert.deepEqual(powerState({ seenAt: now - 600_000, interactive: 0, now }), { state: "STANDBY", reachable: false });
+  assert.deepEqual(powerState({ seenAt: now - 600_000, interactive: 1, now }), { state: "UNKNOWN", reachable: false });
+  assert.deepEqual(powerState({ seenAt: null, interactive: null, now }), { state: "UNKNOWN", reachable: false });
+  assert.equal(powerState({ seenAt: now - 600_000, interactive: 0, now, waking: true }).state, "WAKING");
+  assert.equal(powerState({ seenAt: now - 600_000, interactive: 0, now, lastFailedAt: now - 60_000 }).state, "ERROR");
+  assert.equal(powerState({ seenAt: now - 5_000, interactive: 1, now, lastFailedAt: now - 60_000 }).state, "ON");
+});
+
+test("v164: standby diagnostics flags", () => {
+  assert.deepEqual(parseStandbyDiag({ ns: "1", cpu: "1", wl: "0", lps: "x", lpx: null, idl: "0", nv: "1" }),
+    { networkStandby: true, cpuWakeLockHeld: true, wifiLockHeld: false, lowPowerStandbyEnabled: null, lowPowerStandbyExempt: null, deviceIdle: false, networkValidated: true });
+});
+
+test("v164: standby test verdict — PASS only when the TV took ON after the wait and the screen really came on", () => {
+  const now = 5_000_000;
+  assert.equal(standbyVerdict({}, { status: "PENDING" }, { status: "PENDING", not_before: now + 1 }, now), "STARTING");
+  assert.equal(standbyVerdict({}, { status: "FAILED" }, { status: "PENDING", not_before: now + 1 }, now), "OFF_FAILED");
+  assert.equal(standbyVerdict({}, { status: "EXECUTED" }, { status: "PENDING", not_before: now + 1 }, now), "WAITING");
+  assert.equal(standbyVerdict({}, { status: "EXECUTED" }, { status: "PENDING", not_before: now - 1 }, now), "WAKE_DUE");
+  assert.equal(standbyVerdict({}, { status: "EXECUTED" }, { status: "DELIVERED" }, now), "WAKING");
+  assert.equal(standbyVerdict({}, { status: "EXECUTED" }, { status: "EXECUTED" }, now), "PASS");
+  assert.equal(standbyVerdict({}, { status: "EXECUTED" }, { status: "TIMEOUT" }, now), "FAIL_UNREACHABLE");
+  assert.equal(standbyVerdict({}, { status: "EXECUTED" }, { status: "FAILED" }, now), "FAIL_WAKE_REFUSED");
+  assert.equal(standbyVerdict({}, { status: "EXECUTED" }, { status: "UNVERIFIED" }, now), "UNVERIFIED");
+});
+
+test("v164: diagnostics are EXECUTED only with the TV's text", () => {
+  const cmd = { status: "DELIVERED", command: "NETWORK_DIAGNOSTICS" };
+  assert.equal(reportStatus(cmd, { status: "EXECUTED", detail: "mWakefulness=Awake" }), "EXECUTED");
+  assert.equal(reportStatus(cmd, { status: "EXECUTED" }), "UNVERIFIED");
 });

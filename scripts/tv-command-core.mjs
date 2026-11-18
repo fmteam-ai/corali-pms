@@ -8,7 +8,9 @@ export const SCREEN_COMMANDS = ["SCREEN_ON", "SCREEN_OFF", "SHOW_WELCOME"];
 export const VOLUME_COMMANDS = ["SET_VOLUME", "VOLUME_UP", "VOLUME_DOWN", "MUTE", "UNMUTE"];
 /** v163: open the TV maker's Factory Menu for a technician in the room (owner only). Changes no setting by itself. */
 export const FACTORY_COMMANDS = ["OPEN_FACTORY_MENU"];
-export const ALL_COMMANDS = [...SCREEN_COMMANDS, ...VOLUME_COMMANDS, ...FACTORY_COMMANDS];
+/** v164: the app reports its power / network diagnostics (Corali TV ≥ 1.15). */
+export const DIAG_COMMANDS = ["NETWORK_DIAGNOSTICS"];
+export const ALL_COMMANDS = [...SCREEN_COMMANDS, ...VOLUME_COMMANDS, ...FACTORY_COMMANDS, ...DIAG_COMMANDS];
 /** A volume read back within this many percentage points of the target counts as applied (Android volume steps). */
 export const VOLUME_TOLERANCE = 7;
 export const COMMAND_STATUSES = ["PENDING", "DELIVERED", "EXECUTED", "FAILED", "TIMEOUT", "UNVERIFIED", "CANCELLED"];
@@ -46,6 +48,7 @@ export function reportStatus(cmd, report) {
   if (report?.status !== "EXECUTED") return "FAILED";
   if (VOLUME_COMMANDS.includes(cmd.command)) return volumeStatus(cmd, report);
   // Factory Menu: EXECUTED only when the app saw it come to the front (the welcome screen left the foreground).
+  if (cmd.command === "NETWORK_DIAGNOSTICS") return typeof report?.detail === "string" && report.detail.length > 0 ? "EXECUTED" : "UNVERIFIED";
   if (cmd.command === "OPEN_FACTORY_MENU") return report?.opened === true ? "EXECUTED" : report?.opened === false ? "FAILED" : "UNVERIFIED";
   if (interactive === null) return "UNVERIFIED";
   if (cmd.command === "SCREEN_OFF") return interactive ? "FAILED" : "EXECUTED";
@@ -177,4 +180,42 @@ export function menuLockState(raw) {
   if (parts.length === 3 && parts.every(off)) return "LOCKED";
   if (parts.every(on)) return parts.length === 3 ? "UNLOCKED" : "UNKNOWN";
   return "PARTIAL";
+}
+
+// v164: power state of a room's TV as the PMS may show it. Never ON because the agent is connected or a wake lock is
+// held: ON / STANDBY only from the screen state the app measured (PowerManager.isInteractive) in a recent check.
+export const POWER_STATES = ["ON", "STANDBY", "WAKING", "UNKNOWN", "ERROR"];
+export const POWER_OFF_MODES = ["device_admin", "sleep_key"];
+/** A check is expected every 20 s; a silence longer than this is recorded as a gap (TV / network asleep). */
+export const GAP_MS = 90_000;
+export function powerState({ seenAt, interactive, now, waking = false, lastFailedAt = null }) {
+  const fresh = seenAt !== null && seenAt !== undefined && now - Number(seenAt) <= AGENT_ONLINE_MS;
+  if (waking) return { state: "WAKING", reachable: fresh };
+  if (lastFailedAt !== null && lastFailedAt !== undefined && now - Number(lastFailedAt) < 10 * 60_000 && !fresh) return { state: "ERROR", reachable: false };
+  if (seenAt === null || seenAt === undefined) return { state: "UNKNOWN", reachable: false };
+  const i = interactive === null || interactive === undefined ? null : Number(interactive);
+  if (fresh) return { state: i === 1 ? "ON" : i === 0 ? "STANDBY" : "UNKNOWN", reachable: true };
+  // Not heard from: a TV last seen with the screen off is in standby (unreachable); otherwise unknown.
+  return { state: i === 0 ? "STANDBY" : "UNKNOWN", reachable: false };
+}
+/** Standby diagnostics the app sends in its check (≥ 1.15): flags 1 / 0, or null when unknown. */
+export function parseStandbyDiag(q) {
+  const f = (k) => (q[k] === "1" ? true : q[k] === "0" ? false : null);
+  return { networkStandby: f("ns"), cpuWakeLockHeld: f("cpu"), wifiLockHeld: f("wl"), lowPowerStandbyEnabled: f("lps"), lowPowerStandbyExempt: f("lpx"), deviceIdle: f("idl"), networkValidated: f("nv") };
+}
+/**
+ * Verdict of one PMS standby test (OFF now, ON after N minutes). PASS only when the TV, after the wait, took the ON
+ * command and reported the screen really on. FAIL_UNREACHABLE: the app never checked in to take it (TV / Wi-Fi asleep).
+ */
+export function standbyVerdict(test, off, on, now) {
+  if (!off || off.status === "PENDING" || off.status === "DELIVERED") return "STARTING";
+  if (off.status !== "EXECUTED") return "OFF_FAILED";
+  if (!on) return "ERROR";
+  if (on.status === "EXECUTED") return "PASS";
+  if (on.status === "PENDING") return now < Number(on.not_before ?? 0) ? "WAITING" : "WAKE_DUE";
+  if (on.status === "DELIVERED") return "WAKING";
+  if (on.status === "TIMEOUT") return "FAIL_UNREACHABLE";
+  if (on.status === "FAILED") return "FAIL_WAKE_REFUSED";
+  if (on.status === "CANCELLED") return "CANCELLED";
+  return "UNVERIFIED";
 }

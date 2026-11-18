@@ -1,6 +1,7 @@
 import { agentCheck } from "@/lib/tv-commands";
 import { pendingUrgent, screenRoom } from "@/lib/tv-messages";
 import { agentBaselineSeen, agentPrivacyClaim } from "@/lib/tv-privacy";
+import { parseStandbyDiag } from "../../../../../../scripts/tv-command-core.mjs";
 
 const noStore = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 
@@ -31,7 +32,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
       policyRev: /^\d{1,15}$/.test(q.get("prev") ?? "") ? Number(q.get("prev")) : null,
       // ≥ 1.14 (v163): enabled states of Settings / side panel, "s<n>a<n>h<n>" — the real «Lock Menu Key».
       menuLock: /^s[0-4x]a[0-4x]h[0-4x]$/.test(q.get("lk") ?? "") ? q.get("lk") : null,
-    }) : { command: null, policy: null };
+      // ≥ 1.15 (v164): Network Standby Manager state — locks held, Low Power Standby, idle, validated network.
+      standby: q.has("ns") ? parseStandbyDiag(Object.fromEntries(q.entries())) : null,
+    }) : { command: null, policy: null, standby: null };
     const version = Number.isInteger(v) && v > 0 && v < 100000 ? v : null;
     let privacy = null;
     if (room) {
@@ -39,7 +42,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
       if (/^\d{12,14}$/.test(q.get("bl") ?? "") && bl <= Date.now() + 86_400_000) await agentBaselineSeen(room.ownerId, room.roomId, bl);
       privacy = await agentPrivacyClaim(room.ownerId, room.roomId, version);
     }
-    return Response.json({ ok: true, urgent: pending?.id ?? null, wake: pending?.wake ?? false, screen: null, command: answer.command, policy: answer.policy, privacy }, { headers: noStore });
+    return Response.json({ ok: true, urgent: pending?.id ?? null, wake: pending?.wake ?? false, screen: null, command: answer.command, policy: answer.policy, privacy, standby: answer.standby ?? null }, { headers: noStore });
   } catch (e) {
     console.error("TV urgent check failed", e);
     return Response.json({ ok: false, error: "UNAVAILABLE" }, { status: 503, headers: noStore });
