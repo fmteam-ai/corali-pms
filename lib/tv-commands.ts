@@ -133,11 +133,21 @@ export async function saveSoundPolicy(ownerId: string, roomIds: number[], raw: u
 
 /** The app's report for a delivered command; applied once. */
 export async function agentReport(ownerId: string, roomId: number, id: number, report: { status?: string; interactive?: boolean; error?: string; volume?: number; muted?: boolean; fixed?: boolean; opened?: boolean; detail?: string }): Promise<string | null> {
-  const r = (await db().query(`SELECT id,command,status,value,cap FROM tv_screen_commands WHERE id=$1 AND owner_id=$2 AND room_id=$3`, [id, ownerId, roomId])).rows[0];
+  const r = (await db().query(`SELECT id,command,status,value,cap,created_at FROM tv_screen_commands WHERE id=$1 AND owner_id=$2 AND room_id=$3`, [id, ownerId, roomId])).rows[0];
   if (!r) return null;
-  const next = reportStatus({ status: String(r.status), command: String(r.command), value: num(r.value), cap: num(r.cap) }, report);
+  let next = reportStatus({ status: String(r.status), command: String(r.command), value: num(r.value), cap: num(r.cap) }, report);
   if (!next) return String(r.status);
-  const error = next === "EXECUTED" ? "" : String(report.error ?? (next === "UNVERIFIED" ? "NO_STATE" : "STATE_DID_NOT_CHANGE")).replace(/[^A-Za-z0-9_ .:-]/g, "").slice(0, 120);
+  let byOther = false;
+  if (next === "EXECUTED" && String(r.command) === "SCREEN_ON") {
+    // v166: the screen came on by the remote (or Cast) while the command waited for an unreachable TV — the TV then
+    // takes the command and finds the screen on. That is not a PMS wake-up: never shown as success.
+    byOther = Boolean((await db().query(
+      `SELECT 1 FROM tv_power_events WHERE owner_id=$1 AND room_id=$2 AND kind='SCREEN' AND (detail->>'on')::boolean AND NOT detail ? 'command' AND at>=$3 LIMIT 1`,
+      [ownerId, roomId, Number(r.created_at)],
+    )).rowCount);
+    if (byOther) next = "FAILED";
+  }
+  const error = byOther ? "TURNED_ON_BY_REMOTE" : next === "EXECUTED" ? "" : String(report.error ?? (next === "UNVERIFIED" ? "NO_STATE" : "STATE_DID_NOT_CHANGE")).replace(/[^A-Za-z0-9_ .:-]/g, "").slice(0, 120);
   const now = Date.now();
   const error2 = next === "FAILED" && report.fixed === true && !report.error ? "FIXED_VOLUME" : error;
   // v164: the TV's own text (wake method used, diagnostics), printable characters only, at most 4000.
