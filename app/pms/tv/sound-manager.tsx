@@ -45,7 +45,8 @@ const EL = {
   d_hotel_mode: "Μόνο οι πολιτικές λογισμικού: πολιτική → {d}% / {m}% / επιβολή {e}, «Ήχος» και ένταση {d}%. Εργοστασιακές ρυθμίσεις: δεν αγγίζονται.",
   confirmRooms: "Δωμάτια", noFactory: "Δεν πραγματοποιείται εργοστασιακή επαναφορά.", typeCount: "Μαζική επαναφορά: γράψτε τον αριθμό των δωματίων ({n}) για επιβεβαίωση.", countMismatch: "Ο αριθμός δεν ταιριάζει — δεν έγινε τίποτα.",
   yes: "ναι", no: "όχι", selectFirst: "Επιλέξτε πρώτα δωμάτια.",
-  emergency: "Emergency Unlock Menu", emergencyHelp: "Δεν υποστηρίζεται από το PMS: δεν υπάρχει εγκεκριμένος μηχανισμός ξεκλειδώματος και επαναφοράς. Μόνο για εξουσιοδοτημένο τεχνικό, χειροκίνητα στην τηλεόραση: Factory Menu → Engineer Mode Option → Lock Menu Key → Off. Το «Lock Menu Key» επηρεάζει συγκεκριμένο πλήκτρο, όχι όλες τις ρυθμίσεις Android.",
+  emergency: "Emergency Unlock Menu", emergencyHelp: "Το PMS δεν μπορεί να ξεκλειδώσει απευθείας (η TV δεν το επιτρέπει σε εφαρμογές). Ανάκτηση: ο Owner πατά «Άνοιγμα Factory Menu στην TV» στη στήλη «Κλείδωμα μενού» του δωματίου και ο τεχνικός στην TV επιλέγει Engineer Mode Option → Lock Menu Key → Off· το PMS επιβεβαιώνει «UNLOCKED». Το Lock Menu Key απενεργοποιεί τις Ρυθμίσεις της TV και το πλαϊνό πάνελ του Google TV.",
+  fmOwnerOnly: "Άνοιγμα Factory Menu: μόνο ο Owner", fmNeedsApp: "Άνοιγμα Factory Menu: χρειάζεται Corali TV 1.14 (η TV έχει {v})", fmNoApp: "Άνοιγμα Factory Menu: η TV δεν έχει συνδεθεί ακόμα με το Corali TV",
   resultTitle: "Αποτέλεσμα επαναφοράς", res_PENDING: "⏳ σε αναμονή", res_DELIVERED: "📨 παραδόθηκε", res_EXECUTED: "✓ επιβεβαιώθηκε από την TV", res_UNVERIFIED: "? χωρίς επιβεβαίωση", res_FAILED: "✗ απέτυχε", res_OFFLINE: "TV εκτός σύνδεσης — η πολιτική θα εφαρμοστεί όταν συνδεθεί", res_APP_TOO_OLD: "χρειάζεται Corali TV 1.9+ (η πολιτική αποθηκεύτηκε)", res_SUPERSEDED: "αντικαταστάθηκε από νεότερη εντολή / επαναφορά",
   factoryUnsupported: "Εργοστασιακό κλείδωμα μενού: UNSUPPORTED (δεν αγγίχτηκε)", repeated: "Το ίδιο αίτημα είχε ήδη σταλεί — εμφανίζεται το αρχικό αποτέλεσμα.",
 };
@@ -83,10 +84,14 @@ const EN: typeof EL = {
   d_hotel_mode: "Software policies only: policy → {d}% / {m}% / enforce {e}, unmute and volume {d}%. Factory settings are not touched.",
   confirmRooms: "Rooms", noFactory: "No factory reset is performed.", typeCount: "Bulk reset: type the number of rooms ({n}) to confirm.", countMismatch: "The number does not match — nothing was done.",
   yes: "yes", no: "no", selectFirst: "Select rooms first.",
-  emergency: "Emergency Unlock Menu", emergencyHelp: "Not supported by the PMS: there is no approved unlock and rollback mechanism. Authorised technician only, by hand on the TV: Factory Menu → Engineer Mode Option → Lock Menu Key → Off. “Lock Menu Key” affects a specific key, not all Android settings.",
+  emergency: "Emergency Unlock Menu", emergencyHelp: "The PMS cannot unlock directly (the TV does not allow apps to). Recovery: the Owner presses “Open Factory Menu on the TV” in the room's “Menu lock” column and the technician at the TV picks Engineer Mode Option → Lock Menu Key → Off; the PMS confirms “UNLOCKED”. Lock Menu Key disables the TV's Settings app and the Google TV side panel.",
+  fmOwnerOnly: "Open Factory Menu: Owner only", fmNeedsApp: "Open Factory Menu: needs Corali TV 1.14 (the TV has {v})", fmNoApp: "Open Factory Menu: the TV has not connected with Corali TV yet",
   resultTitle: "Reset result", res_PENDING: "⏳ pending", res_DELIVERED: "📨 delivered", res_EXECUTED: "✓ confirmed by the TV", res_UNVERIFIED: "? not confirmed", res_FAILED: "✗ failed", res_OFFLINE: "TV offline — the policy applies when it connects", res_APP_TOO_OLD: "needs Corali TV 1.9+ (policy saved)", res_SUPERSEDED: "replaced by a newer command / reset",
   factoryUnsupported: "Factory menu lock: UNSUPPORTED (not touched)", repeated: "The same request had already been sent — showing its result.",
 };
+
+/** Corali TV versionCode → version name (versionCode 11 = 1.10, 12 = 1.11, …). */
+const appName = (v: number) => (v >= 11 ? `1.${v - 1}` : v >= 9 ? "1.8+" : `v${v}`);
 
 export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; canCommand: boolean; canPolicy: boolean }) {
   const T = lang === "en" ? EN : EL;
@@ -226,7 +231,6 @@ export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; ca
             {canPolicy && <button type="button" className="secondaryButton" disabled={busy || !selected.length} onClick={() => void runReset("no_max_enforcement")}>{T.r_no_max_enforcement}</button>}
             {canCommand && <button type="button" className="secondaryButton" disabled={busy || !selected.length} onClick={() => void runReset("restore_sound")}>{T.r_restore_sound}</button>}
             {canPolicy && <button type="button" className="secondaryButton" disabled={busy || !selected.length} onClick={() => void runReset("hotel_mode")}>{T.r_hotel_mode}</button>}
-            {canPolicy && <button type="button" className="secondaryButton" disabled title={T.emergencyHelp}>{T.emergency} — {T.unsupported}</button>}
           </div>
           {canPolicy && <small className="muted">{T.emergency}: {T.emergencyHelp}</small>}
           {reset && (
@@ -276,6 +280,7 @@ export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; ca
               </td>
               <td>
                 {s.menu_lock_state ? <><b className={s.menu_lock_state === "LOCKED" ? "credit" : s.menu_lock_state === "UNKNOWN" ? "muted" : "debit"}>{tx(`lk_${s.menu_lock_state}`)}</b>{s.menu_lock_seen_at ? <small className="muted"> · {at(s.menu_lock_seen_at)}</small> : null}</> : <small className="muted">{T.lk_none}</small>}
+                {(!data.isOwner || s.app_version === null || s.app_version < (data.factoryMenuApp ?? 15)) && <><br /><small className="muted">{!data.isOwner ? T.fmOwnerOnly : s.app_version === null ? T.fmNoApp : T.fmNeedsApp.replace("{v}", appName(s.app_version))}</small></>}
                 {data.isOwner && s.app_version !== null && s.app_version >= (data.factoryMenuApp ?? 15) && <><br /><button type="button" className="secondaryButton" disabled={busy} onClick={() => { if (window.confirm(T.factoryConfirm.replace("{r}", s.room_code))) void post({ action: "factory_menu", roomId: s.room_id, confirm: true }).then((d) => { if (d) void load(); }); }}>{T.openFactory}</button></>}
               </td>
               <td>{caps.length ? <small>{caps.map(([k, val]) => `${tx(`cap_${k}`)}: ${val ?? "—"}`).join(" · ")}</small> : <span className="muted">—</span>}</td>

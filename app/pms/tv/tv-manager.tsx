@@ -339,6 +339,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
                 )}
                 </>}
                 {s.power_method !== "shelly" && s.power_device_id && <small className="muted">{t("tv.plugIdle")}</small>}
+                {s.power_method !== "android_agent" && <small className="muted">{t("tv.agentHint")}</small>}
                 {s.power_method === "android_agent" && (() => {
                   const st = agentState(s.screen_seen_at, s.screen_interactive, now);
                   const c = commands[s.room_id];
@@ -346,7 +347,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
                   return (
                     <span className="tvPlugState">
                       <small className={st === "screen_on" || st === "online" ? "credit" : st === "screen_off" ? "" : "debit"}>📺 {t(`tv.agent_${st}` as Parameters<typeof t>[0])}{s.screen_seen_at ? ` · ${t("tv.lastCheck")} ${at(s.screen_seen_at)}` : ""}</small>
-                      {s.app_version !== null && <small className="muted">Corali TV {s.app_version >= 9 ? "1.8+" : `v${s.app_version}`} · {s.app_admin === 1 ? t("tv.adminYes") : t("tv.adminNo")}</small>}
+                      {s.app_version !== null && <small className="muted">Corali TV {s.app_version >= 11 ? `1.${s.app_version - 1}` : s.app_version >= 9 ? "1.8+" : `v${s.app_version}`} · {s.app_admin === 1 ? t("tv.adminYes") : t("tv.adminNo")}</small>}
                       {(s.app_version === null || s.app_version < 9) && s.screen_seen_at && <small className="debit">{t("tv.agentOld")}</small>}
                       {canEdit && <span><button type="button" className="secondaryButton" disabled={busy} onClick={() => void sendScreen(s, "SCREEN_ON")}>{t("tv.screenOn")}</button><button type="button" className="secondaryButton" disabled={busy} onClick={() => void sendScreen(s, "SCREEN_OFF")}>{t("tv.screenOff")}</button><button type="button" className="secondaryButton" disabled={busy} onClick={() => void sendScreen(s, "SHOW_WELCOME")}>{t("tv.showWelcome")}</button></span>}
                       {c && <small className={c.status === "EXECUTED" ? "credit" : ["FAILED", "TIMEOUT", "UNVERIFIED"].includes(c.status) ? "debit" : ""}>{t("tv.lastCmd")}: {t(`tv.cmd_${c.command}` as Parameters<typeof t>[0])} ({t(c.source === "auto" ? "tv.cmdAuto" : "tv.cmdManual")}, {at(c.created_at)}) → <b>{t(`tv.cmdStatus_${c.status}` as Parameters<typeof t>[0])}</b>{c.finished_at ? ` ${at(c.finished_at)}` : ""}{c.error ? ` · ${c.error}` : ""}</small>}
