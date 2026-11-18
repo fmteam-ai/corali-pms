@@ -1,41 +1,59 @@
-# Lock / Unlock TV Settings — τεχνική αξιολόγηση (HORIZON 43HQ8590U/D, Corali TV 1.13)
+# Lock / Unlock TV Settings — τεχνική αναφορά (HORIZON 43HQ8590U/D, TvEplFactoryGTV.apk V2.2.36)
 
-**Απάντηση σήμερα: όχι ακόμα.** Δεν υπάρχει αποδεδειγμένος ασφαλής μηχανισμός για να κλειδώσει / ξεκλειδώσει το PMS το «Lock Menu Key». Δεν προστέθηκε κουμπί Lock/Unlock στο PMS, για να μην εμφανίζεται λειτουργία που δεν δουλεύει. Η ένδειξη μένει `OEM_BRIDGE_REQUIRED` / `UNSUPPORTED`.
+Πηγή: ανάλυση του `TvEplFactoryGTV.apk` (`com.expressluck.tvfactory`, versionName V2.2.36, `sharedUserId=android.uid.system`) με απομεταγλώττιση (androguard 4.1.4). Δεν έγινε καμία αλλαγή στην TV.
 
-## 1. Τι ξέρουμε
-- Το Lock Menu Key αλλάζει από την εφαρμογή `com.expressluck.tvfactory`, που τρέχει ως **system (UID 1000)**.
-- Το `settings get global hotel_menu_key_lock` έδειξε `0` ενώ το μενού έδειχνε `On` → η πραγματική τιμή **δεν** αποθηκεύεται εκεί (ή όχι μόνο εκεί).
-- Η μέθοδος `HotelModelManager.setLockMenuKey(int)` αναφέρθηκε από προηγούμενη ανάλυση, **χωρίς** να έχει επιβεβαιωθεί πού γράφει, ποια άδεια θέλει, και αν υπάρχει εξωτερική διεπαφή (exported receiver / provider / service / AIDL). Το APK δεν έχει αναλυθεί εδώ.
+## 1. Πώς υλοποιείται πραγματικά το «Lock Menu Key»
 
-## 2. Τι μπορεί ο Agent
-| Τρόπος | Ταυτότητα | Μπορεί; |
+`HotelModelManager.setLockMenuKey(int v)` → `a.a.b(true, v)` (κλάση HotelModeUtils). Με `v=1` (On):
+
+1. `PackageManager.setApplicationEnabledSetting("com.android.tv.settings", COMPONENT_ENABLED_STATE_DISABLED (2), DONT_KILL_APP)` — **απενεργοποιεί ολόκληρη την εφαρμογή Ρυθμίσεων της TV**. Με Off: `COMPONENT_ENABLED_STATE_ENABLED (1)`.
+2. `setComponentEnabledSetting` → **απενεργοποιεί** (On) / ενεργοποιεί (Off) δύο τμήματα του Google TV launcher:
+   `com.google.android.apps.tv.launcherx/.dashboard.DashboardActivity` και `.dashboard.DashboardHandler` (το πλαϊνό πάνελ / «γρανάζι»).
+3. `Settings.Global.putInt("hotel_menu_key_lock", 1|0)`.
+4. Γράφει την τιμή στη θέση **3** του `/mnt/vendor/impdata/hotel.bin` μέσω `com.realtek.tv.Factory.writeConfigFile` (API του firmware, μόνο για system).
+
+Η μέθοδος είναι **εσωτερικός κώδικας** της εργοστασιακής εφαρμογής: δεν υπάρχει εξαγόμενο service / receiver / provider / AIDL που να την καλεί. Δεν επανεφαρμόζεται στην εκκίνηση· το κλείδωμα επιβιώνει της επανεκκίνησης επειδή το Android θυμάται ποιες εφαρμογές/τμήματα είναι απενεργοποιημένα.
+
+**Γιατί το `hotel_menu_key_lock` έδειξε 0:** είναι μόνο μία από τις 4 εγγραφές· το μενού δείχνει την τιμή του `hotel.bin`. Η **πραγματική** κατάσταση είναι το αν είναι απενεργοποιημένο το `com.android.tv.settings` και τα δύο τμήματα του launcher.
+
+## 2. Μπορεί ο Corali TV Agent να το ελέγξει χωρίς πρόσθετα προνόμια;
+
+| Ενέργεια | Corali TV (UID 10075) | Self-ADB (shell, UID 2000) |
 |---|---|---|
-| Corali TV (εφαρμογή) | UID 10075, χωρίς system/signature άδειες | **Όχι** να καλέσει εσωτερικό system API ή να γράψει system/vendor ιδιότητες |
-| Self-ADB της εφαρμογής (1.11+) | shell (UID 2000) | Μπορεί να γράψει `settings` (global/secure/system) και να ανοίξει activities. **Δεν** μπορεί να γράψει `persist.vendor.*`/system ιδιότητες ούτε να καλέσει υπηρεσίες που ελέγχουν για UID 1000. Εξαρτάται από το ADB (απαίτηση: όχι ADB ως προϋπόθεση) |
-| Device Owner | — | Δεν εγκαθίσταται χωρίς ξεχωριστή έγκριση (και δεν κλειδώνει το εργοστασιακό Lock Menu Key· έχει δικούς του περιορισμούς Android) |
+| Κλήση `setLockMenuKey` | **Όχι** (κώδικας μέσα σε system εφαρμογή, χωρίς εξωτερική διεπαφή) | **Όχι** |
+| Απενεργοποίηση `com.android.tv.settings` ως «DISABLED» (όπως το εργοστάσιο) | **Όχι** | **Όχι** — το Android επιτρέπει στο shell μόνο `DISABLED_USER` (`pm disable-user`), όχι `DISABLED` |
+| Απενεργοποίηση των 2 τμημάτων του launcher | **Όχι** | **Όχι** — το Android δεν επιτρέπει στο shell αλλαγή μεμονωμένων τμημάτων εφαρμογών (μόνο σε test εφαρμογές) |
+| Ξεκλείδωμα κλειδώματος που έγινε από το εργοστασιακό μενού | **Όχι** | **Όχι** — από κατάσταση `DISABLED` το shell δεν μπορεί να αλλάξει τίποτα |
+| `hotel.bin` | **Όχι** | **Όχι** |
+| **Ανάγνωση της πραγματικής κατάστασης** (`getApplicationEnabledSetting` / `getComponentEnabledSetting`) | **Ναι**, χωρίς ADB και χωρίς άδειες | Ναι |
+| Άνοιγμα του Factory Menu (`com.realtek.factory.action.FACTORY_MENU`, εξαγόμενο) | **Ναι**, χωρίς ADB | Ναι |
 
-## 3. Τι χρειάζεται για να απαντηθεί οριστικά (μόνο ανάγνωση, χωρίς κίνδυνο)
-1. **Το APK** `TvEplFactoryGTV.apk` εδώ στη συνομιλία (ή: `adb shell pm path com.expressluck.tvfactory` → `adb pull <διαδρομή> factory.apk`). Ανάλυση: τι κάνει πραγματικά το `setLockMenuKey`, πού γράφει, εξαγόμενα components, άδειες.
-2. **Πού αποθηκεύεται** η τιμή — με την TV ανοιχτή, πριν και μετά την αλλαγή On/Off από το Factory Menu:
-   ```
-   adb shell getprop > lock-off-props.txt
-   adb shell settings list global > lock-off-global.txt
-   adb shell settings list secure > lock-off-secure.txt
-   adb shell settings list system > lock-off-system.txt
-   ```
-   (μετά Lock Menu Key = On και τα ίδια με `lock-on-…`). Στείλτε τα 8 αρχεία· η διαφορά δείχνει πού αποθηκεύεται.
-3. `adb shell dumpsys package com.expressluck.tvfactory > factory-package.txt` (εξαγόμενα components και άδειες).
+**Απάντηση: ο Agent δεν μπορεί να κάνει το εργοστασιακό Lock / Unlock, ούτε με το Self-ADB.** Μπορεί όμως να **διαβάζει αξιόπιστα** την πραγματική κατάσταση και να **ανοίγει το Factory Menu** για τεχνικό (ανάκτηση) — και τα δύο χωρίς ADB.
 
-## 4. Πιθανά αποτελέσματα και τι σημαίνουν
-| Εύρημα | Συνέπεια |
-|---|---|
-| Η τιμή είναι κλειδί `settings` | Το Self-ADB θα μπορούσε να το γράψει. Πρέπει να αποδειχθεί ότι **κλειδώνει πραγματικά** (όχι μόνο αλλάζει τιμή) και ότι επιβιώνει επανεκκίνησης. Εξαρτάται από το ADB |
-| Ιδιότητα `persist.vendor`/system ή αρχείο/βάση της εφαρμογής | Μόνο system: **όχι** από τον Agent. Λύση: επίσημη διεπαφή Expressluck/Realtek (π.χ. εξαγόμενη υπηρεσία με άδεια για εγκεκριμένο πιστοποιητικό) |
-| Εξαγόμενο component χωρίς άδεια | Τεχνικά εφικτό, αλλά **κενό ασφαλείας** του κατασκευαστή: δεν το χρησιμοποιούμε χωρίς έγκρισή του |
+Το `pm disable-user com.android.tv.settings` μέσω Self-ADB **δεν είναι ισοδύναμο**: αφήνει ανοιχτό το πλαϊνό πάνελ του Google TV, εξαρτάται από το ADB (ο διακόπτης ADB βρίσκεται μέσα στις Ρυθμίσεις που θα κλείδωνε), και δεν μπορεί να αναιρέσει εργοστασιακό κλείδωμα. Δεν το υλοποιώ χωρίς ρητή έγκρισή σας και δοκιμή.
 
-## 5. Εναλλακτικές μέχρι τότε
-- Χειροκίνητο Lock Menu Key από τεχνικό (όπως σήμερα), καταγεγραμμένο στο PMS ως «χειροκίνητο, μη επιβεβαιωμένο από PMS».
-- Αίτημα στην Expressluck/Realtek για υποστηριζόμενη διεπαφή (Hotel Mode API / MDM).
-- Device Owner μόνο μετά από ξεχωριστή αξιολόγηση (απαιτεί πλήρη επαναφορά TV ή αφαίρεση λογαριασμών, δεν είναι το ίδιο με το εργοστασιακό κλείδωμα).
+## 3. ⚠ Σημαντικά ευρήματα ασφάλειας στο εργοστασιακό APK
 
-Η υλοποίηση στο PMS (LOCKED / UNLOCKED / PENDING / FAILED / UNKNOWN / UNSUPPORTED, επιβεβαίωση από την TV, timeout, audit, ανάκτηση) θα γίνει **μόνο** αφού αποδειχθεί μηχανισμός στη 112.
+1. **Εργοστασιακό Hotel Mode = καταστροφή του Corali TV.** Αν ενεργοποιηθεί το Hotel Mode του Factory Menu (`hotel.bin` θέση 0 = 1), σε **κάθε εκκίνηση** η εφαρμογή:
+   - **απεγκαθιστά όλες τις εφαρμογές τρίτων** εκτός από Prime Video και Disney+ — **μαζί και το Corali TV**,
+   - κάνει `pm clear` σε YouTube / Netflix / Amazon.
+   ➜ **Μην ενεργοποιήσετε το εργοστασιακό Hotel Mode** στις τηλεοράσεις με Corali TV. (Στη 112 το Corali TV επιβιώνει τις επανεκκινήσεις, άρα σήμερα είναι ανενεργό.) Το Lock Menu Key δεν εξαρτάται από αυτό.
+2. Η εργοστασιακή εφαρμογή (system UID) έχει **εξαγόμενα στοιχεία χωρίς άδεια**:
+   - `hotel.BootUpReceiver` με την ενέργεια `com.realtek.hotelmenu.SETUP_HOTEL_MODE` — οποιαδήποτε εφαρμογή μπορεί να προκαλέσει την παραπάνω μαζική απεγκατάσταση όταν το Hotel Mode είναι ενεργό,
+   - `utils.PackageInstallService` — εγκαθιστά APK από διαδρομή που δίνει ο καλών, **με δικαιώματα συστήματος**,
+   - `user.LogCatService`.
+   Είναι κενά ασφαλείας του firmware (μια εφαρμογή που θα εγκαταστήσει ένας επισκέπτης θα μπορούσε να τα εκμεταλλευτεί). **Δεν τα χρησιμοποιούμε.** Προτείνεται αναφορά στην Expressluck / τον προμηθευτή για διόρθωση firmware.
+
+## 4. Προτεινόμενη ασφαλής αρχιτεκτονική
+
+**Τώρα (υλοποιήσιμο, χωρίς ADB, χωρίς ρίσκο):**
+- **Read Actual Status** στο PMS από τον Agent: `LOCKED` (Ρυθμίσεις DISABLED **και** τα 2 τμήματα launcher απενεργοποιημένα), `UNLOCKED`, `PARTIAL` (μόνο κάποια από αυτά), `UNKNOWN` (δεν διαβάστηκε / TV εκτός σύνδεσης), με ώρα ανάγνωσης.
+- **Emergency Recovery:** εντολή PMS «Άνοιγμα Factory Menu στην TV» για τεχνικό στο δωμάτιο (Engineer Mode Option → Lock Menu Key → Off), με επιβεβαίωση από την ανάγνωση κατάστασης.
+- **Lock / Unlock από το PMS:** `UNSUPPORTED` — κουμπιά απενεργοποιημένα με εξήγηση.
+
+**Για πλήρες απομακρυσμένο Lock / Unlock** χρειάζεται ένα από:
+- **Επίσημη διεπαφή Expressluck/Realtek** (π.χ. εξαγόμενο service/receiver προστατευμένο με άδεια `signature` για εγκεκριμένο πιστοποιητικό, ή ενσωμάτωση Corali TV ως system app υπογεγραμμένη από τον κατασκευαστή). Αυτό είναι το σωστό αίτημα προς τον προμηθευτή.
+- **Device Owner** (ξεχωριστή αξιολόγηση/έγκριση: απαιτεί TV χωρίς λογαριασμούς κατά τη ρύθμιση· δίνει `setApplicationHidden` και περιορισμούς χρήστη — άλλος μηχανισμός, θέλει δικές του δοκιμές).
+
+## 5. Δοκιμές
+Οι δοκιμές της ενότητας 6 της προδιαγραφής (Lock/Unlock από PMS) **δεν μπορούν να γίνουν**, γιατί δεν υπάρχει αποδεδειγμένος μηχανισμός. Για την ανάγνωση κατάστασης / ανάκτηση: μετά την υλοποίηση, στη 112 με Lock Menu Key On/Off από το Factory Menu και έλεγχο ότι το PMS δείχνει LOCKED/UNLOCKED, και μετά από επανεκκίνηση.
