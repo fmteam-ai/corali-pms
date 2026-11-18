@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { TvScreenRow } from "@/lib/tv";
 import type { CommandRow } from "@/lib/tv-commands";
 import { agentState, FINAL_STATUSES, type SoundPolicy } from "../../../scripts/tv-command-core.mjs";
+import { Fold } from "./fold";
 
 type Policy = SoundPolicy & { rev?: number };
 type Data = { screens: TvScreenRow[]; policies: Record<number, Policy>; commands: Record<number, CommandRow>; soundApp: number; preset: SoundPolicy; factoryMenuApp?: number; menuLockApp?: number; isOwner?: boolean; canMenuLock?: boolean };
@@ -221,8 +222,7 @@ export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; ca
   const selected = [...sel];
 
   return (
-    <div className="hubCard">
-      <h2>{T.title}</h2>
+    <Fold card title={T.title}>
       <small>{T.help}</small>
       {!canCommand && !canPolicy && <p className="muted">{T.noPerm}</p>}
       <p className="notice"><b>{T.menuLock} (Lock / Unlock): Corali TV 1.16 · {T.sourceLock}: {T.unsupported}</b><br /><small>{T.lockHelp}</small><br /><small>{T.unsupportedHelp}</small></p>
@@ -252,8 +252,7 @@ export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; ca
       )}
 
       {(canPolicy || canCommand) && (
-        <div className="hubCard">
-          <h3>{T.resets}</h3>
+        <Fold title={T.resets}>
           <small>{T.resetsHelp}</small>
           {canPolicy && <div className="tvAdminChecks">
             <b>{T.preset}:</b>
@@ -277,7 +276,7 @@ export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; ca
               ))}</ul>
             </div>
           )}
-        </div>
+        </Fold>
       )}
 
       <div className="tableWrap"><table>
@@ -331,6 +330,6 @@ export function SoundManager({ lang, canCommand, canPolicy }: { lang: string; ca
         })}</tbody>
       </table></div>
       {msg && <p className="notice" role="status">{msg}</p>}
-    </div>
+    </Fold>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { Fold } from "./fold";
 import { TranslateButton } from "../translate-button";
 import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 import type { TvScreenRow } from "@/lib/tv";
@@ -156,8 +157,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
 
   return (
     <div className="tvAdmin">
-      <div className="hubCard">
-        <h2>{t("tv.general")}</h2>
+      <Fold card title={t("tv.general")}>
         <div className="tvAdminGrid">
           <label>{t("tv.wifiSsid")}<input value={settings.wifiSsid} maxLength={64} disabled={!canEdit} onChange={(e) => set({ wifiSsid: e.target.value })} /></label>
           <label>{t("tv.wifiPassword")}<input value={settings.wifiPassword} maxLength={64} disabled={!canEdit} onChange={(e) => set({ wifiPassword: e.target.value })} /></label>
@@ -278,7 +278,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
           </div>
         )}
         </Fold>
-        <h3>{t("tv.appsTitle")}</h3>
+        <Fold title={t("tv.appsTitle")} count={settings.apps.length}>
         <small>{t("tv.appsHelp")}</small>
         <div className="tvAppsEdit">
           {tvAppCatalog.map((app) => <label key={app.key} className="inline tvAppCheck"><input type="checkbox" checked={hasApp(app.key)} disabled={!canEdit || (!hasApp(app.key) && settings.apps.length >= MAX_TV_APPS)} onChange={(e) => toggleApp(app, e.target.checked)} /><span className="tvAppDot" style={{ background: app.color }} />{app.name}</label>)}
@@ -292,6 +292,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
           </div>
         ))}
         {canEdit && <button type="button" className="secondaryButton" disabled={settings.apps.length >= MAX_TV_APPS} onClick={() => setApps([...settings.apps, { key: `custom:new${Date.now()}`, name: "", packages: [], color: "#173e47" }])}>+ {t("tv.appAdd")} ({t("tv.appCustom")})</button>}
+        </Fold>
         <Fold title={t("tv.channelsTitle")} count={settings.channels.length}>
         <small>{t("tv.channelsHelp")}</small>
         <div className="tvChannelEdit">
@@ -310,7 +311,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         </div>
         </Fold>
         {canEdit && <button type="button" disabled={busy} onClick={() => post({ action: "settings", settings }, t("tv.saved"))}>{t("tv.save")}</button>}
-      </div>
+      </Fold>
 
       <Fold title={t("tv.screens")} count={screens.length} big>
       <p className="muted">{t("tv.screensHelp")}</p>
@@ -368,7 +369,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
           );
         })}</tbody></table></div>
       </Fold>
-      <p className="notice" role="status">{msg}</p>
+      {msg && <p className="notice" role="status">{msg}</p>}
       {canEdit && (dirty || msg === t("tv.saved")) && (
         <div className={`tvSaveBar${dirty ? "" : " done"}`} role="region" aria-label={t("tv.save")}>
           <span>{dirty ? t("tv.unsaved") : `✓ ${t("tv.saved")}`}</span>
@@ -376,8 +377,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         </div>
       )}
 
-      <div className="hubCard">
-        <h2>{t("tv.powerTitle")}</h2>
+      <Fold card title={t("tv.powerTitle")}>
         <small>{t("tv.powerHelp")}</small>
         <div className="tvAdminChecks"><label className="inline"><input type="checkbox" checked={power.enabled} disabled={!canEdit} onChange={(e) => setPower({ ...power, enabled: e.target.checked })} /> <b>{t("tv.powerEnabled")}</b></label></div>
         <div className="tvAdminGrid">
@@ -395,30 +395,16 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
           {canEdit && <button type="button" disabled={busy} onClick={() => void savePower()}>{t("tv.save")}</button>}
           <button type="button" className="secondaryButton" disabled={busy || !powerReady} onClick={() => void checkPlugs()}>{t("tv.plugCheck")}</button>
         </div>
-      </div>
+      </Fold>
 
-      <details className="hubCard tvSetup">
-        <summary><b>{t("tv.appTitle")}</b></summary>
+      <Fold card title={t("tv.appTitle")}>
         <ol>{["tv.app1", "tv.app2", "tv.app3", "tv.app4", "tv.app5", "tv.app6"].map((k) => <li key={k}>{t(k as Parameters<typeof t>[0])}</li>)}</ol>
-      </details>
+      </Fold>
 
-      <details className="hubCard tvSetup">
-        <summary><b>{t("tv.setupTitle")}</b></summary>
+      <Fold card title={t("tv.setupTitle")}>
         <ol>{["tv.setup1", "tv.setup2", "tv.setup3", "tv.setup4", "tv.setup5", "tv.setup6"].map((k) => <li key={k}>{t(k as Parameters<typeof t>[0])}</li>)}</ol>
-      </details>
+      </Fold>
     </div>
   );
 }
 
-/** A section that opens and closes with an arrow; closed by default, remembered per browser. */
-function Fold({ title, count, big, children }: { title: string; count?: number; big?: boolean; children: ReactNode }) {
-  const key = `corali.tv.fold.${title}`;
-  const ref = useRef<HTMLDetailsElement>(null);
-  useEffect(() => { try { if (ref.current && localStorage.getItem(key) === "1") ref.current.open = true; } catch { /* private mode */ } }, [key]);
-  return (
-    <details ref={ref} className={`tvFold${big ? " big" : ""}`} onToggle={(e) => { try { localStorage.setItem(key, e.currentTarget.open ? "1" : "0"); } catch { /* private mode */ } }}>
-      <summary>{big ? <h2>{title}</h2> : <h3>{title}</h3>}{count !== undefined && <span className="tvFoldCount">{count}</span>}</summary>
-      <div className="tvFoldBody">{children}</div>
-    </details>
-  );
-}

@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PrivacyJob } from "@/lib/tv-privacy";
 import { TV_CAPABILITIES } from "../../../scripts/tv-privacy-core.mjs";
+import { Fold } from "./fold";
 
 type Room = { room_id: number; room_code: string; enabled: boolean; executor: string; baseline_at: number | null; app_version: number | null };
 type Data = { jobs: PrivacyJob[]; rooms: Room[]; gateway: { lastSeenAt: number; dryRun: boolean | null } | null; bridgeConfigured: boolean };
@@ -15,7 +16,10 @@ const EL: Record<string, string> = {
   help2: "Από τη v162 μπορεί να το κάνει η ίδια η τηλεόραση (Corali TV 1.13, «Εκτέλεση: η ίδια η TV»), χωρίς υπολογιστή: καθαρίζει εφαρμογές και προσωρινά αρχεία, αφαιρεί προφίλ επισκέπτη και ελέγχει για λογαριασμό Google ή Bluetooth επισκέπτη. Μέχρι να αποδειχθούν όλα, το δωμάτιο δείχνει «Εκκρεμεί εκκαθάριση προσωπικών δεδομένων» και η TV ξαναδοκιμάζει μόνη της.",
   gateway: "Gateway", gwNever: "δεν έχει συνδεθεί ποτέ", gwOnline: "συνδεδεμένο", gwOffline: "εκτός σύνδεσης από", dry: "δοκιμαστική λειτουργία (χωρίς διαγραφές)", live: "κανονική λειτουργία",
   notConfigured: "Η σύνδεση gateway δεν είναι ενεργή: χρειάζεται TV_PRIVACY_BRIDGE_TOKEN (≥ 32 χαρακτήρες) στο runtime.env του PMS (οδηγίες: tools/tv-privacy-gateway/INSTALL-GR.md).",
-  rooms: "Δωμάτια με καθαρισμό στο check-out", history: "Ιστορικό ανά check-out", room: "Δωμάτιο", booking: "Κράτηση", checkout: "Check-out", status: "Αποτέλεσμα", apps: "Εφαρμογές", guestApps: "Εφαρμογές επισκέπτη", review: "Έλεγχος προσωπικού",
+  rooms: "Δωμάτια με καθαρισμό στο check-out",
+  roomsHelp: "Τσεκαρισμένο = η TV του δωματίου καθαρίζεται στο check-out. «Εκτέλεση»: ποιος κάνει τον καθαρισμό — η ίδια η TV (Corali TV 1.13+, χωρίς υπολογιστή) ή ο υπολογιστής-gateway στο δίκτυο του ξενοδοχείου.",
+  allRooms: "Όλα τα δωμάτια", allOn: "Ενεργοποίηση καθαρισμού", allOff: "Απενεργοποίηση καθαρισμού", allTv: "Εκτέλεση: η ίδια η TV", allGw: "Εκτέλεση: gateway",
+  bulkConfirm: "{a} σε {n} δωμάτια;", history: "Ιστορικό ανά check-out", room: "Δωμάτιο", booking: "Κράτηση", checkout: "Check-out", status: "Αποτέλεσμα", apps: "Εφαρμογές", guestApps: "Εφαρμογές επισκέπτη", review: "Έλεγχος προσωπικού",
   reviewed: "Ελέγχθηκε", markReviewed: "Ελέγχθηκε", retry: "Επανάληψη", remove: "Αφαίρεση", removeConfirm: "Αφαίρεση της εφαρμογής «{p}» από την τηλεόραση του δωματίου {r};\n\nΘα αφαιρεθεί μόνο αυτή η εφαρμογή, μόνο αν δεν έχει κάνει check-in νέος επισκέπτης. Τα δεδομένα της θα χαθούν.",
   none: "—", noJobs: "Δεν υπάρχουν ακόμα check-out με καθαρισμό.", caps: "Κατάσταση δυνατοτήτων τηλεόρασης (όπως έχει τεκμηριωθεί)", failed: "Η ενέργεια δεν επιτράπηκε ή απέτυχε.",
   s_QUEUED: "⏳ σε αναμονή του gateway",
@@ -78,15 +82,21 @@ export function PrivacyManager({ lang, canAdmin, canReview }: { lang: string; ca
   };
 
   return (
-    <div className="hubCard">
-      <h2>{T.title}</h2>
+    <Fold card title={T.title}>
       <small>{T.help}</small>
       <small> {T.help2}</small>
       {!data.bridgeConfigured && data.rooms.some((r) => r.enabled && r.executor === "gateway") && <p className="notice">{T.notConfigured}</p>}
-      <p><b>{T.gateway}:</b> {!data.gateway ? <span className="debit">{T.gwNever}</span> : gwOnline ? <span className="credit">● {T.gwOnline}</span> : <span className="debit">{T.gwOffline} {at(data.gateway.lastSeenAt)}</span>}
-        {data.gateway?.dryRun !== null && data.gateway?.dryRun !== undefined && <small className="muted"> · {data.gateway.dryRun ? T.dry : T.live}</small>}</p>
+      {data.rooms.some((r) => r.executor === "gateway" && r.enabled) && <p><b>{T.gateway}:</b> {!data.gateway ? <span className="debit">{T.gwNever}</span> : gwOnline ? <span className="credit">● {T.gwOnline}</span> : <span className="debit">{T.gwOffline} {at(data.gateway.lastSeenAt)}</span>}
+        {data.gateway?.dryRun !== null && data.gateway?.dryRun !== undefined && <small className="muted"> · {data.gateway.dryRun ? T.dry : T.live}</small>}</p>}
 
-      <h3>{T.rooms}</h3>
+      <Fold title={T.rooms} count={data.rooms.filter((r) => r.enabled).length}>
+      <small className="muted">{T.roomsHelp}</small>
+      {canAdmin && data.rooms.length > 0 && <div className="tvAdminChecks">
+        <b>{T.allRooms} ({data.rooms.length}):</b>
+        {([[T.allOn, { enabled: true }], [T.allOff, { enabled: false }], [T.allTv, { executor: "tv_agent" }], [T.allGw, { executor: "gateway" }]] as const).map(([label, patch]) => (
+          <button key={label} type="button" className="secondaryButton" disabled={busy} onClick={() => { if (window.confirm(T.bulkConfirm.replace("{a}", label).replace("{n}", String(data.rooms.length)))) void post({ action: "rooms", roomIds: data.rooms.map((r) => r.room_id), ...patch }); }}>{label}</button>
+        ))}
+      </div>}
       <div className="tableWrap"><table>
         <thead><tr><th>{T.room}</th><th>{T.executor}</th><th>{T.status}</th></tr></thead>
         <tbody>{data.rooms.map((r) => {
@@ -105,8 +115,9 @@ export function PrivacyManager({ lang, canAdmin, canReview }: { lang: string; ca
           );
         })}</tbody>
       </table></div>
+      </Fold>
 
-      <h3>{T.history}</h3>
+      <Fold title={T.history} count={data.jobs.length}>
       {!data.jobs.length ? <p className="muted">{T.noJobs}</p> : (
         <div className="tableWrap"><table>
           <thead><tr><th>{T.room}</th><th>{T.booking}</th><th>{T.checkout}</th><th>{T.status}</th><th>{T.apps}</th><th>{T.guestApps}</th><th>{T.review}</th></tr></thead>
@@ -131,12 +142,13 @@ export function PrivacyManager({ lang, canAdmin, canReview }: { lang: string; ca
           ))}</tbody>
         </table></div>
       )}
+      </Fold>
 
       <details>
         <summary><b>{T.caps}</b></summary>
         <ul className="plainList">{Object.entries(TV_CAPABILITIES).map(([k, v]) => <li key={k}><b>{tx(`c_${k}`)}:</b> <code>{v.status}</code> <small className="muted">{v.note}</small></li>)}</ul>
       </details>
       {msg && <p className="notice" role="status">{msg}</p>}
-    </div>
+    </Fold>
   );
 }

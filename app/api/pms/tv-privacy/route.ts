@@ -9,6 +9,8 @@ import { isRemovableGuestPackage } from "../../../../scripts/tv-privacy-core.mjs
 const input = z.discriminatedUnion("action", [
   // Admin: which rooms' TVs are cleared at check-out.
   z.object({ action: z.literal("room"), roomId: z.number().int().positive(), enabled: z.boolean(), executor: z.enum(["gateway", "tv_agent"]).optional() }),
+  // Admin: the same for several rooms at once (only the fields given change).
+  z.object({ action: z.literal("rooms"), roomIds: z.array(z.number().int().positive()).min(1).max(200), enabled: z.boolean().optional(), executor: z.enum(["gateway", "tv_agent"]).optional() }),
   // Reception / housekeeping lead: the app screens were checked on the TV after the clearing.
   z.object({ action: z.literal("review"), jobId: z.number().int().positive() }),
   // Admin: try a failed / unverified job again (the gateway re-checks for a new guest before every clear).
@@ -33,6 +35,9 @@ async function handlePOST(request: Request) {
   let r;
   if (x.action === "room") {
     r = await db().query(`UPDATE tv_screens SET privacy_clear=$3,privacy_executor=COALESCE($4,privacy_executor) WHERE owner_id=$1 AND room_id=$2`, [u.ownerId, x.roomId, x.enabled ? 1 : 0, x.executor ?? null]);
+  } else if (x.action === "rooms") {
+    if (x.enabled === undefined && x.executor === undefined) return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
+    r = await db().query(`UPDATE tv_screens SET privacy_clear=COALESCE($3,privacy_clear),privacy_executor=COALESCE($4,privacy_executor) WHERE owner_id=$1 AND room_id = ANY($2::bigint[])`, [u.ownerId, x.roomIds, x.enabled === undefined ? null : x.enabled ? 1 : 0, x.executor ?? null]);
   } else if (x.action === "review") {
     // Only a finished clearing can be marked as checked; the review never changes the job's own result.
     r = await db().query(

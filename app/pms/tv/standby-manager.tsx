@@ -4,6 +4,7 @@
 // Low Power Standby, idle, validated network), silences of the TV (gaps), on-demand diagnostics, the OFF method, and
 // standby tests (OFF now, ON after 10′ / 1 h / 12 h) whose verdict the PMS records by itself.
 import { useCallback, useEffect, useState } from "react";
+import { Fold } from "./fold";
 
 type Ev = { at: number; kind: string; detail: { seconds?: number; screenBefore?: number | null; on?: boolean } };
 type Room = { room_id: number; room_code: string; method: string; app_version: number | null; screen_off_permission: boolean | null; power_state: string; reachable: boolean; last_heartbeat: number | null;
@@ -54,8 +55,7 @@ export function StandbyManager({ lang, canAdmin, canDiag }: { lang: string; canA
   const flag = (v: boolean | null | undefined) => (v === true ? T.yes : v === false ? T.no : T.unk);
 
   return (
-    <div className="hubCard">
-      <h2>{T.title}</h2>
+    <Fold card title={T.title}>
       <small>{T.help}</small>
       <div className="tableWrap"><table>
         <thead><tr><th>{T.room}</th><th>{T.state}</th><th>{T.standby}</th><th>{T.settings}</th><th>{T.events}</th></tr></thead>
@@ -87,8 +87,7 @@ export function StandbyManager({ lang, canAdmin, canDiag }: { lang: string; canA
         })}</tbody>
       </table></div>
 
-      {data.tests.length > 0 && <>
-        <h3>{T.tests}</h3>
+      {data.tests.length > 0 && <Fold title={T.tests} count={data.tests.length}>
         <div className="tableWrap"><table>
           <thead><tr><th>{T.room}</th><th>{T.test}</th><th>{T.state}</th></tr></thead>
           <tbody>{data.tests.map((t) => (
@@ -101,8 +100,8 @@ export function StandbyManager({ lang, canAdmin, canDiag }: { lang: string; canA
             </tr>
           ))}</tbody>
         </table></div>
-      </>}
+      </Fold>}
       {msg && <p className="notice" role="status">{msg}</p>}
-    </div>
+    </Fold>
   );
 }

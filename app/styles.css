@@ -944,3 +944,5 @@ table.numeric tr.selected td{background:#fff8e6}
 
 /* Αυτόματα μηνύματα: one checkbox per line */
 .automationEditor .autoCheck{display:flex;align-items:center;gap:8px;margin:6px 0}
+/* Corali TV: whole cards that fold (General, Power, Sound & Hotel Mode, Standby, Check-out clearing). */
+details.tvFold.tvFoldCard.hubCard{padding:0;gap:0;margin:12px 0}.tvFold.tvFoldCard>summary{padding:14px 16px}.tvFold.tvFoldCard>.tvFoldBody{padding:4px 16px 16px}
