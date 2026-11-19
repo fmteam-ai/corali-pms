@@ -42,6 +42,13 @@ public class ParseTest {
     List<String> kept = BootLog.recent(Arrays.asList((now - 25 * hr) + "|old", "19/11 14:02:23  no time", (now - 23 * hr) + "|day", now + "|now", "x|bad"), now);
     check(kept.equals(Arrays.asList((now - 23 * hr) + "|day", now + "|now")), "boot log: last 24 h only");
     check(BootLog.text(now + "|19/11 15:39:42  MainActivity created").equals("19/11 15:39:42  MainActivity created") && BootLog.text("plain").equals("plain"), "boot log: shown without the ms");
+    // 1.20: self-update — only the update file in this app's shared files directory, only «pm install -r».
+    for (String c : new String[]{AppUpdater.installCommand("/storage/emulated/0/Android/data/gr.hotelcorali.tv/files/corali-update.apk"), AppUpdater.installCommand("/sdcard/Android/data/gr.hotelcorali.tv/files/corali-update.apk")}) check(SelfAdbProbe.allowed(c), "allowed: " + c);
+    for (String c : new String[]{"shell:pm install -r /sdcard/Download/x.apk", "shell:pm install -r -d /sdcard/Android/data/gr.hotelcorali.tv/files/corali-update.apk",
+        "shell:pm install /sdcard/Android/data/gr.hotelcorali.tv/files/corali-update.apk", "shell:pm install -r /sdcard/Android/data/gr.hotelcorali.tv/files/corali-update.apk; reboot",
+        "shell:pm install -r /sdcard/Android/data/gr.hotelcorali.tv/files/../../com.x/files/corali-update.apk", "shell:pm install -r /data/local/tmp/corali-update.apk"}) check(!SelfAdbProbe.allowed(c), "refused: " + c);
+    check(AppUpdater.validFile("corali-tv-pilot.apk") && !AppUpdater.validFile("../x.apk") && !AppUpdater.validFile("a/b.apk") && !AppUpdater.validFile("x.exe"), "update file name");
+    check(AppUpdater.validSha("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") && !AppUpdater.validSha("xyz"), "update sha256");
     System.out.println("ALL OK");
   }
 }

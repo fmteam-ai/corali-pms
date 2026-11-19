@@ -35,7 +35,7 @@ public class WakeService extends Service {
     private static final String CHANNEL = "corali_tv";
     private static final String TAG = "CoraliTV";
     /** Sent with every check; must match android:versionCode. */
-    static final int VERSION_CODE = 20;
+    static final int VERSION_CODE = 21;
     private static final long CAPS_EVERY_MS = 10 * 60_000;
     private static final long URGENT_CHECK_MS = 20_000;
 
@@ -138,6 +138,10 @@ public class WakeService extends Service {
         }
         if ("MENU_LOCK".equals(type) || "MENU_UNLOCK".equals(type)) {
             menuLock(id, "MENU_LOCK".equals(type), pm);
+            return;
+        }
+        if ("APP_UPDATE".equals(type)) {
+            appUpdate(id, c, pm);
             return;
         }
         if ("NETWORK_DIAGNOSTICS".equals(type)) {
@@ -257,6 +261,7 @@ public class WakeService extends Service {
                 if (sound.has("detail")) body.put("detail", sound.getString("detail"));
                 if (sound.has("menuLock")) body.put("menuLock", sound.getString("menuLock"));
                 if (sound.has("blank")) body.put("blank", sound.getBoolean("blank"));
+                if (sound.has("version")) body.put("version", sound.getInt("version"));
             }
             URL url = new URL(screen.getScheme() + "://" + screen.getAuthority() + "/api/public/tv/" + Uri.encode(token) + "/command");
             http = (HttpURLConnection) url.openConnection();
@@ -475,6 +480,61 @@ public class WakeService extends Service {
                 }, 3_000);
             }
         }, 3_000);
+    }
+
+    // ---- 1.20 (v172): the app updates itself from the PMS (see AppUpdater).
+
+    private void appUpdate(final long id, final JSONObject c, final PowerManager pm) {
+        final int target = c.optInt("value", 0);
+        final String file = c.optString("file", ""), sha = c.optString("sha256", "");
+        if (target <= VERSION_CODE) { updateReport(id, true, pm, "", "already " + VERSION_CODE); return; }
+        final String url = AppUpdater.downloadUrl(new Prefs(this).screenUrl(), file);
+        if (url == null || !AppUpdater.validSha(sha)) { updateReport(id, false, pm, "BAD_REQUEST", "file=" + file); return; }
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    BootLog.add(WakeService.this, "update " + id + ": download " + file + " (→ " + target + ")");
+                    java.io.File apk = AppUpdater.download(WakeService.this, url, sha);
+                    String cmd = AppUpdater.installCommand(apk.getAbsolutePath());
+                    if (!SelfAdbProbe.allowed(cmd)) { updateReport(id, false, pm, "PATH_NOT_ALLOWED", apk.getAbsolutePath()); return; }
+                    // Saved before installing: the install replaces (and restarts) this app; the new one reports.
+                    new Prefs(WakeService.this).setUpdate(id, target);
+                    BootLog.add(WakeService.this, "update " + id + ": installing");
+                    SelfAdbProbe.Result r = SelfAdbProbe.shell(getFilesDir(), cmd);
+                    String out = r.detail == null ? "" : r.detail.trim().replaceAll("\\s+", " ");
+                    BootLog.add(WakeService.this, "update " + id + ": " + r.status.name() + " " + out);
+                    // «Success»: Android is replacing the app right now; the restarted app reports its versionCode.
+                    if (r.status == SelfAdbProbe.Status.PASS && PrivacyParse.success(out)) return;
+                    new Prefs(WakeService.this).setUpdate(0, 0);
+                    updateReport(id, false, pm, r.status == SelfAdbProbe.Status.PASS ? "INSTALL_FAILED" : "SELF_ADB_" + r.status.name(), out.length() > 300 ? out.substring(0, 300) : out);
+                } catch (Exception e) {
+                    String code = e.getMessage() != null && e.getMessage().matches("[A-Z0-9_]{2,40}") ? e.getMessage() : "DOWNLOAD_FAILED";
+                    BootLog.add(WakeService.this, "update " + id + ": " + code + " " + e.getClass().getSimpleName());
+                    updateReport(id, false, pm, code, e.getClass().getSimpleName());
+                }
+            }
+        }, "corali-update").start();
+    }
+
+    /** At start: the result of an update that replaced the app (the new versionCode decides it on the PMS). */
+    private void updateResult() {
+        Prefs prefs = new Prefs(this);
+        long id = prefs.updateId();
+        if (id <= 0) return;
+        int target = prefs.updateTarget();
+        prefs.setUpdate(0, 0);
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        BootLog.add(this, "update " + id + ": now " + VERSION_CODE + " (target " + target + ")");
+        updateReport(id, VERSION_CODE >= target, pm, VERSION_CODE >= target ? "" : "VERSION_NOT_CHANGED", "versionCode " + VERSION_CODE);
+    }
+
+    private void updateReport(long id, boolean ok, PowerManager pm, String error, String detail) {
+        try {
+            report(id, ok, pm.isInteractive(), error, new JSONObject().put("version", VERSION_CODE).put("detail", detail));
+        } catch (Exception e) {
+            report(id, ok, pm.isInteractive(), error.isEmpty() ? "REPORT_ERROR" : error);
+        }
     }
 
     // ---- 1.18: Settings lock from the PMS: the TV's Settings app disabled / enabled through the TV's own ADB.
@@ -698,6 +758,8 @@ public class WakeService extends Service {
         try { getContentResolver().registerContentObserver(Settings.System.CONTENT_URI, true, volumeWatch); } catch (RuntimeException ignored) { }
         background.post(new Runnable() { @Override public void run() { applyPowerOnVolume(); } });
         background.postDelayed(checkUrgent, 10_000);
+        // 1.20: report an update that restarted the app (after the network is up).
+        background.postDelayed(new Runnable() { @Override public void run() { updateResult(); } }, 5_000);
     }
 
     @Override

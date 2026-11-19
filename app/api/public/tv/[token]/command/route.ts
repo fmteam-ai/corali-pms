@@ -18,6 +18,8 @@ const input = z.object({
   menuLock: z.string().regex(/^s[0-4x]a[0-4x]h[0-4x](p[0-4x])?g[0-9x]e[0-9x]$/).optional(),
   // ≥ 1.16: SCREEN_OFF in the black-screen mode — the black screen is in front (the TV itself stays on).
   blank: z.boolean().optional(),
+  // ≥ 1.20: APP_UPDATE — the versionCode the app runs after the update (reported by the restarted app).
+  version: z.number().int().min(1).max(100000).optional(),
 });
 const noStore = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 

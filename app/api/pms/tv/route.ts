@@ -14,7 +14,7 @@ import { listScreens, loadTvSettings, setupCodeHash, SETUP_CODE_MS } from "@/lib
 import { normalizeTvSettings } from "@/lib/tv-core";
 import { loadPowerSettings, roomPowerStates, savePowerSettings, setRoomPower, syncRoomPower } from "@/lib/tv-power";
 import { validDeviceId } from "../../../../scripts/tv-power-core.mjs";
-import { validPowerMethod } from "../../../../scripts/tv-command-core.mjs";
+import { APP_UPDATE_APP, TV_APP_LATEST, validPowerMethod } from "../../../../scripts/tv-command-core.mjs";
 import { latestCommands, queueCommand } from "@/lib/tv-commands";
 
 const input = z.discriminatedUnion("action", [
@@ -26,6 +26,7 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("powerDevice"), roomId: z.number().int().positive(), deviceId: z.string().trim().max(64).refine((v) => v === "" || validDeviceId(v)), channel: z.number().int().min(0).max(3).default(0) }),
   z.object({ action: z.literal("power"), roomId: z.number().int().positive(), on: z.boolean() }),
   z.object({ action: z.literal("screenCommand"), roomId: z.number().int().positive(), command: z.enum(["SCREEN_ON", "SCREEN_OFF", "SHOW_WELCOME"]) }),
+  z.object({ action: z.literal("appUpdate"), roomId: z.number().int().positive() }),
   z.object({ action: z.literal("powerMethod"), roomId: z.number().int().positive(), method: z.string().refine(validPowerMethod) }),
   z.object({ action: z.literal("screenStatus") }),
   z.object({ action: z.literal("powerStatus") }),
@@ -80,6 +81,16 @@ async function handlePOST(request: Request) {
     if (x.action === "screenCommand") {
       // Queued only: the PMS shows PENDING → DELIVERED → EXECUTED / FAILED / TIMEOUT as the room's app reports back.
       const cmd = await queueCommand(u.ownerId, x.roomId, x.command, "manual", u.id);
+      return Response.json({ ok: Boolean(cmd), command: cmd, error: cmd ? undefined : "NOT_FOUND" }, { status: cmd ? 200 : 404 });
+    }
+    if (x.action === "appUpdate") {
+      // v172: only an app that can update itself (≥ 1.20) and is older than the build in public/downloads.
+      const v = (await db().query(`SELECT app_version FROM tv_screens WHERE owner_id=$1 AND room_id=$2`, [u.ownerId, x.roomId])).rows[0];
+      if (!v) return Response.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+      const version = v.app_version === null ? null : Number(v.app_version);
+      if (version === null || version < APP_UPDATE_APP) return Response.json({ ok: false, error: "APP_TOO_OLD" }, { status: 409 });
+      if (version >= TV_APP_LATEST.versionCode) return Response.json({ ok: false, error: "ALREADY_LATEST" }, { status: 409 });
+      const cmd = await queueCommand(u.ownerId, x.roomId, "APP_UPDATE", "manual", u.id, TV_APP_LATEST.versionCode, { ttlMs: 30 * 60_000 });
       return Response.json({ ok: Boolean(cmd), command: cmd, error: cmd ? undefined : "NOT_FOUND" }, { status: cmd ? 200 : 404 });
     }
     if (x.action === "screenStatus") return Response.json({ ok: true, screens: await listScreens(u.ownerId), commands: await latestCommands(u.ownerId) });

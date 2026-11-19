@@ -20,7 +20,18 @@ export const MENU_LOCK_COMMANDS = ["MENU_LOCK", "MENU_UNLOCK"];
 export const MENU_LOCK_APP = 19;
 /** v164: the app reports its power / network diagnostics (Corali TV ≥ 1.15). */
 export const DIAG_COMMANDS = ["NETWORK_DIAGNOSTICS"];
-export const ALL_COMMANDS = [...SCREEN_COMMANDS, ...VOLUME_COMMANDS, ...FACTORY_COMMANDS, ...DIAG_COMMANDS];
+/**
+ * v172: the Corali TV app updates itself from the PMS (≥ 1.20, versionCode 21): it downloads the APK named here from
+ * its own server, checks the SHA-256, installs it through the TV's own ADB (pm install -r: Android accepts it only if it
+ * is signed like the installed app) and, restarted, reports its new versionCode. EXECUTED only when that is the target.
+ */
+export const UPDATE_COMMANDS = ["APP_UPDATE"];
+export const APP_UPDATE_APP = 21;
+/** Download and install take longer than a screen command: no report after this is UNVERIFIED. */
+export const APP_UPDATE_ACK_MS = 10 * 60_000;
+/** The newest Corali TV build in public/downloads (tests check the hash against the file). */
+export const TV_APP_LATEST = { versionCode: 21, name: "1.20", file: "corali-tv-pilot.apk", sha256: "b9d385033fe837a561a129952eb69539d74d56cbdc221814c36886e080f4bdae" };
+export const ALL_COMMANDS = [...SCREEN_COMMANDS, ...VOLUME_COMMANDS, ...FACTORY_COMMANDS, ...DIAG_COMMANDS, ...UPDATE_COMMANDS];
 /** A volume read back within this many percentage points of the target counts as applied (Android volume steps). */
 export const VOLUME_TOLERANCE = 7;
 export const COMMAND_STATUSES = ["PENDING", "DELIVERED", "EXECUTED", "FAILED", "TIMEOUT", "UNVERIFIED", "CANCELLED"];
@@ -44,7 +55,8 @@ export const validPowerMethod = (m) => AVAILABLE_POWER_METHODS.includes(String(m
 export function expiredStatus(cmd, now) {
   if (FINAL_STATUSES.includes(cmd.status)) return cmd.status;
   if (cmd.status === "PENDING" && now >= Number(cmd.expires_at)) return "TIMEOUT";
-  if (cmd.status === "DELIVERED" && cmd.delivered_at !== null && cmd.delivered_at !== undefined && now - Number(cmd.delivered_at) >= ACK_TIMEOUT_MS) return "UNVERIFIED";
+  const ack = cmd.command === "APP_UPDATE" ? APP_UPDATE_ACK_MS : ACK_TIMEOUT_MS;
+  if (cmd.status === "DELIVERED" && cmd.delivered_at !== null && cmd.delivered_at !== undefined && now - Number(cmd.delivered_at) >= ack) return "UNVERIFIED";
   return cmd.status;
 }
 
@@ -61,6 +73,7 @@ export function reportStatus(cmd, report) {
   if (cmd.command === "NETWORK_DIAGNOSTICS") return typeof report?.detail === "string" && report.detail.length > 0 ? "EXECUTED" : "UNVERIFIED";
   if (cmd.command === "OPEN_FACTORY_MENU") return report?.opened === true ? "EXECUTED" : report?.opened === false ? "FAILED" : "UNVERIFIED";
   if (MENU_LOCK_COMMANDS.includes(cmd.command)) return menuLockVerdict(cmd.command, report).status;
+  if (cmd.command === "APP_UPDATE") return Number.isInteger(report?.version) && report.version >= Number(cmd.value ?? Infinity) ? "EXECUTED" : "FAILED";
   if (interactive === null) return "UNVERIFIED";
   // v167: «off» as a black screen (Corali TV 1.16): the TV stays on, the app reports the black screen in front.
   if (cmd.command === "SCREEN_OFF") return report?.blank === true ? "EXECUTED" : interactive ? "FAILED" : "EXECUTED";

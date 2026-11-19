@@ -13,7 +13,7 @@ import { channelSource, MAX_TV_CHANNELS, tvChannelCategories, type TvChannel } f
 import { MAX_TV_APPS, tvAppCatalog, type TvApp } from "@/lib/tv-apps-core";
 import type { PowerSettings, RoomPowerState } from "@/lib/tv-power";
 import type { CommandRow } from "@/lib/tv-commands";
-import { agentState, AVAILABLE_POWER_METHODS, FINAL_STATUSES, POWER_METHODS } from "../../../scripts/tv-command-core.mjs";
+import { agentState, AVAILABLE_POWER_METHODS, FINAL_STATUSES, POWER_METHODS, APP_UPDATE_APP, TV_APP_LATEST } from "../../../scripts/tv-command-core.mjs";
 
 const langNames: Record<TvLanguage, string> = { el: "Ελληνικά", en: "English", fr: "Français", de: "Deutsch", it: "Italiano", es: "Español" };
 const ONLINE_MS = 10 * 60_000;
@@ -134,6 +134,12 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
     const d = await call({ action: "screenCommand", roomId: s.room_id, command });
     if (d.ok && d.command) { setCommands((c) => ({ ...c, [s.room_id]: d.command })); setMsg(t("tv.cmdQueued").replace("{room}", s.room_code)); }
     else setMsg(t("tv.failed"));
+  }
+  async function appUpdate(s: TvScreenRow) {
+    if (!window.confirm(t("tv.appUpdateConfirm").replace("{room}", s.room_code).replace("{v}", TV_APP_LATEST.name))) return;
+    const d = await call({ action: "appUpdate", roomId: s.room_id });
+    if (d.ok && d.command) { setCommands((c) => ({ ...c, [s.room_id]: d.command })); setMsg(t("tv.cmdQueued").replace("{room}", s.room_code)); }
+    else setMsg(`${t("tv.failed")}${d.error ? ` (${d.error})` : ""}`);
   }
   async function setMethod(s: TvScreenRow, method: string) {
     const d = await call({ action: "powerMethod", roomId: s.room_id, method });
@@ -350,6 +356,9 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
                       <small className={st === "screen_on" || st === "online" ? "credit" : st === "screen_off" ? "" : "debit"}>📺 {t((st === "offline" && s.screen_interactive === 0 ? "tv.agent_offline_off" : `tv.agent_${st}`) as Parameters<typeof t>[0])}{s.screen_seen_at ? ` · ${t("tv.lastCheck")} ${at(s.screen_seen_at)}` : ""}</small>
                       {s.app_version !== null && <small className="muted">Corali TV {s.app_version >= 11 ? `1.${s.app_version - 1}` : s.app_version >= 9 ? "1.8+" : `v${s.app_version}`} · {s.app_admin === 1 ? t("tv.adminYes") : t("tv.adminNo")}</small>}
                       {(s.app_version === null || s.app_version < 9) && s.screen_seen_at && <small className="debit">{t("tv.agentOld")}</small>}
+                      {s.app_version !== null && s.app_version < TV_APP_LATEST.versionCode && (s.app_version >= APP_UPDATE_APP
+                        ? canEdit && <span><button type="button" className="secondaryButton" disabled={busy} onClick={() => void appUpdate(s)}>{t("tv.appUpdate").replace("{v}", TV_APP_LATEST.name)}</button></span>
+                        : <small className="muted">{t("tv.appUpdateManual").replace("{v}", TV_APP_LATEST.name)}</small>)}
                       {canEdit && <span><button type="button" className="secondaryButton" disabled={busy} onClick={() => void sendScreen(s, "SCREEN_ON")}>{t("tv.screenOn")}</button><button type="button" className="secondaryButton" disabled={busy} onClick={() => void sendScreen(s, "SCREEN_OFF")}>{t("tv.screenOff")}</button><button type="button" className="secondaryButton" disabled={busy} onClick={() => void sendScreen(s, "SHOW_WELCOME")}>{t("tv.showWelcome")}</button></span>}
                       {c && <small className={c.status === "EXECUTED" ? "credit" : ["FAILED", "TIMEOUT", "UNVERIFIED"].includes(c.status) ? "debit" : ""}>{t("tv.lastCmd")}: {t(`tv.cmd_${c.command}` as Parameters<typeof t>[0])} ({t(c.source === "auto" ? "tv.cmdAuto" : "tv.cmdManual")}, {at(c.created_at)}) → <b>{t(`tv.cmdStatus_${c.status}` as Parameters<typeof t>[0])}</b>{c.finished_at ? ` ${at(c.finished_at)}` : ""}{c.error ? ` · ${c.error === "TURNED_ON_BY_REMOTE" ? t("tv.err_TURNED_ON_BY_REMOTE") : c.error}` : ""}</small>}
                     </span>

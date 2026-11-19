@@ -56,6 +56,8 @@ public final class SelfAdbProbe {
     // 1.13 (v162): the check-out clearing. A closed list of command shapes, each argument checked; nothing else can
     // be sent. Never the hotel's or Android's own packages, never user 0, never Wi-Fi / settings / accounts commands.
     private static final String PKG = "[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)+";
+    /** 1.20: «pm install -r» of exactly the update file in this app's shared files directory; no other path, no flags. */
+    static final Pattern APP_INSTALL = Pattern.compile("shell:pm install -r (/sdcard|/storage/emulated/[0-9]{1,3}|/storage/self/primary)/Android/data/gr\\.hotelcorali\\.tv/files/corali-update\\.apk");
     private static final Pattern[] ALLOWED = {
         Pattern.compile("shell:pm list packages( -3)?"),
         Pattern.compile("shell:pm list users"),
@@ -76,6 +78,8 @@ public final class SelfAdbProbe {
         // 1.15 (v164): read-only power / foreground state, and the TV's own sleep / wake keys (what the remote sends).
         if (DUMP_ACTIVITIES.equals(command) || DUMP_POWER.equals(command) || KEY_WAKEUP.equals(command) || KEY_SLEEP.equals(command)) return true;
         if (SETTINGS_DISABLE.equals(command) || SETTINGS_ENABLE.equals(command) || STORE_DISABLE.equals(command) || STORE_ENABLE.equals(command)) return true;
+        // 1.20 (v172): install this app's own update file (hash checked first; Android requires the same signature).
+        if (APP_INSTALL.matcher(command).matches()) return true;
         for (Pattern pattern : ALLOWED) {
             java.util.regex.Matcher m = pattern.matcher(command);
             if (!m.matches()) continue;

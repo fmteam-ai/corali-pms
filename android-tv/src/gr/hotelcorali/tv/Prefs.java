@@ -23,6 +23,10 @@ final class Prefs {
     /** The last PMS screen command run (each id once, also after a restart). */
     long lastCommand() { return p.getLong("last_command", 0); }
     void setLastCommand(long id) { p.edit().putLong("last_command", id).apply(); }
+    /** 1.20: an APP_UPDATE that was installing when the app was replaced (reported by the restarted app). */
+    long updateId() { return p.getLong("update_id", 0); }
+    int updateTarget() { return p.getInt("update_target", 0); }
+    void setUpdate(long id, int target) { p.edit().putLong("update_id", id).putInt("update_target", target).commit(); }
     /** The room's sound policy from the PMS, as JSON ({defaultVolume, maxVolume, enforceMax, rev}). */
     String soundPolicy() { return p.getString("sound_policy", "{}"); }
     void setSoundPolicy(String json) { p.edit().putString("sound_policy", json).apply(); }

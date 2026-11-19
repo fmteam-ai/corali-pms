@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { hotelToday } from "@/lib/tape-chart";
 import { hotelTime } from "@/lib/tv";
 import { loadPowerSettings, POWER_METHOD_SQL } from "@/lib/tv-power";
-import { EVENT_KEEP_MS, GAP_MS, MENU_LOCK_COMMANDS, menuLockState, menuLockVerdict, parseMenuLockRaw, type StandbyDiag } from "../scripts/tv-command-core.mjs";
+import { EVENT_KEEP_MS, GAP_MS, TV_APP_LATEST, MENU_LOCK_COMMANDS, menuLockState, menuLockVerdict, parseMenuLockRaw, type StandbyDiag } from "../scripts/tv-command-core.mjs";
 import { agentState, autoCommand, COMMAND_TTL_MS, expiredStatus, normalizeSoundPolicy, parseCapabilities, reportStatus, resetPlan, resetRoomStatus, type ResetAction, type ResetStatus, type SoundPolicy, type TvCommand } from "../scripts/tv-command-core.mjs";
 import { desiredPower } from "../scripts/tv-power-core.mjs";
 
@@ -15,9 +15,9 @@ const toRow = (x: Record<string, unknown>): CommandRow => ({ id: Number(x.id), r
 
 /** Close commands whose time ran out (TIMEOUT / UNVERIFIED), for one room or all. */
 async function expire(ownerId: string, roomId: number | null, now: number) {
-  const rows = (await db().query(`SELECT id,status,expires_at,delivered_at FROM tv_screen_commands WHERE owner_id=$1 AND status IN ('PENDING','DELIVERED') ${roomId === null ? "" : "AND room_id=$2"}`, roomId === null ? [ownerId] : [ownerId, roomId])).rows;
+  const rows = (await db().query(`SELECT id,command,status,expires_at,delivered_at FROM tv_screen_commands WHERE owner_id=$1 AND status IN ('PENDING','DELIVERED') ${roomId === null ? "" : "AND room_id=$2"}`, roomId === null ? [ownerId] : [ownerId, roomId])).rows;
   for (const r of rows) {
-    const next = expiredStatus({ status: String(r.status), expires_at: Number(r.expires_at), delivered_at: num(r.delivered_at) }, now);
+    const next = expiredStatus({ status: String(r.status), expires_at: Number(r.expires_at), delivered_at: num(r.delivered_at), command: String(r.command) }, now);
     if (next !== r.status) {
       await db().query(`UPDATE tv_screen_commands SET status=$2,error=$3,finished_at=$4 WHERE id=$1 AND status=$5`, [r.id, next, next === "TIMEOUT" ? "NOT_DELIVERED" : "NO_REPORT", now, r.status]);
     }
@@ -47,7 +47,7 @@ export async function queueCommand(ownerId: string, roomId: number, command: TvC
  * automatic arrival / check-out rule for «android_agent» rooms, and hands over the newest waiting command (once).
  */
 export type AgentReport = { interactive: boolean | null; version: number | null; admin: boolean | null; volume?: number | null; muted?: boolean | null; fixed?: boolean | null; caps?: Record<string, unknown> | null; clamped?: boolean; policyRev?: number | null; menuLock?: string | null; standby?: StandbyDiag | null };
-export type AgentAnswer = { command: { id: number; command: string; value: number | null; cap: number | null } | null; policy: (SoundPolicy & { rev: number }) | null; standby?: { network: boolean; offMode: string } | null };
+export type AgentAnswer = { command: { id: number; command: string; value: number | null; cap: number | null; file?: string; sha256?: string } | null; policy: (SoundPolicy & { rev: number }) | null; standby?: { network: boolean; offMode: string } | null };
 
 export async function agentCheck(ownerId: string, roomId: number, report: AgentReport): Promise<AgentAnswer> {
   const now = Date.now();
@@ -105,7 +105,10 @@ async function deliver(ownerId: string, roomId: number, now: number, soundOnly: 
     `UPDATE tv_screen_commands SET status='DELIVERED',delivered_at=$3 WHERE id=(SELECT id FROM tv_screen_commands WHERE owner_id=$1 AND room_id=$2 AND status='PENDING' AND COALESCE(not_before,0)<=$3 ${soundOnly ? "AND command NOT IN ('SCREEN_ON','SCREEN_OFF')" : ""} ORDER BY id ASC LIMIT 1) AND status='PENDING' RETURNING id,command,value,cap`,
     [ownerId, roomId, now],
   )).rows[0];
-  return next ? { id: Number(next.id), command: String(next.command), value: num(next.value), cap: num(next.cap) } : null;
+  if (!next) return null;
+  const cmd = { id: Number(next.id), command: String(next.command), value: num(next.value), cap: num(next.cap) };
+  // v172: the app downloads this file from its own server and installs it only if the SHA-256 matches.
+  return cmd.command === "APP_UPDATE" ? { ...cmd, file: TV_APP_LATEST.file, sha256: TV_APP_LATEST.sha256 } : cmd;
 }
 
 /** Sound policies of all rooms (desired state set in PMS → Corali TV → Ήχος). */
@@ -132,7 +135,7 @@ export async function saveSoundPolicy(ownerId: string, roomIds: number[], raw: u
 }
 
 /** The app's report for a delivered command; applied once. */
-export async function agentReport(ownerId: string, roomId: number, id: number, report: { status?: string; interactive?: boolean; error?: string; volume?: number; muted?: boolean; fixed?: boolean; opened?: boolean; detail?: string; menuLock?: string }): Promise<string | null> {
+export async function agentReport(ownerId: string, roomId: number, id: number, report: { status?: string; interactive?: boolean; error?: string; volume?: number; muted?: boolean; fixed?: boolean; opened?: boolean; detail?: string; menuLock?: string; version?: number }): Promise<string | null> {
   const r = (await db().query(`SELECT id,command,status,value,cap,created_at FROM tv_screen_commands WHERE id=$1 AND owner_id=$2 AND room_id=$3`, [id, ownerId, roomId])).rows[0];
   if (!r) return null;
   let next = reportStatus({ status: String(r.status), command: String(r.command), value: num(r.value), cap: num(r.cap) }, report);
@@ -149,7 +152,8 @@ export async function agentReport(ownerId: string, roomId: number, id: number, r
   }
   // v167: Lock / Unlock — the server's own verdict from the reported state (the TV's code when it refused).
   const lockVerdict = MENU_LOCK_COMMANDS.includes(String(r.command) as never) ? menuLockVerdict(String(r.command), report) : null;
-  const error = (byOther ? "TURNED_ON_BY_REMOTE" : next === "EXECUTED" ? "" : String(lockVerdict?.error || report.error || (next === "UNVERIFIED" ? "NO_STATE" : "STATE_DID_NOT_CHANGE"))).replace(/[^A-Za-z0-9_ .:-]/g, "").slice(0, 120);
+  const updateError = String(r.command) === "APP_UPDATE" && next === "FAILED" && !report.error ? "VERSION_NOT_CHANGED" : "";
+  const error = (byOther ? "TURNED_ON_BY_REMOTE" : next === "EXECUTED" ? "" : String(lockVerdict?.error || report.error || updateError || (next === "UNVERIFIED" ? "NO_STATE" : "STATE_DID_NOT_CHANGE"))).replace(/[^A-Za-z0-9_ .:-]/g, "").slice(0, 120);
   const now = Date.now();
   if (report.menuLock && parseMenuLockRaw(report.menuLock)) {
     await db().query(`UPDATE tv_screens SET menu_lock_raw=$3,menu_lock_state=$4,menu_lock_seen_at=$5 WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId, report.menuLock, menuLockState(report.menuLock), now]);
@@ -158,6 +162,7 @@ export async function agentReport(ownerId: string, roomId: number, id: number, r
   // v164: the TV's own text (wake method used, diagnostics), printable characters only, at most 4000.
   const detail = typeof report.detail === "string" ? report.detail.replace(/[^\x20-\x7E\n\u0370-\u03FF]/g, "").slice(0, 4000) : null;
   await db().query(`UPDATE tv_screen_commands SET status=$2,error=$3,finished_at=$4,result_volume=$5,result_muted=$6,result_text=COALESCE($7,result_text) WHERE id=$1 AND status='DELIVERED'`, [id, next, error2, now, Number.isInteger(report.volume) ? report.volume : null, typeof report.muted === "boolean" ? (report.muted ? 1 : 0) : null, detail]);
+  if (Number.isInteger(report.version)) await db().query(`UPDATE tv_screens SET app_version=$3 WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId, report.version]);
   if (Number.isInteger(report.volume) || typeof report.muted === "boolean") {
     await db().query(`UPDATE tv_screens SET volume_percent=COALESCE($3,volume_percent),volume_muted=COALESCE($4,volume_muted) WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId, Number.isInteger(report.volume) ? report.volume : null, typeof report.muted === "boolean" ? (report.muted ? 1 : 0) : null]);
   }
