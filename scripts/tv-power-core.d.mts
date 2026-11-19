@@ -1,5 +1,7 @@
 export type PowerStay = { status: string; check_in: string; check_out: string };
-export type PowerSettings = { enabled: boolean; server: string; onTime: string; autoOn: boolean; autoOff: boolean; appScreen: boolean; allowCycle: boolean; soundPreset: { defaultVolume: number; maxVolume: number; enforceMax: boolean }; acEnabled: boolean; acPresence: boolean; acAwayMinutes: number; climate: import("./room-climate-core.mjs").ClimateSettings };
+export type PowerSettings = { enabled: boolean; server: string; onTime: string; autoOn: boolean; autoOff: boolean; appScreen: boolean; allowCycle: boolean; soundPreset: { defaultVolume: number; maxVolume: number; enforceMax: boolean }; acEnabled: boolean; acPresence: boolean; acAwayMinutes: number; climate: import("./room-climate-core.mjs").ClimateSettings; ir: IrSettings };
+export type IrSettings = { auto: boolean; mode: number; temp: number; wind: number };
+export declare function normalizeIrSettings(raw: unknown): IrSettings;
 export declare function desiredPower(stays: PowerStay[], today: string, time: string, onTime: string): boolean;
 export declare function shellyServer(input: unknown): string;
 export declare function validDeviceId(id: unknown): boolean;

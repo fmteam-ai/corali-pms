@@ -2391,3 +2391,22 @@ CREATE TABLE IF NOT EXISTS tv_power_tests (
   created_by BIGINT
 );
 CREATE INDEX IF NOT EXISTS tv_power_tests_room ON tv_power_tests(owner_id, room_id, id DESC);
+
+-- v170: room IR hubs (Tuya, e.g. Avatto S16): A/C on / off by infrared (on at check-in with the hotel's mode and
+-- temperature, off at check-out) and the TV's Power key (a TV left fully off after a power cut). IR is one-way: the
+-- result kept here is «sent by the hub», never «done by the appliance».
+CREATE TABLE IF NOT EXISTS room_ir (
+ owner_id TEXT NOT NULL,
+ room_id BIGINT NOT NULL,
+ hub_id TEXT NOT NULL DEFAULT '',
+ ac_remote_id TEXT NOT NULL DEFAULT '',
+ tv_remote_id TEXT NOT NULL DEFAULT '',
+ tv_key_json TEXT,
+ last_ac TEXT NOT NULL DEFAULT '',
+ last_ac_at BIGINT,
+ last_ac_error TEXT NOT NULL DEFAULT '',
+ last_tv_at BIGINT,
+ last_tv_error TEXT NOT NULL DEFAULT '',
+ updated_at BIGINT NOT NULL,
+ PRIMARY KEY(owner_id,room_id)
+);

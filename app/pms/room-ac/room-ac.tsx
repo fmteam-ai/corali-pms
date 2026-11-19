@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { AcStatus } from "@/lib/room-ac";
+import { RoomIr } from "./room-ir";
 import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 
 type State = AcStatus;
@@ -112,6 +113,7 @@ export function RoomAc({ lang, canSetup, canSwitch }: { lang: PmsLang; canSetup:
           ); })}</tbody>
         </table>
       </section>
+      <RoomIr lang={lang} rooms={data.rooms} canSetup={canSetup} canSwitch={canSwitch} />
       <section className="card acHelp">
         <h3>{t("ac.howTitle")}</h3>
         <ol>

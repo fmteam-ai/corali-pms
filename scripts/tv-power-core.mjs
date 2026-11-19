@@ -4,6 +4,7 @@
 
 import { normalizeClimateSettings } from "./room-climate-core.mjs";
 import { normalizeSoundPreset } from "./tv-command-core.mjs";
+import { acScene } from "./tuya-core.mjs";
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -50,7 +51,16 @@ export function normalizePowerSettings(raw) {
     acAwayMinutes: Number.isFinite(Number(x.acAwayMinutes)) && x.acAwayMinutes !== "" && x.acAwayMinutes !== null ? Math.min(240, Math.max(5, Math.round(Number(x.acAwayMinutes)))) : 20,
     // Room temperature / humidity sensors: alert thresholds.
     climate: normalizeClimateSettings(x.climate),
+    // v170: A/C by infrared (Tuya IR hub): automatic on at check-in / off at check-out, and the state sent on «on».
+    ir: normalizeIrSettings(x.ir),
   };
+}
+
+/** v170: IR A/C settings: mode 0 cool / 1 heat / 2 auto / 3 fan / 4 dry, 16–30 °C, fan 0 auto … 3 high. */
+export function normalizeIrSettings(raw) {
+  const r = raw && typeof raw === "object" ? raw : {};
+  const s = acScene({ mode: r.mode, temp: r.temp, wind: r.wind });
+  return { auto: r.auto === true || r.auto === 1, mode: s.mode, temp: s.temp, wind: s.wind };
 }
 
 /** Manual on/off from the PMS for an empty room lasts this long; for an occupied room, until check-in / check-out. */
