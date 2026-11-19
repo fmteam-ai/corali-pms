@@ -58,7 +58,15 @@ async function run(){const r=await pool.query(`SELECT * FROM message_automation_
  let reference;if(delivery.channel==="email"){if(event==="review"&&!Number(b.email_marketing_opt_in))throw Error("SKIPPED_NOT_ELIGIBLE");reference=await email(b.guest_email,interpolate(template.subject,values),interpolate(template.body,values))}else {if(!Number(b.whatsapp_opt_in))throw Error("WHATSAPP_NOT_OPTED_IN");if(triggered&&(!Number(settings.whatsapp_enabled)||!template.whatsappTemplate))throw Error("SKIPPED_NOT_ELIGIBLE");reference=await whatsapp(b.guest_phone,event,lang,template.whatsappTemplate,values)}await pool.query(`UPDATE message_deliveries SET status='sent',provider_reference=$1,sent_at=$2,last_error=NULL,updated_at=$2 WHERE id=$3`,[reference??"accepted",Date.now(),delivery.id])
  }catch(e){const skipped=e instanceof Error&&e.message==="SKIPPED_NOT_ELIGIBLE";await pool.query(`UPDATE message_deliveries SET status=$1,last_error=$2,updated_at=$3 WHERE id=$4`,[skipped?"skipped":"failed",e instanceof Error?e.message.slice(0,250):"SEND_FAILED",Date.now(),delivery.id])}}
  console.log(`Automation scan complete: ${bookings.rowCount} bookings`)}
-try{await run().catch(e=>{console.error("Guest message automations failed",e);process.exitCode=1});
+// v173: a step that hangs (mail server, webhook) stops waiting after its limit, so the steps after it still run.
+const limit=(name,ms,p)=>Promise.race([p,new Promise((_,j)=>setTimeout(()=>j(Error(`${name}: TIMEOUT ${ms/1000}s`)),ms).unref())]);
+try{
+ // v173: room devices first — fast, and never held up by the e-mail / WhatsApp steps below.
+ // Room A/C with presence sensors: every minute, so power returns within a minute when the guest comes back.
+ await limit("A/C presence",40_000,runRoomAc({pool,owner,unseal,seal,presenceOnly:true})).catch(e=>console.error("A/C presence failed",e instanceof Error?e.message:e))
+ // Room temperature / humidity sensors: read every ~10 minutes, alerts to the PMS.
+ await limit("Room climate",60_000,runRoomClimate({pool,owner,unseal,seal})).then(r=>r&&console.log(`${new Date().toISOString()} Room climate: ${r.read}/${r.rooms} sensors read, ${r.alerts} alert(s)${r.error?`, error ${r.error}`:""}`)).catch(e=>console.error("Room climate failed",e instanceof Error?e.message:e))
+ await limit("Guest messages",240_000,run()).catch(e=>{console.error("Guest message automations failed",e);process.exitCode=1});
  // Virtual access cards (PMS → Digital key): a failure here never stops the guest messages above.
  await runAccessCards({pool,owner,seal,email,origin:process.env.BOOKING_ORIGIN}).catch(e=>console.error("Access cards failed",e))
  // Bulk messages to past guests (PMS → Bulk messages): a few per minute, consent and unsubscribes checked per message.
@@ -67,10 +75,6 @@ try{await run().catch(e=>{console.error("Guest message automations failed",e);pr
  await runApiWebhooks({pool,owner,unseal}).catch(e=>console.error("API webhooks failed",e))
  // Automatic pricing (PMS → Prices → Automatic pricing): hourly, inside the hotel's minimum / maximum.
  await runAutoPricing({pool,owner}).catch(e=>console.error("Auto pricing failed",e))
- // Room A/C with presence sensors: every minute, so power returns within a minute when the guest comes back.
- await runRoomAc({pool,owner,unseal,seal,presenceOnly:true}).catch(e=>console.error("A/C presence failed",e))
- // Room temperature / humidity sensors: read every ~10 minutes, alerts to the PMS.
- await runRoomClimate({pool,owner,unseal,seal}).catch(e=>console.error("Room climate failed",e))
  // New e-mails in the hotel's mailbox (PMS → Συνδέσεις → Εισερχόμενα email): a PMS notification with sound; read-only.
  await runMailInbox({pool,owner,credentials}).then(r=>r.stored&&console.log(`Mail inbox: ${r.stored} new`)).catch(e=>console.error("Mail inbox failed",e instanceof Error?e.message:e))
  // «Ενεργοποίηση εισερχομένων» WhatsApp requested from PMS → Συνδέσεις (done here, so the page never waits on Meta).

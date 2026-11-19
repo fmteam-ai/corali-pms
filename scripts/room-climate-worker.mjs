@@ -81,6 +81,5 @@ export async function runRoomClimate({ pool, owner, unseal, seal = null, force =
       alerts++;
     }
   }
-  if (alerts) console.log(`Room climate: ${read} sensors read, ${alerts} alert(s)`);
   return { rooms: rows.length, read, alerts, error };
 }
