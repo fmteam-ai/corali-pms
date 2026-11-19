@@ -221,6 +221,8 @@ export const POWER_STATES = ["ON", "STANDBY", "WAKING", "UNKNOWN", "ERROR"];
 export const POWER_OFF_MODES = ["device_admin", "sleep_key", "black_screen"];
 /** A check is expected every 20 s; a silence longer than this is recorded as a gap (TV / network asleep). */
 export const GAP_MS = 90_000;
+/** Power events (gaps, screen on / off) are kept for the last 24 hours only. */
+export const EVENT_KEEP_MS = 24 * 60 * 60_000;
 export function powerState({ seenAt, interactive, now, waking = false, lastFailedAt = null }) {
   const fresh = seenAt !== null && seenAt !== undefined && now - Number(seenAt) <= AGENT_ONLINE_MS;
   if (waking) return { state: "WAKING", reachable: fresh };

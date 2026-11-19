@@ -4,7 +4,7 @@ import { requireApiUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 import { latestCommands, queueCommand } from "@/lib/tv-commands";
-import { powerState, standbyVerdict } from "../../../../../scripts/tv-command-core.mjs";
+import { EVENT_KEEP_MS, powerState, standbyVerdict } from "../../../../../scripts/tv-command-core.mjs";
 
 /** Corali TV 1.15 (versionCode 16): Network Standby Manager, diagnostics, sleep-key OFF, verified wake. */
 const STANDBY_APP = 16;
@@ -31,7 +31,7 @@ async function overview(ownerId: string) {
   const failed = new Map((await db().query(
     `SELECT DISTINCT ON (room_id) room_id,finished_at FROM tv_screen_commands WHERE owner_id=$1 AND command IN ('SCREEN_ON','SCREEN_OFF') AND status IN ('FAILED','TIMEOUT') ORDER BY room_id,id DESC`, [ownerId],
   )).rows.map((x) => [Number(x.room_id), Number(x.finished_at)]));
-  const events = (await db().query(`SELECT room_id,at,kind,detail FROM (SELECT *,row_number() OVER (PARTITION BY room_id ORDER BY id DESC) n FROM tv_power_events WHERE owner_id=$1) e WHERE n<=12 ORDER BY id DESC`, [ownerId])).rows;
+  const events = (await db().query(`SELECT room_id,at,kind,detail FROM (SELECT *,row_number() OVER (PARTITION BY room_id ORDER BY id DESC) n FROM tv_power_events WHERE owner_id=$1 AND at>=$2) e WHERE n<=200 ORDER BY id DESC`, [ownerId, now - EVENT_KEEP_MS])).rows;
   const diag = new Map((await db().query(
     `SELECT DISTINCT ON (room_id) room_id,status,result_text,finished_at,created_at FROM tv_screen_commands WHERE owner_id=$1 AND command='NETWORK_DIAGNOSTICS' ORDER BY room_id,id DESC`, [ownerId],
   )).rows.map((x) => [Number(x.room_id), { status: String(x.status), text: String(x.result_text ?? ""), at: Number(x.finished_at ?? x.created_at) }]));

@@ -37,6 +37,11 @@ public class ParseTest {
         "shell:pm disable-user --user 0 com.android.tv.settings; reboot", "shell:pm enable --user 0 com.google.android.apps.tv.launcherx", "shell:settings put secure accessibility_enabled 1",
         "shell:appops set gr.hotelcorali.tv ACCESS_RESTRICTED_SETTINGS allow", "shell:settings put global hotel_menu_key_lock 1", "shell:settings put global hotel_enable 1",
         "shell:pm disable-user com.android.tv.settings", "shell:pm disable-user --user 0 com.google.android.youtube.tv", "shell:pm uninstall com.android.vending"}) check(!SelfAdbProbe.allowed(c), "refused: " + c);
+    // 1.19: the start-up log keeps only the last 24 hours; undated lines (older versions) are dropped.
+    long now = 1_800_000_000_000L, hr = 3_600_000L;
+    List<String> kept = BootLog.recent(Arrays.asList((now - 25 * hr) + "|old", "19/11 14:02:23  no time", (now - 23 * hr) + "|day", now + "|now", "x|bad"), now);
+    check(kept.equals(Arrays.asList((now - 23 * hr) + "|day", now + "|now")), "boot log: last 24 h only");
+    check(BootLog.text(now + "|19/11 15:39:42  MainActivity created").equals("19/11 15:39:42  MainActivity created") && BootLog.text("plain").equals("plain"), "boot log: shown without the ms");
     System.out.println("ALL OK");
   }
 }

@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { hotelToday } from "@/lib/tape-chart";
 import { hotelTime } from "@/lib/tv";
 import { loadPowerSettings, POWER_METHOD_SQL } from "@/lib/tv-power";
-import { GAP_MS, MENU_LOCK_COMMANDS, menuLockState, menuLockVerdict, parseMenuLockRaw, type StandbyDiag } from "../scripts/tv-command-core.mjs";
+import { EVENT_KEEP_MS, GAP_MS, MENU_LOCK_COMMANDS, menuLockState, menuLockVerdict, parseMenuLockRaw, type StandbyDiag } from "../scripts/tv-command-core.mjs";
 import { agentState, autoCommand, COMMAND_TTL_MS, expiredStatus, normalizeSoundPolicy, parseCapabilities, reportStatus, resetPlan, resetRoomStatus, type ResetAction, type ResetStatus, type SoundPolicy, type TvCommand } from "../scripts/tv-command-core.mjs";
 import { desiredPower } from "../scripts/tv-power-core.mjs";
 
@@ -64,10 +64,10 @@ export async function agentCheck(ownerId: string, roomId: number, report: AgentR
   if (row && before) {
     const prevSeen = num(before.screen_seen_at), prevOn = num(before.screen_interactive), nowOn = b(report.interactive);
     if (prevSeen !== null && now - prevSeen > GAP_MS) {
-      await db().query(`INSERT INTO tv_power_events(owner_id,room_id,at,kind,detail) VALUES($1,$2,$3,'GAP',$4::jsonb)`, [ownerId, roomId, now, JSON.stringify({ from: prevSeen, to: now, seconds: Math.round((now - prevSeen) / 1000), screenBefore: prevOn, screenAfter: nowOn })]);
+      await powerEvent(ownerId, roomId, now, "GAP", JSON.stringify({ from: prevSeen, to: now, seconds: Math.round((now - prevSeen) / 1000), screenBefore: prevOn, screenAfter: nowOn }));
     }
     if (nowOn !== null && prevOn !== null && nowOn !== prevOn) {
-      await db().query(`INSERT INTO tv_power_events(owner_id,room_id,at,kind,detail) VALUES($1,$2,$3,'SCREEN',$4::jsonb)`, [ownerId, roomId, now, JSON.stringify({ on: nowOn === 1, standby: report.standby ?? null })]);
+      await powerEvent(ownerId, roomId, now, "SCREEN", JSON.stringify({ on: nowOn === 1, standby: report.standby ?? null }));
     }
   }
   if (row && report.standby) await db().query(`UPDATE tv_screens SET standby_diag=$3 WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId, JSON.stringify(report.standby)]);
@@ -165,7 +165,7 @@ export async function agentReport(ownerId: string, roomId: number, id: number, r
     // v164: a screen change reported with a command is recorded as an event too (with the command that caused it).
     const prev = (await db().query(`SELECT screen_interactive FROM tv_screens WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId])).rows[0];
     if (prev && prev.screen_interactive !== null && Number(prev.screen_interactive) !== (report.interactive ? 1 : 0)) {
-      await db().query(`INSERT INTO tv_power_events(owner_id,room_id,at,kind,detail) VALUES($1,$2,$3,'SCREEN',$4::jsonb)`, [ownerId, roomId, now, JSON.stringify({ on: report.interactive, command: String(r.command), commandId: id })]);
+      await powerEvent(ownerId, roomId, now, "SCREEN", JSON.stringify({ on: report.interactive, command: String(r.command), commandId: id }));
     }
     await db().query(`UPDATE tv_screens SET screen_interactive=$3,screen_seen_at=$4 WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId, report.interactive ? 1 : 0, now]);
   }
@@ -243,4 +243,10 @@ export async function resetResults(ownerId: string, requestId: number): Promise<
     };
   });
   return { action: String(req.action), results };
+}
+
+/** Record a power event and drop this room's events older than 24 hours (only the last day is kept). */
+async function powerEvent(ownerId: string, roomId: number, now: number, kind: "GAP" | "SCREEN", detail: string): Promise<void> {
+  await db().query(`INSERT INTO tv_power_events(owner_id,room_id,at,kind,detail) VALUES($1,$2,$3,$4,$5::jsonb)`, [ownerId, roomId, now, kind, detail]);
+  await db().query(`DELETE FROM tv_power_events WHERE owner_id=$1 AND room_id=$2 AND at<$3`, [ownerId, roomId, now - EVENT_KEEP_MS]);
 }

@@ -46,6 +46,7 @@ export type PowerState = "ON" | "STANDBY" | "WAKING" | "UNKNOWN" | "ERROR";
 export declare const POWER_STATES: PowerState[];
 export declare const POWER_OFF_MODES: string[];
 export declare const GAP_MS: number;
+export declare const EVENT_KEEP_MS: number;
 export declare function powerState(x: { seenAt: number | null; interactive: number | null; now: number; waking?: boolean; lastFailedAt?: number | null }): { state: PowerState; reachable: boolean };
 export type StandbyDiag = { networkStandby: boolean | null; cpuWakeLockHeld: boolean | null; wifiLockHeld: boolean | null; lowPowerStandbyEnabled: boolean | null; lowPowerStandbyExempt: boolean | null; deviceIdle: boolean | null; networkValidated: boolean | null };
 export declare function parseStandbyDiag(q: Record<string, string | null | undefined>): StandbyDiag;
