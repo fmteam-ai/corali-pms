@@ -36,9 +36,13 @@ public final class MenuLockService extends AccessibilityService {
     static final String VALUE_ID = FACTORY_PKG + ":id/preference_value";
     static final String ROW_LABEL = "Lock Menu Key";
     /** AccessibilityService.GLOBAL_ACTION_DPAD_RIGHT / _BACK (API 33; constants, as the app is built against API 30). */
+    static final int DPAD_UP = 16;
+    static final int DPAD_DOWN = 17;
     static final int DPAD_RIGHT = 19;
+    /** At most this many ▼ / ▲ to bring the selection to the row (the page has 17 rows). */
+    private static final int MAX_MOVES = 24;
     static final int SDK_DPAD = 33;
-    static final long JOB_MS = 15_000;
+    static final long JOB_MS = 30_000;
     private static final int MAX_PRESSES = 2;
 
     /** One armed request at a time (from WakeService); read and written on the main thread. */
@@ -46,6 +50,10 @@ public final class MenuLockService extends AccessibilityService {
         final boolean lock;
         final long deadline;
         int presses;
+        int moves;
+        int stalls;
+        boolean up;
+        String lastFocus = "";
         boolean focusAsked;
         boolean sawFactory;
         volatile boolean done;
@@ -151,20 +159,50 @@ public final class MenuLockService extends AccessibilityService {
         if (!"On".equalsIgnoreCase(value) && !"Off".equalsIgnoreCase(value)) { finish(j, "LOCK_VALUE_UNREADABLE"); return; }
         if (j.presses >= MAX_PRESSES) { finish(j, "KEY_NO_EFFECT"); return; }
         if (Build.VERSION.SDK_INT < SDK_DPAD) { finish(j, "ANDROID_TOO_OLD"); return; }
-        if (!row.isFocused()) {
-            if (j.focusAsked) { finish(j, "FOCUS_REFUSED"); return; }
-            j.focusAsked = true;
-            if (!row.performAction(AccessibilityNodeInfo.ACTION_FOCUS)) { finish(j, "FOCUS_REFUSED"); return; }
-            retry();
+        // The ► key goes to the focused view: send it only when that is, at this moment, inside the «Lock Menu Key» row.
+        AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+        if (!inLockRow(focused)) {
+            // 1.16 on the HORIZON: the row does not take ACTION_FOCUS. Do what a technician does: move the selection
+            // with ▼ (▲ once the list ends), one row at a time, checking where it is after each key. ▼ / ▲ only move
+            // the selection; they never change a value.
+            if (!j.focusAsked) {
+                j.focusAsked = true;
+                if (row.performAction(AccessibilityNodeInfo.ACTION_FOCUS)) { retry(); return; }
+            }
+            String now = describe(focused);
+            if (j.moves > 0 && now.equals(j.lastFocus)) {
+                // Not moved: give the list a moment (an event may come before the focus changes), then reverse.
+                if (++j.stalls < 2) { main.postDelayed(new Runnable() { @Override public void run() { step(); } }, 500); return; }
+                if (j.up) { finish(j, "FOCUS_NOT_ON_LOCK_ROW"); return; }
+                j.up = true; // end of the list: go back up
+            }
+            j.stalls = 0;
+            if (j.moves >= MAX_MOVES) { finish(j, "FOCUS_NOT_ON_LOCK_ROW"); return; }
+            j.lastFocus = now;
+            j.moves++;
+            if (!performGlobalAction(j.up ? DPAD_UP : DPAD_DOWN)) { finish(j, "KEY_REFUSED"); return; }
+            main.postDelayed(new Runnable() { @Override public void run() { step(); } }, 450);
             return;
         }
-        // The ► key goes to the focused view: send it only when that is, at this moment, the «Lock Menu Key» row.
-        AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
-        if (focused == null || !ROW_ID.equals(focused.getViewIdResourceName())) { finish(j, "FOCUS_NOT_ON_LOCK_ROW"); return; }
         j.presses++;
         BootLog.add(this, "menu lock: «Lock Menu Key» " + value + " → ► (" + want + ")");
         if (!performGlobalAction(DPAD_RIGHT)) { finish(j, "KEY_REFUSED"); return; }
         main.postDelayed(new Runnable() { @Override public void run() { step(); } }, 1_200);
+    }
+
+    /** The focused view is the «Lock Menu Key» row or inside it (the row itself or a child holds the focus). */
+    private static boolean inLockRow(AccessibilityNodeInfo n) {
+        for (int i = 0; n != null && i < 4; i++, n = n.getParent()) {
+            if (ROW_ID.equals(n.getViewIdResourceName())) return true;
+        }
+        return false;
+    }
+
+    private static String describe(AccessibilityNodeInfo n) {
+        if (n == null) return "none";
+        android.graphics.Rect r = new android.graphics.Rect();
+        n.getBoundsInScreen(r);
+        return n.getViewIdResourceName() + "@" + r.toShortString();
     }
 
     private void retry() {
@@ -182,7 +220,7 @@ public final class MenuLockService extends AccessibilityService {
         j.result = result;
         j.done = true;
         if (job == j) job = null;
-        BootLog.add(this, "menu lock: " + result + " (screen value «" + j.screenValue + "»)");
+        BootLog.add(this, "menu lock: " + result + " (screen value «" + j.screenValue + "», moves " + j.moves + ")");
         leave(3);
     }
 

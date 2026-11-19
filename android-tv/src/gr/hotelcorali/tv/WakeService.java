@@ -35,7 +35,7 @@ public class WakeService extends Service {
     private static final String CHANNEL = "corali_tv";
     private static final String TAG = "CoraliTV";
     /** Sent with every check; must match android:versionCode. */
-    static final int VERSION_CODE = 17;
+    static final int VERSION_CODE = 18;
     private static final long CAPS_EVERY_MS = 10 * 60_000;
     private static final long URGENT_CHECK_MS = 20_000;
 
@@ -376,7 +376,7 @@ public class WakeService extends Service {
     private void diagnostics(long id, PowerManager pm) {
         NetworkStandbyManager ns = NetworkStandbyManager.get(this);
         StringBuilder sb = new StringBuilder();
-        sb.append("agent 1.16 · screen ").append(pm.isInteractive() ? "on" : "off").append(new Prefs(this).blank() ? " (black screen)" : "").append('\n');
+        sb.append("agent 1.17 · screen ").append(pm.isInteractive() ? "on" : "off").append(new Prefs(this).blank() ? " (black screen)" : "").append('\n');
         // 1.16: what the firmware says about silent boot / why it started (read only).
         sb.append("boot: quiescent=").append(sysProp("ro.boot.quiescent")).append(" · reason=").append(sysProp("sys.boot.reason"))
           .append(" · bootreason=").append(sysProp("ro.boot.bootreason")).append(" · factory_boot_mode=").append(sysProp("persist.sys.factory_boot_mode")).append('\n');
