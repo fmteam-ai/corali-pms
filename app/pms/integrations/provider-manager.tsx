@@ -21,7 +21,7 @@ export function ProviderManager({initial,editable}:{initial:ProviderView[];edita
     const clearSecrets=fields.secrets.filter(key=>data.get(`clear_${key}`)==="on");
     const response=await fetch("/api/pms/provider-connections",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({providerKey:selected,active:data.get("active")==="on",settings,secrets,clearSecrets})});
     const result=await response.json();
-    setMessage(response.ok?"Αποθηκεύτηκε. Τα μυστικά πεδία δεν εμφανίζονται ξανά.":result.error==="CREDENTIALS_REQUIRED"?"Συμπληρώστε τα απαιτούμενα κλειδιά πριν την ενεργοποίηση.":"Η αποθήκευση απέτυχε.");
+    setMessage(response.ok?"Αποθηκεύτηκε. Τα μυστικά πεδία δεν εμφανίζονται ξανά.":result.error==="CREDENTIALS_REQUIRED"?"Συμπληρώστε τα απαιτούμενα κλειδιά πριν την ενεργοποίηση.":result.error==="INVALID_INPUT"?"Κάποιο πεδίο δεν είναι έγκυρο (π.χ. Data center: eu, weu, us, cn ή in).":"Η αποθήκευση απέτυχε.");
     if(response.ok)await refresh();
   }
   async function test(){setMessage("Γίνεται έλεγχος σύνδεσης…");const response=await fetch("/api/pms/provider-connections",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({providerKey:selected})});const result=await response.json();setMessage(response.ok?"Η σύνδεση επαληθεύτηκε.":result.error==="TEST_NOT_AVAILABLE"?"Ο αυτόματος έλεγχος αυτού του παρόχου δεν είναι ακόμη διαθέσιμος.":"Ο έλεγχος σύνδεσης απέτυχε.");await refresh()}

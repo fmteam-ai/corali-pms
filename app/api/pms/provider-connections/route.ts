@@ -32,6 +32,11 @@ async function handlePUT(request:Request) {
   try {
     assertTrustedOrigin(request);
     const input = saveInput.parse(await request.json());
+    // v169: «EU», « eu », «Central Europe» → eu (the field takes the short code).
+    if (input.providerKey === "tuya" && typeof input.settings.dataCenter === "string") {
+      const dc = input.settings.dataCenter.trim().toLowerCase();
+      input.settings.dataCenter = /^central\s*europe/.test(dc) ? "eu" : /^western\s*europe/.test(dc) ? "weu" : /^(western\s*)?america/.test(dc) ? "us" : /^china/.test(dc) ? "cn" : /^india/.test(dc) ? "in" : dc;
+    }
     validateProviderFields(input.providerKey,input.settings,input.secrets);
     const fields = providerFields[input.providerKey];
     if (input.clearSecrets.some(key => !(fields.secrets as readonly string[]).includes(key))) throw new Error("INVALID_FIELDS");
@@ -51,8 +56,10 @@ async function handlePUT(request:Request) {
         smtp:{secrets:["password"],settings:["host","username","from"]},mydata:{secrets:["subscriptionKey"],settings:[]},
         meta:{secrets:["appSecret","pageAccessToken"],settings:["pageId"]},tiktok:{secrets:["clientSecret"],settings:["clientKey"]},
         channelManager:{secrets:["apiKey"],settings:["propertyCode"]},openai:{secrets:["apiKey"],settings:[]},anthropic:{secrets:["apiKey"],settings:[]},googlePlaces:{secrets:["apiKey"],settings:[]},
+        // v169: Tuya and IMAP were missing here, so saving them as «active» crashed (SAVE_FAILED) instead of saving.
+        tuya:{secrets:["accessId","accessSecret"],settings:["dataCenter"]},imap:{secrets:[],settings:[]},
       };
-      const needed=required[input.providerKey];
+      const needed=required[input.providerKey] ?? {secrets:[],settings:[]};
       if (input.active && (needed.secrets.some(key => !secrets[key])||needed.settings.some(key => !input.settings[key]))) throw new Error("CREDENTIALS_REQUIRED");
       const now=Date.now();
       await client.query(`INSERT INTO provider_connections(owner_id,provider_key,active,status,settings_json,secrets_encrypted,updated_by,updated_at)
