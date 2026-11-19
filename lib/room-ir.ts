@@ -4,8 +4,9 @@
 import { db } from "@/lib/db";
 import { documentKey } from "@/lib/env";
 import { decryptField, encryptField } from "@/lib/security/encryption";
-import { normalizeIrSettings, normalizePowerSettings, type IrSettings } from "../scripts/tv-power-core.mjs";
+import { irOnTemp, normalizeIrSettings, normalizePowerSettings, type IrSettings } from "../scripts/tv-power-core.mjs";
 import { cachedToken, tuyaCreds } from "../scripts/room-ac-worker.mjs";
+import { agentState } from "../scripts/tv-command-core.mjs";
 import { irAcPower, irAcScene, irPowerKey, irRemotes, irSendKey, type IrKey } from "../scripts/tuya-core.mjs";
 
 export type { IrSettings };
@@ -79,7 +80,8 @@ export async function irAc(ownerId: string, roomId: number, on: boolean, why: st
   if (!room?.hub_id || !room?.ac_remote_id) return "NO_IR_AC";
   const t = await tuya(ownerId);
   if (!t) return "TUYA_NOT_SET_UP";
-  const s = { ...(await irSettings(ownerId)), ...(scene ?? {}) };
+  const base = await irSettings(ownerId);
+  const s = { ...base, temp: irOnTemp(base), ...(scene ?? {}) };
   const label = on ? `on ${s.temp}° m${s.mode} w${s.wind} (${why})` : `off (${why})`;
   let error = "";
   try {
@@ -94,8 +96,15 @@ export async function irAc(ownerId: string, roomId: number, on: boolean, why: st
   return error;
 }
 
-/** The TV's Power key by IR (toggles: only for a TV that is fully off, e.g. after a power cut). */
+/**
+ * The TV's Power key by IR, only to turn ON a TV that does not answer (fully off, e.g. after a power cut). The key
+ * toggles, and on the HORIZON «off» opens a confirmation dialog that needs OK, so a TV whose Corali TV app answers is
+ * refused: on / off for it go through the app (TV_ANSWERS).
+ */
 export async function irTvPower(ownerId: string, roomId: number): Promise<string> {
+  const scr = (await db().query(`SELECT screen_seen_at,screen_interactive FROM tv_screens WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId])).rows[0];
+  const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+  if (scr && !["offline", "unknown"].includes(agentState(num(scr.screen_seen_at), num(scr.screen_interactive), Date.now()))) return "TV_ANSWERS";
   const room = (await db().query(`SELECT hub_id,tv_remote_id,tv_key_json FROM room_ir WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId])).rows[0];
   if (!room?.hub_id || !room?.tv_remote_id) return "NO_IR_TV";
   const t = await tuya(ownerId);
@@ -120,6 +129,7 @@ export async function irTvPower(ownerId: string, roomId: number): Promise<string
 
 /** Check-in → A/C on (hotel settings), check-out → A/C off; only rooms with an IR A/C and the automatic rule on. */
 export async function irAutoOnStay(ownerId: string, roomId: number, checkedIn: boolean): Promise<void> {
+  await db().query(`UPDATE room_ir SET limit_at=NULL,limit_count=0 WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId]); // a new stay: the limit starts again
   if (!(await irSettings(ownerId)).auto) return;
   const e = await irAc(ownerId, roomId, checkedIn, checkedIn ? "check-in" : "check-out");
   if (e && e !== "NO_IR_AC") console.error("IR A/C on stay change failed", roomId, e);

@@ -60,7 +60,46 @@ export function normalizePowerSettings(raw) {
 export function normalizeIrSettings(raw) {
   const r = raw && typeof raw === "object" ? raw : {};
   const s = acScene({ mode: r.mode, temp: r.temp, wind: r.wind });
-  return { auto: r.auto === true || r.auto === 1, mode: s.mode, temp: s.temp, wind: s.wind };
+  const deg = (v, d) => (Number.isFinite(Number(v)) && v !== "" && v !== null ? Math.min(30, Math.max(16, Math.round(Number(v)))) : d);
+  return {
+    auto: r.auto === true || r.auto === 1, mode: s.mode, temp: s.temp, wind: s.wind,
+    // v171: temperature limit through the room sensor (IR is one-way: the guest's setting cannot be read, only the room).
+    limit: r.limit === true || r.limit === 1, coolMin: deg(r.coolMin, 20), heatMax: deg(r.heatMax, 26),
+    quiet: r.quiet !== false && r.quiet !== 0,
+  };
+}
+
+/** IR_LIMIT: one correction per room at most this often, and at most this many in a row while the room stays out of range. */
+export const IR_LIMIT_EVERY_MS = 60 * 60_000;
+export const IR_LIMIT_MAX_IN_ROW = 3;
+const athensHour = (now) => Number(new Intl.DateTimeFormat("en-GB", { hour: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" }).format(new Date(now)));
+
+/** The temperature the A/C is set to on «on»: the hotel's, kept inside the limit when the limit is on. */
+export function irOnTemp(ir) {
+  if (!ir.limit) return ir.temp;
+  if (ir.mode === 0) return Math.max(ir.temp, ir.coolMin);
+  if (ir.mode === 1) return Math.min(ir.temp, ir.heatMax);
+  return ir.temp;
+}
+
+/**
+ * v171: should the PMS re-send the A/C setting because the room went past the hotel's limit? The season is the hotel's
+ * «on» mode: cooling → the room must not go below coolMin; heating → not above heatMax (other modes: no limit). Only
+ * for a checked-in room with a fresh sensor reading, not in quiet hours (23:00–08:00), at most once an hour and three
+ * times in a row (a room that is cold by itself, A/C off, is not corrected forever). Returns the state to send, or
+ * { send: null, inRange } (inRange resets the counter).
+ */
+export function irLimitDecision(ir, x) {
+  const none = (inRange) => ({ send: null, inRange });
+  if (!ir.limit || x.temp === null || x.temp === undefined || !x.occupied) return none(false);
+  if (!x.readAt || x.now - x.readAt > 20 * 60_000) return none(false);
+  const out = ir.mode === 0 ? x.temp < ir.coolMin : ir.mode === 1 ? x.temp > ir.heatMax : false;
+  if (!out) return none(true);
+  if (ir.quiet) { const h = athensHour(x.now); if (h >= 23 || h < 8) return none(false); }
+  if (x.lastAt && x.now - x.lastAt < IR_LIMIT_EVERY_MS) return none(false);
+  if ((x.count ?? 0) >= IR_LIMIT_MAX_IN_ROW) return none(false);
+  const temp = ir.mode === 0 ? Math.max(ir.temp, ir.coolMin + 1) : Math.min(ir.temp, ir.heatMax - 1);
+  return { send: { power: true, mode: ir.mode, temp: Math.min(30, Math.max(16, temp)), wind: ir.wind }, inRange: false };
 }
 
 /** Manual on/off from the PMS for an empty room lasts this long; for an occupied room, until check-in / check-out. */

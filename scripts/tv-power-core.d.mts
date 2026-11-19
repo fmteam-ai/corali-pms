@@ -1,6 +1,10 @@
 export type PowerStay = { status: string; check_in: string; check_out: string };
 export type PowerSettings = { enabled: boolean; server: string; onTime: string; autoOn: boolean; autoOff: boolean; appScreen: boolean; allowCycle: boolean; soundPreset: { defaultVolume: number; maxVolume: number; enforceMax: boolean }; acEnabled: boolean; acPresence: boolean; acAwayMinutes: number; climate: import("./room-climate-core.mjs").ClimateSettings; ir: IrSettings };
-export type IrSettings = { auto: boolean; mode: number; temp: number; wind: number };
+export type IrSettings = { auto: boolean; mode: number; temp: number; wind: number; limit: boolean; coolMin: number; heatMax: number; quiet: boolean };
+export declare const IR_LIMIT_EVERY_MS: number;
+export declare const IR_LIMIT_MAX_IN_ROW: number;
+export declare function irOnTemp(ir: IrSettings): number;
+export declare function irLimitDecision(ir: IrSettings, x: { temp: number | null; readAt: number | null; occupied: boolean; lastAt: number | null; count: number; now: number }): { send: { power: true; mode: number; temp: number; wind: number } | null; inRange: boolean };
 export declare function normalizeIrSettings(raw: unknown): IrSettings;
 export declare function desiredPower(stays: PowerStay[], today: string, time: string, onTime: string): boolean;
 export declare function shellyServer(input: unknown): string;

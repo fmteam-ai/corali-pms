@@ -2410,3 +2410,6 @@ CREATE TABLE IF NOT EXISTS room_ir (
  updated_at BIGINT NOT NULL,
  PRIMARY KEY(owner_id,room_id)
 );
+-- v171: temperature limit through the room sensor (last correction, corrections in a row while out of range).
+ALTER TABLE room_ir ADD COLUMN IF NOT EXISTS limit_at BIGINT;
+ALTER TABLE room_ir ADD COLUMN IF NOT EXISTS limit_count INTEGER NOT NULL DEFAULT 0;

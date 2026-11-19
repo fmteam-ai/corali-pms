@@ -2,9 +2,9 @@
 // values for the PMS and the TV assistant, and raise the three alerts (PMS notification; an A/C fault also opens a
 // maintenance notice for the room).
 import { climateFromStatus, evaluateClimate } from "./room-climate-core.mjs";
-import { normalizePowerSettings } from "./tv-power-core.mjs";
+import { irLimitDecision, normalizePowerSettings } from "./tv-power-core.mjs";
 import { cachedToken, tuyaCreds } from "./room-ac-worker.mjs";
-import { tuyaStatus } from "./tuya-core.mjs";
+import { irAcScene, tuyaStatus } from "./tuya-core.mjs";
 
 const parse = (v) => { try { return JSON.parse(String(v)); } catch { return null; } };
 const READ_EVERY_MS = 10 * 60_000;
@@ -21,8 +21,10 @@ export async function runRoomClimate({ pool, owner, unseal, seal = null, force =
     `SELECT c.*,r.code,
             (SELECT b.checked_in_at FROM bookings b WHERE b.owner_id=c.owner_id AND b.room_id=c.room_id AND b.status='checked_in' ORDER BY b.check_in DESC LIMIT 1) AS checked_in_at,
             EXISTS (SELECT 1 FROM bookings b WHERE b.owner_id=c.owner_id AND b.room_id=c.room_id AND b.status='checked_in') AS occupied,
-            a.state AS ac_state, a.changed_at AS ac_changed_at, a.device_id AS ac_device
+            a.state AS ac_state, a.changed_at AS ac_changed_at, a.device_id AS ac_device,
+            i.hub_id AS ir_hub, i.ac_remote_id AS ir_ac, i.limit_at AS ir_limit_at, i.limit_count AS ir_limit_count
        FROM room_climate c JOIN rooms r ON r.owner_id=c.owner_id AND r.id=c.room_id LEFT JOIN room_ac_devices a ON a.owner_id=c.owner_id AND a.room_id=c.room_id
+       LEFT JOIN room_ir i ON i.owner_id=c.owner_id AND i.room_id=c.room_id
       WHERE c.owner_id=$1 ORDER BY c.room_id`,
     [owner],
   )).rows;
@@ -30,10 +32,11 @@ export async function runRoomClimate({ pool, owner, unseal, seal = null, force =
   if (!force && rows.every((r) => r.checked_at && Number(r.checked_at) > now - READ_EVERY_MS)) return null;
   const tuya = await tuyaCreds(pool, owner, unseal);
   if (!tuya) return { rooms: rows.length, read: 0, alerts: 0, error: "TUYA_NOT_SET_UP" };
-  const s = normalizePowerSettings(parse((await pool.query(`SELECT settings_json FROM tv_power_settings WHERE owner_id=$1`, [owner])).rows[0]?.settings_json)).climate;
-  let status = {}, error = "";
+  const all = normalizePowerSettings(parse((await pool.query(`SELECT settings_json FROM tv_power_settings WHERE owner_id=$1`, [owner])).rows[0]?.settings_json));
+  const s = all.climate, ir = all.ir;
+  let status = {}, error = "", token = "";
   try {
-    const token = await cachedToken(pool, owner, tuya, seal, unseal);
+    token = await cachedToken(pool, owner, tuya, seal, unseal);
     status = await tuyaStatus(fetch, tuya.host, tuya, token, rows.map((r) => String(r.device_id)));
   } catch (e) {
     error = e instanceof Error ? e.message.slice(0, 200) : "TUYA_FAILED";
@@ -53,6 +56,17 @@ export async function runRoomClimate({ pool, owner, unseal, seal = null, force =
       `UPDATE room_climate SET temp=$3,humidity=$4,battery=$5,read_at=$6,checked_at=$6,error='',humid_since=$7,hot_since=$8,alerted_humid_at=$9,alerted_temp_at=$10,alerted_battery_at=$11 WHERE owner_id=$1 AND room_id=$2`,
       [owner, r.room_id, reading.temp, reading.humidity, reading.battery, now, next.humid_since, next.hot_since, next.alerted_humid_at, next.alerted_temp_at, next.alerted_battery_at],
     );
+    // v171: IR A/C temperature limit (the guest set it too cold / too hot): re-send the hotel's setting.
+    if (r.ir_hub && r.ir_ac) {
+      const d = irLimitDecision(ir, { temp: reading.temp, readAt: now, occupied, lastAt: r.ir_limit_at ? Number(r.ir_limit_at) : null, count: Number(r.ir_limit_count ?? 0), now });
+      if (d.inRange && Number(r.ir_limit_count ?? 0) > 0) await pool.query(`UPDATE room_ir SET limit_count=0 WHERE owner_id=$1 AND room_id=$2`, [owner, r.room_id]);
+      if (d.send) {
+        let irError = "";
+        try { await irAcScene(fetch, tuya.host, tuya, token, String(r.ir_hub), String(r.ir_ac), d.send); } catch (e) { irError = e instanceof Error ? e.message.slice(0, 200) : "TUYA_FAILED"; }
+        await pool.query(`UPDATE room_ir SET limit_at=$3,limit_count=limit_count+1,last_ac=$4,last_ac_at=$3,last_ac_error=$5 WHERE owner_id=$1 AND room_id=$2`, [owner, r.room_id, now, `on ${d.send.temp}° m${d.send.mode} w${d.send.wind} (όριο: ${reading.temp}°)`, irError]);
+        if (!irError) console.log(`Room ${r.code}: A/C limit, ${reading.temp}° → ${d.send.temp}°`);
+      }
+    }
     for (const a of list) {
       const [el, en] = texts[a](String(r.code), reading, s);
       if (a === "hot" || a === "cold") {

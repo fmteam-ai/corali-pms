@@ -8,7 +8,7 @@ const roomId = z.number().int().positive();
 const tuyaId = z.string().trim().max(64).refine((v) => v === "" || /^[A-Za-z0-9_-]{6,64}$/.test(v));
 const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("room"), roomId, hubId: tuyaId, acRemoteId: tuyaId, tvRemoteId: tuyaId }),
-  z.object({ action: z.literal("settings"), auto: z.boolean(), mode: z.number().int().min(0).max(4), temp: z.number().int().min(16).max(30), wind: z.number().int().min(0).max(3) }),
+  z.object({ action: z.literal("settings"), auto: z.boolean(), mode: z.number().int().min(0).max(4), temp: z.number().int().min(16).max(30), wind: z.number().int().min(0).max(3), limit: z.boolean().default(false), coolMin: z.number().int().min(16).max(30).default(20), heatMax: z.number().int().min(16).max(30).default(26), quiet: z.boolean().default(true) }),
   z.object({ action: z.literal("remotes"), hubId: tuyaId.refine((v) => v !== "") }),
   z.object({ action: z.literal("ac"), roomId, on: z.boolean() }),
   z.object({ action: z.literal("tv"), roomId }),

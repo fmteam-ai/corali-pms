@@ -35,7 +35,7 @@ export function RoomIr({ lang, rooms, canSetup, canSwitch }: { lang: PmsLang; ro
       const d = await r.json().catch(() => ({}));
       if (d.rooms) apply(d);
       if (d.remotes) setRemotes(d.remotes);
-      setMsg(r.ok ? t(ok) : `${t("ac.failed")}${d.error ? ` (${d.error})` : ""}`);
+      setMsg(r.ok ? t(ok) : d.error === "TV_ANSWERS" ? t("ir.tvAnswers") : `${t("ac.failed")}${d.error ? ` (${d.error})` : ""}`);
     } finally { setBusy(false); }
   }
 
@@ -48,12 +48,19 @@ export function RoomIr({ lang, rooms, canSetup, canSwitch }: { lang: PmsLang; ro
       <small className="muted">{t("ir.help")}</small>
       <div className="acSettings">
         <label className="apSwitch"><input type="checkbox" disabled={!canSetup || busy} checked={settings.auto} onChange={(e) => setSettings({ ...settings, auto: e.target.checked })} /> <b>{t("ir.auto")}</b></label>
-        <label className="inline">{t("ir.onWith")} <select disabled={!canSetup} value={settings.mode} onChange={(e) => setSettings({ ...settings, mode: Number(e.target.value) })}>{MODES.map((k, i) => <option key={k} value={i}>{t(k)}</option>)}</select>
+        <label className="inline" style={{ marginLeft: 16 }}>{t("ir.onWith")} <select disabled={!canSetup} value={settings.mode} onChange={(e) => setSettings({ ...settings, mode: Number(e.target.value) })}>{MODES.map((k, i) => <option key={k} value={i}>{t(k)}</option>)}</select>
           {" "}<input type="number" min={16} max={30} disabled={!canSetup} value={settings.temp} onChange={(e) => setSettings({ ...settings, temp: Number(e.target.value) })} />°
           {" "}<select disabled={!canSetup} value={settings.wind} onChange={(e) => setSettings({ ...settings, wind: Number(e.target.value) })}>{WINDS.map((k, i) => <option key={k} value={i}>{t(k)}</option>)}</select></label>
         {canSetup && <button type="button" className="secondaryButton" disabled={busy} onClick={() => void post({ action: "settings", ...settings })}>{t("ac.save")}</button>}
         {hub && <button type="button" className="secondaryButton" disabled={busy} onClick={() => void post({ action: "remotes", hubId: hub }, "ir.found")}>{t("ir.find")}</button>}
       </div>
+      <div className="acSettings">
+        <label className="apSwitch"><input type="checkbox" disabled={!canSetup || busy} checked={settings.limit} onChange={(e) => setSettings({ ...settings, limit: e.target.checked })} /> <b>{t("ir.limit")}</b></label>
+        <label className="inline" style={{ marginLeft: 16 }}>{t("ir.coolMin")} <input type="number" min={16} max={30} disabled={!canSetup} value={settings.coolMin} onChange={(e) => setSettings({ ...settings, coolMin: Number(e.target.value) })} />°</label>
+        <label className="inline" style={{ marginLeft: 16 }}>{t("ir.heatMax")} <input type="number" min={16} max={30} disabled={!canSetup} value={settings.heatMax} onChange={(e) => setSettings({ ...settings, heatMax: Number(e.target.value) })} />°</label>
+        <label className="inline" style={{ marginLeft: 16 }}><input type="checkbox" disabled={!canSetup} checked={settings.quiet} onChange={(e) => setSettings({ ...settings, quiet: e.target.checked })} /> {t("ir.quiet")}</label>
+      </div>
+      {settings.limit && <small className="muted">{t("ir.limitHelp")}</small>}
       {remotes && <div className="muted"><small>{remotes.length ? remotes.map((r) => `${r.name || "—"}: ${r.id}`).join(" · ") : t("ir.noRemotes")}</small></div>}
       {msg && <p className="muted" role="status">{msg}</p>}
       <table className="dataTable">

@@ -92,7 +92,7 @@ export function RoomAc({ lang, canSetup, canSwitch }: { lang: PmsLang; canSetup:
                   <input className="acId" placeholder={t("ac.climateId")} maxLength={64} disabled={!canSetup} value={thermo[r.roomId] ?? ""} onChange={(e) => setThermo({ ...thermo, [r.roomId]: e.target.value.trim() })} />
                   {canSetup && (thermo[r.roomId] ?? "") !== r.climateDeviceId && <button type="button" className="secondaryButton" disabled={busy} onClick={() => void post({ action: "climate", roomId: r.roomId, deviceId: thermo[r.roomId] ?? "" })}>{t("ac.save")}</button>}
                 </div>
-                {r.climateDeviceId && <small className={climate && r.humidity !== null && r.humidity >= climate.humidityMax ? "debit" : ""}>{r.temp !== null ? `🌡️ ${r.temp}° · 💧 ${r.humidity ?? "—"}%${r.battery !== null ? ` · 🔋 ${r.battery}%` : ""}${r.climateReadAt ? ` · ${when(r.climateReadAt)}` : ""}` : <span className="muted">{r.climateError || t("ac.noReading")}</span>}</small>}
+                {r.climateDeviceId && <small className={climate && r.humidity !== null && r.humidity >= climate.humidityMax ? "debit" : ""}>{r.temp !== null ? `🌡️ ${r.temp}° · 💧 ${r.humidity ?? "—"}%${r.battery !== null ? ` · 🔋 ${r.battery}%` : ""}${r.climateReadAt ? ` · ${when(r.climateReadAt)}` : ""}${r.climateError ? ` · ⚠️ ${r.climateError}` : ""}` : <span className="muted">{r.climateError || t("ac.noReading")}</span>}</small>}
               </td>
               {data.presence && <td>
                 <input className="acId" placeholder={t("ac.sensorId")} maxLength={64} disabled={!canSetup} value={sensors[r.roomId] ?? ""} onChange={(e) => setSensors({ ...sensors, [r.roomId]: e.target.value.trim() })} />
