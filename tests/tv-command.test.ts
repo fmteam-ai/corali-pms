@@ -164,8 +164,17 @@ test("v168: MENU_LOCK / MENU_UNLOCK (Settings app off / on) are EXECUTED only wi
   assert.equal(reportStatus({ status: "EXECUTED", command: "MENU_LOCK" }, ok("s3a0h0g0e0")), null);
   assert.equal(menuLockState("s3a0h0g0e0"), "LOCKED");
   assert.equal(menuLockState("s1a2h2"), "PARTIAL");
-  assert.deepEqual(parseMenuLockRaw("s1a0h0g0e0"), { settings: 1, dashboardActivity: 0, dashboardHandler: 0, menuKeyLock: 0, hotelEnable: 0 });
+  assert.deepEqual(parseMenuLockRaw("s1a0h0g0e0"), { settings: 1, dashboardActivity: 0, dashboardHandler: 0, playStore: null, menuKeyLock: 0, hotelEnable: 0 });
   assert.equal(parseMenuLockRaw("s2a2h2g1"), null);
+  // 1.18 with the Play Store: locked only when it is disabled too (guests cannot install apps).
+  assert.equal(reportStatus(d("MENU_LOCK"), ok("s3a0h0p3g0e0")), "EXECUTED");
+  assert.deepEqual(menuLockVerdict("MENU_LOCK", ok("s3a0h0p1g0e0")), { status: "FAILED", error: "STATE_PARTIAL" });
+  assert.equal(reportStatus(d("MENU_UNLOCK"), ok("s1a0h0p0g0e0")), "EXECUTED");
+  assert.deepEqual(menuLockVerdict("MENU_UNLOCK", ok("s1a0h0p3g0e0")), { status: "FAILED", error: "STATE_PARTIAL" });
+  assert.equal(menuLockState("s3a0h0p3"), "LOCKED");
+  assert.equal(menuLockState("s3a0h0p0"), "PARTIAL");
+  assert.equal(menuLockState("s0a0h0px"), "UNLOCKED");
+  assert.deepEqual(parseMenuLockRaw("s3a0h0p3g0e0"), { settings: 3, dashboardActivity: 0, dashboardHandler: 0, playStore: 3, menuKeyLock: 0, hotelEnable: 0 });
 });
 
 test("v167: SCREEN_OFF in the black-screen mode is EXECUTED when the app reports the black screen in front", () => {

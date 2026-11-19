@@ -32,11 +32,11 @@ public class ParseTest {
     for (String c : new String[]{"shell:dumpsys activity activities", "shell:dumpsys power", "shell:input keyevent KEYCODE_WAKEUP", "shell:input keyevent KEYCODE_SLEEP"}) check(SelfAdbProbe.allowed(c), "allowed: " + c);
     for (String c : new String[]{"shell:input keyevent KEYCODE_HOME", "shell:input keyevent 26", "shell:input text x", "shell:dumpsys wifi", "shell:cmd power set-low-power-standby-enabled false", "shell:svc power stayon true"}) check(!SelfAdbProbe.allowed(c), "refused: " + c);
     // 1.18: Settings lock — exactly two fixed commands; no other package, no other user, no settings writes.
-    for (String c : new String[]{SelfAdbProbe.SETTINGS_DISABLE, SelfAdbProbe.SETTINGS_ENABLE}) check(SelfAdbProbe.allowed(c), "allowed: " + c);
-    for (String c : new String[]{"shell:pm disable-user --user 0 com.android.vending", "shell:pm disable com.android.tv.settings", "shell:pm disable-user --user 10 com.android.tv.settings",
+    for (String c : new String[]{SelfAdbProbe.SETTINGS_DISABLE, SelfAdbProbe.SETTINGS_ENABLE, SelfAdbProbe.STORE_DISABLE, SelfAdbProbe.STORE_ENABLE}) check(SelfAdbProbe.allowed(c), "allowed: " + c);
+    for (String c : new String[]{"shell:pm disable com.android.tv.settings", "shell:pm disable-user --user 10 com.android.tv.settings",
         "shell:pm disable-user --user 0 com.android.tv.settings; reboot", "shell:pm enable --user 0 com.google.android.apps.tv.launcherx", "shell:settings put secure accessibility_enabled 1",
         "shell:appops set gr.hotelcorali.tv ACCESS_RESTRICTED_SETTINGS allow", "shell:settings put global hotel_menu_key_lock 1", "shell:settings put global hotel_enable 1",
-        "shell:pm disable-user com.android.tv.settings"}) check(!SelfAdbProbe.allowed(c), "refused: " + c);
+        "shell:pm disable-user com.android.tv.settings", "shell:pm disable-user --user 0 com.google.android.youtube.tv", "shell:pm uninstall com.android.vending"}) check(!SelfAdbProbe.allowed(c), "refused: " + c);
     System.out.println("ALL OK");
   }
 }

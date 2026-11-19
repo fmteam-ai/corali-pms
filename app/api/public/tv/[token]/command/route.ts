@@ -15,7 +15,7 @@ const input = z.object({
   // ≥ 1.15: the TV's own text — which wake / sleep method was used, or the power & network diagnostics.
   detail: z.string().max(4000).optional(),
   // ≥ 1.16: MENU_LOCK / MENU_UNLOCK — the lock state read after the change ("s<n>a<n>h<n>g<n>e<n>").
-  menuLock: z.string().regex(/^s[0-4x]a[0-4x]h[0-4x]g[0-9x]e[0-9x]$/).optional(),
+  menuLock: z.string().regex(/^s[0-4x]a[0-4x]h[0-4x](p[0-4x])?g[0-9x]e[0-9x]$/).optional(),
   // ≥ 1.16: SCREEN_OFF in the black-screen mode — the black screen is in front (the TV itself stays on).
   blank: z.boolean().optional(),
 });

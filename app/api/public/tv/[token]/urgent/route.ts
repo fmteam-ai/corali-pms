@@ -32,7 +32,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
       policyRev: /^\d{1,15}$/.test(q.get("prev") ?? "") ? Number(q.get("prev")) : null,
       // ≥ 1.14 (v163): enabled states of Settings / side panel, "s<n>a<n>h<n>" — the real «Lock Menu Key».
       // ≥ 1.16: + "g<n>e<n>" (mk) = hotel_menu_key_lock and hotel_enable as Android reports them.
-      menuLock: /^s[0-4x]a[0-4x]h[0-4x]$/.test(q.get("lk") ?? "") ? `${q.get("lk")}${/^g[0-9x]e[0-9x]$/.test(q.get("mk") ?? "") ? q.get("mk") : ""}` : null,
+      menuLock: /^s[0-4x]a[0-4x]h[0-4x](p[0-4x])?$/.test(q.get("lk") ?? "") ? `${q.get("lk")}${/^g[0-9x]e[0-9x]$/.test(q.get("mk") ?? "") ? q.get("mk") : ""}` : null,
       // ≥ 1.15 (v164): Network Standby Manager state — locks held, Low Power Standby, idle, validated network.
       standby: q.has("ns") ? parseStandbyDiag(Object.fromEntries(q.entries())) : null,
     }) : { command: null, policy: null, standby: null };

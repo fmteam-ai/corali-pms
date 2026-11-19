@@ -39,7 +39,7 @@ export type ResetStatus = "PENDING" | "DELIVERED" | "EXECUTED" | "UNVERIFIED" | 
 export declare function resetRoomStatus(x: { appVersion: number | null; online: boolean; commands: { status: string }[]; policyRev: number | null; appliedRev: number | null; needsPolicyAck: boolean }): ResetStatus;
 export type MenuLockState = "LOCKED" | "UNLOCKED" | "PARTIAL" | "UNKNOWN";
 export declare const MENU_LOCK_STATES: MenuLockState[];
-export declare function parseMenuLockRaw(raw: unknown): { settings: number | null; dashboardActivity: number | null; dashboardHandler: number | null; menuKeyLock: number | null; hotelEnable: number | null } | null;
+export declare function parseMenuLockRaw(raw: unknown): { settings: number | null; dashboardActivity: number | null; dashboardHandler: number | null; playStore: number | null; menuKeyLock: number | null; hotelEnable: number | null } | null;
 export declare function menuLockState(raw: unknown): MenuLockState;
 export declare function menuLockVerdict(command: string, report: Report | null): { status: CommandStatus; error: string };
 export type PowerState = "ON" | "STANDBY" | "WAKING" | "UNKNOWN" | "ERROR";

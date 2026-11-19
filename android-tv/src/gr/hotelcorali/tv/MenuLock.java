@@ -17,6 +17,8 @@ import android.provider.Settings;
  */
 final class MenuLock {
     static final String SETTINGS = "com.android.tv.settings";
+    /** 1.18: the Play Store, disabled with the lock so that guests cannot install apps. */
+    static final String STORE = "com.android.vending";
     static final ComponentName DASHBOARD_ACTIVITY = new ComponentName("com.google.android.apps.tv.launcherx", "com.google.android.apps.tv.launcherx.dashboard.DashboardActivity");
     static final ComponentName DASHBOARD_HANDLER = new ComponentName("com.google.android.apps.tv.launcherx", "com.google.android.apps.tv.launcherx.dashboard.DashboardHandler");
     static final String FACTORY_ACTION = "com.realtek.factory.action.FACTORY_MENU";
@@ -27,7 +29,7 @@ final class MenuLock {
     /** "s<n>a<n>h<n>": COMPONENT_ENABLED_STATE (0 default, 1 enabled, 2 disabled, 3 disabled by user, 4 until used) or x. */
     static String read(Context c) {
         PackageManager pm = c.getPackageManager();
-        return "s" + app(pm) + "a" + component(pm, DASHBOARD_ACTIVITY) + "h" + component(pm, DASHBOARD_HANDLER);
+        return "s" + app(pm, SETTINGS) + "a" + component(pm, DASHBOARD_ACTIVITY) + "h" + component(pm, DASHBOARD_HANDLER) + "p" + app(pm, STORE);
     }
 
     /** 1.16: "g<n>e<n>": Settings.Global hotel_menu_key_lock and hotel_enable (Hotel Status), 0..9 or x. */
@@ -47,18 +49,24 @@ final class MenuLock {
         return v >= 0 && v <= 9 ? String.valueOf(v) : "x";
     }
 
-    /** 1.18: the TV's Settings app is disabled (2, 3 or 4) — the lock the PMS sets. null when it cannot be read. */
-    static Boolean settingsLocked(Context c) {
+    /** 1.18: this app is disabled (2, 3 or 4). null when it cannot be read (or is not on the TV). */
+    static Boolean disabled(Context c, String pkg) {
         try {
-            int v = c.getPackageManager().getApplicationEnabledSetting(SETTINGS);
+            int v = c.getPackageManager().getApplicationEnabledSetting(pkg);
             return v == 2 || v == 3 || v == 4;
         } catch (RuntimeException e) {
             return null;
         }
     }
 
-    private static String app(PackageManager pm) {
-        try { return digit(pm.getApplicationEnabledSetting(SETTINGS)); } catch (RuntimeException e) { return "x"; }
+    /** 1.18: the PMS lock holds — Settings and the Play Store both disabled (lock) / both enabled (unlock). */
+    static boolean lockIs(Context c, boolean lock) {
+        Boolean s = disabled(c, SETTINGS), p = disabled(c, STORE);
+        return s != null && s == lock && (p == null || p == lock);
+    }
+
+    private static String app(PackageManager pm, String pkg) {
+        try { return digit(pm.getApplicationEnabledSetting(pkg)); } catch (RuntimeException e) { return "x"; }
     }
 
     private static String component(PackageManager pm, ComponentName n) {

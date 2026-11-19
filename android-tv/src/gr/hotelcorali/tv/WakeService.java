@@ -491,10 +491,17 @@ public class WakeService extends Service {
         final String want = lock ? "lock" : "unlock";
         BootLog.add(this, "settings " + want + " " + id + ": before " + before);
         if (MenuLock.globalInt(this, "hotel_enable") != 0) { lockReport(id, false, pm, "HOTEL_MODE_ON", before, "before=" + before); return; }
-        if (MenuLock.settingsLocked(this) == lock) { lockReport(id, true, pm, "", before, "already " + (lock ? "locked" : "unlocked") + " · " + before); return; }
-        SelfAdbProbe.Result r = SelfAdbProbe.shell(getFilesDir(), lock ? SelfAdbProbe.SETTINGS_DISABLE : SelfAdbProbe.SETTINGS_ENABLE);
-        final String adb = r.status.name() + (r.detail == null ? "" : " " + r.detail.trim().replaceAll("\\s+", " "));
-        if (r.status != SelfAdbProbe.Status.PASS) { lockReport(id, false, pm, "SELF_ADB_" + r.status.name(), before, "before=" + before + " adb=" + adb); return; }
+        if (MenuLock.lockIs(this, lock)) { lockReport(id, true, pm, "", before, "already " + (lock ? "locked" : "unlocked") + " · " + before); return; }
+        // Settings first, then the Play Store (no app installs by guests); on unlock the other way round.
+        String[] cmds = lock ? new String[]{SelfAdbProbe.SETTINGS_DISABLE, SelfAdbProbe.STORE_DISABLE} : new String[]{SelfAdbProbe.STORE_ENABLE, SelfAdbProbe.SETTINGS_ENABLE};
+        StringBuilder out = new StringBuilder();
+        for (String cmd : cmds) {
+            if (cmd.contains("com.android.vending") && MenuLock.disabled(this, MenuLock.STORE) == null) continue; // no Play Store on this TV
+            SelfAdbProbe.Result r = SelfAdbProbe.shell(getFilesDir(), cmd);
+            out.append(r.status.name()).append(r.detail == null ? "" : " " + r.detail.trim().replaceAll("\\s+", " ")).append(" | ");
+            if (r.status != SelfAdbProbe.Status.PASS) { lockReport(id, false, pm, "SELF_ADB_" + r.status.name(), MenuLock.readFull(this), "before=" + before + " adb=" + out); return; }
+        }
+        final String adb = out.toString();
         background.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -502,7 +509,7 @@ public class WakeService extends Service {
                 String detail = "before=" + before + " after=" + after + " adb=" + (adb.length() > 200 ? adb.substring(0, 200) : adb);
                 BootLog.add(WakeService.this, "settings " + want + " " + id + ": " + detail);
                 String err = MenuLock.globalInt(WakeService.this, "hotel_enable") != 0 ? "HOTEL_MODE_CHANGED"
-                        : MenuLock.settingsLocked(WakeService.this) == lock ? "" : "STATE_NOT_CONFIRMED";
+                        : MenuLock.lockIs(WakeService.this, lock) ? "" : "STATE_NOT_CONFIRMED";
                 lockReport(id, err.isEmpty(), pm, err, after, detail);
             }
         }, 1_500);

@@ -16,6 +16,8 @@
         <!-- 1.14: read whether the factory «Lock Menu Key» is on (Settings app / Google TV side panel enabled or not). -->
         <package android:name="com.android.tv.settings" />
         <package android:name="com.google.android.apps.tv.launcherx" />
+        <!-- 1.18: the Play Store, locked with the Settings so that guests cannot install apps. -->
+        <package android:name="com.android.vending" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LEANBACK_LAUNCHER" />

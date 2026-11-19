@@ -177,24 +177,26 @@ export function resetRoomStatus({ appVersion, online, commands, policyRev, appli
 // (n = Android COMPONENT_ENABLED_STATE 0..4, or x when it could not be read).
 export const MENU_LOCK_STATES = ["LOCKED", "UNLOCKED", "PARTIAL", "UNKNOWN"];
 // 1.16 adds "g<n>e<n>": Settings.Global hotel_menu_key_lock and hotel_enable (Hotel Status), 0..9 or x.
+// 1.18 adds "p<n>" after h: the Play Store's enabled state (disabled with the lock: no app installs by guests).
 export function parseMenuLockRaw(raw) {
-  const m = /^s([0-4x])a([0-4x])h([0-4x])(?:g([0-9x])e([0-9x]))?$/.exec(String(raw ?? ""));
+  const m = /^s([0-4x])a([0-4x])h([0-4x])(?:p([0-4x]))?(?:g([0-9x])e([0-9x]))?$/.exec(String(raw ?? ""));
   if (!m) return null;
   const n = (v) => (v === undefined || v === "x" ? null : Number(v));
-  return { settings: n(m[1]), dashboardActivity: n(m[2]), dashboardHandler: n(m[3]), menuKeyLock: n(m[4]), hotelEnable: n(m[5]) };
+  return { settings: n(m[1]), dashboardActivity: n(m[2]), dashboardHandler: n(m[3]), playStore: n(m[4]), menuKeyLock: n(m[5]), hotelEnable: n(m[6]) };
 }
 /**
  * v168 (Corali TV 1.18): LOCKED = the TV's Settings app is disabled (by the PMS lock, user state 3, or by the factory
  * lock, 2) — Wi-Fi, apps, reset and every page of Settings closed. UNLOCKED = Settings enabled / default and the side
  * panel too. PARTIAL = Settings enabled but the side panel disabled (left over from a factory lock).
  */
+// 1.18: with the Play Store reported, LOCKED needs it disabled too (PARTIAL: Settings locked, apps still installable).
 export function menuLockState(raw) {
   const p = parseMenuLockRaw(raw);
   if (!p || p.settings === null) return "UNKNOWN";
   const off = (v) => v === 2 || v === 3 || v === 4;
-  if (off(p.settings)) return "LOCKED";
+  if (off(p.settings)) return p.playStore === null || off(p.playStore) ? "LOCKED" : "PARTIAL";
   if (p.settings !== 0 && p.settings !== 1) return "UNKNOWN";
-  return [p.dashboardActivity, p.dashboardHandler].some((v) => v !== null && off(v)) ? "PARTIAL" : "UNLOCKED";
+  return [p.dashboardActivity, p.dashboardHandler, p.playStore].some((v) => v !== null && off(v)) ? "PARTIAL" : "UNLOCKED";
 }
 
 /**

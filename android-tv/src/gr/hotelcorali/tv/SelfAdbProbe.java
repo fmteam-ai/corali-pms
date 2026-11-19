@@ -49,6 +49,9 @@ public final class SelfAdbProbe {
     /** 1.18: Settings lock from the PMS — the TV's Settings app off / on for user 0. Two fixed commands, nothing else. */
     static final String SETTINGS_DISABLE = "shell:pm disable-user --user 0 com.android.tv.settings";
     static final String SETTINGS_ENABLE = "shell:pm enable --user 0 com.android.tv.settings";
+    /** 1.18: and the Play Store, so guests cannot install apps (APK files need «unknown apps» in the locked Settings). */
+    static final String STORE_DISABLE = "shell:pm disable-user --user 0 com.android.vending";
+    static final String STORE_ENABLE = "shell:pm enable --user 0 com.android.vending";
 
     // 1.13 (v162): the check-out clearing. A closed list of command shapes, each argument checked; nothing else can
     // be sent. Never the hotel's or Android's own packages, never user 0, never Wi-Fi / settings / accounts commands.
@@ -72,7 +75,7 @@ public final class SelfAdbProbe {
         if (COMMAND.equals(command) || START_WELCOME.equals(command) || START_HOME.equals(command)) return true;
         // 1.15 (v164): read-only power / foreground state, and the TV's own sleep / wake keys (what the remote sends).
         if (DUMP_ACTIVITIES.equals(command) || DUMP_POWER.equals(command) || KEY_WAKEUP.equals(command) || KEY_SLEEP.equals(command)) return true;
-        if (SETTINGS_DISABLE.equals(command) || SETTINGS_ENABLE.equals(command)) return true;
+        if (SETTINGS_DISABLE.equals(command) || SETTINGS_ENABLE.equals(command) || STORE_DISABLE.equals(command) || STORE_ENABLE.equals(command)) return true;
         for (Pattern pattern : ALLOWED) {
             java.util.regex.Matcher m = pattern.matcher(command);
             if (!m.matches()) continue;
