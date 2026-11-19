@@ -13,8 +13,11 @@ export const VOLUME_COMMANDS = ["SET_VOLUME", "VOLUME_UP", "VOLUME_DOWN", "MUTE"
  */
 export const FACTORY_COMMANDS = ["OPEN_FACTORY_MENU", "MENU_LOCK", "MENU_UNLOCK"];
 export const MENU_LOCK_COMMANDS = ["MENU_LOCK", "MENU_UNLOCK"];
-/** Corali TV versionCode that can run MENU_LOCK / MENU_UNLOCK (1.16). */
-export const MENU_LOCK_APP = 17;
+/**
+ * Corali TV versionCode that can run MENU_LOCK / MENU_UNLOCK: 1.18. (1.16 / 1.17 tried the factory «Lock Menu Key»
+ * row; it can only be changed with the factory Hotel Mode ON, which uninstalls apps at start-up — no longer used.)
+ */
+export const MENU_LOCK_APP = 19;
 /** v164: the app reports its power / network diagnostics (Corali TV ≥ 1.15). */
 export const DIAG_COMMANDS = ["NETWORK_DIAGNOSTICS"];
 export const ALL_COMMANDS = [...SCREEN_COMMANDS, ...VOLUME_COMMANDS, ...FACTORY_COMMANDS, ...DIAG_COMMANDS];
@@ -180,31 +183,33 @@ export function parseMenuLockRaw(raw) {
   const n = (v) => (v === undefined || v === "x" ? null : Number(v));
   return { settings: n(m[1]), dashboardActivity: n(m[2]), dashboardHandler: n(m[3]), menuKeyLock: n(m[4]), hotelEnable: n(m[5]) };
 }
-/** LOCKED only when all three are disabled; UNLOCKED when all three are enabled / default; anything else PARTIAL. */
+/**
+ * v168 (Corali TV 1.18): LOCKED = the TV's Settings app is disabled (by the PMS lock, user state 3, or by the factory
+ * lock, 2) — Wi-Fi, apps, reset and every page of Settings closed. UNLOCKED = Settings enabled / default and the side
+ * panel too. PARTIAL = Settings enabled but the side panel disabled (left over from a factory lock).
+ */
 export function menuLockState(raw) {
   const p = parseMenuLockRaw(raw);
   if (!p || p.settings === null) return "UNKNOWN";
   const off = (v) => v === 2 || v === 3 || v === 4;
-  const on = (v) => v === 0 || v === 1;
-  const parts = [p.settings, p.dashboardActivity, p.dashboardHandler].filter((v) => v !== null);
-  if (parts.length === 3 && parts.every(off)) return "LOCKED";
-  if (parts.every(on)) return parts.length === 3 ? "UNLOCKED" : "UNKNOWN";
-  return "PARTIAL";
+  if (off(p.settings)) return "LOCKED";
+  if (p.settings !== 0 && p.settings !== 1) return "UNKNOWN";
+  return [p.dashboardActivity, p.dashboardHandler].some((v) => v !== null && off(v)) ? "PARTIAL" : "UNLOCKED";
 }
 
 /**
- * MENU_LOCK / MENU_UNLOCK result. EXECUTED only when the TV's report (read after the change) shows the target state
- * everywhere: the Settings app and both side-panel components (menuLockState), hotel_menu_key_lock = 1 / 0, and
- * Hotel Status (hotel_enable) still 0. A refusal keeps the TV's own error code (e.g. GUEST_APP_IN_FRONT).
+ * MENU_LOCK / MENU_UNLOCK result (Corali TV 1.18). EXECUTED only when the TV's report, read after the change, shows
+ * the target state (LOCKED: Settings disabled; UNLOCKED: Settings and side panel enabled) and Hotel Status
+ * (hotel_enable) still 0. A refusal keeps the TV's own error code (e.g. HOTEL_MODE_ON, SELF_ADB_PORT_CLOSED).
  */
 export function menuLockVerdict(command, report) {
   const lock = command === "MENU_LOCK";
   const p = parseMenuLockRaw(report?.menuLock);
   if (report?.status !== "EXECUTED") return { status: "FAILED", error: String(report?.error || "REJECTED") };
-  if (!p || p.menuKeyLock === null || p.hotelEnable === null) return { status: "UNVERIFIED", error: "NO_STATE" };
+  if (!p || p.hotelEnable === null) return { status: "UNVERIFIED", error: "NO_STATE" };
   if (p.hotelEnable !== 0) return { status: "FAILED", error: "HOTEL_MODE_ON" };
   const state = menuLockState(report.menuLock);
-  if (state === (lock ? "LOCKED" : "UNLOCKED") && p.menuKeyLock === (lock ? 1 : 0)) return { status: "EXECUTED", error: "" };
+  if (state === (lock ? "LOCKED" : "UNLOCKED")) return { status: "EXECUTED", error: "" };
   return { status: "FAILED", error: state === "PARTIAL" ? "STATE_PARTIAL" : "STATE_NOT_CONFIRMED" };
 }
 

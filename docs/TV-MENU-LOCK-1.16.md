@@ -1,3 +1,5 @@
+> **Αντικαταστάθηκε από τη Corali TV 1.18 (PMS v168): δείτε `docs/TV-SETTINGS-LOCK-1.18.md`.** Η δοκιμή στη 112 (19/11/2026) έδειξε ότι η γραμμή «Lock Menu Key» είναι ανενεργή όταν το Engineer Mode (Hotel Status) είναι Off, και ότι το Off ξεκλειδώνει αυτόματα. Με Hotel Mode On, η TV απεγκατέστησε το Downloader σε επανεκκίνηση. Άρα ο μηχανισμός αυτού του εγγράφου δεν χρησιμοποιείται.
+
 # Lock / Unlock Menu από το PMS: Corali TV 1.16 (HORIZON 43HQ8590U/D)
 
 Συμπληρώνει το `TV-SETTINGS-LOCK-ASSESSMENT.md`. Πηγή: απομεταγλώττιση του `TvEplFactoryGTV.apk` (`com.expressluck.tvfactory` V2.2.36, system UID).

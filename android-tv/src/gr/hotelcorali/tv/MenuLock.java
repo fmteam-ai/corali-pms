@@ -4,7 +4,6 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.os.Bundle;
 import android.provider.Settings;
 
 /**
@@ -14,7 +13,7 @@ import android.provider.Settings;
  * exported Factory Menu for a technician. It never changes a factory setting itself — Android does not allow it.
  *
  * 1.16: also reads the factory's own flags (Settings.Global hotel_menu_key_lock and hotel_enable, readable by any
- * app) and opens the «Engineer Mode Option» page directly, for MenuLockService (Lock / Unlock from the PMS).
+ * app). 1.18: the PMS lock disables the Settings app itself through Self-ADB (WakeService.menuLock).
  */
 final class MenuLock {
     static final String SETTINGS = "com.android.tv.settings";
@@ -48,33 +47,13 @@ final class MenuLock {
         return v >= 0 && v <= 9 ? String.valueOf(v) : "x";
     }
 
-    /** The three enabled states all «disabled» (LOCKED) or all «enabled / default» (UNLOCKED), as the PMS decides. */
-    static boolean matches(Context c, boolean lock) {
-        String r = read(c);
-        if (r.indexOf('x') >= 0) return false;
-        for (int i = 1; i < 6; i += 2) {
-            char d = r.charAt(i);
-            boolean off = d == '2' || d == '3' || d == '4';
-            if (lock != off) return false;
-        }
-        return globalInt(c, "hotel_menu_key_lock") == (lock ? 1 : 0);
-    }
-
-    /**
-     * 1.16: the factory menu straight on «Engineer Mode Option» (FactoryMenuActivity.HotelJump: extra startHotel with
-     * showHotel = 1; the same exported activity as openFactoryMenu, no permission). A new task, so onCreate runs.
-     */
-    static boolean openEngineerPage(Context c) {
-        Bundle b = new Bundle();
-        b.putInt("showHotel", 1);
-        Intent i = new Intent(FACTORY_ACTION).setComponent(FACTORY_MENU).putExtra("startHotel", b)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+    /** 1.18: the TV's Settings app is disabled (2, 3 or 4) — the lock the PMS sets. null when it cannot be read. */
+    static Boolean settingsLocked(Context c) {
         try {
-            c.startActivity(i);
-            return true;
+            int v = c.getPackageManager().getApplicationEnabledSetting(SETTINGS);
+            return v == 2 || v == 3 || v == 4;
         } catch (RuntimeException e) {
-            BootLog.add(c, "engineer page REFUSED: " + e.getClass().getSimpleName());
-            return false;
+            return null;
         }
     }
 

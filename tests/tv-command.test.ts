@@ -94,12 +94,12 @@ test("v163: menu lock state from the TV's enabled states", () => {
   assert.equal(menuLockState("s2a2h2"), "LOCKED");
   assert.equal(menuLockState("s0a0h0"), "UNLOCKED");
   assert.equal(menuLockState("s1a1h1"), "UNLOCKED");
-  assert.equal(menuLockState("s2a0h0"), "PARTIAL");
-  assert.equal(menuLockState("s3a0h0"), "PARTIAL");
+  assert.equal(menuLockState("s2a0h0"), "LOCKED");
+  assert.equal(menuLockState("s3a0h0"), "LOCKED");
   assert.equal(menuLockState("s0a2h2"), "PARTIAL");
   assert.equal(menuLockState("sxa2h2"), "UNKNOWN");
-  assert.equal(menuLockState("s0axhx"), "UNKNOWN");
-  assert.equal(menuLockState("s2axhx"), "PARTIAL");
+  assert.equal(menuLockState("s0axhx"), "UNLOCKED");
+  assert.equal(menuLockState("s2axhx"), "LOCKED");
   assert.equal(menuLockState("LOCKED"), "UNKNOWN");
   assert.equal(menuLockState(null), "UNKNOWN");
   assert.equal(parseMenuLockRaw("s9a0h0"), null);
@@ -144,28 +144,26 @@ test("v164: diagnostics are EXECUTED only with the TV's text", () => {
   assert.equal(reportStatus(cmd, { status: "EXECUTED" }), "UNVERIFIED");
 });
 
-test("v167: MENU_LOCK / MENU_UNLOCK are EXECUTED only with the target state read back and Hotel Status off", () => {
+test("v168: MENU_LOCK / MENU_UNLOCK (Settings app off / on) are EXECUTED only with the state read back and Hotel Status off", () => {
   const d = (command: string) => ({ status: "DELIVERED", command });
   const ok = (menuLock: string) => ({ status: "EXECUTED", menuLock });
-  assert.equal(reportStatus(d("MENU_LOCK"), ok("s2a2h2g1e0")), "EXECUTED");
+  assert.equal(reportStatus(d("MENU_LOCK"), ok("s3a0h0g0e0")), "EXECUTED"); // pm disable-user
+  assert.equal(reportStatus(d("MENU_LOCK"), ok("s2a2h2g1e0")), "EXECUTED"); // factory lock counts too
   assert.equal(reportStatus(d("MENU_UNLOCK"), ok("s1a0h0g0e0")), "EXECUTED");
-  // Android disabled everything but the global flag says otherwise (or the reverse): not proven.
-  assert.deepEqual(menuLockVerdict("MENU_LOCK", ok("s2a2h2g0e0")), { status: "FAILED", error: "STATE_NOT_CONFIRMED" });
-  assert.deepEqual(menuLockVerdict("MENU_LOCK", ok("s0a0h0g1e0")), { status: "FAILED", error: "STATE_NOT_CONFIRMED" });
-  assert.deepEqual(menuLockVerdict("MENU_LOCK", ok("s2a0h0g1e0")), { status: "FAILED", error: "STATE_PARTIAL" });
-  assert.deepEqual(menuLockVerdict("MENU_UNLOCK", ok("s2a2h2g1e0")), { status: "FAILED", error: "STATE_NOT_CONFIRMED" });
+  assert.equal(reportStatus(d("MENU_UNLOCK"), ok("s0a1h1g0e0")), "EXECUTED");
+  assert.deepEqual(menuLockVerdict("MENU_LOCK", ok("s1a0h0g0e0")), { status: "FAILED", error: "STATE_NOT_CONFIRMED" });
+  assert.deepEqual(menuLockVerdict("MENU_UNLOCK", ok("s3a0h0g0e0")), { status: "FAILED", error: "STATE_NOT_CONFIRMED" });
+  assert.deepEqual(menuLockVerdict("MENU_UNLOCK", ok("s1a2h2g0e0")), { status: "FAILED", error: "STATE_PARTIAL" });
   // Hotel Status must stay off: never success when the TV reports it on.
-  assert.deepEqual(menuLockVerdict("MENU_LOCK", ok("s2a2h2g1e1")), { status: "FAILED", error: "HOTEL_MODE_ON" });
-  // No state (old format, missing flags, garbage): never success.
-  assert.deepEqual(menuLockVerdict("MENU_LOCK", ok("s2a2h2")), { status: "UNVERIFIED", error: "NO_STATE" });
-  assert.deepEqual(menuLockVerdict("MENU_LOCK", ok("s2a2h2gxe0")), { status: "UNVERIFIED", error: "NO_STATE" });
+  assert.deepEqual(menuLockVerdict("MENU_LOCK", ok("s3a0h0g0e1")), { status: "FAILED", error: "HOTEL_MODE_ON" });
+  // No state: never success.
+  assert.deepEqual(menuLockVerdict("MENU_LOCK", ok("s3a0h0")), { status: "UNVERIFIED", error: "NO_STATE" });
+  assert.deepEqual(menuLockVerdict("MENU_LOCK", ok("sxa0h0g0e0")), { status: "FAILED", error: "STATE_NOT_CONFIRMED" });
   assert.deepEqual(menuLockVerdict("MENU_LOCK", { status: "EXECUTED" }), { status: "UNVERIFIED", error: "NO_STATE" });
-  // A refusal on the TV keeps its own reason.
-  assert.deepEqual(menuLockVerdict("MENU_LOCK", { status: "FAILED", error: "GUEST_APP_IN_FRONT", menuLock: "s1a1h1g0e0" }), { status: "FAILED", error: "GUEST_APP_IN_FRONT" });
-  assert.equal(reportStatus(d("MENU_LOCK"), { status: "FAILED", error: "SCREEN_IS_OFF" }), "FAILED");
-  assert.equal(reportStatus({ status: "EXECUTED", command: "MENU_LOCK" }, ok("s2a2h2g1e0")), null);
-  // The extended raw still gives the same lock state; the flags are parsed.
-  assert.equal(menuLockState("s2a2h2g1e0"), "LOCKED");
+  assert.deepEqual(menuLockVerdict("MENU_LOCK", { status: "FAILED", error: "SELF_ADB_PORT_CLOSED", menuLock: "s1a1h1g0e0" }), { status: "FAILED", error: "SELF_ADB_PORT_CLOSED" });
+  assert.equal(reportStatus({ status: "EXECUTED", command: "MENU_LOCK" }, ok("s3a0h0g0e0")), null);
+  assert.equal(menuLockState("s3a0h0g0e0"), "LOCKED");
+  assert.equal(menuLockState("s1a2h2"), "PARTIAL");
   assert.deepEqual(parseMenuLockRaw("s1a0h0g0e0"), { settings: 1, dashboardActivity: 0, dashboardHandler: 0, menuKeyLock: 0, hotelEnable: 0 });
   assert.equal(parseMenuLockRaw("s2a2h2g1"), null);
 });

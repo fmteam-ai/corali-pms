@@ -46,16 +46,9 @@ public final class SelfAdbProbe {
     static final String DUMP_POWER = "shell:dumpsys power";
     static final String KEY_WAKEUP = "shell:input keyevent KEYCODE_WAKEUP";
     static final String KEY_SLEEP = "shell:input keyevent KEYCODE_SLEEP";
-    /** 1.16: switch on this app's own MenuLockService, once per TV (the list keeps every service already on). */
-    static final String A11Y_ON = "shell:settings put secure accessibility_enabled 1";
-    /**
-     * 1.16: Android 13+ marks an app installed by a downloader / browser as «restricted»: its accessibility service is
-     * removed from the enabled list at once (seen on the HORIZON 112: ACCESS_RESTRICTED_SETTINGS deny). This allows it
-     * for THIS app only — what «Allow restricted settings» in the app's info screen does.
-     */
-    static final String ALLOW_RESTRICTED = "shell:appops set gr.hotelcorali.tv ACCESS_RESTRICTED_SETTINGS allow";
-    static final String MENU_LOCK_SERVICE = "gr.hotelcorali.tv/gr.hotelcorali.tv.MenuLockService";
-    private static final Pattern A11Y_LIST = Pattern.compile("shell:settings put secure enabled_accessibility_services ([A-Za-z0-9_.]+/[A-Za-z0-9_.$]+(:[A-Za-z0-9_.]+/[A-Za-z0-9_.$]+)*)");
+    /** 1.18: Settings lock from the PMS — the TV's Settings app off / on for user 0. Two fixed commands, nothing else. */
+    static final String SETTINGS_DISABLE = "shell:pm disable-user --user 0 com.android.tv.settings";
+    static final String SETTINGS_ENABLE = "shell:pm enable --user 0 com.android.tv.settings";
 
     // 1.13 (v162): the check-out clearing. A closed list of command shapes, each argument checked; nothing else can
     // be sent. Never the hotel's or Android's own packages, never user 0, never Wi-Fi / settings / accounts commands.
@@ -79,10 +72,7 @@ public final class SelfAdbProbe {
         if (COMMAND.equals(command) || START_WELCOME.equals(command) || START_HOME.equals(command)) return true;
         // 1.15 (v164): read-only power / foreground state, and the TV's own sleep / wake keys (what the remote sends).
         if (DUMP_ACTIVITIES.equals(command) || DUMP_POWER.equals(command) || KEY_WAKEUP.equals(command) || KEY_SLEEP.equals(command)) return true;
-        // 1.16: only a list that contains this app's MenuLockService (built from the list already on the TV).
-        if (A11Y_ON.equals(command) || ALLOW_RESTRICTED.equals(command)) return true;
-        java.util.regex.Matcher a = A11Y_LIST.matcher(command);
-        if (a.matches()) return java.util.Arrays.asList(a.group(1).split(":")).contains(MENU_LOCK_SERVICE);
+        if (SETTINGS_DISABLE.equals(command) || SETTINGS_ENABLE.equals(command)) return true;
         for (Pattern pattern : ALLOWED) {
             java.util.regex.Matcher m = pattern.matcher(command);
             if (!m.matches()) continue;
