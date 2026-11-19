@@ -20,7 +20,7 @@ const T: Record<string, string> = {
   ps_ON: "● ON", ps_STANDBY: "◐ STANDBY", ps_WAKING: "⏳ WAKING", ps_UNKNOWN: "? UNKNOWN", ps_ERROR: "✗ ERROR",
   reachable: "συνδεδεμένη", unreachable: "δεν απαντά", lastSeen: "τελευταίος έλεγχος", never: "ποτέ",
   cpuWakeLockHeld: "CPU lock", wifiLockHeld: "Wi-Fi lock", lowPowerStandbyEnabled: "Low Power Standby", lowPowerStandbyExempt: "εξαίρεση LPS", deviceIdle: "Doze", networkValidated: "internet", networkStandby: "network standby",
-  yes: "ναι", no: "όχι", unk: "?", ns: "Κράτηση δικτύου σε αναμονή", offMode: "Σβήσιμο από PMS", off_device_admin: "lockNow (τρέχον)", off_sleep_key: "πλήκτρο SLEEP (Self-ADB, δοκιμαστικό)",
+  yes: "ναι", no: "όχι", unk: "?", ns: "Κράτηση δικτύου σε αναμονή", offMode: "Σβήσιμο από PMS", off_device_admin: "lockNow (τρέχον)", off_sleep_key: "πλήκτρο SLEEP (Self-ADB, δοκιμαστικό)", off_black_screen: "μαύρη οθόνη — η TV μένει αναμμένη, ξαναξεκινά μόνη μετά από διακοπή ρεύματος (Corali TV 1.16, δοκιμαστικό, για άδεια δωμάτια)",
   diag: "Διάγνωση", lastDiag: "Τελευταία διάγνωση", test: "Δοκιμή standby", t10: "10′", t60: "1 ώρα", t720: "12 ώρες",
   testConfirm: "Δοκιμή standby στο δωμάτιο {r}: η TV σβήνει ΤΩΡΑ και το PMS θα προσπαθήσει να την ανάψει μετά από {m}. Συνέχεια;",
   oldApp: "χρειάζεται Corali TV 1.15", notAgent: "μόνο για δωμάτια με μέθοδο ρεύματος «Corali TV (android_agent)»",
@@ -77,7 +77,7 @@ export function StandbyManager({ lang, canAdmin, canDiag }: { lang: string; canA
               <td>
                 <label className="inline"><input type="checkbox" checked={r.network_standby} disabled={!canAdmin || busy} onChange={(e) => void post({ action: "settings", roomId: r.room_id, networkStandby: e.target.checked, offMode: r.off_mode })} /> {T.ns}</label><br />
                 <label className="inline">{T.offMode}: <select value={r.off_mode} disabled={!canAdmin || busy} onChange={(e) => void post({ action: "settings", roomId: r.room_id, networkStandby: r.network_standby, offMode: e.target.value })}>
-                  <option value="device_admin">{T.off_device_admin}</option><option value="sleep_key">{T.off_sleep_key}</option></select></label><br />
+                  <option value="device_admin">{T.off_device_admin}</option><option value="sleep_key">{T.off_sleep_key}</option><option value="black_screen">{T.off_black_screen}</option></select></label><br />
                 {canDiag && !old && <button type="button" className="secondaryButton" disabled={busy} onClick={() => void post({ action: "diagnostics", roomId: r.room_id })}>{T.diag}</button>}
                 {canAdmin && !old && (agent ? <span> {T.test}: {[10, 60, 720].map((m) => <button key={m} type="button" className="secondaryButton" disabled={busy} onClick={() => { if (window.confirm(T.testConfirm.replace("{r}", r.room_code).replace("{m}", tx(`t${m}`)))) void post({ action: "start_test", roomId: r.room_id, minutes: m }); }}>{tx(`t${m}`)}</button>)}</span> : <><br /><small className="muted">{T.notAgent}</small></>)}
               </td>

@@ -16,6 +16,8 @@ const input = z.object({
   detail: z.string().max(4000).optional(),
   // ≥ 1.16: MENU_LOCK / MENU_UNLOCK — the lock state read after the change ("s<n>a<n>h<n>g<n>e<n>").
   menuLock: z.string().regex(/^s[0-4x]a[0-4x]h[0-4x]g[0-9x]e[0-9x]$/).optional(),
+  // ≥ 1.16: SCREEN_OFF in the black-screen mode — the black screen is in front (the TV itself stays on).
+  blank: z.boolean().optional(),
 });
 const noStore = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 

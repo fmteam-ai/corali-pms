@@ -37,6 +37,9 @@ final class Prefs {
     boolean networkStandby() { return p.getBoolean("network_standby", true); }
     String offMode() { return p.getString("off_mode", "device_admin"); }
     void setStandby(boolean network, String offMode) { p.edit().putBoolean("network_standby", network).putString("off_mode", offMode).apply(); }
+    /** 1.16: the PMS «off» is showing as a black screen (power_off_mode black_screen); restored after a power cut. */
+    boolean blank() { return p.getBoolean("blank", false); }
+    void setBlank(boolean on) { p.edit().putBoolean("blank", on).apply(); }
     boolean homePending() { return p.getBoolean("home_pending", false); }
     void setHomePending(boolean on) { p.edit().putBoolean("home_pending", on).commit(); }
 

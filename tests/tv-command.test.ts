@@ -169,3 +169,11 @@ test("v167: MENU_LOCK / MENU_UNLOCK are EXECUTED only with the target state read
   assert.deepEqual(parseMenuLockRaw("s1a0h0g0e0"), { settings: 1, dashboardActivity: 0, dashboardHandler: 0, menuKeyLock: 0, hotelEnable: 0 });
   assert.equal(parseMenuLockRaw("s2a2h2g1"), null);
 });
+
+test("v167: SCREEN_OFF in the black-screen mode is EXECUTED when the app reports the black screen in front", () => {
+  const d = { status: "DELIVERED", command: "SCREEN_OFF" };
+  assert.equal(reportStatus(d, { status: "EXECUTED", interactive: true, blank: true }), "EXECUTED");
+  assert.equal(reportStatus(d, { status: "EXECUTED", interactive: true }), "FAILED");
+  assert.equal(reportStatus(d, { status: "FAILED", interactive: true, blank: false }), "FAILED");
+  assert.equal(reportStatus({ status: "DELIVERED", command: "SCREEN_ON" }, { status: "EXECUTED", interactive: true }), "EXECUTED");
+});

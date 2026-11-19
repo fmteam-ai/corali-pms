@@ -59,7 +59,8 @@ export function reportStatus(cmd, report) {
   if (cmd.command === "OPEN_FACTORY_MENU") return report?.opened === true ? "EXECUTED" : report?.opened === false ? "FAILED" : "UNVERIFIED";
   if (MENU_LOCK_COMMANDS.includes(cmd.command)) return menuLockVerdict(cmd.command, report).status;
   if (interactive === null) return "UNVERIFIED";
-  if (cmd.command === "SCREEN_OFF") return interactive ? "FAILED" : "EXECUTED";
+  // v167: «off» as a black screen (Corali TV 1.16): the TV stays on, the app reports the black screen in front.
+  if (cmd.command === "SCREEN_OFF") return report?.blank === true ? "EXECUTED" : interactive ? "FAILED" : "EXECUTED";
   return interactive ? "EXECUTED" : "FAILED"; // SCREEN_ON, SHOW_WELCOME
 }
 
@@ -210,7 +211,7 @@ export function menuLockVerdict(command, report) {
 // v164: power state of a room's TV as the PMS may show it. Never ON because the agent is connected or a wake lock is
 // held: ON / STANDBY only from the screen state the app measured (PowerManager.isInteractive) in a recent check.
 export const POWER_STATES = ["ON", "STANDBY", "WAKING", "UNKNOWN", "ERROR"];
-export const POWER_OFF_MODES = ["device_admin", "sleep_key"];
+export const POWER_OFF_MODES = ["device_admin", "sleep_key", "black_screen"];
 /** A check is expected every 20 s; a silence longer than this is recorded as a gap (TV / network asleep). */
 export const GAP_MS = 90_000;
 export function powerState({ seenAt, interactive, now, waking = false, lastFailedAt = null }) {

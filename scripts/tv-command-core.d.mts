@@ -23,7 +23,7 @@ export declare const POWER_METHODS: PowerMethod[];
 export declare const AVAILABLE_POWER_METHODS: PowerMethod[];
 export declare function validPowerMethod(m: unknown): boolean;
 export declare function expiredStatus(cmd: { status: string; expires_at: number; delivered_at: number | null }, now: number): string;
-type Report = { status?: string; interactive?: boolean; error?: string; volume?: number; muted?: boolean; fixed?: boolean; opened?: boolean; detail?: string; menuLock?: string };
+type Report = { status?: string; interactive?: boolean; error?: string; volume?: number; muted?: boolean; fixed?: boolean; opened?: boolean; detail?: string; menuLock?: string; blank?: boolean };
 export declare function reportStatus(cmd: { status: string; command: string; value?: number | null; cap?: number | null }, report: Report | null): CommandStatus | null;
 export declare function volumeStatus(cmd: { command: string; value?: number | null; cap?: number | null }, report: Report | null): CommandStatus;
 export declare function normalizeSoundPolicy(raw: unknown): SoundPolicy;

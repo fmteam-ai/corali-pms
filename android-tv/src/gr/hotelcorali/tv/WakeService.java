@@ -52,6 +52,7 @@ public class WakeService extends Service {
         @Override
         public void onReceive(Context context, Intent intent) {
             Prefs prefs = new Prefs(context);
+            if (prefs.blank() && BlackScreenActivity.active) { BootLog.add(context, "SCREEN_ON with the black screen in front — left as is"); return; }
             if (prefs.configured() && prefs.openOnWake() && background != null) {
                 BootLog.add(context, "SCREEN_ON (TV turned on)");
                 // 1.15: never over a guest's app (a Google Cast or YouTube session wakes the TV too): ask what is in
@@ -255,6 +256,7 @@ public class WakeService extends Service {
                 if (sound.has("opened")) body.put("opened", sound.getBoolean("opened"));
                 if (sound.has("detail")) body.put("detail", sound.getString("detail"));
                 if (sound.has("menuLock")) body.put("menuLock", sound.getString("menuLock"));
+                if (sound.has("blank")) body.put("blank", sound.getBoolean("blank"));
             }
             URL url = new URL(screen.getScheme() + "://" + screen.getAuthority() + "/api/public/tv/" + Uri.encode(token) + "/command");
             http = (HttpURLConnection) url.openConnection();
@@ -292,6 +294,12 @@ public class WakeService extends Service {
      * welcome screen is shown because the PMS turned the TV on. One attempt, no retry loop.
      */
     private void powerOn(final long id, final PowerManager pm) {
+        if (new Prefs(this).blank() && pm.isInteractive()) {
+            BlackScreenActivity.hide(this);
+            MainActivity.bringToFront(this, false, false, "pms-on");
+            report(id, true, true, "", detail("black screen → welcome"));
+            return;
+        }
         if (pm.isInteractive()) {
             MainActivity.bringToFront(this, false, false, "pms-on");
             report(id, true, true, "", detail("already on"));
@@ -326,6 +334,21 @@ public class WakeService extends Service {
             report(id, true, false, "", detail("already off"));
             return;
         }
+        if ("black_screen".equals(mode)) {
+            BlackScreenActivity.show(this, "pms-off");
+            background.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    boolean ok = BlackScreenActivity.active;
+                    try {
+                        report(id, ok, pm.isInteractive(), ok ? "" : "BLACK_SCREEN_NOT_SHOWN", new JSONObject().put("blank", ok).put("detail", "black screen (" + (ok ? "in front" : "not in front") + "); " + NetworkStandbyManager.get(WakeService.this).query()));
+                    } catch (Exception e) {
+                        report(id, false, pm.isInteractive(), "REPORT_ERROR");
+                    }
+                }
+            }, 2_500);
+            return;
+        }
         if ("sleep_key".equals(mode)) {
             SelfAdbProbe.Result r = SelfAdbProbe.shell(getFilesDir(), SelfAdbProbe.KEY_SLEEP);
             used = "sleep key (" + r.status.name() + ")";
@@ -353,7 +376,13 @@ public class WakeService extends Service {
     private void diagnostics(long id, PowerManager pm) {
         NetworkStandbyManager ns = NetworkStandbyManager.get(this);
         StringBuilder sb = new StringBuilder();
-        sb.append("agent 1.15 · screen ").append(pm.isInteractive() ? "on" : "off").append('\n');
+        sb.append("agent 1.16 · screen ").append(pm.isInteractive() ? "on" : "off").append(new Prefs(this).blank() ? " (black screen)" : "").append('\n');
+        // 1.16: what the firmware says about silent boot / why it started (read only).
+        sb.append("boot: quiescent=").append(sysProp("ro.boot.quiescent")).append(" · reason=").append(sysProp("sys.boot.reason"))
+          .append(" · bootreason=").append(sysProp("ro.boot.bootreason")).append(" · factory_boot_mode=").append(sysProp("persist.sys.factory_boot_mode")).append('\n');
+        sb.append("firmware: ").append(Build.DISPLAY).append(" · ").append(sysProp("ro.build.version.incremental")).append(" · ").append(Build.MODEL).append('\n');
+        sb.append("idle standby: tv_idle_standby_time=").append(settingG("tv_idle_standby_time")).append(" · attentive_timeout=").append(settingS("attentive_timeout"))
+          .append(" · sleep_timeout=").append(settingS("sleep_timeout")).append(" · default_power_on_mode=").append(settingS("default_power_on_mode")).append('\n');
         sb.append("network standby ").append(ns.enabled()).append(" · cpu lock ").append(ns.cpuHeld()).append(" · wifi lock ").append(ns.wifiHeld()).append('\n');
         sb.append("low power standby ").append(NetworkStandbyManager.lowPowerStandby(this, "isLowPowerStandbyEnabled"))
           .append(" (supported ").append(NetworkStandbyManager.lowPowerStandby(this, "isLowPowerStandbySupported"))
@@ -364,6 +393,25 @@ public class WakeService extends Service {
         sb.append("in front: ").append(top == null ? "?" : top).append('\n');
         sb.append(powerSummary());
         report(id, true, pm.isInteractive(), "", detail(sb.toString()));
+    }
+
+    /** A system property (reflection; read only), or "?" when Android does not allow reading it. */
+    static String sysProp(String name) {
+        try {
+            Object v = Class.forName("android.os.SystemProperties").getMethod("get", String.class, String.class).invoke(null, name, "");
+            String s = v == null ? "" : v.toString();
+            return s.isEmpty() ? "-" : s.length() > 80 ? s.substring(0, 80) : s;
+        } catch (Exception e) {
+            return "?";
+        }
+    }
+
+    private String settingG(String name) {
+        try { String v = Settings.Global.getString(getContentResolver(), name); return v == null ? "-" : v; } catch (RuntimeException e) { return "?"; }
+    }
+
+    private String settingS(String name) {
+        try { String v = Settings.Secure.getString(getContentResolver(), name); return v == null ? "-" : v; } catch (RuntimeException e) { return "?"; }
     }
 
     /** Selected lines of dumpsys power (wakefulness, last sleep / wake reason, Low Power Standby, wake locks). */
@@ -393,7 +441,9 @@ public class WakeService extends Service {
     private void standby(JSONObject s) {
         if (s == null) return;
         boolean network = s.optBoolean("network", true);
-        String off = "sleep_key".equals(s.optString("offMode")) ? "sleep_key" : "device_admin";
+        String m = s.optString("offMode");
+        String off = "sleep_key".equals(m) || "black_screen".equals(m) ? m : "device_admin";
+        if (!"black_screen".equals(off) && new Prefs(this).blank()) BlackScreenActivity.hide(this); // mode changed: no black screen left behind
         Prefs prefs = new Prefs(this);
         if (prefs.networkStandby() != network || !prefs.offMode().equals(off)) prefs.setStandby(network, off);
         NetworkStandbyManager.get(this).setEnabled(network);
@@ -537,6 +587,11 @@ public class WakeService extends Service {
         if (!prefs.configured()) return;
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         String tag = why + " check " + attempt + "/" + last + ": ";
+        if (BlackScreenActivity.active) {
+            BootLog.add(this, tag + "black screen in front (PMS off) — not changed");
+            checkRound++;
+            return;
+        }
         if (MainActivity.visible) {
             BootLog.add(this, tag + "OK — welcome screen visible");
             checkRound++; // stop the remaining checks of this round
@@ -606,7 +661,8 @@ public class WakeService extends Service {
         if (token == null) return null;
         // What the PMS shows comes from here: screen on/off as measured now, app version, screen-off permission.
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-        String state = "?s=" + (pm.isInteractive() ? 1 : 0) + "&v=" + VERSION_CODE + "&a=" + (ScreenAdmin.active(this) ? 1 : 0);
+        boolean blank = new Prefs(this).blank() && BlackScreenActivity.active;
+        String state = "?s=" + (pm.isInteractive() && !blank ? 1 : 0) + (blank ? "&bk=1" : "") + "&v=" + VERSION_CODE + "&a=" + (ScreenAdmin.active(this) ? 1 : 0);
         int vol = volume.percent();
         if (vol >= 0) state += "&vol=" + vol;
         state += "&mute=" + (volume.muted() ? 1 : 0) + "&fixed=" + (volume.fixed() ? 1 : 0);

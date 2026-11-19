@@ -2365,6 +2365,9 @@ ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS menu_lock_seen_at BIGINT;
 -- text (diagnostics / wake method), reachability gaps and screen changes, and the standby tests.
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS network_standby BIGINT NOT NULL DEFAULT 1;
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS power_off_mode TEXT NOT NULL DEFAULT 'device_admin' CHECK (power_off_mode IN ('device_admin','sleep_key'));
+-- v167: + black_screen (Corali TV 1.16: PMS «off» as a black screen, so the TV restarts by itself after a power cut).
+ALTER TABLE tv_screens DROP CONSTRAINT IF EXISTS tv_screens_power_off_mode_check;
+ALTER TABLE tv_screens ADD CONSTRAINT tv_screens_power_off_mode_check CHECK (power_off_mode IN ('device_admin','sleep_key','black_screen'));
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS standby_diag TEXT;
 ALTER TABLE tv_screen_commands ADD COLUMN IF NOT EXISTS not_before BIGINT;
 ALTER TABLE tv_screen_commands ADD COLUMN IF NOT EXISTS result_text TEXT;

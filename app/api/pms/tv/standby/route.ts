@@ -12,7 +12,7 @@ const TEST_MINUTES = [10, 60, 720] as const;
 
 const input = z.discriminatedUnion("action", [
   // Admin: per room — keep CPU / Wi-Fi awake in standby; how PMS OFF is done (lockNow stays the default).
-  z.object({ action: z.literal("settings"), roomId: z.number().int().positive(), networkStandby: z.boolean(), offMode: z.enum(["device_admin", "sleep_key"]) }),
+  z.object({ action: z.literal("settings"), roomId: z.number().int().positive(), networkStandby: z.boolean(), offMode: z.enum(["device_admin", "sleep_key", "black_screen"]) }),
   // Reception+: ask the TV for its power / network diagnostics (answer within ~20 s if it is reachable).
   z.object({ action: z.literal("diagnostics"), roomId: z.number().int().positive() }),
   // Admin: standby test — OFF now, ON after N minutes; the PMS records whether the TV stayed reachable and woke up.

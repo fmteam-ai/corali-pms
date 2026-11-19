@@ -23,6 +23,13 @@ public class BootReceiver extends BroadcastReceiver {
             WakeService.start(context);
             return;
         }
+        // 1.16: the TV was «off» as a black screen when the power went (it restarts because the firmware restores the
+        // last state): back to the black screen, connected to the PMS, instead of the welcome screen.
+        if (prefs.blank() && "black_screen".equals(prefs.offMode())) {
+            BlackScreenActivity.show(context, "after power-up");
+            WakeService.startAfterBoot(context, false);
+            return;
+        }
         // Light the screen only in the day, so a night-time restart (system update) does not wake a sleeping guest.
         boolean wake = WakeService.dayTime();
         MainActivity.bringToFront(context, false, false, "receiver");

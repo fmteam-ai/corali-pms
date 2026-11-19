@@ -86,6 +86,16 @@
 
         <service android:name=".WakeService" android:exported="false" />
 
+        <!-- 1.16: PMS «off» as a black screen (experimental, per room). -->
+        <activity
+            android:name=".BlackScreenActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:screenOrientation="landscape"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|smallestScreenSize|uiMode" />
+
         <!-- 1.16: «Lock Menu Key» from the PMS. Only Android can bind it (BIND_ACCESSIBILITY_SERVICE); it sees only the
              factory app's windows and acts only when a PMS command armed it. Switched on once per TV. -->
         <service
