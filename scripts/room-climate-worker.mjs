@@ -30,8 +30,11 @@ export async function runRoomClimate({ pool, owner, unseal, seal = null, force =
   )).rows;
   if (!rows.length) return null;
   if (!force && rows.every((r) => r.checked_at && Number(r.checked_at) > now - READ_EVERY_MS)) return null;
-  const tuya = await tuyaCreds(pool, owner, unseal);
-  if (!tuya) return { rooms: rows.length, read: 0, alerts: 0, error: "TUYA_NOT_SET_UP" };
+  // v172: a read that cannot start is recorded on every sensor, so the PMS shows why the values are old.
+  const fail = async (code) => { await pool.query(`UPDATE room_climate SET checked_at=$2,error=$3 WHERE owner_id=$1`, [owner, now, code]); return { rooms: rows.length, read: 0, alerts: 0, error: code }; };
+  let tuya;
+  try { tuya = await tuyaCreds(pool, owner, unseal); } catch { return fail("TUYA_KEYS_UNREADABLE"); }
+  if (!tuya) return fail("TUYA_NOT_SET_UP");
   const all = normalizePowerSettings(parse((await pool.query(`SELECT settings_json FROM tv_power_settings WHERE owner_id=$1`, [owner])).rows[0]?.settings_json));
   const s = all.climate, ir = all.ir;
   let status = {}, error = "", token = "";

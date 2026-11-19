@@ -38,7 +38,7 @@ async function handlePOST(request: Request) {
     else if (x.action === "device") await setAcDevice(u.ownerId, x.roomId, x.deviceId, x.channel, x.presenceDeviceId);
     else if (x.action === "climate") await setClimateDevice(u.ownerId, x.roomId, x.deviceId);
     else if (x.action === "climateSettings") await saveClimateSettings(u.ownerId, u.id, x.settings);
-    else if (x.action === "climateRead") await readClimateNow(u.ownerId);
+    else if (x.action === "climateRead") error = (await readClimateNow(u.ownerId))?.error ?? "";
     else if (x.action === "switch") error = await switchAc(u.ownerId, u.id, x.roomId, x.on);
     else await autoAc(u.ownerId, x.roomId);
     return Response.json({ ok: !error, error: error || undefined, ...(await acRooms(u.ownerId)) }, { status: error ? 502 : 200 });
