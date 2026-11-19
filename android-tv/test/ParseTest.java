@@ -32,11 +32,11 @@ public class ParseTest {
     for (String c : new String[]{"shell:dumpsys activity activities", "shell:dumpsys power", "shell:input keyevent KEYCODE_WAKEUP", "shell:input keyevent KEYCODE_SLEEP"}) check(SelfAdbProbe.allowed(c), "allowed: " + c);
     for (String c : new String[]{"shell:input keyevent KEYCODE_HOME", "shell:input keyevent 26", "shell:input text x", "shell:dumpsys wifi", "shell:cmd power set-low-power-standby-enabled false", "shell:svc power stayon true"}) check(!SelfAdbProbe.allowed(c), "refused: " + c);
     // 1.16: switching on this app's own MenuLockService only (the list must contain it; nothing else in settings).
-    for (String c : new String[]{SelfAdbProbe.A11Y_ON, "shell:settings put secure enabled_accessibility_services gr.hotelcorali.tv/gr.hotelcorali.tv.MenuLockService",
+    for (String c : new String[]{SelfAdbProbe.A11Y_ON, SelfAdbProbe.ALLOW_RESTRICTED, "shell:settings put secure enabled_accessibility_services gr.hotelcorali.tv/gr.hotelcorali.tv.MenuLockService",
         "shell:settings put secure enabled_accessibility_services com.example.a11y/com.example.a11y.Svc:gr.hotelcorali.tv/gr.hotelcorali.tv.MenuLockService"}) check(SelfAdbProbe.allowed(c), "allowed: " + c);
     for (String c : new String[]{"shell:settings put secure enabled_accessibility_services com.evil/com.evil.Svc", "shell:settings put secure enabled_accessibility_services gr.hotelcorali.tv/gr.hotelcorali.tv.MenuLockService;reboot",
         "shell:settings put secure enabled_accessibility_services gr.hotelcorali.tv/gr.hotelcorali.tv.MenuLockService com.evil/x", "shell:settings put secure accessibility_enabled 0", "shell:settings put global hotel_menu_key_lock 1",
-        "shell:settings put global hotel_enable 1", "shell:pm disable-user com.android.tv.settings"}) check(!SelfAdbProbe.allowed(c), "refused: " + c);
+        "shell:settings put global hotel_enable 1", "shell:pm disable-user com.android.tv.settings", "shell:appops set com.evil ACCESS_RESTRICTED_SETTINGS allow", "shell:appops set gr.hotelcorali.tv SYSTEM_ALERT_WINDOW allow"}) check(!SelfAdbProbe.allowed(c), "refused: " + c);
     System.out.println("ALL OK");
   }
 }

@@ -48,6 +48,12 @@ public final class SelfAdbProbe {
     static final String KEY_SLEEP = "shell:input keyevent KEYCODE_SLEEP";
     /** 1.16: switch on this app's own MenuLockService, once per TV (the list keeps every service already on). */
     static final String A11Y_ON = "shell:settings put secure accessibility_enabled 1";
+    /**
+     * 1.16: Android 13+ marks an app installed by a downloader / browser as «restricted»: its accessibility service is
+     * removed from the enabled list at once (seen on the HORIZON 112: ACCESS_RESTRICTED_SETTINGS deny). This allows it
+     * for THIS app only — what «Allow restricted settings» in the app's info screen does.
+     */
+    static final String ALLOW_RESTRICTED = "shell:appops set gr.hotelcorali.tv ACCESS_RESTRICTED_SETTINGS allow";
     static final String MENU_LOCK_SERVICE = "gr.hotelcorali.tv/gr.hotelcorali.tv.MenuLockService";
     private static final Pattern A11Y_LIST = Pattern.compile("shell:settings put secure enabled_accessibility_services ([A-Za-z0-9_.]+/[A-Za-z0-9_.$]+(:[A-Za-z0-9_.]+/[A-Za-z0-9_.$]+)*)");
 
@@ -74,7 +80,7 @@ public final class SelfAdbProbe {
         // 1.15 (v164): read-only power / foreground state, and the TV's own sleep / wake keys (what the remote sends).
         if (DUMP_ACTIVITIES.equals(command) || DUMP_POWER.equals(command) || KEY_WAKEUP.equals(command) || KEY_SLEEP.equals(command)) return true;
         // 1.16: only a list that contains this app's MenuLockService (built from the list already on the TV).
-        if (A11Y_ON.equals(command)) return true;
+        if (A11Y_ON.equals(command) || ALLOW_RESTRICTED.equals(command)) return true;
         java.util.regex.Matcher a = A11Y_LIST.matcher(command);
         if (a.matches()) return java.util.Arrays.asList(a.group(1).split(":")).contains(MENU_LOCK_SERVICE);
         for (Pattern pattern : ALLOWED) {

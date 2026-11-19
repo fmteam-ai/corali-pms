@@ -86,10 +86,16 @@ public final class MenuLockService extends AccessibilityService {
             }
         }
         list.append(SelfAdbProbe.MENU_LOCK_SERVICE);
-        SelfAdbProbe.Result r = SelfAdbProbe.shell(c.getFilesDir(), "shell:settings put secure enabled_accessibility_services " + list);
+        // Installed by a downloader → «restricted»: Android would drop the service from the list at once.
+        SelfAdbProbe.Result r = SelfAdbProbe.shell(c.getFilesDir(), SelfAdbProbe.ALLOW_RESTRICTED);
+        if (r.status != SelfAdbProbe.Status.PASS) return "SELF_ADB_" + r.status;
+        r = SelfAdbProbe.shell(c.getFilesDir(), "shell:settings put secure enabled_accessibility_services " + list);
         if (r.status != SelfAdbProbe.Status.PASS) return "SELF_ADB_" + r.status;
         r = SelfAdbProbe.shell(c.getFilesDir(), SelfAdbProbe.A11Y_ON);
-        return r.status == SelfAdbProbe.Status.PASS ? "" : "SELF_ADB_" + r.status;
+        if (r.status != SelfAdbProbe.Status.PASS) return "SELF_ADB_" + r.status;
+        // Read back: Android removes a service it does not accept (restricted, or not a valid service).
+        try { Thread.sleep(1_500); } catch (InterruptedException ignored) { }
+        return enabled(c) ? "" : "A11Y_REMOVED_BY_ANDROID";
     }
 
     static Job arm(boolean lock) {
