@@ -41,10 +41,14 @@ public class MainActivity extends Activity {
     private final Runnable retry = new Runnable() {
         @Override
         public void run() {
+            // 1.16: load the room's page again. Not reload(): after a failure that reloads the WebView's own error page,
+            // which «loads» without an error and used to hide the offline notice, leaving «ERR_NAME_NOT_RESOLVED» on screen.
             failed = false;
-            web.reload();
+            if (!loadedUrl.isEmpty()) web.loadUrl(loadedUrl); else web.reload();
         }
     };
+    /** 1.16: Wi-Fi back (e.g. after a power cut the app starts before the network): try again at once. */
+    private android.net.ConnectivityManager.NetworkCallback netCallback;
 
     /** true while the welcome screen is on screen (onResume … onPause). */
     static volatile boolean visible;
@@ -106,12 +110,17 @@ public class MainActivity extends Activity {
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) showOffline();
+                if (!request.isForMainFrame()) return;
+                // 1.16: never leave the WebView's own error page («net::ERR_NAME_NOT_RESOLVED») on the guest's screen.
+                view.setVisibility(View.INVISIBLE);
+                showOffline();
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
-                if (!failed) offline.setVisibility(View.GONE);
+                if (failed) return;
+                view.setVisibility(View.VISIBLE);
+                offline.setVisibility(View.GONE);
             }
         });
 
@@ -127,6 +136,31 @@ public class MainActivity extends Activity {
         root.addView(web, new FrameLayout.LayoutParams(-1, -1));
         root.addView(offline, new FrameLayout.LayoutParams(-1, -1));
         setContentView(root);
+        watchNetwork();
+    }
+
+    private void watchNetwork() {
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            if (cm == null || android.os.Build.VERSION.SDK_INT < 24) return;
+            netCallback = new android.net.ConnectivityManager.NetworkCallback() {
+                @Override
+                public void onAvailable(android.net.Network network) {
+                    handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (!failed) return;
+                            BootLog.add(MainActivity.this, "network available → reload welcome screen");
+                            handler.removeCallbacks(retry);
+                            handler.postDelayed(retry, 2_000); // DNS a moment after the link
+                        }
+                    });
+                }
+            };
+            cm.registerDefaultNetworkCallback(netCallback);
+        } catch (RuntimeException e) {
+            netCallback = null;
+        }
     }
 
     @Override
@@ -199,6 +233,9 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (netCallback != null) {
+            try { ((android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE)).unregisterNetworkCallback(netCallback); } catch (RuntimeException ignored) { }
+        }
         if (voice != null) voice.shutdown();
         handler.removeCallbacks(retry);
         web.destroy();
@@ -219,6 +256,7 @@ public class MainActivity extends Activity {
     private void showOffline() {
         failed = true;
         offline.setVisibility(View.VISIBLE);
+        offline.bringToFront();
         handler.removeCallbacks(retry);
         handler.postDelayed(retry, RETRY_MS);
     }
