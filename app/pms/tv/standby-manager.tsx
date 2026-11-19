@@ -24,11 +24,23 @@ const T: Record<string, string> = {
   diag: "Διάγνωση", lastDiag: "Τελευταία διάγνωση", test: "Δοκιμή standby", t10: "10′", t60: "1 ώρα", t720: "12 ώρες",
   testConfirm: "Δοκιμή standby στο δωμάτιο {r}: η TV σβήνει ΤΩΡΑ και το PMS θα προσπαθήσει να την ανάψει μετά από {m}. Συνέχεια;",
   oldApp: "χρειάζεται Corali TV 1.15", notAgent: "μόνο για δωμάτια με μέθοδο ρεύματος «Corali TV (android_agent)»",
-  gap: "διακοπή επικοινωνίας", screenOn: "οθόνη αναμμένη", screenOff: "οθόνη σβηστή", sec: "″",
+  gap: "διακοπή", screenOn: "οθόνη αναμμένη", screenOff: "οθόνη σβηστή", more: "+{n} παλαιότερα",
   v_STARTING: "⏳ σβήνει…", v_OFF_FAILED: "✗ δεν έσβησε", v_WAITING: "⏳ σε αναμονή μέχρι", v_WAKE_DUE: "⏳ ώρα για άναμμα — περιμένει την TV", v_WAKING: "⏳ ανάβει…",
   v_PASS: "✓ PASS — ξύπνησε από το PMS", v_FAIL_UNREACHABLE: "✗ FAIL — η TV δεν απαντούσε σε αναμονή (δεν πήρε την εντολή)", v_FAIL_WAKE_REFUSED: "✗ FAIL — η TV πήρε την εντολή αλλά η οθόνη δεν άναψε",
   v_UNVERIFIED: "? χωρίς επιβεβαίωση", v_CANCELLED: "ακυρώθηκε (νεότερη εντολή)", v_ERROR: "σφάλμα", failed: "Η ενέργεια δεν επιτράπηκε ή απέτυχε.",
 };
+
+/** Events listed per room before «+N παλαιότερα»; the rest fold so a room's row stays short. */
+const EVENTS_SHOWN = 3;
+/** 5839 → «1ω 37′», 240 → «4′», 45 → «45″». */
+function duration(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s}″`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}′`;
+  const h = Math.floor(m / 60), r = m % 60;
+  return r ? `${h}ω ${r}′` : `${h}ω`;
+}
 
 export function StandbyManager({ lang, canAdmin, canDiag }: { lang: string; canAdmin: boolean; canDiag: boolean }) {
   const tx = (k: string) => T[k] ?? k;
@@ -52,6 +64,14 @@ export function StandbyManager({ lang, canAdmin, canDiag }: { lang: string; canA
   }
   if (!data) return null;
   const at = (ms: number | null) => (ms ? new Date(ms).toLocaleString(lang === "en" ? "en-GB" : "el-GR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" }) : T.never);
+  // One short line per event: «15:39 · διακοπή 1ω 37′» (the date only when it is not today).
+  const today = new Date(data.now).toLocaleDateString("el-GR", { timeZone: "Europe/Athens" });
+  const short = (ms: number) => {
+    const d = new Date(ms), loc = lang === "en" ? "en-GB" : "el-GR";
+    const time = d.toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" });
+    return d.toLocaleDateString("el-GR", { timeZone: "Europe/Athens" }) === today ? time : `${d.toLocaleDateString(loc, { day: "numeric", month: "short", timeZone: "Europe/Athens" })} ${time}`;
+  };
+  const evLine = (e: Ev) => <small title={at(e.at)}>{short(e.at)} · {e.kind === "GAP" ? <span className="debit">{T.gap} {duration(e.detail.seconds ?? 0)}</span> : e.detail.on ? T.screenOn : T.screenOff}</small>;
   const flag = (v: boolean | null | undefined) => (v === true ? T.yes : v === false ? T.no : T.unk);
 
   return (
@@ -81,7 +101,11 @@ export function StandbyManager({ lang, canAdmin, canDiag }: { lang: string; canA
                 {canDiag && !old && <button type="button" className="secondaryButton" disabled={busy} onClick={() => void post({ action: "diagnostics", roomId: r.room_id })}>{T.diag}</button>}
                 {canAdmin && !old && (agent ? <span> {T.test}: {[10, 60, 720].map((m) => <button key={m} type="button" className="secondaryButton" disabled={busy} onClick={() => { if (window.confirm(T.testConfirm.replace("{r}", r.room_code).replace("{m}", tx(`t${m}`)))) void post({ action: "start_test", roomId: r.room_id, minutes: m }); }}>{tx(`t${m}`)}</button>)}</span> : <><br /><small className="muted">{T.notAgent}</small></>)}
               </td>
-              <td>{r.events.length ? <ul className="plainList">{r.events.map((e, i) => <li key={i}><small>{at(e.at)} · {e.kind === "GAP" ? <span className="debit">{T.gap} {e.detail.seconds}{T.sec}</span> : e.detail.on ? T.screenOn : T.screenOff}</small></li>)}</ul> : <small className="muted">—</small>}</td>
+              <td style={{ whiteSpace: "nowrap" }}>{r.events.length ? <>
+                <ul className="plainList">{r.events.slice(0, EVENTS_SHOWN).map((e, i) => <li key={i}>{evLine(e)}</li>)}</ul>
+                {r.events.length > EVENTS_SHOWN && <details><summary><small>{T.more.replace("{n}", String(r.events.length - EVENTS_SHOWN))}</small></summary>
+                  <ul className="plainList">{r.events.slice(EVENTS_SHOWN).map((e, i) => <li key={i}>{evLine(e)}</li>)}</ul></details>}
+              </> : <small className="muted">—</small>}</td>
             </tr>
           );
         })}</tbody>
