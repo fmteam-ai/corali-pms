@@ -46,7 +46,7 @@ export const defaultInfoSections: TvInfoSection[] = [
   },
   {
     key: "important", icon: "❗",
-    title: { en: "Important information", el: "Σημαντικές πληροφορίες" },
+    title: { en: "Information", el: "Πληροφορίες", fr: "Informations", de: "Informationen", it: "Informazioni", es: "Información" },
     body: {
       en: "**Smoking:** all rooms are non-smoking. Thank you for smoking only in permitted outdoor areas.\n**Pets:** pets are not permitted at the hotel.\n**Drinking water:** we recommend using bottled water for drinking.\n**Air conditioning:**\n- Please keep the doors and windows closed\n- Insert the room key fob into the energy-saving socket below the switches near the entrance",
       el: "**Κάπνισμα:** όλα τα δωμάτια είναι μη καπνιζόντων. Σας ευχαριστούμε που καπνίζετε μόνο στους επιτρεπόμενους εξωτερικούς χώρους.\n**Κατοικίδια:** δεν επιτρέπονται κατοικίδια στο ξενοδοχείο.\n**Πόσιμο νερό:** προτείνουμε εμφιαλωμένο νερό για πόσιμο.\n**Κλιματισμός:**\n- Παρακαλούμε κρατάτε πόρτες και παράθυρα κλειστά\n- Τοποθετήστε το μπρελόκ του κλειδιού στην υποδοχή εξοικονόμησης ενέργειας κάτω από τους διακόπτες, δίπλα στην είσοδο",
@@ -82,6 +82,17 @@ const movedCards: Record<string, Partial<Record<TvLanguage, [string, string]>>> 
     el: ["\n**Κάρτες:** Visa, Mastercard, Maestro", "remove"],
   },
 };
+// v178: «Important information» is now «Information» — saved titles still equal to an old default follow.
+const oldTitles: Record<string, Partial<Record<TvLanguage, string[]>>> = {
+  important: { en: ["Important information", "Important Information"], el: ["Σημαντικές πληροφορίες"], fr: ["Informations importantes"], de: ["Wichtige Informationen"], it: ["Informazioni importanti"], es: ["Información importante"] },
+};
+function upgradeTitle(section: TvInfoSection): TvInfoSection {
+  const old = oldTitles[section.key], now = defaultInfoSections.find((d) => d.key === section.key)?.title;
+  if (!old || !now) return section;
+  const title = { ...section.title };
+  for (const [lang, list] of Object.entries(old) as [TvLanguage, string[]][]) if (title[lang] && list.includes(title[lang]!) && now[lang]) title[lang] = now[lang];
+  return { ...section, title };
+}
 function upgradeDefaults(section: TvInfoSection): TvInfoSection {
   const rules = movedCards[section.key];
   const current = defaultInfoSections.find((d) => d.key === section.key);
@@ -124,7 +135,7 @@ export function normalizeInfoSections(raw: unknown): TvInfoSection[] {
     let key = clip(x.key, 30).replace(/[^a-z0-9_-]/gi, "") || `s${i + 1}`;
     while (seen.has(key)) key = `${key}_`;
     seen.add(key);
-    const section = upgradeDefaults({ key, icon: clip(x.icon, 8) || "ℹ️", title: loc(x.title, 60), body: loc(x.body, 2500) });
+    const section = upgradeTitle(upgradeDefaults({ key, icon: clip(x.icon, 8) || "ℹ️", title: loc(x.title, 60), body: loc(x.body, 2500) }));
     if (!untouched(section)) return [section];
     const now = defaultInfoSections.find((d) => d.key === key);
     return now ? [{ ...section, title: { ...now.title }, body: { ...now.body } }] : [];
