@@ -65,3 +65,31 @@ test("worker: adds a password for the checked-in stay and removes the ended stay
     assert.ok(sql.some((q) => q.startsWith("INSERT INTO guest_wifi")));
   } finally { globalThis.fetch = realFetch; }
 });
+
+test("bridge mode (v179): a private controller address is reached by the hotel's bridge; plan from pending / removing", async () => {
+  const { privateController, bridgeWork } = await import("../scripts/omada-core.mjs");
+  assert.equal(privateController("https://192.168.10.2:443"), true);
+  assert.equal(privateController("10.0.0.5"), true);
+  assert.equal(privateController("https://euw1-omada-northbound.tplinkcloud.com"), false);
+  assert.deepEqual(bridgeWork([{ booking_id: 1, psk_name: "PMS-A", status: "pending" }, { booking_id: 2, psk_name: "PMS-B", status: "removing" }, { booking_id: 3, psk_name: "PMS-C", status: "active" }]),
+    { add: [{ bookingId: 1, name: "PMS-A" }], remove: [{ bookingId: 2, name: "PMS-B" }] });
+});
+
+test("worker in bridge mode: no Omada calls — new passwords wait as pending, ended stays as removing", async () => {
+  const sql: { q: string; p: unknown[] }[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => { throw new Error("no direct call in bridge mode"); }) as unknown as typeof fetch;
+  const pool = { async query(q: string, p: unknown[] = []) {
+    sql.push({ q, p });
+    if (q.includes("FROM bookings")) return { rows: [{ id: 1, reference: "R1", status: "checked_in", check_in: "2026-07-01", check_out: "2026-07-05", room_id: 12 }] };
+    if (q.includes("FROM guest_wifi")) return { rows: [{ booking_id: 9, psk_name: "PMS-OLD", status: "active" }] };
+    return { rows: [] };
+  } };
+  try {
+    const credentials = async () => ({ settings: { interfaceUrl: "https://192.168.10.2:443", omadacId: "d7a2b74a3acaf62af37e3230d4865ae3", profile: "Corali Guests", ssid: "CORALI_ROOMS" }, secrets: { clientId: "c", clientSecret: "s" } });
+    const r = await runGuestWifi({ pool, owner: "o", credentials, seal: (v: string) => `sealed:${v}`, today: "2026-07-02" });
+    assert.equal(r?.queued, 2);
+    assert.ok(sql.some((x) => x.q.includes("'pending'") && x.p.includes("PMS-R1")));
+    assert.ok(sql.some((x) => x.q.includes("SET status='removing'")));
+  } finally { globalThis.fetch = realFetch; }
+});

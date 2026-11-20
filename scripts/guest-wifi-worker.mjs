@@ -1,7 +1,7 @@
 // v177: per-booking Wi-Fi password on TP-Link Omada (see omada-core.mjs). Every 5 minutes from the automation cron:
 // a checked-in stay without a password gets one (added to the guest SSID's PPSK profile); a password whose stay ended
 // (checked out, cancelled, or past its check-out day) is removed. Failures are kept on the row and retried next run.
-import { guestPassword, omadaClient, pskName, wifiPlan } from "./omada-core.mjs";
+import { guestPassword, omadaClient, privateController, pskName, wifiPlan } from "./omada-core.mjs";
 
 export async function runGuestWifi({ pool, owner, credentials, seal, now = Date.now(), today }) {
   const c = await credentials("omada").catch(() => null);
@@ -9,9 +9,22 @@ export async function runGuestWifi({ pool, owner, credentials, seal, now = Date.
   const s = c.settings ?? {}, conn = { url: s.interfaceUrl, omadacId: s.omadacId, clientId: c.secrets?.clientId, clientSecret: c.secrets?.clientSecret };
   const stays = (await pool.query(`SELECT b.id,b.reference,b.status,b.check_in,b.check_out,b.room_id FROM bookings b WHERE b.owner_id=$1 AND b.status='checked_in' AND b.check_out>=$2`, [owner, today])).rows
     .map((b) => ({ ...b, check_in: String(b.check_in).slice(0, 10), check_out: String(b.check_out).slice(0, 10) }));
-  const entries = (await pool.query(`SELECT booking_id,psk_name,status FROM guest_wifi WHERE owner_id=$1 AND status='active'`, [owner])).rows;
+  const entries = (await pool.query(`SELECT booking_id,psk_name,status FROM guest_wifi WHERE owner_id=$1 AND status IN ('active','pending')`, [owner])).rows;
   const plan = wifiPlan(stays, entries, today);
   if (!plan.add.length && !plan.remove.length) return { added: 0, removed: 0, failed: 0 };
+  // v179: a controller inside the hotel (e.g. https://192.168.10.2) is reached by the hotel's bridge (Raspberry Pi):
+  // the PMS only chooses the passwords and marks what to add / remove; the bridge does it and reports back.
+  if (privateController(s.interfaceUrl)) {
+    for (const b of plan.add) {
+      await pool.query(
+        `INSERT INTO guest_wifi(owner_id,booking_id,room_id,psk_name,psk_encrypted,ssid,status,error,created_at,removed_at) VALUES($1,$2,$3,$4,$5,$6,'pending','',$7,NULL)
+         ON CONFLICT(owner_id,booking_id) DO UPDATE SET room_id=$3,psk_name=$4,psk_encrypted=$5,ssid=$6,status='pending',error='',created_at=$7,removed_at=NULL`,
+        [owner, b.id, b.room_id, pskName(b.reference), seal(guestPassword()), String(s.ssid ?? ""), now],
+      );
+    }
+    if (plan.remove.length) await pool.query(`UPDATE guest_wifi SET status='removing' WHERE owner_id=$1 AND booking_id=ANY($2::bigint[]) AND status IN ('active','pending')`, [owner, plan.remove.map((e) => Number(e.booking_id))]);
+    return { added: 0, removed: 0, failed: 0, queued: plan.add.length + plan.remove.length };
+  }
   const api = omadaClient(conn);
   const siteId = await api.siteId(s.siteName);
   const profile = await api.profile(siteId, s.profile);

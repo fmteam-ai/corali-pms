@@ -2432,3 +2432,14 @@ CREATE TABLE IF NOT EXISTS guest_wifi (
   removed_at BIGINT,
   PRIMARY KEY (owner_id, booking_id)
 );
+
+-- v179: Omada through the hotel's bridge (Raspberry Pi): passwords wait as «pending» / «removing» until it reports.
+ALTER TABLE guest_wifi DROP CONSTRAINT IF EXISTS guest_wifi_status_check;
+ALTER TABLE guest_wifi ADD CONSTRAINT guest_wifi_status_check CHECK (status IN ('active','removed','failed','pending','removing'));
+CREATE TABLE IF NOT EXISTS omada_bridge (
+  owner_id TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL,
+  created_at BIGINT NOT NULL,
+  last_seen_at BIGINT,
+  last_report TEXT NOT NULL DEFAULT ''
+);

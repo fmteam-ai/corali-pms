@@ -8,7 +8,7 @@ import { assertTrustedOrigin } from "@/lib/security/origin";
 import { providerFields, providerKeySchema } from "@/lib/provider-fields";
 import { listProviders, providerCredentials, sealProviderSecrets, unsealProviderSecrets, validateProviderFields } from "@/lib/provider-connections";
 import { testVivaCredentials, testWhatsAppCredentials } from "@/lib/provider-tests";
-import { omadaCheck } from "../../../../scripts/omada-core.mjs";
+import { omadaCheck, privateController } from "../../../../scripts/omada-core.mjs";
 import { openImap } from "../../../../scripts/imap-core.mjs";
 import { googleSearch, recordGoogleCalls } from "@/lib/nearby-places";
 
@@ -104,6 +104,8 @@ async function handlePOST(request:Request) {
       } else if(providerKey==="omada") {
         // v177: sign in, find the site and the guest SSID's PPSK profile (nothing is changed on the controller).
         const s=connection.settings;
+        // v179: a controller inside the hotel is checked by the hotel's bridge (Raspberry Pi), not from here.
+        if(privateController(s.interfaceUrl)){omadaError="OMADA_VIA_BRIDGE";throw new Error("OMADA_VIA_BRIDGE");}
         omadaFound=await omadaCheck({url:s.interfaceUrl,omadacId:s.omadacId,clientId:connection.secrets.clientId,clientSecret:connection.secrets.clientSecret,siteName:s.siteName,profile:s.profile}).catch((e:unknown)=>{omadaError=e instanceof Error?e.message:"OMADA_FAILED";throw e;});
       } else if(providerKey==="viva") {
         if(!await testVivaCredentials(connection))throw new Error("VIVA_TEST_FAILED");

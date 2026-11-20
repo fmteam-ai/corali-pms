@@ -7,3 +7,5 @@ export declare function wifiPlan<S extends { id: number | string; status: string
 type Conn = { url: string; omadacId: string; clientId: string; clientSecret: string };
 export declare function omadaClient(conn: Conn, request?: typeof fetch): { siteId(name?: string): Promise<string>; profile(siteId: string, name: string): Promise<{ id: string; ssids: string[] }>; psks(siteId: string, profileId: string): Promise<string[]>; addPsk(siteId: string, profileId: string, name: string, psk: string): Promise<unknown>; deletePsks(siteId: string, profileId: string, names: string[]): Promise<unknown> };
 export declare function omadaCheck(conn: Conn & { siteName?: string; profile: string }, request?: typeof fetch): Promise<{ siteId: string; profileId: string; ssids: string[]; count: number }>;
+export declare function privateController(url: unknown): boolean;
+export declare function bridgeWork(entries: { booking_id: number | string; psk_name: string; status: string }[]): { add: { bookingId: number; name: string }[]; remove: { bookingId: number; name: string }[] };

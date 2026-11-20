@@ -39,8 +39,10 @@ export const wifiQr = (ssid, psk) => `WIFI:T:WPA;S:${String(ssid).replace(/([\\;
 /** Which PSK entries to add (checked-in stays without one) and remove (stays that ended), from the PMS records. */
 export function wifiPlan(stays, entries, today) {
   const live = new Map(stays.filter((s) => s.status === "checked_in" && s.check_out >= today).map((s) => [Number(s.id), s]));
-  const add = [...live.values()].filter((s) => !entries.some((e) => Number(e.booking_id) === Number(s.id) && e.status === "active"));
-  const remove = entries.filter((e) => e.status === "active" && !live.has(Number(e.booking_id)));
+  // «pending» (v179, bridge mode): password chosen, the hotel's bridge has not added it yet — it counts as existing.
+  const held = (e) => e.status === "active" || e.status === "pending";
+  const add = [...live.values()].filter((s) => !entries.some((e) => Number(e.booking_id) === Number(s.id) && held(e)));
+  const remove = entries.filter((e) => held(e) && !live.has(Number(e.booking_id)));
   return { add, remove };
 }
 
@@ -96,4 +98,23 @@ export async function omadaCheck(conn, request = fetch) {
   const p = await c.profile(siteId, conn.profile);
   const count = (await c.psks(siteId, p.id)).length;
   return { siteId, profileId: p.id, ssids: p.ssids, count };
+}
+
+/** v179: a controller address only reachable inside the hotel (192.168.x, 10.x, 172.16–31.x, .local): bridge mode. */
+export function privateController(url) {
+  const base = omadaUrl(url);
+  if (!base) return false;
+  const host = new URL(base).hostname;
+  return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.)/.test(host) || host.endsWith(".local") || host === "localhost";
+}
+
+/**
+ * v179: bridge plan (the Raspberry Pi in the hotel does the Omada calls): entries waiting to be added (status
+ * «pending», password already chosen by the PMS) and entries to remove («removing»). From the PMS records only.
+ */
+export function bridgeWork(entries) {
+  return {
+    add: entries.filter((e) => e.status === "pending").map((e) => ({ bookingId: Number(e.booking_id), name: String(e.psk_name) })),
+    remove: entries.filter((e) => e.status === "removing").map((e) => ({ bookingId: Number(e.booking_id), name: String(e.psk_name) })),
+  };
 }
