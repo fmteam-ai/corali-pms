@@ -13,6 +13,8 @@ export const providerFields = {
   anthropic: { label: "Anthropic (Claude) · AI assistant", settings: [], secrets: ["apiKey"] },
   googlePlaces: { label: "Google Places · μαγαζιά κοντά στο ξενοδοχείο (βοηθός TV)", settings: ["dailyLimit"], secrets: ["apiKey"] },
   tuya: { label: "Tuya / Smart Life · αισθητήρες παρουσίας", settings: ["dataCenter"], secrets: ["accessId", "accessSecret"] },
+  // v177: per-booking Wi-Fi password (Omada Open API, client mode; PPSK profile of the guest SSID).
+  omada: { label: "TP-Link Omada · Wi-Fi με κωδικό ανά κράτηση", settings: ["interfaceUrl", "omadacId", "siteName", "profile", "ssid"], secrets: ["clientId", "clientSecret"] },
 } as const;
 export type ProviderKey = keyof typeof providerFields;
 export const providerKeySchema = z.enum(Object.keys(providerFields) as [ProviderKey, ...ProviderKey[]]);

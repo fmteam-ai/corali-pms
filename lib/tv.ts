@@ -10,6 +10,7 @@ import { fillInfo } from "@/lib/tv-info";
 import { screenMessages } from "@/lib/tv-messages";
 import { guestTvRequests, screenDnd } from "@/lib/tv-requests";
 import { instayAsk } from "@/lib/instay";
+import { guestWifiFor } from "@/lib/guest-wifi";
 import { beachesToday, beachTodayTexts, windNames } from "@/lib/tv-beaches";
 import { instayTexts, instayTopics } from "@/lib/instay-core";
 import { defaultTransferTime, transferDays, tvProblemTexts, tvRequestTexts, tvTransferTexts } from "@/lib/tv-requests-core";
@@ -105,7 +106,10 @@ export async function tvScreenData(token: string, langOverride?: string | null) 
   const stays = (await db().query(`SELECT reference,guest_name,guest_language,check_in,check_out,status,adults,children FROM bookings WHERE owner_id=$1 AND room_id=$2 AND status IN ('confirmed','checked_in') AND check_in<=$3 AND check_out>=$3 ORDER BY check_in`, [ownerId, s.room_id, today])).rows as TvStay[];
   const state = currentStay(stays, today, hotelTime(), settings.checkOutTime);
   const lang: TvLanguage = langOverride ? tvLanguage(langOverride) : state.mode === "stay" ? tvLanguage(state.stay.guest_language) : "en";
-  const ssid = String(s.wifi_ssid || settings.wifiSsid), password = String(s.wifi_ssid ? s.wifi_password : settings.wifiPassword);
+  // v177: during a stay with its own Wi-Fi password (Omada PPSK), that network and password; otherwise the hotel's.
+  const stayId = state.mode === "stay" ? (await db().query(`SELECT id FROM bookings WHERE owner_id=$1 AND reference=$2`, [ownerId, state.stay.reference])).rows[0]?.id : null;
+  const own = stayId ? await guestWifiFor(ownerId, Number(stayId)) : null;
+  const ssid = own ? own.ssid : String(s.wifi_ssid || settings.wifiSsid), password = own ? own.password : String(s.wifi_ssid ? s.wifi_password : settings.wifiPassword);
   const [extras, wx] = await Promise.all([
     settings.showExtras ? db().query(`SELECT name,name_el,name_en,name_translations_json,price_cents,pricing_mode FROM extras WHERE owner_id=$1 AND active=1 ORDER BY sort_order,id LIMIT 6`, [ownerId]) : Promise.resolve({ rows: [] as Record<string, unknown>[] }),
     settings.showWeather ? weather() : Promise.resolve(null),

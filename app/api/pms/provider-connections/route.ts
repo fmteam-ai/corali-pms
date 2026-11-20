@@ -8,6 +8,7 @@ import { assertTrustedOrigin } from "@/lib/security/origin";
 import { providerFields, providerKeySchema } from "@/lib/provider-fields";
 import { listProviders, providerCredentials, sealProviderSecrets, unsealProviderSecrets, validateProviderFields } from "@/lib/provider-connections";
 import { testVivaCredentials, testWhatsAppCredentials } from "@/lib/provider-tests";
+import { omadaCheck } from "../../../../scripts/omada-core.mjs";
 import { openImap } from "../../../../scripts/imap-core.mjs";
 import { googleSearch, recordGoogleCalls } from "@/lib/nearby-places";
 
@@ -58,6 +59,7 @@ async function handlePUT(request:Request) {
         channelManager:{secrets:["apiKey"],settings:["propertyCode"]},openai:{secrets:["apiKey"],settings:[]},anthropic:{secrets:["apiKey"],settings:[]},googlePlaces:{secrets:["apiKey"],settings:[]},
         // v169: Tuya and IMAP were missing here, so saving them as «active» crashed (SAVE_FAILED) instead of saving.
         tuya:{secrets:["accessId","accessSecret"],settings:["dataCenter"]},imap:{secrets:[],settings:[]},
+        omada:{secrets:["clientId","clientSecret"],settings:["interfaceUrl","omadacId","profile","ssid"]},
       };
       const needed=required[input.providerKey] ?? {secrets:[],settings:[]};
       if (input.active && (needed.secrets.some(key => !secrets[key])||needed.settings.some(key => !input.settings[key]))) throw new Error("CREDENTIALS_REQUIRED");
@@ -81,10 +83,10 @@ async function handlePOST(request:Request) {
   try {
     assertTrustedOrigin(request);
     const {providerKey} = testInput.parse(await request.json());
-    if (!["stripe","smtp","imap","viva","whatsapp","googlePlaces"].includes(providerKey)) return Response.json({ok:false,error:"TEST_NOT_AVAILABLE"},{status:501});
+    if (!["stripe","smtp","imap","viva","whatsapp","googlePlaces","omada"].includes(providerKey)) return Response.json({ok:false,error:"TEST_NOT_AVAILABLE"},{status:501});
     const connection=await providerCredentials(user.ownerId,providerKey);
     if (!connection?.active) return Response.json({ok:false,error:"NOT_ACTIVE"},{status:409});
-    let success=false;
+    let success=false, omadaError="", omadaFound:{ssids:string[];count:number}|null=null;
     try {
       if (providerKey==="stripe") {
         const key=connection.secrets.secretKey;
@@ -99,6 +101,10 @@ async function handlePOST(request:Request) {
         if (!host||!username||!connection.secrets.password) throw new Error("MISSING_FIELDS");
         const p=Number(port||993), session=await openImap({host,port:p,secure:p!==143,username,password:connection.secrets.password,timeoutMs:10_000});
         try { await session.examine(mailbox||"INBOX"); } finally { await session.close(); }
+      } else if(providerKey==="omada") {
+        // v177: sign in, find the site and the guest SSID's PPSK profile (nothing is changed on the controller).
+        const s=connection.settings;
+        omadaFound=await omadaCheck({url:s.interfaceUrl,omadacId:s.omadacId,clientId:connection.secrets.clientId,clientSecret:connection.secrets.clientSecret,siteName:s.siteName,profile:s.profile}).catch((e:unknown)=>{omadaError=e instanceof Error?e.message:"OMADA_FAILED";throw e;});
       } else if(providerKey==="viva") {
         if(!await testVivaCredentials(connection))throw new Error("VIVA_TEST_FAILED");
       } else if(providerKey==="googlePlaces") {
@@ -113,7 +119,7 @@ async function handlePOST(request:Request) {
     } catch { success=false; }
     await db().query("UPDATE provider_connections SET last_test_at=$1,last_test_result=$2,status=$3 WHERE owner_id=$4 AND provider_key=$5",[Date.now(),success?"passed":"failed",success?"verified":"configured",user.ownerId,providerKey]);
     await db().query("INSERT INTO provider_connection_audit(owner_id,provider_key,actor_id,action,created_at) VALUES($1,$2,$3,$4,$5)",[user.ownerId,providerKey,String(user.id),success?"test_passed":"test_failed",Date.now()]);
-    return Response.json({ok:success,status:success?"verified":"failed"},{status:success?200:502});
+    return Response.json({ok:success,status:success?"verified":"failed",...(providerKey==="omada"?{detail:success?omadaFound:{error:omadaError}}:{})},{status:success?200:502});
   } catch(error) {
     return Response.json({ok:false,error:error instanceof z.ZodError?"INVALID_INPUT":"TEST_FAILED"},{status:400});
   }

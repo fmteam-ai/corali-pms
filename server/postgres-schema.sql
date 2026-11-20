@@ -2417,3 +2417,18 @@ ALTER TABLE room_ir ADD COLUMN IF NOT EXISTS limit_count INTEGER NOT NULL DEFAUL
 -- v176: fridge fault from the room plug's power reading (last time it drew power / when the alert was raised).
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS fridge_draw_at BIGINT;
 ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS fridge_alert_at BIGINT;
+
+-- v177: per-booking Wi-Fi password (TP-Link Omada PPSK): added at check-in, removed after check-out.
+CREATE TABLE IF NOT EXISTS guest_wifi (
+  owner_id TEXT NOT NULL,
+  booking_id BIGINT NOT NULL,
+  room_id BIGINT,
+  psk_name TEXT NOT NULL,
+  psk_encrypted TEXT NOT NULL DEFAULT '',
+  ssid TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','removed','failed')),
+  error TEXT NOT NULL DEFAULT '',
+  created_at BIGINT NOT NULL,
+  removed_at BIGINT,
+  PRIMARY KEY (owner_id, booking_id)
+);

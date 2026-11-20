@@ -34,6 +34,7 @@ export function GuestRoom({ token, lang }: { token: string; lang: BookingLanguag
     <section className="gOrders gRoom" aria-label={t.title}>
       <h3>{t.title}</h3>
       {thanks && <p className="notice" role="status">{thanks}</p>}
+      {data.wifi && <div className="gRoomWifi"><b>📶 {t.wifi}</b><span>{t.network}: <b>{data.wifi.ssid}</b></span><span>{t.password}: <b className="gWifiPass">{data.wifi.password}</b></span></div>}
       {data.instay && !thanks && (() => { const it = data.instay.texts, step = instay?.step ?? "ask"; return (
         <div className="gInstay">
           <b>{step === "ask" ? it.question : it.which}</b>

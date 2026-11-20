@@ -3,6 +3,7 @@
 import { db, withTransaction } from "@/lib/db";
 import { canUseRoom, guestRoomTexts, roomRequestProblem } from "@/lib/guest-room-core";
 import { instayAsk } from "@/lib/instay";
+import { guestWifiFor } from "@/lib/guest-wifi";
 import { instayTexts, instayTopics } from "@/lib/instay-core";
 import type { GuestLang } from "@/lib/guest-portal-core";
 import { pushNotification } from "@/lib/pms-notifications";
@@ -19,7 +20,9 @@ export async function guestRoomState(ownerId: string, b: Booking, lang: GuestLan
   // v176: «Is everything all right?» from the second day of the stay, until answered (here or on the TV).
   const ask = inHouse && (await instayAsk(ownerId, Number(b.id), { status: String(b.status), check_in: String(b.check_in), check_out: String(b.check_out) }));
   return { texts: guestRoomTexts[lang], inHouse, dndAvailable: Boolean(s), dnd: s ? s.dnd_since !== null : false, cleaningSince: open ? Number(open.created_at) : null,
-    instay: ask ? { texts: instayTexts[lang], topics: instayTopics } : null };
+    instay: ask ? { texts: instayTexts[lang], topics: instayTopics } : null,
+    // v177: the stay's own Wi-Fi password (Omada), shown with a QR code for other devices.
+    wifi: inHouse ? await guestWifiFor(ownerId, Number(b.id)) : null };
 }
 
 /** Switch do not disturb / ask for cleaning. Throws NOT_IN_HOUSE, DND_ON, NO_SCREEN. A repeated request is not doubled. */

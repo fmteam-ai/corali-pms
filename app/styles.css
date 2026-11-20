@@ -957,3 +957,5 @@ details.tvFold.tvFoldCard.hubCard{padding:0;gap:0;margin:12px 0}.tvFold.tvFoldCa
 .gInstayTopics{display:flex;flex-wrap:wrap;gap:8px}
 .gInstayTopics button{border:1px solid #c9d6da;border-radius:999px;padding:8px 12px;background:#fff;cursor:pointer}
 .gInstayTopics button.on{background:#173e47;color:#fff;border-color:#173e47}
+.gRoomWifi{display:grid;gap:4px;padding:12px;border-radius:12px;background:#eef6f8;border:1px solid #cfe2e7}
+.gWifiPass{font-family:ui-monospace,monospace;font-size:1.15em;letter-spacing:.04em;user-select:all}

@@ -1,0 +1,9 @@
+export declare function omadaUrl(input: unknown): string;
+export declare function validOmadacId(v: unknown): boolean;
+export declare function pskName(reference: string): string;
+export declare function guestPassword(rand?: (n: number) => number): string;
+export declare function wifiQr(ssid: string, psk: string): string;
+export declare function wifiPlan<S extends { id: number | string; status: string; check_out: string }, E extends { booking_id: number | string; status: string }>(stays: S[], entries: E[], today: string): { add: S[]; remove: E[] };
+type Conn = { url: string; omadacId: string; clientId: string; clientSecret: string };
+export declare function omadaClient(conn: Conn, request?: typeof fetch): { siteId(name?: string): Promise<string>; profile(siteId: string, name: string): Promise<{ id: string; ssids: string[] }>; psks(siteId: string, profileId: string): Promise<string[]>; addPsk(siteId: string, profileId: string, name: string, psk: string): Promise<unknown>; deletePsks(siteId: string, profileId: string, names: string[]): Promise<unknown> };
+export declare function omadaCheck(conn: Conn & { siteName?: string; profile: string }, request?: typeof fetch): Promise<{ siteId: string; profileId: string; ssids: string[]; count: number }>;
