@@ -119,6 +119,9 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   const [problemOpen, setProblemOpen] = useState(false);
   // v176: «Is everything all right?» (second day of the stay): ask → topics (if not) → thanks. «Later» hides it today.
   const [instay, setInstay] = useState<null | { step: "ask" | "topics" | "thanks"; good: boolean; topics: string[] }>(null);
+  // v178: «Beaches today» opens from a button in the weather card (its own window, so no card is pushed off screen).
+  const [beachOpen, setBeachOpen] = useState(false);
+  const beachBtnRef = useRef<HTMLButtonElement | null>(null);
   const instayHidden = useRef(false);
   const [appError, setAppError] = useState("");
   // My requests: the id waiting for a second OK to cancel, and a reload of the screen data after a change.
@@ -214,6 +217,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
     if (transfer) { setTransfer(null); return true; }
     if (problemOpen) { setProblemOpen(false); return true; }
     if (instay) { closeInstay(); return true; }
+    if (beachOpen) { setBeachOpen(false); requestAnimationFrame(() => beachBtnRef.current?.focus()); return true; }
     if (tab === "assistant" && assistantApi.current?.back()) return true;
     if (tab !== "home") { choose("home"); (tabsRef.current?.querySelector<HTMLButtonElement>('[data-key="home"]'))?.focus(); return true; }
     return false;
@@ -258,7 +262,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         e.preventDefault();
         return;
       }
-      const modal = Boolean(transfer || problemOpen || instay);
+      const modal = Boolean(transfer || problemOpen || instay || beachOpen);
       const container = modal ? transferRef.current : panelRef.current;
       const grid = Array.from(container?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
       const inGrid = grid.indexOf(document.activeElement as HTMLButtonElement);
@@ -286,6 +290,11 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         if (idle.current) choose(tab);
         e.preventDefault();
         return;
+      }
+      // Home: down goes to the «Beaches today» button in the weather card, up back to the tabs.
+      if (tab === "home" && !modal && beachBtnRef.current) {
+        if (e.key === "ArrowDown" && document.activeElement !== beachBtnRef.current) { beachBtnRef.current.focus(); e.preventDefault(); return; }
+        if (e.key === "ArrowUp" && document.activeElement === beachBtnRef.current) { tabsRef.current?.querySelector<HTMLButtonElement>('[data-key="home"]')?.focus(); e.preventDefault(); return; }
       }
       if (e.key === "ArrowDown" && (tab === "requests" || tab === "channels" || tab === "apps" || tab === "assistant") && grid.length) { grid[0].focus(); e.preventDefault(); return; }
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
@@ -460,16 +469,9 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
               <CardHead icon={WiDaySunny} title={t.weather} />
               <div className="tvNow"><WeatherIcon code={data.weather.code} /><b>{data.weather.temp}°</b><small>{t.wind.replace("{b}", String(data.weather.wind))}</small></div>
               <ul className="tvDays">{data.weather.days.map((d, i) => <li key={d.date}><span>{i === 0 ? t.today : i === 1 ? t.tomorrow : new Date(`${d.date}T12:00:00Z`).toLocaleDateString(locale, { weekday: "long", timeZone: "UTC" })}</span><WeatherIcon code={d.code} /><span>{d.max}° <em>/ {d.min}°</em></span></li>)}</ul>
+              {data.beachToday && <button type="button" ref={beachBtnRef} className="tvBeachBtn" onClick={() => setBeachOpen(true)}><FaUmbrellaBeach aria-hidden /> {data.beachToday.texts.title}</button>}
             </div>
           )}
-          {data.beachToday && (() => { const bt = data.beachToday, tt = bt.texts; return (
-            <div className="tvCard tvBeachToday">
-              <CardHead icon={FaUmbrellaBeach} title={tt.title} />
-              <p className="tvBeachLead">{bt.windy ? tt.windy.replace("{b}", String(bt.wind)).replace("{dir}", bt.dir) : tt.calm}</p>
-              {bt.wave !== null && <p className="tvBeachWave">🌊 {tt.wave.replace("{m}", bt.wave.toLocaleString(locale))}</p>}
-              {bt.beaches.length ? <ul className="tvList">{bt.beaches.map((b) => <li key={b.name}><b>{b.name}</b> · {b.minutes <= 0 ? tt.here : tt.min.replace("{n}", String(b.minutes))}</li>)}</ul> : <p>{tt.none}</p>}
-            </div>
-          ); })()}
           {(data.tips.length > 0 || data.guide) && (
             <div className="tvCard tvTips">
               <CardHead icon={FaRegLightbulb} title={t.tips} />
@@ -500,6 +502,19 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
                 <span className="tvTfGap">{tx.people}</span><button type="button" aria-label="−" disabled={transfer.people <= 1} onClick={() => setTransfer({ ...transfer, people: transfer.people - 1 })}>−</button><b className="tvTfValue">{transfer.people}</b><button type="button" aria-label="+" disabled={transfer.people >= 12} onClick={() => setTransfer({ ...transfer, people: transfer.people + 1 })}>+</button></div>
               {transferError && <p className="tvTfError">{transferError}</p>}
               <footer className="tvTfActions"><button type="button" className="tvTfSend" autoFocus disabled={reqState.taxi === "sending"} onClick={sendTransfer}>{tx.send}</button><button type="button" onClick={() => setTransfer(null)}>{tx.cancel}</button></footer>
+            </div>
+          </article>
+        </div>
+      ); })()}
+      {beachOpen && data.beachToday && (() => { const bt = data.beachToday, tt = bt.texts; return (
+        <div className="tvMsg tvTransfer tvBeachToday" role="dialog" aria-label={tt.title}>
+          <article className="tvMsgCard" ref={transferRef}>
+            <div className="tvMsgBody">
+              <span className="tvMsgHead"><span className="tvMsgBadge"><FaUmbrellaBeach aria-hidden /></span>{tt.title}</span>
+              <p className="tvBeachLead">{bt.windy ? tt.windy.replace("{b}", String(bt.wind)).replace("{dir}", bt.dir) : tt.calm}</p>
+              {bt.wave !== null && <p className="tvBeachWave">🌊 {tt.wave.replace("{m}", bt.wave.toLocaleString(locale))}</p>}
+              {bt.beaches.length ? <ul className="tvList">{bt.beaches.map((b) => <li key={b.name}><b>{b.name}</b> · {b.minutes <= 0 ? tt.here : tt.min.replace("{n}", String(b.minutes))}</li>)}</ul> : <p>{tt.none}</p>}
+              <footer className="tvTfActions"><button type="button" autoFocus onClick={() => { setBeachOpen(false); requestAnimationFrame(() => beachBtnRef.current?.focus()); }}>{tt.close}</button></footer>
             </div>
           </article>
         </div>
