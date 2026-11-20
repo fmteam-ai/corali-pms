@@ -6,6 +6,8 @@ export const dynamic="force-dynamic";
 
 const checks=[
  {name:"dashboard_notes",table:"pms_dashboard_notes",columns:["owner_id","body","updated_at"]},
+ {name:"security_settings",table:"security_settings",columns:["owner_id","edge_secret_hash","edge_enforce","edge_last_seen_at","alerted_json"]},
+ {name:"security_events",table:"security_events",columns:["owner_id","kind","ip","hour_at","count","detail","last_at"]},
  {name:"notifications",table:"pms_notification_reads",columns:["owner_id","notification_key"]},
  {name:"bookings",table:"bookings",columns:["owner_id","check_in","check_out","room_id","balance_cents","guest_name","status"]},
  {name:"booking_messages",table:"booking_messages",columns:["owner_id","booking_id","sender","created_at"]},
