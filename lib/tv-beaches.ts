@@ -94,3 +94,27 @@ export function beachesForWind(beaches: TvBeach[], dir: WindDirection): { shelte
 
 /** Is it a windy day for swimming (meltemi strength)? */
 export const windyDay = (beaufort: number) => beaufort >= 5;
+
+/**
+ * v176: the TV's «Beaches today» card. On a windy day (≥ 5 Beaufort) the three nearest beaches sheltered from today's
+ * wind; otherwise the three nearest beaches. Waves (m) come from Open-Meteo Marine off the hotel.
+ */
+export function beachesToday(beaches: TvBeach[], beaufortNow: number, windDeg: number | null, mode: BeachMode = "all"): { windy: boolean; dir: WindDirection | null; beaches: TvBeach[] } {
+  const dir = windDeg === null ? null : compass(windDeg);
+  const windy = windyDay(beaufortNow) && dir !== null;
+  const near = (list: TvBeach[]) => [...list].sort((a, b) => a.minutes - b.minutes);
+  const pick = windy ? beachesForWind(beaches, dir!).sheltered : near(beaches);
+  // «near»: on a windy day only beaches within half an hour; «all»: every sheltered beach of the island may be suggested.
+  const limited = windy && mode === "near" ? pick.filter((b) => b.minutes <= 30) : pick;
+  return { windy, dir, beaches: limited.slice(0, 3) };
+}
+
+export type BeachTodayTexts = { title: string; windy: string; calm: string; wave: string; none: string; min: string };
+export const beachTodayTexts: Record<"el" | "en" | "fr" | "de" | "it" | "es", BeachTodayTexts> = {
+  el: { title: "Παραλίες σήμερα", windy: "Φυσάει {b} Μποφόρ από {dir} — πιο απάνεμες σήμερα:", calm: "Ήπιος αέρας — καλή μέρα για θάλασσα. Οι πιο κοντινές:", wave: "Κύμα {m} μ.", none: "Σήμερα φυσάει σε όλες τις παραλίες της λίστας — ρωτήστε τη ρεσεψιόν.", min: "{n}′" },
+  en: { title: "Beaches today", windy: "{b} Beaufort wind from the {dir} — most sheltered today:", calm: "Light wind — a good day for the sea. Nearest:", wave: "Waves {m} m", none: "It is windy at every beach on our list today — ask reception.", min: "{n} min" },
+  fr: { title: "Plages aujourd'hui", windy: "Vent de {b} Beaufort du {dir} — les plus abritées aujourd'hui :", calm: "Vent léger — belle journée pour la mer. Les plus proches :", wave: "Vagues {m} m", none: "Il y a du vent sur toutes nos plages aujourd'hui — demandez à la réception.", min: "{n} min" },
+  de: { title: "Strände heute", windy: "Wind {b} Beaufort aus {dir} — heute am geschütztesten:", calm: "Schwacher Wind — ein guter Tag fürs Meer. Am nächsten:", wave: "Wellen {m} m", none: "Heute ist es an allen Stränden unserer Liste windig — fragen Sie die Rezeption.", min: "{n} Min." },
+  it: { title: "Spiagge oggi", windy: "Vento {b} Beaufort da {dir} — le più riparate oggi:", calm: "Vento leggero — buona giornata per il mare. Le più vicine:", wave: "Onde {m} m", none: "Oggi c'è vento in tutte le spiagge della lista — chiedete alla reception.", min: "{n} min" },
+  es: { title: "Playas hoy", windy: "Viento de {b} Beaufort del {dir} — las más resguardadas hoy:", calm: "Viento suave — buen día para el mar. Las más cercanas:", wave: "Olas {m} m", none: "Hoy hace viento en todas las playas de la lista — pregunte en recepción.", min: "{n} min" },
+};

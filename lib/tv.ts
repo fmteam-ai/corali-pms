@@ -10,6 +10,7 @@ import { fillInfo } from "@/lib/tv-info";
 import { screenMessages } from "@/lib/tv-messages";
 import { guestTvRequests, screenDnd } from "@/lib/tv-requests";
 import { instayAsk } from "@/lib/instay";
+import { beachesToday, beachTodayTexts, windNames } from "@/lib/tv-beaches";
 import { instayTexts, instayTopics } from "@/lib/instay-core";
 import { defaultTransferTime, transferDays, tvProblemTexts, tvRequestTexts, tvTransferTexts } from "@/lib/tv-requests-core";
 import { channelSource, tvChannelTexts } from "@/lib/tv-channels-core";
@@ -64,16 +65,25 @@ export const hotelTime = (now = new Date()) => new Intl.DateTimeFormat("en-GB", 
 
 // Weather for Piso Livadi from Open-Meteo (free, no key), cached for 30 minutes; null when unreachable.
 let weatherCache: { at: number; value: TvWeather | null } | null = null;
-export type TvWeather = { temp: number; code: number; icon: string; wind: number; days: { date: string; code: number; icon: string; max: number; min: number }[] };
+export type TvWeather = { temp: number; code: number; icon: string; wind: number; windDir: number | null; wave: number | null; days: { date: string; code: number; icon: string; max: number; min: number }[] };
+/** v176: wave height (m) off Piso Livadi from Open-Meteo Marine (free, no key); null when unreachable. */
+async function waveHeight(): Promise<number | null> {
+  try {
+    const r = await fetch("https://marine-api.open-meteo.com/v1/marine?latitude=37.0405&longitude=25.2650&current=wave_height&timezone=Europe%2FAthens", { signal: AbortSignal.timeout(5000) });
+    const h = r.ok ? Number((await r.json())?.current?.wave_height) : NaN;
+    return Number.isFinite(h) ? Math.round(h * 10) / 10 : null;
+  } catch { return null; }
+}
 async function weather(): Promise<TvWeather | null> {
   if (weatherCache && Date.now() - weatherCache.at < 30 * 60_000) return weatherCache.value;
   let value: TvWeather | null = null;
   try {
-    const r = await fetch("https://api.open-meteo.com/v1/forecast?latitude=37.0405&longitude=25.2555&current=temperature_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Europe%2FAthens&forecast_days=5", { signal: AbortSignal.timeout(5000) });
+    const r = await fetch("https://api.open-meteo.com/v1/forecast?latitude=37.0405&longitude=25.2555&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Europe%2FAthens&forecast_days=5", { signal: AbortSignal.timeout(5000) });
     if (r.ok) {
       const d = await r.json();
       value = {
         temp: Math.round(Number(d.current.temperature_2m)), code: Number(d.current.weather_code), icon: weatherIcon(Number(d.current.weather_code)), wind: beaufort(Number(d.current.wind_speed_10m)),
+        windDir: Number.isFinite(Number(d.current.wind_direction_10m)) ? Number(d.current.wind_direction_10m) : null, wave: await waveHeight(),
         days: (d.daily.time as string[]).map((date, i) => ({ date, code: Number(d.daily.weather_code[i]), icon: weatherIcon(Number(d.daily.weather_code[i])), max: Math.round(Number(d.daily.temperature_2m_max[i])), min: Math.round(Number(d.daily.temperature_2m_min[i])) })),
       };
     }
@@ -110,6 +120,11 @@ export async function tvScreenData(token: string, langOverride?: string | null) 
     wifi: ssid ? { ssid, password, qr: await qr(wifiQrPayload(ssid, password)), note: pickText(settings.wifiNote, lang) } : null,
     extras: extras.rows.map((e) => ({ name: translatedText(e.name_translations_json, lang, e.name_el, e.name_en, e.name), priceCents: Number(e.price_cents), perNight: String(e.pricing_mode).includes("night"), perPerson: e.pricing_mode === "per_person" })),
     weather: wx,
+    // v176: «Beaches today»: today's wind and waves and the beaches that suit them (from PMS → Corali TV → Beaches).
+    beachToday: wx && settings.beaches.length ? (() => {
+      const r = beachesToday(settings.beaches, wx.wind, wx.windDir, settings.beachMode);
+      return { texts: beachTodayTexts[lang], windy: r.windy, wind: wx.wind, dir: r.dir ? (lang === "el" ? windNames[r.dir].el : windNames[r.dir].en) : "", wave: wx.wave, beaches: r.beaches.map((b) => ({ name: b.name, minutes: b.minutes })) };
+    })() : null,
     manage: { url: manageUrl, qr: await qr(manageUrl) },
     whatsapp: settings.whatsappNumber ? { qr: await qr(whatsappLink(settings.whatsappNumber, tvTexts[lang].waHello.replace("{room}", String(s.room_code)))) } : null,
     guide: settings.travelGuideUrl ? { qr: await qr(settings.travelGuideUrl) } : null,

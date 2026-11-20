@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { IconType } from "react-icons";
-import { FaRobot, FaBan, FaBath, FaBed, FaTv, FaThLarge, FaBirthdayCake, FaCheck, FaGlassCheers, FaPhoneAlt, FaPumpSoap, FaTaxi, FaTools, FaHeart, FaLayerGroup, FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
+import { FaUmbrellaBeach, FaRobot, FaBan, FaBath, FaBed, FaTv, FaThLarge, FaBirthdayCake, FaCheck, FaGlassCheers, FaPhoneAlt, FaPumpSoap, FaTaxi, FaTools, FaHeart, FaLayerGroup, FaBroom, FaConciergeBell, FaEuroSign, FaExclamation, FaHome, FaMapMarkedAlt, FaRegCalendarCheck, FaRegClock, FaRegEnvelope, FaRegLightbulb, FaSuitcaseRolling, FaWhatsapp, FaWifi } from "react-icons/fa";
 import { WiCloud, WiCloudy, WiDayCloudy, WiDaySunny, WiFog, WiRain, WiShowers, WiSnow, WiThunderstorm } from "react-icons/wi";
 import type { TvScreenData } from "@/lib/tv";
 import { messageSound } from "@/lib/tv-messages-core";
@@ -462,6 +462,13 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
               <ul className="tvDays">{data.weather.days.map((d, i) => <li key={d.date}><span>{i === 0 ? t.today : i === 1 ? t.tomorrow : new Date(`${d.date}T12:00:00Z`).toLocaleDateString(locale, { weekday: "long", timeZone: "UTC" })}</span><WeatherIcon code={d.code} /><span>{d.max}° <em>/ {d.min}°</em></span></li>)}</ul>
             </div>
           )}
+          {data.beachToday && (() => { const bt = data.beachToday, tt = bt.texts; return (
+            <div className="tvCard tvBeachToday">
+              <CardHead icon={FaUmbrellaBeach} title={tt.title} />
+              <p className="tvBeachLead">{bt.windy ? tt.windy.replace("{b}", String(bt.wind)).replace("{dir}", bt.dir) : tt.calm}{bt.wave !== null ? ` · ${tt.wave.replace("{m}", bt.wave.toLocaleString(locale))}` : ""}</p>
+              {bt.beaches.length ? <ul className="tvList">{bt.beaches.map((b) => <li key={b.name}><b>{b.name}</b> · {tt.min.replace("{n}", String(b.minutes))}</li>)}</ul> : <p>{tt.none}</p>}
+            </div>
+          ); })()}
           {(data.tips.length > 0 || data.guide) && (
             <div className="tvCard tvTips">
               <CardHead icon={FaRegLightbulb} title={t.tips} />
