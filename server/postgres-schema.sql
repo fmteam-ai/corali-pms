@@ -2443,3 +2443,26 @@ CREATE TABLE IF NOT EXISTS omada_bridge (
   last_seen_at BIGINT,
   last_report TEXT NOT NULL DEFAULT ''
 );
+
+-- v180: Security center. The origin lock (a secret Cloudflare adds to every request) and the counters of suspicious
+-- requests (kind × address × hour, kept 30 days).
+CREATE TABLE IF NOT EXISTS security_settings (
+  owner_id TEXT PRIMARY KEY,
+  edge_secret_hash TEXT NOT NULL DEFAULT '',
+  edge_secret_created_at BIGINT,
+  edge_enforce SMALLINT NOT NULL DEFAULT 0,
+  edge_last_seen_at BIGINT,
+  alerted_json TEXT NOT NULL DEFAULT '[]',
+  updated_at BIGINT NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS security_events (
+  owner_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  ip TEXT NOT NULL DEFAULT '',
+  hour_at BIGINT NOT NULL,
+  count INTEGER NOT NULL DEFAULT 1,
+  detail TEXT NOT NULL DEFAULT '',
+  last_at BIGINT NOT NULL,
+  PRIMARY KEY (owner_id, kind, ip, hour_at)
+);
+CREATE INDEX IF NOT EXISTS security_events_recent ON security_events(owner_id, hour_at);

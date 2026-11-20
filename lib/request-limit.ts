@@ -1,9 +1,14 @@
 // Simple fixed-window limiter for public endpoints (e.g. guest login), stored in public_request_limits.
 import { createHash } from "node:crypto";
 import { withTransaction } from "@/lib/db";
+import { recordSecurityEvent } from "@/lib/security-center";
+import { CLIENT_IP_HEADER, pickClientIp } from "../scripts/security-core.mjs";
 
-export function clientIp(request: Request): string {
-  return (request.headers.get("x-forwarded-for")?.split(",")[0] ?? request.headers.get("x-real-ip") ?? "unknown").trim().slice(0, 64);
+/** The visitor's address as decided by proxy.ts (Cloudflare's CF-Connecting-IP; v180 — the first X-Forwarded-For
+ * entry used before could be forged by the visitor to dodge the per-address limits). */
+export function clientIp(request: Request | { headers: { get(name: string): string | null } }): string {
+  const trusted = request.headers.get(CLIENT_IP_HEADER);
+  return (trusted && trusted.length <= 45 ? trusted : pickClientIp((n) => request.headers.get(n))).slice(0, 64);
 }
 
 /** Count one attempt for `key`; false once `max` attempts were made within `windowMs` (then blocked for `blockMs`). */
@@ -22,5 +27,9 @@ export async function allowAttempt(key: string, max: number, windowMs: number, b
       [hash, attempts, fresh ? now : Number(row.window_started_at), blockedUntil, now],
     );
     return attempts <= max;
+  }).then((ok) => {
+    // v180: every refused request is counted in PMS → Security center (one counter per kind and hour).
+    if (!ok) void recordSecurityEvent("rate_limited", "", key.split(":")[0]);
+    return ok;
   });
 }

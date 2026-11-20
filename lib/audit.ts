@@ -1,7 +1,8 @@
 import { headers } from "next/headers";
 import type { PoolClient } from "pg";
 import { db } from "@/lib/db";
-import { auditActionName, clientAddress, redactForAudit } from "@/lib/audit-redact";
+import { auditActionName, redactForAudit } from "@/lib/audit-redact";
+import { CLIENT_IP_HEADER, pickClientIp } from "../scripts/security-core.mjs";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -18,7 +19,7 @@ export type AuditEntry = {
 async function requestMeta(): Promise<{ ip: string; agent: string }> {
   try {
     const h = await headers();
-    return { ip: clientAddress(h.get("x-forwarded-for"), h.get("x-real-ip")), agent: (h.get("user-agent") ?? "").slice(0, 300) };
+    return { ip: (h.get(CLIENT_IP_HEADER) || pickClientIp((n) => h.get(n))).slice(0, 45), agent: (h.get("user-agent") ?? "").slice(0, 300) };
   } catch {
     return { ip: "", agent: "" };
   }

@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { verifyAccess } from "@/lib/access-cards";
 import { env } from "@/lib/env";
-import { allowAttempt } from "@/lib/request-limit";
+import { allowAttempt, clientIp } from "@/lib/request-limit";
+import { recordSecurityEvent } from "@/lib/security-center";
 
 const input = z.object({ credential: z.string().max(200), zone: z.string().regex(/^[a-z][a-z0-9_]{1,23}$/), room: z.string().max(20).optional(), reader: z.string().max(60).optional() });
 
@@ -12,11 +13,11 @@ const input = z.object({ credential: z.string().max(200), zone: z.string().regex
 export async function POST(request: Request) {
   const key = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!key) return Response.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const ip = clientIp(request);
   if (!(await allowAttempt(`access-verify:${ip}`, 600, 60_000, 60_000))) return Response.json({ ok: false, error: "TOO_MANY" }, { status: 429 });
   const parsed = input.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
   const r = await verifyAccess(env().PMS_OWNER_ID, key, parsed.data);
-  if (!r) return Response.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+  if (!r) { void recordSecurityEvent("bad_api_key", ip, "door reader"); return Response.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 }); }
   return Response.json({ ok: true, ...r }, { headers: { "Cache-Control": "no-store" } });
 }

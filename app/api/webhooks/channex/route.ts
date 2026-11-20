@@ -4,6 +4,8 @@ import path from "node:path";
 import { after } from "next/server";
 import { acceptChannexWebhook } from "@/lib/channel-sync";
 import { env } from "@/lib/env";
+import { clientIp } from "@/lib/request-limit";
+import { recordSecurityEvent } from "@/lib/security-center";
 
 let lastRun = 0;
 
@@ -24,7 +26,10 @@ function syncNow() {
  */
 export async function POST(request: Request) {
   const token = new URL(request.url).searchParams.get("token") ?? "";
-  if (!/^[A-Za-z0-9_-]{20,80}$/.test(token) || !(await acceptChannexWebhook(env().PMS_OWNER_ID, token))) return Response.json({ ok: false }, { status: 401 });
+  if (!/^[A-Za-z0-9_-]{20,80}$/.test(token) || !(await acceptChannexWebhook(env().PMS_OWNER_ID, token))) {
+    void recordSecurityEvent("bad_webhook", clientIp(request), "channex");
+    return Response.json({ ok: false }, { status: 401 });
+  }
   await request.text().catch(() => "");
   after(syncNow);
   return Response.json({ ok: true });

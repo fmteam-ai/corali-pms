@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { bridgeOwner, bridgePlan, bridgeReport } from "@/lib/omada-bridge";
-import { allowAttempt } from "@/lib/request-limit";
+import { allowAttempt, clientIp } from "@/lib/request-limit";
+import { recordSecurityEvent } from "@/lib/security-center";
 
 const noStore = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 const report = z.object({
@@ -10,8 +11,11 @@ const report = z.object({
 
 async function owner(request: Request): Promise<string | Response> {
   const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!(await allowAttempt(`omada-bridge:${token.slice(0, 12)}`, 120, 10 * 60_000, 10 * 60_000))) return Response.json({ ok: false, error: "TOO_MANY" }, { status: 429, headers: noStore });
+  const ip = clientIp(request);
+  // v180: also per address — random tokens would each get their own counter.
+  if (!(await allowAttempt(`omada-bridge:${token.slice(0, 12)}`, 120, 10 * 60_000, 10 * 60_000)) || !(await allowAttempt(`omada-bridge-ip:${ip}`, 240, 10 * 60_000, 10 * 60_000))) return Response.json({ ok: false, error: "TOO_MANY" }, { status: 429, headers: noStore });
   const o = await bridgeOwner(token);
+  if (!o) void recordSecurityEvent("bad_bridge_token", ip);
   return o ?? Response.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401, headers: noStore });
 }
 

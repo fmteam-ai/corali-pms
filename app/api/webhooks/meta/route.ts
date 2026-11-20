@@ -5,6 +5,8 @@ import { providerCredentials } from "@/lib/provider-connections";
 import { pushNotification } from "@/lib/pms-notifications";
 import { validMetaSignature } from "@/lib/social";
 import { parseWhatsAppWebhook } from "@/lib/whatsapp-inbox-core";
+import { clientIp } from "@/lib/request-limit";
+import { recordSecurityEvent } from "@/lib/security-center";
 
 /** Meta webhook verification handshake. */
 export async function GET(request: Request) {
@@ -27,7 +29,10 @@ export async function POST(request: Request) {
   const raw = await request.text();
   if (/"object"\s*:\s*"whatsapp_business_account"/.test(raw)) return whatsappWebhook(ownerId, raw, request.headers.get("x-hub-signature-256"));
   const meta = await providerCredentials(ownerId, "meta").catch(() => null);
-  if (!meta?.active || !validMetaSignature(raw, request.headers.get("x-hub-signature-256"), meta.secrets.appSecret ?? "")) return new Response("Forbidden", { status: 403 });
+  if (!meta?.active || !validMetaSignature(raw, request.headers.get("x-hub-signature-256"), meta.secrets.appSecret ?? "")) {
+    if (meta?.active) void recordSecurityEvent("bad_webhook", clientIp(request), "meta");
+    return new Response("Forbidden", { status: 403 });
+  }
   let body: { object?: string; entry?: { messaging?: MessagingEvent[] }[] };
   try {
     body = JSON.parse(raw);

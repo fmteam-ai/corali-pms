@@ -9,6 +9,7 @@ import { verifyTotp } from "@/lib/security/totp";
 import { hashNetworkValue, hashToken, newOpaqueToken } from "@/lib/security/tokens";
 import { decryptField } from "@/lib/security/encryption";
 import { recordAudit } from "@/lib/audit";
+import { clientIp } from "@/lib/request-limit";
 
 const inputSchema = z.object({
   username: z.string().trim().min(1).max(100).transform((value) => value.toLowerCase()),
@@ -19,13 +20,10 @@ const inputSchema = z.object({
 // Argon2id hash of a random password: verified when the user name does not exist (same work as a real check).
 const DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$kIlGluH6p8scW4p0enz3NA$E433IVpUiiBqA9Fy+JJf8dBMtKy3CF7oiGXmiI/uGlI";
 
-/** The address as the server received it (the whole forwarding chain, so a forged first entry is visible). */
+/** The trusted address first (v180, see proxy.ts), then the forwarding chain as received, so a forged entry is visible. */
 function addressChain(request: Request): string {
-  return (request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "").slice(0, 200);
-}
-
-function clientIp(request: Request): string {
-  return request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const chain = request.headers.get("x-forwarded-for");
+  return [clientIp(request), chain && chain !== clientIp(request) ? chain : ""].filter(Boolean).join(", ").slice(0, 200);
 }
 
 export async function POST(request: Request): Promise<Response> {

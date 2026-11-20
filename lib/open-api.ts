@@ -8,6 +8,7 @@ import { db, withTransaction } from "@/lib/db";
 import { documentKey } from "@/lib/env";
 import { ensureFolio, recalcBooking } from "@/lib/folio-db";
 import { allowAttempt, clientIp } from "@/lib/request-limit";
+import { recordSecurityEvent } from "@/lib/security-center";
 import { decryptField, encryptField } from "@/lib/security/encryption";
 import { addDays, hotelToday } from "@/lib/tape-chart";
 
@@ -26,6 +27,7 @@ export async function requireApiKey(request: Request, scope: ApiScope): Promise<
   }
   const row = (await db().query(`SELECT id,owner_id,name,key_hash,scopes_json,revoked_at FROM api_keys WHERE prefix=$1`, [parsed.prefix])).rows[0];
   if (!row || row.revoked_at || !sameHash(String(row.key_hash), apiKeyHash(parsed.key))) {
+    void recordSecurityEvent("bad_api_key", clientIp(request), "open api");
     if (!(await allowAttempt(`api-bad:${clientIp(request)}`, 30, 60_000, 15 * 60_000))) return apiError(429, "RATE_LIMITED", "Too many requests");
     return apiError(401, "UNAUTHORIZED", "Unknown or revoked API key");
   }

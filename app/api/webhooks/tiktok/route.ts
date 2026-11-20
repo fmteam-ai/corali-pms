@@ -4,13 +4,18 @@ import { env } from "@/lib/env";
 import { pushNotification } from "@/lib/pms-notifications";
 import { providerCredentials } from "@/lib/provider-connections";
 import { tiktokMessage, validTikTokSignature } from "@/lib/social";
+import { clientIp } from "@/lib/request-limit";
+import { recordSecurityEvent } from "@/lib/security-center";
 
 /** TikTok Business Messaging webhook: incoming DMs go to the PMS inbox with a drafted, availability-aware reply. */
 export async function POST(request: Request) {
   const ownerId = env().PMS_OWNER_ID;
   const tiktok = await providerCredentials(ownerId, "tiktok").catch(() => null);
   const raw = await request.text();
-  if (!tiktok?.active || !validTikTokSignature(raw, request.headers.get("tiktok-signature"), tiktok.secrets.clientSecret ?? "")) return new Response("Forbidden", { status: 403 });
+  if (!tiktok?.active || !validTikTokSignature(raw, request.headers.get("tiktok-signature"), tiktok.secrets.clientSecret ?? "")) {
+    if (tiktok?.active) void recordSecurityEvent("bad_webhook", clientIp(request), "tiktok");
+    return new Response("Forbidden", { status: 403 });
+  }
   let body: unknown;
   try {
     body = JSON.parse(raw);

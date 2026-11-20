@@ -12,6 +12,7 @@ import {runRoomAc} from "./room-ac-worker.mjs";
 import {runRoomClimate} from "./room-climate-worker.mjs";
 import {runTvPlugs} from "./tv-plug-worker.mjs";
 import {runGuestWifi} from "./guest-wifi-worker.mjs";
+import {runSecurityCheck} from "./security-worker.mjs";
 import {runCampaigns} from "./campaign-worker.mjs";
 import {runMailInbox} from "./mail-inbox-worker.mjs";
 import {runWhatsAppInboxSetup} from "./whatsapp-inbox-worker.mjs";
@@ -70,6 +71,8 @@ try{
  if(new Date().getMinutes()%5===0)await limit("Room plugs",60_000,runTvPlugs({pool,owner,unseal})).then(r=>!r.off&&console.log(`${new Date().toISOString()} ${r.label} power: ${r.rooms} rooms checked, ${r.switched} switched${r.failed?`, ${r.failed} failed`:""}${r.faults?`, ${r.faults} fridge alert(s)`:""}`)).catch(e=>console.error("Room plugs failed",e instanceof Error?e.message:e))
  // v177: per-booking Wi-Fi password (TP-Link Omada PPSK) every 5 minutes: added at check-in, removed after check-out.
  if(new Date().getMinutes()%5===1)await limit("Guest Wi-Fi",60_000,runGuestWifi({pool,owner,credentials,seal,today:new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Athens",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date())})).then(r=>r&&(r.added||r.removed||r.failed||r.queued)&&console.log(`${new Date().toISOString()} Guest Wi-Fi: ${r.added} added, ${r.removed} removed${r.failed?`, ${r.failed} failed`:""}${r.queued?`, ${r.queued} for the hotel bridge`:""}`)).catch(e=>console.error("Guest Wi-Fi failed",e instanceof Error?e.message:e))
+ // v180: security check once an hour (PMS → Security center): suspicious requests, admins without 2FA, Cloudflare lock.
+ if(new Date().getMinutes()===7)await limit("Security check",30_000,runSecurityCheck({pool,owner})).then(r=>r.told&&console.log(`${new Date().toISOString()} Security check: ${r.told} new alert(s)`)).catch(e=>console.error("Security check failed",e instanceof Error?e.message:e))
  // Room temperature / humidity sensors: read every ~10 minutes, alerts to the PMS.
  await limit("Room climate",60_000,runRoomClimate({pool,owner,unseal,seal})).then(r=>r&&console.log(`${new Date().toISOString()} Room climate: ${r.read}/${r.rooms} sensors read, ${r.alerts} alert(s)${r.error?`, error ${r.error}`:""}`)).catch(e=>console.error("Room climate failed",e instanceof Error?e.message:e))
  await limit("Guest messages",240_000,run()).catch(e=>{console.error("Guest message automations failed",e);process.exitCode=1});
