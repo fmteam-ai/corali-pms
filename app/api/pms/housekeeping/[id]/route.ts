@@ -1,4 +1,5 @@
 import { audited } from "@/lib/audit";
+import { closeCleaningRequests } from "@/lib/guest-room";
 import { z } from "zod";
 import { requireApiUser } from "@/lib/auth";
 import { withTransaction } from "@/lib/db";
@@ -64,6 +65,8 @@ async function handlePATCH(q: Request, { params }: { params: Promise<{ id: strin
       if (roomStatus) await c.query(`UPDATE rooms SET operational_status=$1 WHERE owner_id=$2 AND id=$3`, [roomStatus, u.ownerId, r.room_id]);
       if (roomStatus === "out_of_order" || (x.action === "approve" && r.status === "repaired")) { const today = hotelToday(); await enqueueAvailability(c, u.ownerId, today, addDays(today, 180), "room_status"); }
       const code = String((await c.query(`SELECT code FROM rooms WHERE owner_id=$1 AND id=$2`, [u.ownerId, r.room_id])).rows[0]?.code ?? r.room_id);
+      // v176: the guest's open «please clean my room» (TV / phone) is done once the room is cleaned.
+      if (x.action === "complete") await closeCleaningRequests(c, u.ownerId, Number(r.room_id), u.id);
       if (x.action === "complete" || x.action === "repair_done") {
         await pushNotification(c, u.ownerId, { kind: "housekeeping", titleEl: x.action === "complete" ? `Δωμάτιο ${code} καθαρίστηκε · αναμονή επιθεώρησης` : `Δωμάτιο ${code} επισκευάστηκε · αναμονή δεύτερης έγκρισης`, titleEn: x.action === "complete" ? `Room ${code} cleaned · inspection pending` : `Room ${code} repaired · second sign-off pending`, link: "/pms/housekeeping" });
       } else if (x.action === "approve" && r.status === "repaired") {

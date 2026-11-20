@@ -6,6 +6,7 @@ import {flag,languageCountry} from "@/lib/dial-codes";
 import {guestLanguages,guestText} from "@/lib/guest-i18n";
 import {GuestOrders} from "./guest-orders";
 import {GuestPortal} from "./guest-portal";
+import {GuestRoom} from "./guest-room";
 import {GuestApp} from "./guest-app";
 import {GuestPartners} from "./guest-partners";
 import {GuestNearby} from "./guest-nearby";
@@ -40,6 +41,7 @@ export function ManageBooking({token:initialToken}:{token:string}){
  const addDays=(d:string,n:number)=>new Date(Date.parse(`${d}T00:00:00Z`)+n*86400000).toISOString().slice(0,10);
  return <main className="shell"><section className="card manageCard">{logo}{picker}<h1>{t.yourBooking}</h1><p><b>{b.reference}</b> · {b.guest_name}</p><dl><dt>{t.room}</dt><dd>{b.room_code} · {b.room_type}</dd><dt>{t.in}</dt><dd>{format(b.check_in)}</dd><dt>{t.out}</dt><dd>{format(b.check_out)}</dd><dt>{t.status}</dt><dd>{t[b.status]??b.status}</dd><dt>{t.balance}</dt><dd>{money(b.balance_cents)}</dd></dl>
   <GuestPortal token={token} lang={lang} part="news"/>
+  <GuestRoom token={token} lang={lang}/>
   <GuestApp token={token} lang={lang} onRefresh={load}/>
   {notice&&<p className="notice" role="status">{notice}</p>}
   {payUrl&&Number(b.balance_cents)>0&&<p><a className="primary payLink" href={payUrl}>{t.payNow} · {money(b.balance_cents)}</a></p>}

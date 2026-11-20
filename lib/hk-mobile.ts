@@ -13,7 +13,7 @@ import { hotelToday } from "@/lib/tape-chart";
 
 export type HkTask = { id: number; type: string; status: string; assignedTo: string | null; assignedName: string | null; notes: string; inspectionNotes: string; checklist: Record<string, boolean>; cleanedBy: number | null };
 export type HkRoom = {
-  id: number; code: string; type: string; status: string; kind: HkRoomKind; dnd: boolean;
+  id: number; code: string; type: string; status: string; kind: HkRoomKind; dnd: boolean; cleanReq: number | null;
   departure: { guest: string; departed: boolean } | null;
   arrival: { guest: string; people: number; checkedIn: boolean; prefs: string[] } | null;
   stay: { guest: string; checkOut: string; night: number; nights: number; bookingId: number } | null;
@@ -28,7 +28,7 @@ export async function hkDay(u: CurrentUser): Promise<{ today: string; rooms: HkR
   const today = hotelToday();
   const [r, services] = await Promise.all([
     db().query(
-      `SELECT r.id,r.code,r.room_type,r.operational_status,(SELECT s.dnd_since FROM tv_screens s WHERE s.owner_id=r.owner_id AND s.room_id=r.id) AS dnd_since,
+      `SELECT r.id,r.code,r.room_type,r.operational_status,(SELECT s.dnd_since FROM tv_screens s WHERE s.owner_id=r.owner_id AND s.room_id=r.id) AS dnd_since,(SELECT min(q.created_at) FROM tv_requests q WHERE q.owner_id=r.owner_id AND q.room_id=r.id AND q.kind='cleaning' AND q.status='open') AS clean_req,
               dep.guest_name dep_guest,dep.status dep_status,arr.guest_name arr_guest,arr.people arr_people,arr.status arr_status,arr.guest_email arr_email,
               (SELECT count(*)::int FROM maintenance_notices n WHERE n.owner_id=r.owner_id AND n.room_id=r.id AND n.status='open') AS notices,
               t.id task_id,t.task_type,t.status task_status,t.assigned_to,su.display_name assigned_name,t.notes,t.inspection_notes,t.checklist_json,t.cleaned_by_staff_id
@@ -49,7 +49,7 @@ export async function hkDay(u: CurrentUser): Promise<{ today: string; rooms: HkR
     const stay = stays.get(Number(x.id));
     const kind = roomDayKind({ departure: x.dep_guest != null, arrival: x.arr_guest != null, stayover: Boolean(stay) });
     return {
-      id: Number(x.id), code: String(x.code), type: String(x.room_type ?? ""), status: String(x.operational_status ?? ""), kind, dnd: x.dnd_since != null,
+      id: Number(x.id), code: String(x.code), type: String(x.room_type ?? ""), status: String(x.operational_status ?? ""), kind, dnd: x.dnd_since != null, cleanReq: x.clean_req == null ? null : Number(x.clean_req),
       departure: x.dep_guest != null ? { guest: String(x.dep_guest), departed: x.dep_status === "checked_out" } : null,
       arrival: x.arr_guest != null ? { guest: String(x.arr_guest), people: Number(x.arr_people ?? 1), checkedIn: x.arr_status === "checked_in", prefs: (() => { const p = prefs.get(String(x.arr_email ?? "").toLowerCase()); return p ? prefLines(p.prefs, "el", { allergies: p.allergies }, true) : []; })() } : null,
       stay: stay ? { guest: stay.guestName, checkOut: stay.checkOut, night: stay.night, nights: stay.nights, bookingId: stay.bookingId } : null,

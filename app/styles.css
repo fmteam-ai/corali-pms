@@ -946,3 +946,9 @@ table.numeric tr.selected td{background:#fff8e6}
 .automationEditor .autoCheck{display:flex;align-items:center;gap:8px;margin:6px 0}
 /* Corali TV: whole cards that fold (General, Power, Sound & Hotel Mode, Standby, Check-out clearing). */
 details.tvFold.tvFoldCard.hubCard{padding:0;gap:0;margin:12px 0}.tvFold.tvFoldCard>summary{padding:14px 16px}.tvFold.tvFoldCard>.tvFoldBody{padding:4px 16px 16px}
+/* v176: My booking → Your room (do not disturb, cleaning) */
+.gRoom{display:grid;gap:10px}
+.gRoomDnd{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #d8e2e5;border-radius:12px;cursor:pointer}
+.gRoomDnd input{width:22px;height:22px;flex:none}
+.gRoomDnd span{display:grid;gap:2px}
+.gRoomDnd small{color:#5b6b70}

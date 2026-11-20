@@ -9,7 +9,7 @@ import { housekeepingColors, housekeepingState } from "@/lib/tape-chart";
 import { pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 
 type Task = { id: number; room_id: number; room_code: string; room_type: string; task_type: string; status: string; assigned_to: string | null; assigned_name: string | null; cleaned_by_staff_id: number | null; notes: string | null; inspection_notes: string | null; checklist_json: string };
-type Room = { id: number; code: string; operational_status: string; open_task_status: string | null; dnd_since?: number | string | null; open_notices?: number; top_notice?: { severity: string } | null };
+type Room = { id: number; code: string; operational_status: string; open_task_status: string | null; dnd_since?: number | string | null; clean_req?: number | string | null; open_notices?: number; top_notice?: { severity: string } | null };
 type Filter = "mine" | "all" | "review" | "ooo";
 type Pending = { taskId: number; action: "report_issue" | "reject" | "repair_done" } | null;
 
@@ -54,6 +54,8 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite,
       <div className="hkRooms" aria-label={t("hkb.rooms")}>
         {rooms.map((r) => { const state = housekeepingState(r.operational_status, r.open_task_status); return <button type="button" key={r.id} title={t(`hk.${state}` as PmsKey)} onClick={() => setNoticeRoom({ id: r.id, code: r.code })}><i style={{ background: housekeepingColors[state] }} />{r.code}{r.dnd_since != null && <span className="dndBadge" title={t("hk.dnd")}>DND</span>}{r.top_notice && <span className={`defectBadge sev-${r.top_notice.severity}`} aria-label={t("mnt.badge", { n: r.open_notices ?? 1, severity: t(`mnt.sev.${r.top_notice.severity}` as PmsKey) })}>{r.top_notice.severity === "minor" ? "🛠️" : "⚠️"}</span>}</button>; })}
       </div>
+      {/* v176: rooms whose guest asked for cleaning (TV or phone); closed when the cleaning is completed. */}
+      {rooms.some((r) => r.clean_req != null) && <p className="notice hkCleanReq">🧹 {t("hk.cleanReq")}: {rooms.filter((r) => r.clean_req != null).map((r) => <b key={r.id}>{r.code} ({new Date(Number(r.clean_req)).toLocaleTimeString(lang === "en" ? "en-GB" : "el-GR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" })}) </b>)}</p>}
       <div className="segmented hkFilters" role="group">
         {(["mine", "all", "review", "ooo"] as const).map((f) => <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)}>{t(f === "mine" ? "hkb.mine" : f === "all" ? "hkb.all" : f === "review" ? "hkb.review" : "hkb.ooo")} · {counts[f]}</button>)}
       </div>

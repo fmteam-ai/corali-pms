@@ -97,6 +97,7 @@ export function HousekeepingSection({ lang, t, me, canWrite, isHousekeeper, refr
                   </span>
                   <span className="hkChips">
                     {r.dnd && <i className="chip dnd">🚫 {t("hk.dnd")}</i>}
+                    {r.cleanReq !== null && <i className="chip due">🧹 {t("hk.cleanReq")} {new Date(r.cleanReq).toLocaleTimeString("el-GR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" })}</i>}
                     {r.due.filter((s) => !r.done.includes(s)).map((s) => <i key={s} className="chip due">{s === "sheets" ? "🛏" : "🧺"} {t(s === "sheets" ? "hkm.sheets" : "hkm.towels")}</i>)}
                     {r.notices > 0 && <i className="chip warn">⚠ {r.notices}</i>}
                     {r.arrival && r.arrival.prefs.length > 0 && <i className="chip pref">⭐ {r.arrival.prefs.length}</i>}
