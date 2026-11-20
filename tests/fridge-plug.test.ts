@@ -39,10 +39,29 @@ test("worker: with «fridge» an android_agent room's plug is switched on for an
     const r = await runTvPlugs({ pool, owner: "o", unseal: () => "key" });
     assert.equal(r.label, "Fridge");
     assert.equal(r.switched, 1);
-    assert.equal(calls.length, 1);
+    assert.match(calls[0], /set\/switch/);
     assert.match(calls[0], /"on":true/);
+    assert.ok(calls.slice(1).every((c) => c.includes("/devices/api/get")), "then only status reads (fridge fault check)");
     assert.ok(queries.some((q) => q.startsWith("UPDATE tv_screens SET power_error")));
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+test("fridge fault: plug on, 0 W for 3 hours → one alert; drawing again clears it; no meter / off / offline never judged", async () => {
+  const { fridgeCheck, FRIDGE_IDLE_MS } = await import("../scripts/tv-power-core.mjs");
+  const on = { online: true, on: true, power: 0 }, h = 3_600_000, t0 = 1_000_000_000;
+  let s = fridgeCheck(on, { drawAt: null, alertAt: null, onSince: null }, t0);
+  assert.equal(s.alert, false); assert.equal(s.drawAt, t0);
+  s = fridgeCheck(on, { ...s, onSince: null }, t0 + 2 * h);
+  assert.equal(s.alert, false);
+  s = fridgeCheck(on, { ...s, onSince: null }, t0 + FRIDGE_IDLE_MS);
+  assert.equal(s.alert, true);
+  const again = fridgeCheck(on, { ...s, onSince: null }, t0 + 5 * h);
+  assert.equal(again.alert, false, "alerted once");
+  const ok = fridgeCheck({ ...on, power: 60 }, { ...again, onSince: null }, t0 + 6 * h);
+  assert.deepEqual([ok.alert, ok.alertAt, ok.drawAt], [false, null, t0 + 6 * h]);
+  // Switched on recently (new guest): measured from the switch-on, not from an old draw.
+  assert.equal(fridgeCheck(on, { drawAt: t0, alertAt: null, onSince: t0 + 10 * h }, t0 + 11 * h).alert, false);
+  for (const st of [{ ...on, power: null }, { ...on, on: false }, { ...on, online: false }]) assert.equal(fridgeCheck(st, { drawAt: t0, alertAt: null, onSince: null }, t0 + 10 * h).alert, false);
 });

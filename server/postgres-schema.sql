@@ -2413,3 +2413,7 @@ CREATE TABLE IF NOT EXISTS room_ir (
 -- v171: temperature limit through the room sensor (last correction, corrections in a row while out of range).
 ALTER TABLE room_ir ADD COLUMN IF NOT EXISTS limit_at BIGINT;
 ALTER TABLE room_ir ADD COLUMN IF NOT EXISTS limit_count INTEGER NOT NULL DEFAULT 0;
+
+-- v176: fridge fault from the room plug's power reading (last time it drew power / when the alert was raised).
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS fridge_draw_at BIGINT;
+ALTER TABLE tv_screens ADD COLUMN IF NOT EXISTS fridge_alert_at BIGINT;

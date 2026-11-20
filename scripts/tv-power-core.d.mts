@@ -24,3 +24,6 @@ export declare const PRESENCE_STALE_MS: number;
 export declare function acTarget(occupied: boolean, override: AcOverride | null, now: number, presence?: AcPresence | null): boolean;
 export declare function acOverride(on: boolean, occupied: boolean, now: number): AcOverride;
 export declare function plugAutomated(plugUse: string, method: string): boolean;
+export declare const FRIDGE_WATTS: number;
+export declare const FRIDGE_IDLE_MS: number;
+export declare function fridgeCheck(state: { online: boolean; on: boolean | null; power: number | null }, prev: { drawAt: number | null; alertAt: number | null; onSince: number | null }, now: number): { drawAt: number | null; alertAt: number | null; alert: boolean };

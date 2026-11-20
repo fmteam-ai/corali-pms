@@ -183,3 +183,24 @@ export function wakeAction(state) {
   if (!state.on) return "on";
   return state.power !== null && state.power < STANDBY_WATTS ? "cycle" : "none";
 }
+
+/**
+ * v176: fridge fault from its Shelly plug's power reading. A working fridge draws ≥ FRIDGE_WATTS while its compressor
+ * runs (absorption minibars all the time); the compressor rests well under an hour. A plug that is ON and online but
+ * has drawn nothing for FRIDGE_IDLE_MS means a broken fridge or one pulled out of the socket: one alert, cleared when
+ * it draws again. A plug without a power meter (power null), offline or OFF is never judged.
+ * state: { online, on, power }; prev: { drawAt, alertAt, onSince } (ms or null); returns the new drawAt / alertAt and
+ * whether to alert now.
+ */
+export const FRIDGE_WATTS = 5;
+export const FRIDGE_IDLE_MS = 3 * 3_600_000;
+export function fridgeCheck(state, prev, now) {
+  const keep = { drawAt: prev.drawAt ?? null, alertAt: prev.alertAt ?? null, alert: false };
+  if (!state.online || state.on !== true || typeof state.power !== "number") return keep;
+  if (state.power >= FRIDGE_WATTS) return { drawAt: now, alertAt: null, alert: false };
+  // Idle: measured from the last draw seen or from when the plug was switched on, whichever is later.
+  const base = Math.max(keep.drawAt ?? 0, prev.onSince ?? 0);
+  if (!base) return { ...keep, drawAt: now }; // first reading: start watching from now
+  if (keep.alertAt === null && now - base >= FRIDGE_IDLE_MS) return { ...keep, alertAt: now, alert: true };
+  return keep;
+}
