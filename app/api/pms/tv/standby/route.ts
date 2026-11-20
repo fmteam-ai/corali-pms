@@ -8,7 +8,8 @@ import { EVENT_KEEP_MS, powerState, standbyVerdict } from "../../../../../script
 
 /** Corali TV 1.15 (versionCode 16): Network Standby Manager, diagnostics, sleep-key OFF, verified wake. */
 const STANDBY_APP = 16;
-const TEST_MINUTES = [10, 60, 720] as const;
+/** Standby test: the TV stays off from 10 minutes to 24 hours (chosen in the PMS). */
+const TEST_MIN = 10, TEST_MAX = 24 * 60;
 
 const input = z.discriminatedUnion("action", [
   // Admin: per room — keep CPU / Wi-Fi awake in standby; how PMS OFF is done (lockNow stays the default).
@@ -16,7 +17,7 @@ const input = z.discriminatedUnion("action", [
   // Reception+: ask the TV for its power / network diagnostics (answer within ~20 s if it is reachable).
   z.object({ action: z.literal("diagnostics"), roomId: z.number().int().positive() }),
   // Admin: standby test — OFF now, ON after N minutes; the PMS records whether the TV stayed reachable and woke up.
-  z.object({ action: z.literal("start_test"), roomId: z.number().int().positive(), minutes: z.union([z.literal(10), z.literal(60), z.literal(720)]) }),
+  z.object({ action: z.literal("start_test"), roomId: z.number().int().positive(), minutes: z.number().int().min(TEST_MIN).max(TEST_MAX) }),
 ]);
 
 async function overview(ownerId: string) {
@@ -90,7 +91,6 @@ async function handlePOST(request: Request) {
   }
   // Standby test: only for rooms whose screen the app switches («android_agent»); one test at a time per room.
   if (String(screen.method) !== "android_agent") return Response.json({ ok: false, error: "NOT_ANDROID_AGENT" }, { status: 409 });
-  if (!TEST_MINUTES.includes(x.minutes)) return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
   const now = Date.now();
   const off = await queueCommand(u.ownerId, x.roomId, "SCREEN_OFF", "manual", u.id, null, { ttlMs: 2 * 60_000 });
   // ON is handed over only after the wait, at the app's first check from then on; if the app never checks in within

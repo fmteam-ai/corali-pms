@@ -20,8 +20,8 @@ const T: Record<string, string> = {
   ps_ON: "● ON", ps_STANDBY: "◐ STANDBY", ps_WAKING: "⏳ WAKING", ps_UNKNOWN: "? UNKNOWN", ps_ERROR: "✗ ERROR",
   reachable: "συνδεδεμένη", unreachable: "δεν απαντά", lastSeen: "τελευταίος έλεγχος", never: "ποτέ",
   cpuWakeLockHeld: "CPU lock", wifiLockHeld: "Wi-Fi lock", lowPowerStandbyEnabled: "Low Power Standby", lowPowerStandbyExempt: "εξαίρεση LPS", deviceIdle: "Doze", networkValidated: "internet", networkStandby: "network standby",
-  yes: "ναι", no: "όχι", unk: "?", ns: "Κράτηση δικτύου σε αναμονή", offMode: "Σβήσιμο από PMS", off_device_admin: "lockNow (τρέχον)", off_sleep_key: "πλήκτρο SLEEP (Self-ADB, δοκιμαστικό)", off_black_screen: "μαύρη οθόνη — η TV μένει αναμμένη, ξαναξεκινά μόνη μετά από διακοπή ρεύματος (Corali TV 1.16, δοκιμαστικό, για άδεια δωμάτια)",
-  diag: "Διάγνωση", lastDiag: "Τελευταία διάγνωση", test: "Δοκιμή standby", t10: "10′", t60: "1 ώρα", t720: "12 ώρες",
+  yes: "ναι", no: "όχι", unk: "?", ns: "Κράτηση δικτύου σε αναμονή", offMode: "Σβήσιμο από PMS", off_device_admin: "lockNow (τρέχον)", off_sleep_key: "πλήκτρο SLEEP (Self-ADB, δοκιμαστικό)", off_black_screen: "μαύρη οθόνη (η TV μένει αναμμένη· άδεια δωμάτια)",
+  diag: "Διάγνωση", lastDiag: "Τελευταία διάγνωση", test: "Δοκιμή standby", offFor: "σβηστή για", apply: "Εφαρμογή",
   testConfirm: "Δοκιμή standby στο δωμάτιο {r}: η TV σβήνει ΤΩΡΑ και το PMS θα προσπαθήσει να την ανάψει μετά από {m}. Συνέχεια;",
   oldApp: "χρειάζεται Corali TV 1.15", notAgent: "μόνο για δωμάτια με μέθοδο ρεύματος «Corali TV (android_agent)»",
   gap: "διακοπή", screenOn: "οθόνη αναμμένη", screenOff: "οθόνη σβηστή", more: "+{n} παλαιότερα",
@@ -32,6 +32,8 @@ const T: Record<string, string> = {
 
 /** Events listed per room before «+N παλαιότερα»; the rest fold so a room's row stays short. */
 const EVENTS_SHOWN = 3;
+/** Standby test durations offered (minutes): 10′ to 24 hours. */
+const TEST_CHOICES = [10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 360, 480, 600, 720, 960, 1200, 1440];
 /** 5839 → «1ω 37′», 240 → «4′», 45 → «45″». */
 function duration(seconds: number): string {
   const s = Math.max(0, Math.round(seconds));
@@ -47,6 +49,7 @@ export function StandbyManager({ lang, canAdmin, canDiag }: { lang: string; canA
   const [data, setData] = useState<Data | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [testMin, setTestMin] = useState<Record<number, number>>({});
   const load = useCallback(async () => {
     try { const d = await (await fetch("/api/pms/tv/standby", { cache: "no-store" })).json(); if (d.ok) setData(d); } catch { /* next tick */ }
   }, []);
@@ -96,10 +99,12 @@ export function StandbyManager({ lang, canAdmin, canDiag }: { lang: string; canA
               </td>
               <td>
                 <label className="inline"><input type="checkbox" checked={r.network_standby} disabled={!canAdmin || busy} onChange={(e) => void post({ action: "settings", roomId: r.room_id, networkStandby: e.target.checked, offMode: r.off_mode })} /> {T.ns}</label><br />
-                <label className="inline">{T.offMode}: <select value={r.off_mode} disabled={!canAdmin || busy} onChange={(e) => void post({ action: "settings", roomId: r.room_id, networkStandby: r.network_standby, offMode: e.target.value })}>
+                <label className="inline">{T.offMode}: <select style={{ maxWidth: 260 }} value={r.off_mode} disabled={!canAdmin || busy} onChange={(e) => void post({ action: "settings", roomId: r.room_id, networkStandby: r.network_standby, offMode: e.target.value })}>
                   <option value="device_admin">{T.off_device_admin}</option><option value="sleep_key">{T.off_sleep_key}</option><option value="black_screen">{T.off_black_screen}</option></select></label><br />
                 {canDiag && !old && <button type="button" className="secondaryButton" disabled={busy} onClick={() => void post({ action: "diagnostics", roomId: r.room_id })}>{T.diag}</button>}
-                {canAdmin && !old && (agent ? <span> {T.test}: {[10, 60, 720].map((m) => <button key={m} type="button" className="secondaryButton" disabled={busy} onClick={() => { if (window.confirm(T.testConfirm.replace("{r}", r.room_code).replace("{m}", tx(`t${m}`)))) void post({ action: "start_test", roomId: r.room_id, minutes: m }); }}>{tx(`t${m}`)}</button>)}</span> : <><br /><small className="muted">{T.notAgent}</small></>)}
+                {canAdmin && !old && (agent ? <span> {T.test}: <label className="inline">{T.offFor} <select value={testMin[r.room_id] ?? 60} disabled={busy} onChange={(e) => setTestMin((v) => ({ ...v, [r.room_id]: Number(e.target.value) }))}>
+                  {TEST_CHOICES.map((m) => <option key={m} value={m}>{duration(m * 60)}</option>)}</select></label>{" "}
+                  <button type="button" className="secondaryButton" disabled={busy} onClick={() => { const m = testMin[r.room_id] ?? 60; if (window.confirm(T.testConfirm.replace("{r}", r.room_code).replace("{m}", duration(m * 60)))) void post({ action: "start_test", roomId: r.room_id, minutes: m }); }}>{T.apply}</button></span> : <><br /><small className="muted">{T.notAgent}</small></>)}
               </td>
               <td style={{ whiteSpace: "nowrap" }}>{r.events.length ? <>
                 <ul className="plainList">{r.events.slice(0, EVENTS_SHOWN).map((e, i) => <li key={i}>{evLine(e)}</li>)}</ul>
@@ -117,7 +122,7 @@ export function StandbyManager({ lang, canAdmin, canDiag }: { lang: string; canA
           <tbody>{data.tests.map((t) => (
             <tr key={t.id}>
               <td><b>{data.rooms.find((r) => r.room_id === t.room_id)?.room_code ?? t.room_id}</b></td>
-              <td><small>{at(t.started_at)} · {tx(`t${t.minutes}`)}</small></td>
+              <td><small>{at(t.started_at)} · {duration(t.minutes * 60)}</small></td>
               <td><b className={t.verdict === "PASS" ? "credit" : t.verdict.startsWith("FAIL") || t.verdict === "OFF_FAILED" ? "debit" : ""}>{tx(`v_${t.verdict}`)}{t.verdict === "WAITING" && t.on?.due ? ` ${at(t.on.due)}` : ""}</b>
                 {t.off && <><br /><small className="muted">OFF: {t.off.status}{t.off.error ? ` · ${t.off.error}` : ""}{t.off.detail ? ` · ${t.off.detail}` : ""}</small></>}
                 {t.on && <><br /><small className="muted">ON: {t.on.status}{t.on.error ? ` · ${t.on.error}` : ""}{t.on.detail ? ` · ${t.on.detail}` : ""}</small></>}</td>
