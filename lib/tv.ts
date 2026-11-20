@@ -11,7 +11,7 @@ import { screenMessages } from "@/lib/tv-messages";
 import { guestTvRequests, screenDnd } from "@/lib/tv-requests";
 import { instayAsk } from "@/lib/instay";
 import { guestWifiFor } from "@/lib/guest-wifi";
-import { beachesToday, beachTodayTexts, windNames } from "@/lib/tv-beaches";
+import { beachesToday, beachName, beachTodayTexts, windNames } from "@/lib/tv-beaches";
 import { instayTexts, instayTopics } from "@/lib/instay-core";
 import { defaultTransferTime, transferDays, tvProblemTexts, tvRequestTexts, tvTransferTexts } from "@/lib/tv-requests-core";
 import { channelSource, tvChannelTexts } from "@/lib/tv-channels-core";
@@ -127,7 +127,7 @@ export async function tvScreenData(token: string, langOverride?: string | null) 
     // v176: «Beaches today»: today's wind and waves and the beaches that suit them (from PMS → Corali TV → Beaches).
     beachToday: wx && settings.beaches.length ? (() => {
       const r = beachesToday(settings.beaches, wx.wind, wx.windDir, settings.beachMode);
-      return { texts: beachTodayTexts[lang], windy: r.windy, wind: wx.wind, dir: r.dir ? (lang === "el" ? windNames[r.dir].el : windNames[r.dir].en) : "", wave: wx.wave, beaches: r.beaches.map((b) => ({ name: b.name, minutes: b.minutes })) };
+      return { texts: beachTodayTexts[lang], windy: r.windy, wind: wx.wind, dir: r.dir ? (lang === "el" ? windNames[r.dir].el : windNames[r.dir].en) : "", wave: wx.wave, beaches: r.beaches.map((b) => ({ name: beachName(b.name, lang), minutes: b.minutes })) };
     })() : null,
     manage: { url: manageUrl, qr: await qr(manageUrl) },
     whatsapp: settings.whatsappNumber ? { qr: await qr(whatsappLink(settings.whatsappNumber, tvTexts[lang].waHello.replace("{room}", String(s.room_code)))) } : null,

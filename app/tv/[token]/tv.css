@@ -339,4 +339,5 @@
 .tvInstay .tvMsgHead{font-size:2.2rem;line-height:1.25}
 .tvInstay .tvProblemGrid button.on{background:#173e47;color:#fff;border-color:#f0b429}
 .tvInstayAnswers button{font-size:1.4rem}
-.tvBeachToday .tvBeachLead{margin:.2em 0 .6em;font-size:1.15em}
+.tvBeachToday .tvBeachLead{margin:.2em 0 .3em;font-size:1em;line-height:1.3}
+.tvBeachToday .tvBeachWave{margin:0 0 .5em;opacity:.9}

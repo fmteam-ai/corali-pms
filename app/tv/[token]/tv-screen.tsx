@@ -465,8 +465,9 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
           {data.beachToday && (() => { const bt = data.beachToday, tt = bt.texts; return (
             <div className="tvCard tvBeachToday">
               <CardHead icon={FaUmbrellaBeach} title={tt.title} />
-              <p className="tvBeachLead">{bt.windy ? tt.windy.replace("{b}", String(bt.wind)).replace("{dir}", bt.dir) : tt.calm}{bt.wave !== null ? ` · ${tt.wave.replace("{m}", bt.wave.toLocaleString(locale))}` : ""}</p>
-              {bt.beaches.length ? <ul className="tvList">{bt.beaches.map((b) => <li key={b.name}><b>{b.name}</b> · {tt.min.replace("{n}", String(b.minutes))}</li>)}</ul> : <p>{tt.none}</p>}
+              <p className="tvBeachLead">{bt.windy ? tt.windy.replace("{b}", String(bt.wind)).replace("{dir}", bt.dir) : tt.calm}</p>
+              {bt.wave !== null && <p className="tvBeachWave">🌊 {tt.wave.replace("{m}", bt.wave.toLocaleString(locale))}</p>}
+              {bt.beaches.length ? <ul className="tvList">{bt.beaches.map((b) => <li key={b.name}><b>{b.name}</b> · {b.minutes <= 0 ? tt.here : tt.min.replace("{n}", String(b.minutes))}</li>)}</ul> : <p>{tt.none}</p>}
             </div>
           ); })()}
           {(data.tips.length > 0 || data.guide) && (

@@ -109,12 +109,27 @@ export function beachesToday(beaches: TvBeach[], beaufortNow: number, windDeg: n
   return { windy, dir, beaches: limited.slice(0, 3) };
 }
 
-export type BeachTodayTexts = { title: string; windy: string; calm: string; wave: string; none: string; min: string };
+export type BeachTodayTexts = { title: string; windy: string; calm: string; wave: string; none: string; min: string; here: string };
 export const beachTodayTexts: Record<"el" | "en" | "fr" | "de" | "it" | "es", BeachTodayTexts> = {
-  el: { title: "Παραλίες σήμερα", windy: "Φυσάει {b} Μποφόρ από {dir} — πιο απάνεμες σήμερα:", calm: "Ήπιος αέρας — καλή μέρα για θάλασσα. Οι πιο κοντινές:", wave: "Κύμα {m} μ.", none: "Σήμερα φυσάει σε όλες τις παραλίες της λίστας — ρωτήστε τη ρεσεψιόν.", min: "{n}′" },
-  en: { title: "Beaches today", windy: "{b} Beaufort wind from the {dir} — most sheltered today:", calm: "Light wind — a good day for the sea. Nearest:", wave: "Waves {m} m", none: "It is windy at every beach on our list today — ask reception.", min: "{n} min" },
-  fr: { title: "Plages aujourd'hui", windy: "Vent de {b} Beaufort du {dir} — les plus abritées aujourd'hui :", calm: "Vent léger — belle journée pour la mer. Les plus proches :", wave: "Vagues {m} m", none: "Il y a du vent sur toutes nos plages aujourd'hui — demandez à la réception.", min: "{n} min" },
-  de: { title: "Strände heute", windy: "Wind {b} Beaufort aus {dir} — heute am geschütztesten:", calm: "Schwacher Wind — ein guter Tag fürs Meer. Am nächsten:", wave: "Wellen {m} m", none: "Heute ist es an allen Stränden unserer Liste windig — fragen Sie die Rezeption.", min: "{n} Min." },
-  it: { title: "Spiagge oggi", windy: "Vento {b} Beaufort da {dir} — le più riparate oggi:", calm: "Vento leggero — buona giornata per il mare. Le più vicine:", wave: "Onde {m} m", none: "Oggi c'è vento in tutte le spiagge della lista — chiedete alla reception.", min: "{n} min" },
-  es: { title: "Playas hoy", windy: "Viento de {b} Beaufort del {dir} — las más resguardadas hoy:", calm: "Viento suave — buen día para el mar. Las más cercanas:", wave: "Olas {m} m", none: "Hoy hace viento en todas las playas de la lista — pregunte en recepción.", min: "{n} min" },
+  el: { here: "δίπλα στο ξενοδοχείο", title: "Παραλίες σήμερα", windy: "Φυσάει {b} Μποφόρ από {dir} — πιο απάνεμες σήμερα:", calm: "Ήπιος αέρας — καλή μέρα για θάλασσα.", wave: "Κύμα {m} μ.", none: "Σήμερα φυσάει σε όλες τις παραλίες της λίστας — ρωτήστε τη ρεσεψιόν.", min: "{n}′" },
+  en: { here: "next to the hotel", title: "Beaches today", windy: "{b} Beaufort wind from the {dir} — most sheltered today:", calm: "Light wind — a good day for the sea.", wave: "Waves {m} m", none: "It is windy at every beach on our list today — ask reception.", min: "{n} min" },
+  fr: { here: "à côté de l'hôtel", title: "Plages aujourd'hui", windy: "Vent de {b} Beaufort du {dir} — les plus abritées aujourd'hui :", calm: "Vent léger — belle journée pour la mer.", wave: "Vagues {m} m", none: "Il y a du vent sur toutes nos plages aujourd'hui — demandez à la réception.", min: "{n} min" },
+  de: { here: "direkt am Hotel", title: "Strände heute", windy: "Wind {b} Beaufort aus {dir} — heute am geschütztesten:", calm: "Schwacher Wind — ein guter Tag fürs Meer.", wave: "Wellen {m} m", none: "Heute ist es an allen Stränden unserer Liste windig — fragen Sie die Rezeption.", min: "{n} Min." },
+  it: { here: "accanto all'hotel", title: "Spiagge oggi", windy: "Vento {b} Beaufort da {dir} — le più riparate oggi:", calm: "Vento leggero — buona giornata per il mare.", wave: "Onde {m} m", none: "Oggi c'è vento in tutte le spiagge della lista — chiedete alla reception.", min: "{n} min" },
+  es: { here: "junto al hotel", title: "Playas hoy", windy: "Viento de {b} Beaufort del {dir} — las más resguardadas hoy:", calm: "Viento suave — buen día para el mar.", wave: "Olas {m} m", none: "Hoy hace viento en todas las playas de la lista — pregunte en recepción.", min: "{n} min" },
 };
+
+const GREEK: Record<string, string> = { α: "a", ά: "a", β: "v", γ: "g", δ: "d", ε: "e", έ: "e", ζ: "z", η: "i", ή: "i", θ: "th", ι: "i", ί: "i", ϊ: "i", ΐ: "i", κ: "k", λ: "l", μ: "m", ν: "n", ξ: "x", ο: "o", ό: "o", π: "p", ρ: "r", σ: "s", ς: "s", τ: "t", υ: "y", ύ: "y", ϋ: "y", ΰ: "y", φ: "f", χ: "ch", ψ: "ps", ω: "o", ώ: "o" };
+/**
+ * v178: a beach name for a guest who does not read Greek: the part in brackets (a Greek note) is left out and the rest
+ * written in Latin letters («Πίσω Λιβάδι» → «Piso Livadi», «Πούντα (μετά τον Λογαρά)» → «Pounta»). Latin names stay.
+ */
+export function beachName(name: string, lang: string): string {
+  if (lang === "el" || !/[\u0370-\u03FF]/.test(name)) return name;
+  const main = name.replace(/\s*\([^)]*\)\s*/g, " ").trim() || name;
+  // Accents off first (ού → ου), then the letter pairs Greeks write as one sound.
+  const pairs: [RegExp, string][] = [[/ου/g, "ou"], [/Ου/g, "Ou"], [/ΟΥ/g, "OU"], [/(^|\s)Μπ/g, "$1B"], [/(^|\s)μπ/g, "$1b"], [/μπ/g, "mp"], [/(^|\s)Ντ/g, "$1D"], [/(^|\s)ντ/g, "$1d"], [/ντ/g, "nt"], [/γγ/g, "ng"], [/γκ/g, "nk"]];
+  let s = main.normalize("NFD").replace(/[\u0300-\u036f]/g, "").normalize("NFC");
+  for (const [re, v] of pairs) s = s.replace(re, v);
+  return s.split("").map((c) => { const lower = c.toLowerCase(), latin = GREEK[lower]; if (latin === undefined) return c; return c === lower ? latin : latin.charAt(0).toUpperCase() + latin.slice(1); }).join("");
+}

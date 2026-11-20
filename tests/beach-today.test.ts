@@ -20,3 +20,15 @@ test("beaches today: light wind → the three nearest; no direction → not wind
   assert.ok(beachesToday(defaultBeaches, 6, 0, "near").beaches.every((b) => b.minutes <= 30));
   for (const l of ["el", "en", "fr", "de", "it", "es"] as const) assert.match(beachTodayTexts[l].windy, /\{b\}.*\{dir\}/);
 });
+
+test("beach names for guests who do not read Greek: Latin letters, bracketed note left out", async () => {
+  const { beachName } = await import("../lib/tv-beaches.ts");
+  assert.equal(beachName("Πίσω Λιβάδι", "en"), "Piso Livadi");
+  assert.equal(beachName("Λογαράς", "de"), "Logaras");
+  assert.equal(beachName("Πούντα (μετά τον Λογαρά)", "en"), "Pounta");
+  assert.equal(beachName("Χρυσή Ακτή", "fr"), "Chrysi Akti");
+  assert.equal(beachName("Κολυμπήθρες", "it"), "Kolympithres");
+  assert.equal(beachName("Φάραγγας", "es"), "Farangas");
+  assert.equal(beachName("Πίσω Λιβάδι", "el"), "Πίσω Λιβάδι");
+  assert.equal(beachName("Golden Beach", "en"), "Golden Beach");
+});
