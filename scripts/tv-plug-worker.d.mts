@@ -1,0 +1,1 @@
+export declare function runTvPlugs(opts: { pool: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> }; owner: string; unseal: (v: string) => string; now?: Date }): Promise<{ label: string; off: boolean; rooms: number; switched: number; failed: number }>;

@@ -334,7 +334,8 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
                 <label className="inline"><span className="muted">{t("tv.method")}</span> <select value={s.power_method} disabled={!canEdit || busy} onChange={(e) => void setMethod(s, e.target.value)}>
                   {POWER_METHODS.map((m) => <option key={m} value={m} disabled={!AVAILABLE_POWER_METHODS.includes(m)}>{t(`tv.method_${m}` as Parameters<typeof t>[0])}{AVAILABLE_POWER_METHODS.includes(m) ? "" : ` (${t("tv.methodSoon")})`}</option>)}
                 </select></label>
-                {s.power_method === "shelly" && <>
+                {(s.power_method === "shelly" || power.plugUse === "fridge") && <>
+                {power.plugUse === "fridge" && <small className="muted">🧊 {t("tv.fridgePlug")}</small>}
                 <input placeholder={t("tv.plugId")} value={s.power_device_id} maxLength={64} disabled={!canEdit} onChange={(e) => editRow(s.room_id, { power_device_id: e.target.value.trim() })} />
                 {canEdit && <button type="button" className="linkButton" disabled={busy} onClick={() => void call({ action: "powerDevice", roomId: s.room_id, deviceId: s.power_device_id, channel: s.power_channel }).then((d) => setMsg(d.ok ? t("tv.plugSaved").replace("{room}", s.room_code) : t("tv.plugInvalid")))}>{t("tv.plugSave")}</button>}
                 {s.power_device_id && (
@@ -345,7 +346,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
                   </span>
                 )}
                 </>}
-                {s.power_method !== "shelly" && s.power_device_id && <small className="muted">{t("tv.plugIdle")}</small>}
+                {s.power_method !== "shelly" && power.plugUse !== "fridge" && s.power_device_id && <small className="muted">{t("tv.plugIdle")}</small>}
                 {s.power_method !== "android_agent" && <small className="muted">{t("tv.agentHint")}</small>}
                 {s.power_method === "android_agent" && (() => {
                   const st = agentState(s.screen_seen_at, s.screen_interactive, now);
@@ -386,8 +387,10 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         </div>
       )}
 
-      <Fold card title={t("tv.powerTitle")}>
-        <small>{t("tv.powerHelp")}</small>
+      <Fold card title={t(power.plugUse === "fridge" ? "tv.fridgeTitle" : "tv.powerTitle")}>
+        <small>{t(power.plugUse === "fridge" ? "tv.fridgeHelp" : "tv.powerHelp")}</small>
+        <div className="tvAdminChecks"><label className="inline">{t("tv.plugUse")} <select value={power.plugUse} disabled={!canEdit} onChange={(e) => setPower({ ...power, plugUse: e.target.value === "fridge" ? "fridge" : "tv" })}>
+          <option value="tv">{t("tv.plugUse_tv")}</option><option value="fridge">{t("tv.plugUse_fridge")}</option></select></label></div>
         <div className="tvAdminChecks"><label className="inline"><input type="checkbox" checked={power.enabled} disabled={!canEdit} onChange={(e) => setPower({ ...power, enabled: e.target.checked })} /> <b>{t("tv.powerEnabled")}</b></label></div>
         <div className="tvAdminGrid">
           <label>{t("tv.shellyServer")}<input value={power.server.replace(/^https:\/\//, "")} placeholder="shelly-123-eu.shelly.cloud" maxLength={120} disabled={!canEdit} onChange={(e) => setPower({ ...power, server: e.target.value })} /></label>
@@ -398,7 +401,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
           <label className="inline"><input type="checkbox" checked={power.autoOn} disabled={!canEdit} onChange={(e) => setPower({ ...power, autoOn: e.target.checked })} /> {t("tv.powerAutoOn")}</label>
           <label className="inline"><input type="checkbox" checked={power.autoOff} disabled={!canEdit} onChange={(e) => setPower({ ...power, autoOff: e.target.checked })} /> {t("tv.powerAutoOff")}</label>
         </div>
-        <div className="tvAdminChecks"><label className="inline"><input type="checkbox" checked={power.allowCycle} disabled={!canEdit} onChange={(e) => setPower({ ...power, allowCycle: e.target.checked })} /> {t("tv.allowCycle")}</label></div>
+        {power.plugUse !== "fridge" && <div className="tvAdminChecks"><label className="inline"><input type="checkbox" checked={power.allowCycle} disabled={!canEdit} onChange={(e) => setPower({ ...power, allowCycle: e.target.checked })} /> {t("tv.allowCycle")}</label></div>}
         <small>{t("tv.shellyWhere")}</small>
         <div className="tvInfoAdd">
           {canEdit && <button type="button" disabled={busy} onClick={() => void savePower()}>{t("tv.save")}</button>}

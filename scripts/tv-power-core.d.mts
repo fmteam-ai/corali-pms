@@ -1,5 +1,5 @@
 export type PowerStay = { status: string; check_in: string; check_out: string };
-export type PowerSettings = { enabled: boolean; server: string; onTime: string; autoOn: boolean; autoOff: boolean; appScreen: boolean; allowCycle: boolean; soundPreset: { defaultVolume: number; maxVolume: number; enforceMax: boolean }; acEnabled: boolean; acPresence: boolean; acAwayMinutes: number; climate: import("./room-climate-core.mjs").ClimateSettings; ir: IrSettings };
+export type PowerSettings = { enabled: boolean; server: string; onTime: string; autoOn: boolean; autoOff: boolean; appScreen: boolean; allowCycle: boolean; plugUse: "tv" | "fridge"; soundPreset: { defaultVolume: number; maxVolume: number; enforceMax: boolean }; acEnabled: boolean; acPresence: boolean; acAwayMinutes: number; climate: import("./room-climate-core.mjs").ClimateSettings; ir: IrSettings };
 export type IrSettings = { auto: boolean; mode: number; temp: number; wind: number; limit: boolean; coolMin: number; heatMax: number; quiet: boolean };
 export declare const IR_LIMIT_EVERY_MS: number;
 export declare const IR_LIMIT_MAX_IN_ROW: number;
@@ -23,3 +23,4 @@ export type AcPresence = { seenAt: number; checkedAt: number; awayMs: number };
 export declare const PRESENCE_STALE_MS: number;
 export declare function acTarget(occupied: boolean, override: AcOverride | null, now: number, presence?: AcPresence | null): boolean;
 export declare function acOverride(on: boolean, occupied: boolean, now: number): AcOverride;
+export declare function plugAutomated(plugUse: string, method: string): boolean;

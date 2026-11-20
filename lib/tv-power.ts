@@ -5,7 +5,7 @@ import { documentKey } from "@/lib/env";
 import { decryptField, encryptField } from "@/lib/security/encryption";
 import { hotelToday } from "@/lib/tape-chart";
 import { hotelTime } from "@/lib/tv";
-import { desiredPower, deviceState, normalizePowerSettings, statusRequest, switchError, switchRequest, wakeAction, type PowerSettings } from "../scripts/tv-power-core.mjs";
+import { desiredPower, deviceState, normalizePowerSettings, plugAutomated, statusRequest, switchError, switchRequest, wakeAction, type PowerSettings } from "../scripts/tv-power-core.mjs";
 
 /** The room's power method; rooms saved before v158 without one: «shelly» with a plug, else «manual». */
 export const POWER_METHOD_SQL = "COALESCE(power_method, CASE WHEN power_device_id<>'' THEN 'shelly' ELSE 'manual' END)";
@@ -71,8 +71,9 @@ export async function setRoomPower(ownerId: string, roomId: number, on: boolean,
 export async function syncRoomPower(ownerId: string, roomId: number): Promise<void> {
   const { settings } = await loadPowerSettings(ownerId);
   if (!settings.enabled) return;
-  const row = (await db().query(`SELECT power_device_id,power_auto_state FROM tv_screens WHERE owner_id=$1 AND room_id=$2 AND active=1 AND ${POWER_METHOD_SQL}='shelly'`, [ownerId, roomId])).rows[0];
-  if (!row?.power_device_id) return;
+  const row = (await db().query(`SELECT power_device_id,power_auto_state,active,${POWER_METHOD_SQL} AS method FROM tv_screens WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId])).rows[0];
+  if (!row?.power_device_id || !plugAutomated(settings.plugUse, String(row.method))) return;
+  if (settings.plugUse !== "fridge" && Number(row.active) !== 1) return;
   const today = hotelToday();
   const stays = (await db().query(`SELECT status,check_in,check_out FROM bookings WHERE owner_id=$1 AND room_id=$2 AND status IN ('confirmed','checked_in') AND check_in<=$3 AND check_out>=$3`, [ownerId, roomId, today])).rows;
   const want = desiredPower(stays.map((s) => ({ status: String(s.status), check_in: String(s.check_in), check_out: String(s.check_out) })), today, hotelTime(), settings.onTime);
@@ -112,6 +113,8 @@ export async function roomPowerStates(ownerId: string): Promise<RoomPowerState[]
  */
 export async function wakeRoomTvs(ownerId: string, roomIds: number[]): Promise<void> {
   const { settings } = await loadPowerSettings(ownerId);
+  // v174: a plug that powers the fridge is never switched (let alone cycled) to wake a TV.
+  if (settings.plugUse === "fridge") return;
   const plugRooms = new Set((await db().query(`SELECT room_id FROM tv_screens WHERE owner_id=$1 AND ${POWER_METHOD_SQL}='shelly'`, [ownerId])).rows.map((r) => Number(r.room_id)));
   const states = new Map((await roomPowerStates(ownerId)).map((s) => [s.roomId, s]));
   for (const roomId of roomIds) {

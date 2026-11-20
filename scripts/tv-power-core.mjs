@@ -8,6 +8,11 @@ import { acScene } from "./tuya-core.mjs";
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+/** v174: rooms whose plug the automation switches: «tv» only TVs run by the plug; «fridge» every room with a plug. */
+export function plugAutomated(plugUse, method) {
+  return plugUse === "fridge" || method === "shelly";
+}
+
 /**
  * Should the room's TV have power now? On while a guest is checked in, and for a confirmed stay from the switch-on
  * time of the arrival day until the check-out day. Off otherwise (after check-out, empty room).
@@ -42,6 +47,9 @@ export function normalizePowerSettings(raw) {
     appScreen: x.appScreen === true || x.appScreen === 1,
     // Urgent "turn the TV on" may power-cycle a plug (off, then on) only when explicitly allowed after a test.
     allowCycle: x.allowCycle === true || x.allowCycle === 1,
+    // v174: what the room plug powers. «fridge»: it follows the stay (arrival day → check-out) in every room with a
+    // plug, whatever the TV's power method, and is never power-cycled to wake a TV.
+    plugUse: x.plugUse === "fridge" ? "fridge" : "tv",
     // v160: what «Επαναφορά προεπιλογών ξενοδοχείου» applies (power-on %, maximum %, enforce).
     soundPreset: normalizeSoundPreset(x.soundPreset),
     // Room air conditioners on their own Shelly relay (e.g. 1PM Gen4): power only while a guest is checked in.
