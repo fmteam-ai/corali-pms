@@ -10,6 +10,7 @@ import { TvManager } from "./tv-manager";
 import { SoundManager } from "./sound-manager";
 import { PrivacyManager } from "./privacy-manager";
 import { StandbyManager } from "./standby-manager";
+import { TvIr } from "./tv-ir";
 
 export default async function TvPage() {
   const u = await requireUser("integrations.read");
@@ -21,6 +22,7 @@ export default async function TvPage() {
       <TvManager lang={lang} initialSettings={settings} initialScreens={screens} initialPower={power} places={{ google: Boolean(google?.active && google.secrets.apiKey), ...usage }} canEdit={can(u.role, "integrations.write", u.permissions)} />
       <SoundManager lang={lang} canCommand={can(u.role, "reservations.write", u.permissions)} canPolicy={can(u.role, "integrations.write", u.permissions)} />
       <StandbyManager lang={lang} canAdmin={can(u.role, "integrations.write", u.permissions)} canDiag={can(u.role, "reservations.write", u.permissions)} />
+      {can(u.role, "rooms.read", u.permissions) && <TvIr lang={lang} rooms={screens.map((x) => ({ id: x.room_id, code: x.room_code }))} canSetup={can(u.role, "rooms.write", u.permissions)} canSwitch={can(u.role, "housekeeping.write", u.permissions)} />}
       <PrivacyManager lang={lang} canAdmin={can(u.role, "integrations.write", u.permissions)} canReview={can(u.role, "reservations.write", u.permissions)} />
     </section>
   );

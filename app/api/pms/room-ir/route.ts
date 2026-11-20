@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { audited } from "@/lib/audit";
 import { requireApiUser } from "@/lib/auth";
-import { irAc, irRooms, irSettings, irTvPower, listIrRemotes, saveIrSettings, setIrRoom } from "@/lib/room-ir";
+import { irAc, irRooms, irSettings, irTvPower, listIrRemotes, saveIrSettings, setIrRoom, setIrTvRemote } from "@/lib/room-ir";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 
 const roomId = z.number().int().positive();
@@ -12,6 +12,7 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("remotes"), hubId: tuyaId.refine((v) => v !== "") }),
   z.object({ action: z.literal("ac"), roomId, on: z.boolean() }),
   z.object({ action: z.literal("tv"), roomId }),
+  z.object({ action: z.literal("tvRemote"), roomId, tvRemoteId: tuyaId }),
 ]);
 
 async function state(ownerId: string) {
@@ -28,7 +29,7 @@ export async function GET() {
 async function handlePOST(request: Request) {
   const raw = await request.clone().json().catch(() => null);
   const action = String(raw?.action);
-  const u = await requireApiUser(action === "room" || action === "settings" ? "rooms.write" : action === "remotes" ? "rooms.read" : "housekeeping.write");
+  const u = await requireApiUser(action === "room" || action === "settings" || action === "tvRemote" ? "rooms.write" : action === "remotes" ? "rooms.read" : "housekeeping.write");
   if (u instanceof Response) return u;
   try {
     assertTrustedOrigin(request);
@@ -41,6 +42,7 @@ async function handlePOST(request: Request) {
     if (x.action === "room") await setIrRoom(u.ownerId, x.roomId, x);
     else if (x.action === "settings") await saveIrSettings(u.ownerId, u.id, x);
     else if (x.action === "ac") error = await irAc(u.ownerId, x.roomId, x.on, `PMS ${u.id}`);
+    else if (x.action === "tvRemote") error = await setIrTvRemote(u.ownerId, x.roomId, x.tvRemoteId);
     else error = await irTvPower(u.ownerId, x.roomId);
     return Response.json({ ok: !error, error: error || undefined, ...(await state(u.ownerId)) }, { status: error ? 502 : 200 });
   } catch (e) {

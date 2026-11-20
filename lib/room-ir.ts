@@ -52,6 +52,14 @@ export async function setIrRoom(ownerId: string, roomId: number, x: { hubId: str
   );
 }
 
+/** v178: only the TV remote of a room (PMS → Corali TV); the room needs its IR hub (set on the A/C page). */
+export async function setIrTvRemote(ownerId: string, roomId: number, tvRemoteId: string): Promise<string> {
+  const r = (await db().query(`SELECT hub_id,ac_remote_id FROM room_ir WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId])).rows[0];
+  if (!r?.hub_id) return "NO_HUB";
+  await setIrRoom(ownerId, roomId, { hubId: String(r.hub_id), acRemoteId: String(r.ac_remote_id ?? ""), tvRemoteId });
+  return "";
+}
+
 async function tuya(ownerId: string) {
   const key = documentKey();
   const unseal = (v: string) => decryptField(v, key), seal = (v: string) => encryptField(v, key);

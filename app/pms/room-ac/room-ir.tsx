@@ -9,7 +9,7 @@ type Remote = { id: string; name: string; category: number | null };
 const MODES: PmsKey[] = ["ir.mode0", "ir.mode1", "ir.mode2", "ir.mode3", "ir.mode4"];
 const WINDS: PmsKey[] = ["ir.wind0", "ir.wind1", "ir.wind2", "ir.wind3"];
 
-/** v170: A/C and TV by infrared through a Tuya IR hub (e.g. Avatto S16) in each room. IR is one-way: «sent», not «done». */
+/** v170: A/C by infrared (v178: the TV part is on PMS → Corali TV) through a Tuya IR hub (e.g. Avatto S16) in each room. IR is one-way: «sent», not «done». */
 export function RoomIr({ lang, rooms, canSetup, canSwitch }: { lang: PmsLang; rooms: Room[]; canSetup: boolean; canSwitch: boolean }) {
   const t = pmsT(lang);
   const [settings, setSettings] = useState<IrSettings | null>(null);
@@ -64,23 +64,20 @@ export function RoomIr({ lang, rooms, canSetup, canSwitch }: { lang: PmsLang; ro
       {remotes && <div className="muted"><small>{remotes.length ? remotes.map((r) => `${r.name || "—"}: ${r.id}`).join(" · ") : t("ir.noRemotes")}</small></div>}
       {msg && <p className="muted" role="status">{msg}</p>}
       <table className="dataTable">
-        <thead><tr><th>{t("ac.room")}</th><th>{t("ir.hub")}</th><th>{t("ir.acRemote")}</th><th>{t("ir.tvRemote")}</th><th>{t("ir.last")}</th>{canSwitch && <th />}</tr></thead>
+        <thead><tr><th>{t("ac.room")}</th><th>{t("ir.hub")}</th><th>{t("ir.acRemote")}</th><th>{t("ir.last")}</th>{canSwitch && <th />}</tr></thead>
         <tbody>{rooms.map((r) => { const v = ids[r.roomId] ?? { hubId: "", acRemoteId: "", tvRemoteId: "" }; const s = saved[r.roomId]; const set = (k: keyof Ids, val: string) => setIds({ ...ids, [r.roomId]: { ...v, [k]: val.trim() } }); return (
           <tr key={r.roomId}>
             <td><b>{r.code}</b>{r.guest && <><br /><small className="muted">{r.guest}</small></>}</td>
             <td><input className="acId" maxLength={64} disabled={!canSetup} value={v.hubId} onChange={(e) => set("hubId", e.target.value)} /></td>
-            <td><input className="acId" maxLength={64} disabled={!canSetup} value={v.acRemoteId} onChange={(e) => set("acRemoteId", e.target.value)} /></td>
-            <td><input className="acId" maxLength={64} disabled={!canSetup} value={v.tvRemoteId} onChange={(e) => set("tvRemoteId", e.target.value)} />
+            <td><input className="acId" maxLength={64} disabled={!canSetup} value={v.acRemoteId} onChange={(e) => set("acRemoteId", e.target.value)} />
               {canSetup && changed(r.roomId) && <><br /><button type="button" className="secondaryButton" disabled={busy} onClick={() => void post({ action: "room", roomId: r.roomId, ...v })}>{t("ac.save")}</button></>}</td>
             <td><small>
               {s?.lastAcAt ? <>❄️ {s.lastAc} · {when(s.lastAcAt)}{s.lastAcError ? <span className="debit"> · {s.lastAcError}</span> : <> · {t("ir.sent")}</>}<br /></> : null}
-              {s?.lastTvAt ? <>📺 Power · {when(s.lastTvAt)}{s.lastTvError ? <span className="debit"> · {s.lastTvError}</span> : <> · {t("ir.sent")}</>}<br /></> : null}
               {r.temp !== null && <span className="muted">🌡️ {r.temp}°{r.climateReadAt ? ` · ${when(r.climateReadAt)}` : ""}</span>}
             </small></td>
             {canSwitch && <td>{s?.acRemoteId && <>
               <button type="button" className="secondaryButton" disabled={busy} onClick={() => void post({ action: "ac", roomId: r.roomId, on: true }, "ir.sentOk")}>{t("ir.acOn")}</button>
               <button type="button" className="secondaryButton" disabled={busy} onClick={() => void post({ action: "ac", roomId: r.roomId, on: false }, "ir.sentOk")}>{t("ir.acOff")}</button></>}
-              {s?.tvRemoteId && <button type="button" className="secondaryButton" disabled={busy} onClick={() => { if (window.confirm(t("ir.tvConfirm"))) void post({ action: "tv", roomId: r.roomId }, "ir.sentOk"); }}>{t("ir.tvPower")}</button>}
             </td>}
           </tr>
         ); })}</tbody>
