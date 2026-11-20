@@ -77,10 +77,10 @@ export async function securityOverview(ownerId: string, lang: "el" | "en"): Prom
   const now = Date.now();
   const [s, users, failed, events, totals] = await Promise.all([
     db().query(`SELECT edge_secret_hash,edge_secret_created_at,edge_enforce,edge_last_seen_at FROM security_settings WHERE owner_id=$1`, [ownerId]),
-    db().query(`SELECT id,username,display_name,COALESCE(NULLIF(role,''),'readonly') role,totp_confirmed_at,active FROM pms_staff_users WHERE owner_id=$1 ORDER BY active DESC,display_name`, [ownerId]),
-    db().query(`SELECT count(*)::int n FROM audit_logs WHERE owner_id=$1 AND action IN ('security.login_failed','security.login_blocked') AND created_at>$2::bigint`, [ownerId, now - 86_400_000]),
-    db().query(`SELECT kind,ip,sum(count)::int n,max(last_at) last_at,max(detail) detail FROM security_events WHERE owner_id=$1 AND hour_at>$2::bigint GROUP BY kind,ip ORDER BY n DESC LIMIT 40`, [ownerId, now - 7 * 86_400_000]),
-    db().query(`SELECT kind,sum(count)::int n FROM security_events WHERE owner_id=$1 AND hour_at>$2::bigint GROUP BY kind`, [ownerId, now - 86_400_000]),
+    db().query(`SELECT id,username,display_name,COALESCE(NULLIF(role,''),'readonly') AS role,totp_confirmed_at,active FROM pms_staff_users WHERE owner_id=$1 ORDER BY active DESC,display_name`, [ownerId]),
+    db().query(`SELECT count(*)::int AS n FROM audit_logs WHERE owner_id=$1 AND action IN ('security.login_failed','security.login_blocked') AND created_at>$2::bigint`, [ownerId, now - 86_400_000]),
+    db().query(`SELECT kind,ip,sum(count)::int AS n,max(last_at) AS last_at,max(detail) AS detail FROM security_events WHERE owner_id=$1 AND hour_at>$2::bigint GROUP BY kind,ip ORDER BY n DESC LIMIT 40`, [ownerId, now - 7 * 86_400_000]),
+    db().query(`SELECT kind,sum(count)::int AS n FROM security_events WHERE owner_id=$1 AND hour_at>$2::bigint GROUP BY kind`, [ownerId, now - 86_400_000]),
   ]);
   const r = s.rows[0];
   const configured = Boolean(r?.edge_secret_hash);

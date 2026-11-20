@@ -5,9 +5,9 @@ import { alertText, securityAlerts } from "./security-core.mjs";
 export async function runSecurityCheck({ pool, owner, now = Date.now() }) {
   const hourAgo = now - 3_600_000;
   const [events, failed, admins, settings] = await Promise.all([
-    pool.query(`SELECT kind,sum(count)::int n FROM security_events WHERE owner_id=$1 AND last_at>$2 GROUP BY kind`, [owner, hourAgo]),
-    pool.query(`SELECT count(*)::int n FROM audit_logs WHERE owner_id=$1 AND action IN ('security.login_failed','security.login_blocked') AND created_at>$2::bigint`, [owner, hourAgo]),
-    pool.query(`SELECT username,COALESCE(NULLIF(role,''),'readonly') role,totp_confirmed_at FROM pms_staff_users WHERE owner_id=$1 AND active=1`, [owner]),
+    pool.query(`SELECT kind,sum(count)::int AS n FROM security_events WHERE owner_id=$1 AND last_at>$2 GROUP BY kind`, [owner, hourAgo]),
+    pool.query(`SELECT count(*)::int AS n FROM audit_logs WHERE owner_id=$1 AND action IN ('security.login_failed','security.login_blocked') AND created_at>$2::bigint`, [owner, hourAgo]),
+    pool.query(`SELECT username,COALESCE(NULLIF(role,''),'readonly') AS role,totp_confirmed_at FROM pms_staff_users WHERE owner_id=$1 AND active=1`, [owner]),
     pool.query(`SELECT edge_enforce,edge_last_seen_at,alerted_json FROM security_settings WHERE owner_id=$1`, [owner]),
   ]);
   const counts = Object.fromEntries(events.rows.map((r) => [String(r.kind), Number(r.n)]));

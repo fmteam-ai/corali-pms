@@ -67,3 +67,11 @@ test("hourly check: tells each problem once, purges old counters", async () => {
   assert.deepEqual(second, { alerts: 2, told: 0 });
   assert.ok(sql.some((s) => s.startsWith("DELETE FROM security_events")));
 });
+
+test("SQL: column labels use AS (the hotel's older PostgreSQL rejects a bare «role» label, v181)", async () => {
+  const { readFileSync } = await import("node:fs");
+  for (const f of ["lib/security-center.ts", "scripts/security-worker.mjs"]) {
+    const src = readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
+    assert.doesNotMatch(src, /\)(::int)? (role|n|last_at|detail)[,\s]/, f);
+  }
+});
