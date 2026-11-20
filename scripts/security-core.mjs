@@ -50,8 +50,11 @@ export function edgeDecision({ enforce, keyOk, lastSeenAt, now }) {
   return "block";
 }
 
-/** Paths never locked: the health checks used by the installer and monitoring (they reveal nothing). */
-export const edgeExempt = (path) => path === "/api/health" || path.startsWith("/api/health/");
+/** Paths never locked: the health checks used by the installer and monitoring, and the public files (logo, photos,
+ * icons, the TV app download — v183). They reveal nothing, and the image optimizer (/_next/image) asks the server
+ * itself for them without Cloudflare's key: locking them left the booking page without its logo. */
+const PUBLIC_FILE = /\.(png|jpe?g|webp|avif|gif|svg|ico|css|js|map|woff2?|ttf|txt|xml|webmanifest|apk|pdf|mp4|webm)$/i;
+export const edgeExempt = (path) => path === "/api/health" || path.startsWith("/api/health/") || (!path.startsWith("/api/") && PUBLIC_FILE.test(path));
 
 export const SECURITY_EVENT_KINDS = ["origin_blocked", "rate_limited", "bad_api_key", "bad_bridge_token", "bad_tv_token", "bad_webhook", "login_failed"];
 

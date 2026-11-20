@@ -35,6 +35,11 @@ test("origin lock: blocks requests without the key, but never locks the hotel ou
   assert.equal(edgeExempt("/api/health"), true);
   assert.equal(edgeExempt("/api/health/key-consistency"), true);
   assert.equal(edgeExempt("/api/pms/rooms"), false);
+  // v183: public files are never locked (the image optimizer fetches them from the server itself, without the key).
+  assert.equal(edgeExempt("/hotel-corali-logo.png"), true);
+  assert.equal(edgeExempt("/downloads/corali-tv-pilot.apk"), true);
+  assert.equal(edgeExempt("/pms"), false);
+  assert.equal(edgeExempt("/api/public/room-photos/3.jpg"), false);
 });
 
 test("alerts: thresholds per hour, admins without 2FA, stale lock", () => {
