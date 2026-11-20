@@ -335,3 +335,7 @@
 @media (max-width:800px){.tvAsSpots{grid-auto-columns:calc((100% - 10px) / 2)}.tvAsControls .tvAsSpot{grid-template-rows:110px auto}.tvAsSpot iframe{height:110px}.tvAsSpotInfo b{font-size:14px}.tvAsSpotInfo small{font-size:12px}.tvAsSpotQr img{width:64px;height:64px}.tvAsSpotQr small{font-size:10px;max-width:80px}}
 .tvReqBtn.armed,.tvProblemGrid button.armed{border-color:#f2c46d;box-shadow:0 0 0 .3vw rgba(242,196,109,.55);animation:tvArm 1s ease-in-out infinite alternate}.tvReqBtn.armed b{color:#f2c46d}.tvProblemGrid button.armed{background:#f2c46d;color:#0f2a31}
 @keyframes tvArm{from{box-shadow:0 0 0 .15vw rgba(242,196,109,.35)}to{box-shadow:0 0 0 .45vw rgba(242,196,109,.7)}}
+/* v176: «Is everything all right?» */
+.tvInstay .tvMsgHead{font-size:2.2rem;line-height:1.25}
+.tvInstay .tvProblemGrid button.on{background:#173e47;color:#fff;border-color:#f0b429}
+.tvInstayAnswers button{font-size:1.4rem}

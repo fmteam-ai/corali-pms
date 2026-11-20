@@ -1,5 +1,5 @@
 // v176: «Do not disturb» / «Please clean my room» from the guest's phone (My booking), pure texts and rules.
-import type { GuestLang } from "@/lib/guest-portal-core";
+import type { GuestLang } from "./guest-portal-core.ts";
 
 export type GuestRoomTexts = { title: string; hint: string; dnd: string; dndOn: string; dndOff: string; clean: string; cleanSent: string; cleanBlocked: string; notInHouse: string; failed: string };
 

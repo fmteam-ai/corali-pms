@@ -9,6 +9,8 @@ import { hotelToday } from "@/lib/tape-chart";
 import { fillInfo } from "@/lib/tv-info";
 import { screenMessages } from "@/lib/tv-messages";
 import { guestTvRequests, screenDnd } from "@/lib/tv-requests";
+import { instayAsk } from "@/lib/instay";
+import { instayTexts, instayTopics } from "@/lib/instay-core";
 import { defaultTransferTime, transferDays, tvProblemTexts, tvRequestTexts, tvTransferTexts } from "@/lib/tv-requests-core";
 import { channelSource, tvChannelTexts } from "@/lib/tv-channels-core";
 import { tvAppTexts } from "@/lib/tv-apps-core";
@@ -120,6 +122,11 @@ export async function tvScreenData(token: string, langOverride?: string | null) 
       problems: tvProblemTexts[lang],
       transfer: { texts: tvTransferTexts[lang], days: transferDays(today, state.stay.check_out), first: defaultTransferTime(hotelTime()), people: Math.max(1, Math.min(12, Number(state.stay.adults ?? 1) + Number(state.stay.children ?? 0))) },
     } : null,
+    // v176: «Is everything all right?» on the second day of the stay (until answered on the TV or the phone).
+    instay: state.mode === "stay" ? await (async () => {
+      const id = (await db().query(`SELECT id FROM bookings WHERE owner_id=$1 AND reference=$2`, [ownerId, state.stay.reference])).rows[0]?.id;
+      return id && (await instayAsk(ownerId, Number(id), { status: String(state.stay.status), check_in: String(state.stay.check_in), check_out: String(state.stay.check_out) })) ? { texts: instayTexts[lang], topics: instayTopics } : null;
+    })() : null,
     // Live channels the hotel added (PMS → Corali TV): only the ones that can play.
     channels: settings.channels.flatMap((c) => { const source = channelSource(c.url); return source ? [{ name: c.name, logo: c.logo, category: c.category, source }] : []; }),
     channelTexts: tvChannelTexts[lang],

@@ -1,9 +1,11 @@
+import { instayTopicLabel, type InstayTopic } from "./instay-core.ts";
+
 // Requests a guest can send from the Corali TV screen to reception (pure; shared by the TV, the PMS and tests).
 
 export const tvRequestKinds = ["cleaning", "towels", "pillows", "blankets", "toiletries", "call_me", "problem", "taxi"] as const;
 export type TvRequestKind = (typeof tvRequestKinds)[number];
 /** Stored kinds also include the do-not-disturb switch (and late_checkout, offered in v85 only, for old rows). */
-export type TvRequestRecordKind = TvRequestKind | "dnd_on" | "dnd_off" | "late_checkout";
+export type TvRequestRecordKind = TvRequestKind | "dnd_on" | "dnd_off" | "late_checkout" | "instay_good" | "instay_bad";
 
 export const isTvRequestKind = (v: unknown): v is TvRequestKind => tvRequestKinds.includes(v as TvRequestKind);
 
@@ -20,10 +22,13 @@ export const tvRequestLabels: Record<TvRequestRecordKind, { icon: string; el: st
   taxi: { icon: "🚕", el: "Transfer / ταξί", en: "Transfer / taxi" },
   dnd_on: { icon: "🚫", el: "Μην ενοχλείτε — ενεργό", en: "Do not disturb — on" },
   dnd_off: { icon: "✅", el: "Μην ενοχλείτε — απενεργοποιήθηκε", en: "Do not disturb — off" },
+  // v176: answer to «Is everything all right?» on the second day of the stay.
+  instay_good: { icon: "😊", el: "Ικανοποιημένος/η από τη διαμονή", en: "Happy with the stay" },
+  instay_bad: { icon: "⚠️", el: "ΔΕΝ είναι ικανοποιημένος/η — επικοινωνήστε", en: "NOT happy with the stay — please follow up" },
 };
 
 /** Do-not-disturb changes are information (nothing to do); every other request waits for staff. */
-export const initialStatus = (kind: TvRequestRecordKind) => (kind === "dnd_on" || kind === "dnd_off" ? "info" : "open");
+export const initialStatus = (kind: TvRequestRecordKind) => (kind === "dnd_on" || kind === "dnd_off" || kind === "instay_good" ? "info" : "open");
 
 type RequestTexts = { tab: string; intro: string; sent: string; already: string; failed: string; dnd: string; dndHint: string; dndOn: string; dndOff: string; mine: string; stOpen: string; stDone: string; stCancelled: string; cancel: string; confirmCancel: string; confirmSend: string } & Record<TvRequestKind, string>;
 
@@ -124,7 +129,11 @@ export const tvProblemTexts: Record<"el" | "en" | "fr" | "de" | "it" | "es", Pro
 };
 
 /** Summary of a request's details for reception (transfer or technical problem). */
-export function requestDetailsSummary(d: TransferDetails | ProblemDetails | null, lang: "el" | "en"): string {
+/** v176: what the guest said is wrong in the in-stay question (topics in the PMS language). */
+export type InstayDetails = { topics: InstayTopic[]; source?: string };
+
+export function requestDetailsSummary(d: TransferDetails | ProblemDetails | InstayDetails | null, lang: "el" | "en"): string {
   if (!d) return "";
+  if ("topics" in d) return d.topics.length ? `(${d.topics.map((t) => instayTopicLabel(t, lang)).join(", ")})` : "";
   return "problem" in d ? problemSummary(d, lang) : transferSummary(d, lang);
 }

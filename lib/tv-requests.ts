@@ -101,7 +101,7 @@ export type GuestTvRequest = { id: number; kind: TvRequestRecordKind; status: st
 export async function guestTvRequests(ownerId: string, roomId: number, reference: string): Promise<GuestTvRequest[]> {
   const r = await db().query(
     `SELECT q.id,q.kind,q.status,q.created_at,q.handled_at FROM tv_requests q JOIN bookings b ON b.id=q.booking_id AND b.owner_id=q.owner_id
-      WHERE q.owner_id=$1 AND q.room_id=$2 AND b.reference=$3 AND q.kind NOT IN ('dnd_on','dnd_off') ORDER BY q.created_at DESC LIMIT 8`,
+      WHERE q.owner_id=$1 AND q.room_id=$2 AND b.reference=$3 AND q.kind NOT IN ('dnd_on','dnd_off','instay_good','instay_bad') ORDER BY q.created_at DESC LIMIT 8`,
     [ownerId, roomId, reference],
   );
   return r.rows.map((x) => ({ id: Number(x.id), kind: String(x.kind) as TvRequestRecordKind, status: String(x.status), createdAt: Number(x.created_at), handledAt: x.handled_at === null ? null : Number(x.handled_at) }));

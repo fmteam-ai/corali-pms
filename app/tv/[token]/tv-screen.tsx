@@ -117,6 +117,9 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
   const [transferError, setTransferError] = useState("");
   const [playing, setPlaying] = useState<number | null>(null);
   const [problemOpen, setProblemOpen] = useState(false);
+  // v176: «Is everything all right?» (second day of the stay): ask → topics (if not) → thanks. «Later» hides it today.
+  const [instay, setInstay] = useState<null | { step: "ask" | "topics" | "thanks"; good: boolean; topics: string[] }>(null);
+  const instayHidden = useRef(false);
   const [appError, setAppError] = useState("");
   // My requests: the id waiting for a second OK to cancel, and a reload of the screen data after a change.
   const [cancelArm, setCancelArm] = useState<number | null>(null);
@@ -196,10 +199,21 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
     else setTransferError(result === "TIME" ? tr.texts.tooSoon : data?.requests?.texts.failed ?? "");
   };
   // BACK on the remote (the Corali TV app asks the page first): close the player / form, then go back home.
+  const instayKey = () => `corali-instay-later-${data?.today ?? ""}`;
+  function closeInstay() {
+    if (instay?.step !== "thanks") { instayHidden.current = true; try { localStorage.setItem(instayKey(), "1"); } catch { /* private mode */ } }
+    setInstay(null);
+  }
+  async function answerInstay(good: boolean, topics: string[]) {
+    setInstay({ step: "thanks", good, topics });
+    try { await fetch(`/api/public/tv/${encodeURIComponent(token)}/instay`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ good, topics }) }); } catch { /* shown again next time */ }
+    setTimeout(() => { setInstay(null); reloadData.current?.(); }, 6000);
+  }
   const back = () => {
     if (playing !== null) { const was = playing; setPlaying(null); choose("channels"); requestAnimationFrame(() => panelRef.current?.querySelectorAll<HTMLButtonElement>(".tvChannel")[was]?.focus()); return true; }
     if (transfer) { setTransfer(null); return true; }
     if (problemOpen) { setProblemOpen(false); return true; }
+    if (instay) { closeInstay(); return true; }
     if (tab === "assistant" && assistantApi.current?.back()) return true;
     if (tab !== "home") { choose("home"); (tabsRef.current?.querySelector<HTMLButtonElement>('[data-key="home"]'))?.focus(); return true; }
     return false;
@@ -216,6 +230,11 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         return true;
       },
     });
+  });
+  useEffect(() => {
+    if (!data?.instay || instay || message || transfer || problemOpen || playing !== null || instayHidden.current) return;
+    try { if (localStorage.getItem(instayKey())) { instayHidden.current = true; return; } } catch { /* private mode */ }
+    queueMicrotask(() => setInstay({ step: "ask", good: true, topics: [] }));
   });
   // TV remotes send arrow keys: left/right move between tabs; down enters the buttons of the open tab, which move
   // to the nearest button in the arrow's direction. While a channel plays, up/down switch channels.
@@ -239,7 +258,7 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
         e.preventDefault();
         return;
       }
-      const modal = Boolean(transfer || problemOpen);
+      const modal = Boolean(transfer || problemOpen || instay);
       const container = modal ? transferRef.current : panelRef.current;
       const grid = Array.from(container?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
       const inGrid = grid.indexOf(document.activeElement as HTMLButtonElement);
@@ -473,6 +492,30 @@ export function TvScreen({ token, lang }: { token: string; lang: string }) {
                 <span className="tvTfGap">{tx.people}</span><button type="button" aria-label="−" disabled={transfer.people <= 1} onClick={() => setTransfer({ ...transfer, people: transfer.people - 1 })}>−</button><b className="tvTfValue">{transfer.people}</b><button type="button" aria-label="+" disabled={transfer.people >= 12} onClick={() => setTransfer({ ...transfer, people: transfer.people + 1 })}>+</button></div>
               {transferError && <p className="tvTfError">{transferError}</p>}
               <footer className="tvTfActions"><button type="button" className="tvTfSend" autoFocus disabled={reqState.taxi === "sending"} onClick={sendTransfer}>{tx.send}</button><button type="button" onClick={() => setTransfer(null)}>{tx.cancel}</button></footer>
+            </div>
+          </article>
+        </div>
+      ); })()}
+      {instay && data.instay && (() => { const it = data.instay.texts; return (
+        <div className="tvMsg tvTransfer tvInstay" role="dialog" aria-label={it.question}>
+          <article className="tvMsgCard" ref={transferRef}>
+            <div className="tvMsgBody">
+              {instay.step === "ask" && <>
+                <span className="tvMsgHead">{it.question}</span>
+                <footer className="tvTfActions tvInstayAnswers">
+                  <button type="button" autoFocus className="tvTfSend" onClick={() => void answerInstay(true, [])}>😊 {it.good}</button>
+                  <button type="button" onClick={() => setInstay({ step: "topics", good: false, topics: [] })}>😕 {it.bad}</button>
+                  <button type="button" onClick={closeInstay}>{it.later}</button>
+                </footer>
+              </>}
+              {instay.step === "topics" && <>
+                <span className="tvMsgHead">{it.which}</span>
+                <div className="tvProblemGrid">
+                  {data.instay.topics.map((k, i) => <button type="button" key={k} autoFocus={i === 0} className={instay.topics.includes(k) ? "on" : ""} onClick={() => setInstay({ ...instay, topics: instay.topics.includes(k) ? instay.topics.filter((x) => x !== k) : [...instay.topics, k] })}>{instay.topics.includes(k) ? "✓ " : ""}{it[k]}</button>)}
+                </div>
+                <footer className="tvTfActions"><button type="button" className="tvTfSend" onClick={() => void answerInstay(false, instay.topics)}>{it.send}</button><button type="button" onClick={closeInstay}>{it.later}</button></footer>
+              </>}
+              {instay.step === "thanks" && <span className="tvMsgHead">{instay.good ? it.thanksGood : it.thanksBad}</span>}
             </div>
           </article>
         </div>

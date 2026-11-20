@@ -41,7 +41,7 @@ test("dates in the guest's language; WhatsApp signature and Meta templates", () 
 
 test("WhatsApp templates for Meta: six languages, Meta's rules, same variable count the PMS sends", () => {
   const t = whatsappTemplateSuggestions({ name: "Hotel Corali ✨", website: "https://hotelcorali.gr/" });
-  assert.equal(t.length, 9);
+  assert.equal(t.length, 10);
   for (const s of t) {
     assert.match(s.name, /^[a-z0-9_]+$/);
     assert.equal(s.headerText, "Hotel Corali");

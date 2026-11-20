@@ -3,10 +3,12 @@ import { bookingLanguage } from "@/lib/booking-i18n";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { guestRoomRequest, guestRoomState } from "@/lib/guest-room";
+import { recordInstay } from "@/lib/instay";
+import { instayTopics } from "@/lib/instay-core";
 import { bookingForToken } from "@/lib/guest-self-service";
 import { allowAttempt } from "@/lib/request-limit";
 
-const input = z.object({ token: z.string().min(32).max(200), lang: z.string().max(5).default("en"), kind: z.enum(["cleaning", "dnd"]), on: z.boolean().optional() });
+const input = z.object({ token: z.string().min(32).max(200), lang: z.string().max(5).default("en"), kind: z.enum(["cleaning", "dnd", "instay"]), on: z.boolean().optional(), topics: z.array(z.enum(instayTopics)).max(7).default([]) });
 const noStore = { "Cache-Control": "no-store" };
 
 /** v176: My booking → «Your room»: do not disturb and «please clean my room» (same records as the room TV). */
@@ -26,7 +28,8 @@ export async function POST(request: Request) {
   if (!(await allowAttempt(`guest-room:${b.id}`, 20, 15 * 60_000, 15 * 60_000))) return Response.json({ ok: false, error: "TOO_MANY" }, { status: 429 });
   const ownerId = env().PMS_OWNER_ID, lang = bookingLanguage(x.lang);
   try {
-    await guestRoomRequest(ownerId, b, x.kind, x.on ?? false);
+    if (x.kind === "instay") await recordInstay(ownerId, Number(b.id), x.on === true, x.topics, "phone");
+    else await guestRoomRequest(ownerId, b, x.kind, x.on ?? false);
   } catch (e) {
     const code = e instanceof Error ? e.message : "";
     if (["NOT_IN_HOUSE", "DND_ON", "NO_SCREEN"].includes(code)) return Response.json({ ok: false, error: code, ...(await guestRoomState(ownerId, b, lang)) }, { status: 409, headers: noStore });

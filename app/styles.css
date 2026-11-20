@@ -952,3 +952,8 @@ details.tvFold.tvFoldCard.hubCard{padding:0;gap:0;margin:12px 0}.tvFold.tvFoldCa
 .gRoomDnd input{width:22px;height:22px;flex:none}
 .gRoomDnd span{display:grid;gap:2px}
 .gRoomDnd small{color:#5b6b70}
+.gInstay{display:grid;gap:10px;padding:14px;border-radius:12px;background:#fff8e6;border:1px solid #f0d58a}
+.gInstayActions{display:flex;flex-wrap:wrap;gap:8px}
+.gInstayTopics{display:flex;flex-wrap:wrap;gap:8px}
+.gInstayTopics button{border:1px solid #c9d6da;border-radius:999px;padding:8px 12px;background:#fff;cursor:pointer}
+.gInstayTopics button.on{background:#173e47;color:#fff;border-color:#173e47}

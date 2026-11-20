@@ -151,6 +151,13 @@ const WA_TEXTS = {
     de: "Hallo {{1}},\n\nsparen Sie Zeit bei der Anreise: Erledigen Sie den Online-Check-in hier:\n{{2}}\n\nEs dauert nur wenige Minuten.",
     it: "Ciao {{1}},\n\nrisparmia tempo all’arrivo: completa il check-in online qui:\n{{2}}\n\nBastano pochi minuti.",
     es: "Hola {{1}},\n\nahorra tiempo a tu llegada: completa el registro en línea aquí:\n{{2}}\n\nSolo te llevará unos minutos." } },
+  instay: { name: "instay_check", samples: ["Maria"], text: {
+    el: "Γεια σας {{1}}! 🌊\n\nΕίναι όλα εντάξει με τη διαμονή σας; Αν χρειάζεστε κάτι ή κάτι δεν πάει καλά, απαντήστε σε αυτό το μήνυμα — θα το φροντίσουμε αμέσως.",
+    en: "Hello {{1}}! 🌊\n\nIs everything all right with your stay? If you need anything or something is not right, just reply to this message — we will take care of it right away.",
+    fr: "Bonjour {{1}} ! 🌊\n\nTout se passe bien pendant votre séjour ? Si vous avez besoin de quelque chose, répondez simplement à ce message — nous nous en occupons tout de suite.",
+    de: "Hallo {{1}}! 🌊\n\nIst bei Ihrem Aufenthalt alles in Ordnung? Wenn Sie etwas brauchen, antworten Sie einfach auf diese Nachricht — wir kümmern uns sofort darum.",
+    it: "Ciao {{1}}! 🌊\n\nVa tutto bene con il tuo soggiorno? Se ti serve qualcosa, rispondi a questo messaggio — ce ne occupiamo subito.",
+    es: "¡Hola {{1}}! 🌊\n\n¿Va todo bien en tu estancia? Si necesitas algo, responde a este mensaje — lo solucionamos enseguida." } },
   welcome: { name: "welcome_message", samples: ["Maria"], text: {
     el: "Καλώς ήρθατε {{1}}! 🌊\n\nΓια οτιδήποτε χρειαστείτε, η ρεσεψιόν είναι στη διάθεσή σας. Καλή διαμονή!",
     en: "Welcome {{1}}! 🌊\n\nIf you need anything, reception is here for you. Enjoy your stay!",

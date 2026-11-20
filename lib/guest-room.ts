@@ -2,6 +2,8 @@
 // tv_requests (cleaning, dnd_on / dnd_off) and tv_screens.dnd_since, so Housekeeping, PMS → Requests and the TV agree.
 import { db, withTransaction } from "@/lib/db";
 import { canUseRoom, guestRoomTexts, roomRequestProblem } from "@/lib/guest-room-core";
+import { instayAsk } from "@/lib/instay";
+import { instayTexts, instayTopics } from "@/lib/instay-core";
 import type { GuestLang } from "@/lib/guest-portal-core";
 import { pushNotification } from "@/lib/pms-notifications";
 import { tvRequestLabels } from "@/lib/tv-requests-core";
@@ -14,7 +16,10 @@ export async function guestRoomState(ownerId: string, b: Booking, lang: GuestLan
   const roomId = Number(b.room_id);
   const s = inHouse ? (await db().query(`SELECT dnd_since FROM tv_screens WHERE owner_id=$1 AND room_id=$2`, [ownerId, roomId])).rows[0] : null;
   const open = inHouse ? (await db().query(`SELECT created_at FROM tv_requests WHERE owner_id=$1 AND room_id=$2 AND booking_id=$3 AND kind='cleaning' AND status='open' ORDER BY id DESC LIMIT 1`, [ownerId, roomId, Number(b.id)])).rows[0] : null;
-  return { texts: guestRoomTexts[lang], inHouse, dndAvailable: Boolean(s), dnd: s ? s.dnd_since !== null : false, cleaningSince: open ? Number(open.created_at) : null };
+  // v176: «Is everything all right?» from the second day of the stay, until answered (here or on the TV).
+  const ask = inHouse && (await instayAsk(ownerId, Number(b.id), { status: String(b.status), check_in: String(b.check_in), check_out: String(b.check_out) }));
+  return { texts: guestRoomTexts[lang], inHouse, dndAvailable: Boolean(s), dnd: s ? s.dnd_since !== null : false, cleaningSince: open ? Number(open.created_at) : null,
+    instay: ask ? { texts: instayTexts[lang], topics: instayTopics } : null };
 }
 
 /** Switch do not disturb / ask for cleaning. Throws NOT_IN_HOUSE, DND_ON, NO_SCREEN. A repeated request is not doubled. */

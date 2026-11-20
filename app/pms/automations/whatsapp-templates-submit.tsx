@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 type Row = { name: string; language: string; status: string; rejectedReason: string | null; category: string | null };
 type Outcome = { name: string; language: string; result: "created" | "updated" | "exists" | "failed"; status?: string; error?: string };
 const LANGS = ["el", "en", "fr", "de", "it", "es"] as const;
-const NAMES = ["booking_confirmation", "pre_arrival", "online_checkin", "welcome_message", "balance_reminder", "pre_departure", "payment_failed", "booking_cancelled", "review_request"];
+const NAMES = ["booking_confirmation", "pre_arrival", "online_checkin", "welcome_message", "instay_check", "balance_reminder", "pre_departure", "payment_failed", "booking_cancelled", "review_request"];
 const STATUS: Record<string, [string, string]> = {
   APPROVED: ["✓", "Εγκρίθηκε"], PENDING: ["⏳", "Σε έλεγχο"], IN_APPEAL: ["⏳", "Σε ένσταση"], REJECTED: ["✗", "Απορρίφθηκε"],
   PAUSED: ["⏸", "Σε παύση"], DISABLED: ["✗", "Απενεργοποιημένο"], FLAGGED: ["⚠", "Με σήμανση"], LIMIT_EXCEEDED: ["✗", "Όριο"],

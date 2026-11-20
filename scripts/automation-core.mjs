@@ -1,5 +1,5 @@
 // Guest message schedule and eligibility rules shared by the worker and the PMS (pure; unit tested).
-export const events = ["confirmation", "pre_arrival", "checkin", "welcome", "balance", "pre_departure", "review"];
+export const events = ["confirmation", "pre_arrival", "checkin", "welcome", "instay", "balance", "pre_departure", "review"];
 /** Messages sent when something happens (queued by the PMS or a worker), not on a schedule. */
 export const triggeredEvents = ["payment_failed", "cancellation"];
 
@@ -25,6 +25,8 @@ export function scheduleFor(event, booking, settings) {
     case "pre_arrival": return greekTime(booking.check_in, -num(settings.pre_arrival_days_before, 3), num(settings.pre_arrival_hour, 15));
     case "checkin": return greekTime(booking.check_in, -num(settings.checkin_days_before, 3), sendHour);
     case "welcome": return greekTime(booking.check_in, 0, num(settings.welcome_hour, 16));
+    // v176: «Is everything all right?» on the second day of the stay, at 11:00.
+    case "instay": return greekTime(booking.check_in, 1, 11);
     case "balance": return greekTime(booking.check_out, -num(settings.balance_days_before_checkout, 1), sendHour);
     case "pre_departure": return greekTime(booking.check_out, -1, num(settings.pre_departure_hour, 18));
     default: return greekTime(booking.check_out, num(settings.review_days_after_checkout, 2), sendHour);
@@ -53,6 +55,8 @@ export function eligible(event, booking, now) {
     // Welcome goes out on arrival day to guests who are (or are about to be) in house.
     case "welcome": return (booking.status === "checked_in" || booking.status === "confirmed") && booking.check_in === today;
     case "balance": return ["confirmed", "checked_in"].includes(booking.status) && Number(booking.balance_cents) > 0 && booking.check_out >= today;
+    // Second day of a checked-in stay of at least two nights (one-night stays are not asked).
+    case "instay": { const day2 = new Date(Date.parse(`${booking.check_in}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10); return booking.status === "checked_in" && today === day2 && booking.check_out > day2; }
     case "pre_departure": return booking.status === "checked_in" && booking.check_out > today;
     default: return booking.status === "checked_out" && booking.check_out <= today;
   }
@@ -65,6 +69,7 @@ export function whatsappVariables(event, values) {
     case "balance": return [values.name, values.amount, values.link];
     case "pre_arrival": return [values.name, values.checkIn, values.link || "-"];
     case "welcome": return [values.name];
+    case "instay": return [values.name];
     case "pre_departure": return [values.name, values.checkOut];
     case "payment_failed": return [values.name, values.amount, values.link, values.deadline];
     case "cancellation": return [values.reference, values.checkIn, values.checkOut, values.reason, values.refund];
