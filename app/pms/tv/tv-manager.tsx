@@ -126,6 +126,18 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
     if (!d.ok) { setMsg(t("tv.failed")); return; }
     setPower(d.power.settings); setHasKey(d.power.hasKey); setAuthKey(""); setMsg(t("tv.saved"));
   }
+  // The Shelly plug of a room: Device ID, save, live state (with the power draw) and manual on / off.
+  const plugCell = (s: TvScreenRow) => <>
+                <input placeholder={t("tv.plugId")} value={s.power_device_id} maxLength={64} disabled={!canEdit} onChange={(e) => editRow(s.room_id, { power_device_id: e.target.value.trim() })} />
+                {canEdit && <button type="button" className="linkButton" disabled={busy} onClick={() => void call({ action: "powerDevice", roomId: s.room_id, deviceId: s.power_device_id, channel: s.power_channel }).then((d) => setMsg(d.ok ? t("tv.plugSaved").replace("{room}", s.room_code) : t("tv.plugInvalid")))}>{t("tv.plugSave")}</button>}
+                {s.power_device_id && (
+                  <span className="tvPlugState">
+                    {plugStates[s.room_id] ? (plugStates[s.room_id].online ? (plugStates[s.room_id].on ? <b className="credit">● {t("tv.plugOn")}</b> : <b>○ {t("tv.plugOff")}</b>) : <b className="debit">{t("tv.plugOffline")}</b>) : s.power_state !== null && <small>{s.power_state ? t("tv.plugOn") : t("tv.plugOff")}{s.power_changed_at ? ` · ${new Date(s.power_changed_at).toLocaleString(pmsLocale(lang), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" })}` : ""}</small>}
+                    {s.power_error && <small className="debit">{t("tv.powerFailed")}: {s.power_error}</small>}
+                    {canEdit && powerReady && <span><button type="button" className="secondaryButton" disabled={busy} onClick={() => void switchPower(s, true)}>{t("tv.powerOn")}</button><button type="button" className="secondaryButton" disabled={busy} onClick={() => void switchPower(s, false)}>{t("tv.powerOff")}</button></span>}
+                  </span>
+                )}
+  </>;
   async function switchPower(s: TvScreenRow, on: boolean) {
     const d = await call({ action: "power", roomId: s.room_id, on });
     setMsg(d.ok ? t(on ? "tv.powerOnDone" : "tv.powerOffDone").replace("{room}", s.room_code) : `${t("tv.powerFailed")} (${d.error ?? "?"})`);
@@ -334,18 +346,7 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
                 <label className="inline"><span className="muted">{t("tv.method")}</span> <select value={s.power_method} disabled={!canEdit || busy} onChange={(e) => void setMethod(s, e.target.value)}>
                   {POWER_METHODS.map((m) => <option key={m} value={m} disabled={!AVAILABLE_POWER_METHODS.includes(m)}>{t(`tv.method_${m}` as Parameters<typeof t>[0])}{AVAILABLE_POWER_METHODS.includes(m) ? "" : ` (${t("tv.methodSoon")})`}</option>)}
                 </select></label>
-                {(s.power_method === "shelly" || power.plugUse === "fridge") && <>
-                {power.plugUse === "fridge" && <small className="muted">🧊 {t("tv.fridgePlug")}</small>}
-                <input placeholder={t("tv.plugId")} value={s.power_device_id} maxLength={64} disabled={!canEdit} onChange={(e) => editRow(s.room_id, { power_device_id: e.target.value.trim() })} />
-                {canEdit && <button type="button" className="linkButton" disabled={busy} onClick={() => void call({ action: "powerDevice", roomId: s.room_id, deviceId: s.power_device_id, channel: s.power_channel }).then((d) => setMsg(d.ok ? t("tv.plugSaved").replace("{room}", s.room_code) : t("tv.plugInvalid")))}>{t("tv.plugSave")}</button>}
-                {s.power_device_id && (
-                  <span className="tvPlugState">
-                    {plugStates[s.room_id] ? (plugStates[s.room_id].online ? (plugStates[s.room_id].on ? <b className="credit">● {t("tv.plugOn")}</b> : <b>○ {t("tv.plugOff")}</b>) : <b className="debit">{t("tv.plugOffline")}</b>) : s.power_state !== null && <small>{s.power_state ? t("tv.plugOn") : t("tv.plugOff")}{s.power_changed_at ? ` · ${new Date(s.power_changed_at).toLocaleString(pmsLocale(lang), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" })}` : ""}</small>}
-                    {s.power_error && <small className="debit">{t("tv.powerFailed")}: {s.power_error}</small>}
-                    {canEdit && powerReady && <span><button type="button" className="secondaryButton" disabled={busy} onClick={() => void switchPower(s, true)}>{t("tv.powerOn")}</button><button type="button" className="secondaryButton" disabled={busy} onClick={() => void switchPower(s, false)}>{t("tv.powerOff")}</button></span>}
-                  </span>
-                )}
-                </>}
+                {s.power_method === "shelly" && power.plugUse !== "fridge" && plugCell(s)}
                 {s.power_method !== "shelly" && power.plugUse !== "fridge" && s.power_device_id && <small className="muted">{t("tv.plugIdle")}</small>}
                 {s.power_method !== "android_agent" && <small className="muted">{t("tv.agentHint")}</small>}
                 {s.power_method === "android_agent" && (() => {
@@ -391,6 +392,13 @@ export function TvManager({ lang, initialSettings, initialScreens, initialPower,
         <small>{t(power.plugUse === "fridge" ? "tv.fridgeHelp" : "tv.powerHelp")}</small>
         <div className="tvAdminChecks"><label className="inline">{t("tv.plugUse")} <select value={power.plugUse} disabled={!canEdit} onChange={(e) => setPower({ ...power, plugUse: e.target.value === "fridge" ? "fridge" : "tv" })}>
           <option value="tv">{t("tv.plugUse_tv")}</option><option value="fridge">{t("tv.plugUse_fridge")}</option></select></label></div>
+        {/* v178: the fridges have their own list (not the TV screens table). */}
+        {power.plugUse === "fridge" && <div className="tableWrap"><table className="tvFridges">
+          <thead><tr><th>{t("tv.room")}</th><th>🧊 {t("tv.fridgePlug")}</th></tr></thead>
+          <tbody>{screens.map((s) => <tr key={s.room_id}><td><b>{s.room_code}</b><small>{s.room_type}</small></td><td><div className="tvPlug">{plugCell(s)}
+            {plugStates[s.room_id]?.power != null && <small className="muted">{Math.round(plugStates[s.room_id].power!)} W</small>}
+            {s.fridge_alert_at != null && <small className="debit">⚠️ {t("tv.fridgeFault")}</small>}</div></td></tr>)}</tbody>
+        </table></div>}
         <div className="tvAdminChecks"><label className="inline"><input type="checkbox" checked={power.enabled} disabled={!canEdit} onChange={(e) => setPower({ ...power, enabled: e.target.checked })} /> <b>{t("tv.powerEnabled")}</b></label></div>
         <div className="tvAdminGrid">
           <label>{t("tv.shellyServer")}<input value={power.server.replace(/^https:\/\//, "")} placeholder="shelly-123-eu.shelly.cloud" maxLength={120} disabled={!canEdit} onChange={(e) => setPower({ ...power, server: e.target.value })} /></label>
