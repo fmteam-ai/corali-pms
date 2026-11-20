@@ -15,11 +15,14 @@ export const housekeepingChecklist = [
   "wifi_guide",
   "final_inspection",
 ] as const;
-/** Extra step on a departure clean: the next guest must not find the previous guest's streaming accounts. */
-export const departureChecklistExtra = ["tv_apps_logout"] as const;
+/**
+ * Extra steps on a departure clean: the next guest must not find the previous guest's streaming accounts; v175: the
+ * fridge is switched off after check-out (Shelly plug), so it is left empty with the door open (no smell, no water).
+ */
+export const departureChecklistExtra = ["tv_apps_logout", "fridge_empty_open"] as const;
 export type ChecklistKey = (typeof housekeepingChecklist)[number] | (typeof departureChecklistExtra)[number];
 
-/** Checklist for a task: the 12 points, plus signing out of TV apps on a departure clean. */
+/** Checklist for a task: the 12 points, plus the departure steps (TV apps, fridge) on a departure clean. */
 export function checklistFor(taskType: string | null | undefined): readonly ChecklistKey[] {
   return taskType === "departure_clean" ? [...housekeepingChecklist, ...departureChecklistExtra] : housekeepingChecklist;
 }
@@ -39,6 +42,7 @@ export const checklistLabels: Record<"el" | "en", Record<ChecklistKey, string>> 
     wifi_guide: "Wi-Fi / οδηγός QR",
     final_inspection: "Τελικός έλεγχος",
     tv_apps_logout: "Αποσύνδεση εφαρμογών TV (Netflix, YouTube κ.λπ.)",
+    fridge_empty_open: "Ψυγείο άδειο, με την πόρτα ανοιχτή (σβήνει μετά το check-out)",
   },
   en: {
     bed_linens: "Bed & linens",
@@ -54,6 +58,7 @@ export const checklistLabels: Record<"el" | "en", Record<ChecklistKey, string>> 
     wifi_guide: "Wi-Fi / QR info guide",
     final_inspection: "Final inspection",
     tv_apps_logout: "Sign out of TV apps (Netflix, YouTube, etc.)",
+    fridge_empty_open: "Fridge empty, door left open (it is switched off after check-out)",
   },
 };
 

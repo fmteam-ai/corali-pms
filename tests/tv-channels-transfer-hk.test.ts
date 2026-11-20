@@ -58,10 +58,11 @@ test("TV apps: catalog apps by key, custom apps need a valid package; departure 
   const { checklistFor, validChecklist, housekeepingChecklist } = await import("../lib/housekeeping.ts");
   const apps = normalizeTvApps([{ key: "netflix" }, { key: "netflix" }, { name: "ERTFLIX", packages: "gr.ert.ertflix", color: "#0055a4" }, { name: "Bad", packages: ["not a package"] }, { key: "youtube", name: "YouTube TV" }]);
   assert.deepEqual(apps.map((a) => [a.key, a.name, a.packages[0]]), [["netflix", "Netflix", "com.netflix.ninja"], ["custom:gr.ert.ertflix", "ERTFLIX", "gr.ert.ertflix"], ["youtube", "YouTube TV", "com.google.android.youtube.tv"]]);
-  assert.equal(checklistFor("departure_clean").length, housekeepingChecklist.length + 1);
+  assert.equal(checklistFor("departure_clean").length, housekeepingChecklist.length + 2);
   assert.equal(checklistFor("stayover_clean").length, housekeepingChecklist.length);
   const twelve = Object.fromEntries(housekeepingChecklist.map((k) => [k, true]));
   assert.equal(validChecklist(twelve, "stayover_clean"), true);
   assert.equal(validChecklist(twelve, "departure_clean"), false);
-  assert.equal(validChecklist({ ...twelve, tv_apps_logout: true }, "departure_clean"), true);
+  assert.equal(validChecklist({ ...twelve, tv_apps_logout: true }, "departure_clean"), false);
+  assert.equal(validChecklist({ ...twelve, tv_apps_logout: true, fridge_empty_open: true }, "departure_clean"), true);
 });
