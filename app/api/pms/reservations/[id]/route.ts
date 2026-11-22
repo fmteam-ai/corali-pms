@@ -7,6 +7,7 @@ import { deferStaffPush } from "@/lib/staff-push";
 import { getReservation } from "@/lib/reservations";
 import { moveNights, recalcBooking } from "@/lib/folio-db";
 import { enqueueAvailability } from "@/lib/channel-sync";
+import { ROOM_READY_SQL } from "../../../../../scripts/room-ready-core.mjs";
 import { validReservationTransition } from "@/lib/reservation-transition";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 import { cancellationPayload, queueGuestMessage } from "@/lib/guest-messages";
@@ -52,6 +53,11 @@ async function handlePATCH(request: Request, context: { params: Promise<{ id: st
         const room = await client.query("SELECT operational_status FROM rooms WHERE owner_id=$1 AND id=$2 AND active=1", [user.ownerId,next.roomId]);
         if (!room.rowCount) throw new Error("INVALID_ROOM");
         if (input.action==="move" && Number(next.roomId)!==Number(before.room_id) && room.rows[0].operational_status==="out_of_order") throw new Error("ROOM_OUT_OF_ORDER");
+        // v186: nobody is checked into a room that housekeeping has not approved (unless switched off in Housekeeping → Αναθέσεις).
+        if (input.action==="check_in") {
+          const ready=(await client.query(`SELECT ${ROOM_READY_SQL} AS ready,COALESCE((SELECT block_checkin FROM room_readiness_settings WHERE owner_id=r.owner_id),1) AS rule FROM rooms r WHERE r.owner_id=$1 AND r.id=$2`,[user.ownerId,next.roomId])).rows[0];
+          if (ready && Number(ready.rule)===1 && !ready.ready) throw new Error("ROOM_NOT_READY");
+        }
       }
       if(input.action==="check_in"){next.status="checked_in";next.checkedInAt=now;} if(input.action==="check_out"){next.status="checked_out";next.checkedOutAt=now;} if(input.action==="cancel")next.status="cancelled"; if(input.action==="no_show")next.status="no_show"; if(input.action==="confirm")next.status="confirmed";
       if(next.roomId && !["cancelled","checked_out","no_show"].includes(next.status)){
@@ -74,6 +80,8 @@ async function handlePATCH(request: Request, context: { params: Promise<{ id: st
         await client.query(`INSERT INTO housekeeping_tasks(owner_id,room_id,task_type,status,assigned_to,due_at,checklist_json,inspection_status)
           SELECT $1,$2,'departure_clean','todo',(SELECT staff_user_id::text FROM housekeeping_staff_room_defaults WHERE owner_id=$1 AND room_id=$2 ORDER BY staff_user_id LIMIT 1),$3,'{}','pending'
            WHERE NOT EXISTS (SELECT 1 FROM housekeeping_tasks WHERE owner_id=$1 AND room_id=$2 AND status IN ('todo','in_progress','cleaned'))`,[user.ownerId,next.roomId,now]);
+        // v186: the room is no longer ready — tonight's OTA availability is sent again (it returns once approved).
+        const today=hotelToday(); await enqueueAvailability(client,user.ownerId,today,today,"room_ready");
       }
       return saved;
     });
@@ -89,7 +97,7 @@ async function handlePATCH(request: Request, context: { params: Promise<{ id: st
     if(error instanceof z.ZodError || (error instanceof Error && error.message==="INVALID_DATES")) return Response.json({ok:false,error:"INVALID_INPUT"},{status:400});
     if(error instanceof Error && error.message==="NOT_FOUND") return Response.json({ok:false,error:"NOT_FOUND"},{status:404});
     if(error instanceof Error && error.message==="INVALID_ROOM") return Response.json({ok:false,error:"INVALID_ROOM"},{status:400});
-    if(error instanceof Error && ["VERSION_CONFLICT","ROOM_UNAVAILABLE","ROOM_OUT_OF_ORDER","INVALID_TRANSITION"].includes(error.message)) return Response.json({ok:false,error:error.message},{status:409});
+    if(error instanceof Error && ["VERSION_CONFLICT","ROOM_UNAVAILABLE","ROOM_OUT_OF_ORDER","ROOM_NOT_READY","INVALID_TRANSITION"].includes(error.message)) return Response.json({ok:false,error:error.message},{status:409});
     return Response.json({ok:false,error:"UPDATE_FAILED"},{status:500});
   }
 }

@@ -10,6 +10,7 @@ import process from "node:process";
 import { createDecipheriv, createHash } from "node:crypto";
 import pg from "pg";
 import { databaseSsl } from "./database-config.mjs";
+import { ROOM_READY_SQL } from "./room-ready-core.mjs";
 import { AVAILABILITY_SQL, CHANNEX_HOSTS, availabilityRanges, computeRestrictions, feedHasMore, normalizeRevision, planRevision, restrictionKey, restrictionRanges, sellable, typeNightlyCents, otaRate } from "./channel-core.mjs";
 
 if (!process.env.DATABASE_URL || !process.env.PMS_DOCUMENT_KEY) throw Error("DATABASE_URL and PMS_DOCUMENT_KEY are required");
@@ -46,7 +47,8 @@ async function roomFree(client, roomId, checkIn, checkOut, exceptBookingId) {
 }
 
 async function assignRoom(client, roomType, checkIn, checkOut, exceptBookingId) {
-  const rooms = (await client.query(`SELECT id FROM rooms WHERE owner_id=$1 AND room_type=$2 AND active=1 AND operational_status<>'out_of_order' ORDER BY code`, [owner, roomType])).rows;
+  // v186: an OTA booking is never refused; for an arrival today a ready room is given first.
+  const rooms = (await client.query(`SELECT r.id FROM rooms r WHERE r.owner_id=$1 AND r.room_type=$2 AND r.active=1 AND r.operational_status<>'out_of_order' ORDER BY ${ROOM_READY_SQL} DESC, r.code`, [owner, roomType])).rows;
   for (const room of rooms) if (await roomFree(client, room.id, checkIn, checkOut, exceptBookingId)) return room.id;
   return null;
 }

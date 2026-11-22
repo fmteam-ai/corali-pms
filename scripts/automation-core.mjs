@@ -2,6 +2,21 @@
 export const events = ["confirmation", "pre_arrival", "checkin", "welcome", "instay", "balance", "pre_departure", "review"];
 /** Messages sent when something happens (queued by the PMS or a worker), not on a schedule. */
 export const triggeredEvents = ["payment_failed", "cancellation"];
+/**
+ * v186: the balance reminder (by default 1 day before departure, with the amount and a payment link) goes out even
+ * when the scheduled automations are switched off — only switching off «balance» itself in PMS → Αυτόματα μηνύματα
+ * stops it. Other scheduled messages need the main switch; triggered ones (payment failed, cancellation) always go.
+ */
+export const ALWAYS_ON_EVENTS = ["balance"];
+export function eventOn(event, enabled, scheduledOn) {
+  const flag = enabled && typeof enabled === "object" ? enabled[event] : undefined;
+  if (triggeredEvents.includes(event)) return flag ?? true;
+  if (ALWAYS_ON_EVENTS.includes(event)) return flag !== false;
+  return Boolean(scheduledOn) && Boolean(flag);
+}
+/** Default balance reminder (same text as the PMS default), used when the hotel never saved its own. */
+export const balanceTemplates = {"el": {"subject": "Υπόλοιπο κράτησης {{reference}}", "body": "Αγαπητέ/ή {{name}}, το τρέχον υπόλοιπο της κράτησης {{reference}} είναι {{amount}}. Πληρώστε με ασφάλεια εδώ: {{link}}. Το ποσό ελέγχεται ξανά πριν την πληρωμή."}, "en": {"subject": "Balance due for your stay · {{reference}}", "body": "Hello {{name}}, the current balance for reservation {{reference}} is {{amount}}. Pay securely here: {{link}}. The amount will be checked again before payment."}, "fr": {"subject": "Solde de votre réservation {{reference}}", "body": "Bonjour {{name}}, le solde actuel de votre réservation {{reference}} est de {{amount}}. Payez ici en toute sécurité : {{link}}. Le montant sera vérifié avant paiement."}, "de": {"subject": "Offener Betrag für Buchung {{reference}}", "body": "Hallo {{name}}, der aktuelle Restbetrag Ihrer Buchung {{reference}} beträgt {{amount}}. Sicher bezahlen: {{link}}. Der Betrag wird vor der Zahlung erneut geprüft."}, "it": {"subject": "Saldo prenotazione {{reference}}", "body": "Ciao {{name}}, il saldo attuale della prenotazione {{reference}} è {{amount}}. Paga in sicurezza qui: {{link}}. L’importo sarà verificato prima del pagamento."}, "es": {"subject": "Saldo de la reserva {{reference}}", "body": "Hola {{name}}, el saldo actual de tu reserva {{reference}} es {{amount}}. Paga de forma segura aquí: {{link}}. El importe se comprobará antes del pago."}};
+
 
 /** Epoch ms for `hour`:00 Athens time, `offsetDays` from an ISO date (handles summer/winter time). */
 export function greekTime(date, offsetDays, hour) {

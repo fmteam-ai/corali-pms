@@ -2603,3 +2603,12 @@ CREATE TABLE IF NOT EXISTS housekeeping_room_inspectors (
   created_at BIGINT NOT NULL,
   PRIMARY KEY (owner_id, room_id)
 );
+
+-- v186: a room that is not ready (housekeeping: to clean, cleaning, waiting for approval, defect) is not sold for
+-- arrival today (booking site and OTAs) and nobody is checked into it. Both on unless switched off here.
+CREATE TABLE IF NOT EXISTS room_readiness_settings (
+  owner_id TEXT PRIMARY KEY,
+  block_same_day SMALLINT NOT NULL DEFAULT 1,
+  block_checkin SMALLINT NOT NULL DEFAULT 1,
+  updated_at BIGINT NOT NULL DEFAULT 0
+);

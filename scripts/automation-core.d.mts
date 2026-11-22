@@ -15,3 +15,6 @@ export declare const cancellationReasons: string[];
 export declare function reasonText(code: string, lang: string, custom?: string | null): string;
 export declare function refundText(outcome: string, lang: string, extra?: { paid?: string; freeUntil?: string | null; nonRefundable?: boolean; refund?: string; percent?: number }): string;
 export declare const triggeredTemplates: Record<"payment_failed" | "cancellation", Record<"el" | "en" | "fr" | "de" | "it" | "es", { subject: string; body: string }>>;
+export declare const ALWAYS_ON_EVENTS: string[];
+export declare function eventOn(event: string, enabled: Record<string, boolean> | null | undefined, scheduledOn: boolean): boolean;
+export declare const balanceTemplates: Record<string, { subject: string; body: string }>;

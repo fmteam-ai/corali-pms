@@ -75,6 +75,8 @@ async function handlePATCH(q: Request, { params }: { params: Promise<{ id: strin
       const roomStatus = roomStatusAfter(r.status, x.action, false);
       if (roomStatus) await c.query(`UPDATE rooms SET operational_status=$1 WHERE owner_id=$2 AND id=$3`, [roomStatus, u.ownerId, r.room_id]);
       if (roomStatus === "out_of_order" || (x.action === "approve" && r.status === "repaired")) { const today = hotelToday(); await enqueueAvailability(c, u.ownerId, today, addDays(today, 180), "room_status"); }
+      // v186: an approved room is ready — it can be sold again for tonight (OTAs get tonight's availability again).
+      else if (x.action === "approve") { const today = hotelToday(); await enqueueAvailability(c, u.ownerId, today, today, "room_ready"); }
       const code = String((await c.query(`SELECT code FROM rooms WHERE owner_id=$1 AND id=$2`, [u.ownerId, r.room_id])).rows[0]?.code ?? r.room_id);
       // v176: the guest's open «please clean my room» (TV / phone) is done once the room is cleaned.
       if (x.action === "complete") await closeCleaningRequests(c, u.ownerId, Number(r.room_id), u.id);

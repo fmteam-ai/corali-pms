@@ -11,6 +11,7 @@ import { allowAttempt, clientIp } from "@/lib/request-limit";
 import { recordSecurityEvent } from "@/lib/security-center";
 import { decryptField, encryptField } from "@/lib/security/encryption";
 import { addDays, hotelToday } from "@/lib/tape-chart";
+import { sellableForArrival } from "../scripts/room-ready-core.mjs";
 
 export { API_SCOPES, WEBHOOK_EVENTS };
 export type { ApiScope, WebhookEvent };
@@ -55,9 +56,9 @@ export async function apiAvailability(ownerId: string, from: string | null, to: 
   const start = isDate(from) ? from : hotelToday(), end = isDate(to) ? to : addDays(start, 30);
   if (end < start || Date.parse(end) - Date.parse(start) > 365 * 86_400_000) return null;
   const r = await db().query(
-    `SELECT d.day::date::text AS date, r.room_type, count(r.id) FILTER (WHERE r.operational_status<>'out_of_order' AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.owner_id=r.owner_id AND b.room_id=r.id AND b.status IN ('confirmed','checked_in') AND b.check_in<=d.day::date::text AND b.check_out>d.day::date::text))::int AS free, count(r.id)::int AS total
+    `SELECT d.day::date::text AS date, r.room_type, count(r.id) FILTER (WHERE r.operational_status<>'out_of_order' AND ${sellableForArrival("d.day::date::text", "$4")} AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.owner_id=r.owner_id AND b.room_id=r.id AND b.status IN ('confirmed','checked_in') AND b.check_in<=d.day::date::text AND b.check_out>d.day::date::text))::int AS free, count(r.id)::int AS total
        FROM generate_series($2::date,$3::date,interval '1 day') AS d(day) JOIN rooms r ON r.owner_id=$1 AND r.active=1 GROUP BY 1,2 ORDER BY 1,2`,
-    [ownerId, start, end],
+    [ownerId, start, end, hotelToday()],
   );
   return r.rows.map((x) => ({ date: String(x.date), room_type: String(x.room_type), free: Number(x.free), total: Number(x.total) }));
 }
