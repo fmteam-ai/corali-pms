@@ -12,6 +12,10 @@ if [[ -z "$port" ]]; then
   port="$(node -e "const n=require('net').createServer();n.listen(0,'127.0.0.1',()=>{console.log(n.address().port);n.close()})")"
 fi
 log_file="$(mktemp)"
+# v184: one-time key for this staged process only, so the Cloudflare origin lock (Security center) does not refuse
+# the installer's own loopback checks; the live applications never have it.
+smoke_token="$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")"
+export CORALI_SMOKE_TOKEN_SEND="$smoke_token"
 pid=""
 cleanup() {
   if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
@@ -24,7 +28,7 @@ trap cleanup EXIT
 
 (
   cd "$app_dir"
-  PORT="$port" HOSTNAME="127.0.0.1" NODE_ENV="production" node app.js >"$log_file" 2>&1
+  CORALI_SMOKE_TOKEN="$smoke_token" PORT="$port" HOSTNAME="127.0.0.1" NODE_ENV="production" node app.js >"$log_file" 2>&1
 ) &
 pid=$!
 
@@ -48,7 +52,7 @@ const request = http.get(
     hostname: "127.0.0.1",
     port,
     path: "/api/health",
-    headers: { host: `127.0.0.1:${port}`, connection: "close" },
+    headers: { host: `127.0.0.1:${port}`, connection: "close", "x-corali-smoke": process.env.CORALI_SMOKE_TOKEN_SEND ?? "" },
   },
   (response) => {
     let body = "";
@@ -90,7 +94,7 @@ if [[ "$role" == pms ]]; then
   diagnostic_status="$(node --input-type=module - "$port" <<'NODE'
 import http from "node:http";
 const port = Number(process.argv[2]);
-http.get({hostname:"127.0.0.1",port,path:"/api/pms/diagnostics"},response=>{
+http.get({hostname:"127.0.0.1",port,path:"/api/pms/diagnostics",headers:{"x-corali-smoke":process.env.CORALI_SMOKE_TOKEN_SEND??""}},response=>{
   response.resume();
   response.on("end",()=>process.stdout.write(String(response.statusCode)));
 }).on("error",error=>{console.error(error.message);process.exitCode=1});
@@ -110,7 +114,7 @@ checkIn.setUTCDate(checkIn.getUTCDate()+1);
 const checkOut=new Date(checkIn);
 checkOut.setUTCDate(checkOut.getUTCDate()+2);
 const path=`/api/public/availability?checkIn=${checkIn.toISOString().slice(0,10)}&checkOut=${checkOut.toISOString().slice(0,10)}&adults=2&children=0&rooms=1&lang=en`;
-http.get({hostname:"127.0.0.1",port,path},response=>{
+http.get({hostname:"127.0.0.1",port,path,headers:{"x-corali-smoke":process.env.CORALI_SMOKE_TOKEN_SEND??""}},response=>{
  let body="";
  response.on("data",chunk=>body+=chunk);
  response.on("end",()=>{

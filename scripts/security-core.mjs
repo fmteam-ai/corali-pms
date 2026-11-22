@@ -33,6 +33,18 @@ export const newEdgeSecret = (rand = randomBytes) => `ce_${rand(24).toString("ba
 export const edgeSecretHash = (secret) => createHash("sha256").update(String(secret)).digest("hex");
 
 /** Does a request's header carry the key? Constant-time compare of the hashes. */
+/**
+ * v184: the installer's own checks of a new release. smoke-runtime.sh starts the staged application on 127.0.0.1 with
+ * a random one-time CORALI_SMOKE_TOKEN (never in runtime.env, so the live applications have none) and sends it in this
+ * header; only then does the request pass the origin lock — the installer's requests never go through Cloudflare.
+ */
+export const SMOKE_HEADER = "x-corali-smoke";
+export function smokeBypass(envToken, headerValue) {
+  if (!envToken || String(envToken).length < 32 || !headerValue) return false;
+  const a = Buffer.from(String(headerValue)), b = Buffer.from(String(envToken));
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export function edgeKeyMatches(headerValue, storedHash) {
   if (!storedHash || !headerValue || String(headerValue).length > 200) return false;
   const a = Buffer.from(edgeSecretHash(headerValue)), b = Buffer.from(String(storedHash));

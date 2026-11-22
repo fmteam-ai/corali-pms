@@ -15,3 +15,5 @@ export type SecurityAlert = { key: string; kind: string; n?: number; user?: stri
 export declare function securityAlerts(x: { counts: Record<string, number>; admins: { username: string; role: string; totp: boolean }[]; edge: { enforce: boolean; lastSeenAt: number | null } | null; now: number }): SecurityAlert[];
 export declare function eventLabel(kind: string, lang?: string): string;
 export declare function alertText(a: SecurityAlert): { el: string; en: string };
+export declare const SMOKE_HEADER: string;
+export declare function smokeBypass(envToken: string | undefined, headerValue: string | null | undefined): boolean;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { routeForRole, type ApplicationRole } from "@/lib/app-role";
 import { edgeState, markEdgeSeen, recordSecurityEvent } from "@/lib/security-center";
-import { CLIENT_IP_HEADER, EDGE_HEADER, edgeDecision, edgeExempt, edgeKeyMatches, pickClientIp } from "./scripts/security-core.mjs";
+import { CLIENT_IP_HEADER, EDGE_HEADER, SMOKE_HEADER, edgeDecision, edgeExempt, edgeKeyMatches, pickClientIp, smokeBypass } from "./scripts/security-core.mjs";
 
 function configuredRole(): ApplicationRole {
   return process.env.APP_ROLE === "booking" ? "booking" : "pms";
@@ -16,7 +16,8 @@ export async function proxy(request: NextRequest) {
   const ip = pickClientIp((name) => request.headers.get(name));
 
   // v180: Cloudflare origin lock (PMS → Security center).
-  if (!edgeExempt(path)) {
+  // v184: the installer's checks of a staged release (one-time token, only in that process) are not locked out.
+  if (!edgeExempt(path) && !smokeBypass(process.env.CORALI_SMOKE_TOKEN, request.headers.get(SMOKE_HEADER))) {
     const edge = await edgeState();
     const keyOk = edgeKeyMatches(request.headers.get(EDGE_HEADER), edge.hash);
     if (keyOk) void markEdgeSeen();
@@ -31,6 +32,7 @@ export async function proxy(request: NextRequest) {
   const headers = new Headers(request.headers);
   headers.set(CLIENT_IP_HEADER, ip);
   headers.delete(EDGE_HEADER);
+  headers.delete(SMOKE_HEADER);
   const next = () => NextResponse.next({ request: { headers } });
 
   if (!roleRouted(path)) return next();

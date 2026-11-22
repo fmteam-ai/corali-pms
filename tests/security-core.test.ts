@@ -80,3 +80,20 @@ test("SQL: column labels use AS (the hotel's older PostgreSQL rejects a bare «r
     assert.doesNotMatch(src, /\)(::int)? (role|n|last_at|detail)[,\s]/, f);
   }
 });
+
+test("v184: only the installer's one-time smoke key passes the origin lock, and only when that process has it", async () => {
+  const { smokeBypass } = await import("../scripts/security-core.mjs");
+  const token = "a".repeat(64);
+  assert.equal(smokeBypass(token, token), true);
+  assert.equal(smokeBypass(token, "b".repeat(64)), false);
+  assert.equal(smokeBypass(undefined, token), false, "live applications have no token: nothing passes");
+  assert.equal(smokeBypass("", ""), false);
+  assert.equal(smokeBypass("short", "short"), false);
+  assert.equal(smokeBypass(token, null), false);
+  const smoke = (await import("node:fs")).readFileSync(new URL("../scripts/smoke-runtime.sh", import.meta.url), "utf8");
+  assert.match(smoke, /CORALI_SMOKE_TOKEN="\$smoke_token" PORT=/);
+  assert.equal((smoke.match(/"x-corali-smoke"/g) ?? []).length, 3, "health, diagnostics and availability checks send it");
+  const proxy = (await import("node:fs")).readFileSync(new URL("../proxy.ts", import.meta.url), "utf8");
+  assert.match(proxy, /smokeBypass\(process\.env\.CORALI_SMOKE_TOKEN/);
+  assert.match(proxy, /headers\.delete\(SMOKE_HEADER\)/);
+});
