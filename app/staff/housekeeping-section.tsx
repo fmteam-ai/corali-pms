@@ -42,7 +42,7 @@ export function HousekeepingSection({ lang, t, me, canWrite, isHousekeeper, refr
     return () => clearInterval(timer);
   }, [load, refreshKey]);
 
-  async function task(room: HkRoom, action: "start" | "complete" | "report_issue", extra: Record<string, unknown> = {}) {
+  async function task(room: HkRoom, action: "start" | "complete" | "report_issue" | "approve" | "reject", extra: Record<string, unknown> = {}) {
     if (!room.task) return false;
     setBusy(true);
     try {
@@ -128,7 +128,12 @@ export function HousekeepingSection({ lang, t, me, canWrite, isHousekeeper, refr
                         <button type="button" className="hkBig" disabled={busy || doneSteps < list.length} onClick={() => void task(r, "complete")}>✓ {t("hkm.finished")}</button>
                       </>
                     )}
-                    {tk && tk.status === "cleaned" && <p className="hkNote">⏳ {t("hkb.st.cleaned")}</p>}
+                    {tk && (tk.status === "cleaned" || tk.status === "repaired") && (tk.canApprove ? (
+                      <div className="stActions">
+                        <button type="button" className="hkBig" disabled={busy} onClick={() => void task(r, "approve")}>✓ {t("hkb.approve")}</button>
+                        <button type="button" className="hkBig ghost" disabled={busy} onClick={() => { const notes = prompt(t("hkb.inspectionNotes")); if (notes?.trim()) void task(r, "reject", { notes: notes.trim() }); }}>↩ {t("hkb.reject")}</button>
+                      </div>
+                    ) : <p className="hkNote">⏳ {t("hkb.st.cleaned")} · {tk.inspectorName ? t("hkb.approvedBy", { name: tk.inspectorName }) : t("hkb.approvedByAdmin")}</p>)}
                     <div className="hkActions">
                       {canWrite && <button type="button" className="danger" onClick={() => setProblem(r)}>⚠ {t("hkm.problem")}</button>}
                       <button type="button" onClick={() => writeTo({ id: r.id, code: r.code })}>💬 {t("hkm.toReception")}</button>

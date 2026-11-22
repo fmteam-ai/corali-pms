@@ -52,7 +52,7 @@ export async function sendStaffPush(ownerId: string, audience: PushAudience, msg
   if (!ids.length) return 0;
   const subs = (await db().query(`SELECT id,endpoint,p256dh,auth,kinds_json,lang FROM push_subscriptions WHERE owner_id=$1 AND staff_user_id=ANY($2::bigint[])`, [ownerId, ids])).rows;
   // v184: a guest request forwarded to someone's department is always delivered (like a direct assignment).
-  const wanted = subs.filter((s) => msg.kind === "department" || normalizeAlertKinds((() => { try { return JSON.parse(s.kinds_json); } catch { return []; } })()).includes(msg.kind));
+  const wanted = subs.filter((s) => msg.kind === "department" || msg.kind === "inspection" || normalizeAlertKinds((() => { try { return JSON.parse(s.kinds_json); } catch { return []; } })()).includes(msg.kind));
   if (!wanted.length) return 0;
   const keys = await vapidKeys(ownerId);
   const subject = process.env.PMS_ORIGIN?.startsWith("https://") ? process.env.PMS_ORIGIN : "mailto:info@hotelcorali.gr";

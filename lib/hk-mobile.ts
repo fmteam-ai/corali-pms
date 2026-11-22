@@ -8,10 +8,12 @@ import type { HkService } from "@/lib/hk-services-core";
 import { hkKindOrder, roomDayKind, roomHasWork, type HkRoomKind } from "@/lib/hk-mobile-core";
 import { pushNotification } from "@/lib/pms-notifications";
 import { isDesk } from "@/lib/staff-core";
+import { canApproveInspection } from "@/lib/housekeeping";
+import { can } from "@/lib/security/permissions";
 import { deferStaffPush } from "@/lib/staff-push";
 import { hotelToday } from "@/lib/tape-chart";
 
-export type HkTask = { id: number; type: string; status: string; assignedTo: string | null; assignedName: string | null; notes: string; inspectionNotes: string; checklist: Record<string, boolean>; cleanedBy: number | null };
+export type HkTask = { id: number; type: string; status: string; assignedTo: string | null; assignedName: string | null; notes: string; inspectionNotes: string; checklist: Record<string, boolean>; cleanedBy: number | null; inspectorName: string | null; canApprove: boolean };
 export type HkRoom = {
   id: number; code: string; type: string; status: string; kind: HkRoomKind; dnd: boolean; cleanReq: number | null;
   departure: { guest: string; departed: boolean } | null;
@@ -31,12 +33,14 @@ export async function hkDay(u: CurrentUser): Promise<{ today: string; rooms: HkR
       `SELECT r.id,r.code,r.room_type,r.operational_status,(SELECT s.dnd_since FROM tv_screens s WHERE s.owner_id=r.owner_id AND s.room_id=r.id) AS dnd_since,(SELECT min(q.created_at) FROM tv_requests q WHERE q.owner_id=r.owner_id AND q.room_id=r.id AND q.kind='cleaning' AND q.status='open') AS clean_req,
               dep.guest_name dep_guest,dep.status dep_status,arr.guest_name arr_guest,arr.people arr_people,arr.status arr_status,arr.guest_email arr_email,
               (SELECT count(*)::int FROM maintenance_notices n WHERE n.owner_id=r.owner_id AND n.room_id=r.id AND n.status='open') AS notices,
-              t.id task_id,t.task_type,t.status task_status,t.assigned_to,su.display_name assigned_name,t.notes,t.inspection_notes,t.checklist_json,t.cleaned_by_staff_id
+              t.id task_id,t.task_type,t.status task_status,t.assigned_to,su.display_name assigned_name,t.notes,t.inspection_notes,t.checklist_json,t.cleaned_by_staff_id,hi.staff_user_id::int AS inspector_id,iu.display_name inspector_name
          FROM rooms r
          LEFT JOIN LATERAL (SELECT b.guest_name,b.status FROM bookings b WHERE b.owner_id=r.owner_id AND b.room_id=r.id AND b.check_out=$2 AND b.status IN ('confirmed','checked_in','checked_out') ORDER BY b.id DESC LIMIT 1) dep ON true
          LEFT JOIN LATERAL (SELECT b.guest_name,b.guest_email,b.status,(b.adults+b.children) AS people FROM bookings b WHERE b.owner_id=r.owner_id AND b.room_id=r.id AND b.check_in=$2 AND b.status IN ('confirmed','checked_in') ORDER BY b.id DESC LIMIT 1) arr ON true
          LEFT JOIN LATERAL (SELECT * FROM housekeeping_tasks x WHERE x.owner_id=r.owner_id AND x.room_id=r.id AND x.status<>'ready' ORDER BY x.id DESC LIMIT 1) t ON true
          LEFT JOIN pms_staff_users su ON su.owner_id=r.owner_id AND su.id::text=t.assigned_to
+         LEFT JOIN housekeeping_room_inspectors hi ON hi.owner_id=r.owner_id AND hi.room_id=r.id
+         LEFT JOIN pms_staff_users iu ON iu.owner_id=hi.owner_id AND iu.id=hi.staff_user_id
         WHERE r.owner_id=$1 AND r.active=1 ORDER BY r.code`,
       [u.ownerId, today],
     ),
@@ -54,7 +58,7 @@ export async function hkDay(u: CurrentUser): Promise<{ today: string; rooms: HkR
       arrival: x.arr_guest != null ? { guest: String(x.arr_guest), people: Number(x.arr_people ?? 1), checkedIn: x.arr_status === "checked_in", prefs: (() => { const p = prefs.get(String(x.arr_email ?? "").toLowerCase()); return p ? prefLines(p.prefs, "el", { allergies: p.allergies }, true) : []; })() } : null,
       stay: stay ? { guest: stay.guestName, checkOut: stay.checkOut, night: stay.night, nights: stay.nights, bookingId: stay.bookingId } : null,
       due: stay?.due ?? [], done: stay?.done ?? [],
-      task: x.task_id != null ? { id: Number(x.task_id), type: String(x.task_type), status: String(x.task_status), assignedTo: x.assigned_to ?? null, assignedName: x.assigned_name ?? null, notes: String(x.notes ?? ""), inspectionNotes: String(x.inspection_notes ?? ""), checklist: json(x.checklist_json), cleanedBy: x.cleaned_by_staff_id == null ? null : Number(x.cleaned_by_staff_id) } : null,
+      task: x.task_id != null ? { id: Number(x.task_id), type: String(x.task_type), status: String(x.task_status), assignedTo: x.assigned_to ?? null, assignedName: x.assigned_name ?? null, notes: String(x.notes ?? ""), inspectionNotes: String(x.inspection_notes ?? ""), checklist: json(x.checklist_json), cleanedBy: x.cleaned_by_staff_id == null ? null : Number(x.cleaned_by_staff_id) , inspectorName: x.inspector_name ? String(x.inspector_name) : null, canApprove: ["cleaned", "repaired"].includes(String(x.task_status)) && canApproveInspection({ userId: u.id, canInspect: can(u.role, "housekeeping.inspect", u.permissions), cleanerId: x.cleaned_by_staff_id == null ? null : Number(x.cleaned_by_staff_id), inspectorId: x.inspector_id == null ? null : Number(x.inspector_id) }) } : null,
       notices: Number(x.notices ?? 0),
     };
   });

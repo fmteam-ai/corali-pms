@@ -708,3 +708,7 @@ body:has(.pms){background:#f2f4f6}
 .pms .advPlaybook{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
 .pms .advPlaybook h3{display:flex;gap:6px;align-items:center;margin:0 0 6px}
 .pms .advPlaybook ul{margin:6px 0;padding-left:18px}
+/* v185: second person who approves each room */
+.pms .hkInspectors{display:grid;gap:10px;margin-top:16px}
+.pms .hkInspectAll{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
+.pms .hkInspectAll label{display:grid;gap:3px}

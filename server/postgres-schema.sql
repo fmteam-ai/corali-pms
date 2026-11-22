@@ -2592,3 +2592,14 @@ CREATE TABLE IF NOT EXISTS department_forwards (
 CREATE INDEX IF NOT EXISTS idx_department_forwards_open ON department_forwards(owner_id, department_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_department_forwards_source ON department_forwards(owner_id, source_kind, source_id);
 ALTER TABLE sales_advisor_runs ADD COLUMN IF NOT EXISTS tips_json TEXT NOT NULL DEFAULT '[]';
+
+-- v185: who approves a cleaned room. The housekeeper assigned to the room does the cleaning and its checklist (the
+-- first check); the approval is by the second person set for the room here, or — when none is set — by anyone with
+-- the «housekeeping.inspect» permission (owner and admin by default), even for a room they cleaned themselves.
+CREATE TABLE IF NOT EXISTS housekeeping_room_inspectors (
+  owner_id TEXT NOT NULL,
+  room_id BIGINT NOT NULL,
+  staff_user_id BIGINT NOT NULL,
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (owner_id, room_id)
+);

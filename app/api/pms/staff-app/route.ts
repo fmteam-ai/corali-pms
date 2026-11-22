@@ -10,6 +10,7 @@ import { listShifts, staffMe } from "@/lib/staff";
 import { hotelToday } from "@/lib/tape-chart";
 import { listTvRequests } from "@/lib/tv-requests";
 import { departmentInbox, myDepartments } from "@/lib/department-forward";
+import { canApproveInspection } from "@/lib/housekeeping";
 
 /**
  * Corali Staff app data. Always: who I am, my teams and sections, my shifts (2 weeks) and who works today.
@@ -44,8 +45,9 @@ export async function GET(request: Request) {
       listTvRequests(u.ownerId, false),
       listOrders(u.ownerId).then((o) => o.filter((x) => x.status === "pending")),
       db().query(
-        `SELECT t.id,t.status,t.task_type,t.cleaned_by_staff_id,r.code room_code,su.display_name cleaned_by FROM housekeeping_tasks t JOIN rooms r ON r.owner_id=t.owner_id AND r.id=t.room_id
+        `SELECT t.id,t.status,t.task_type,t.cleaned_by_staff_id,r.code room_code,su.display_name cleaned_by,hi.staff_user_id::int AS inspector_id,iu.display_name inspector_name FROM housekeeping_tasks t JOIN rooms r ON r.owner_id=t.owner_id AND r.id=t.room_id
            LEFT JOIN pms_staff_users su ON su.owner_id=t.owner_id AND su.id=t.cleaned_by_staff_id
+           LEFT JOIN housekeeping_room_inspectors hi ON hi.owner_id=t.owner_id AND hi.room_id=t.room_id LEFT JOIN pms_staff_users iu ON iu.owner_id=hi.owner_id AND iu.id=hi.staff_user_id
           WHERE t.owner_id=$1 AND t.status IN ('cleaned','repaired') ORDER BY t.completed_at`,
         [u.ownerId],
       ),
@@ -56,7 +58,9 @@ export async function GET(request: Request) {
       orders,
       departures: moves.rows.filter((b) => b.check_out === today).map((b) => ({ id: Number(b.id), version: Number(b.version), guest: String(b.guest_name), room: b.room_code, people: Number(b.people), status: String(b.status) })),
       requests: requests.filter((q) => q.status === "open"),
-      inspect: inspect.rows.map((t) => ({ id: Number(t.id), status: String(t.status), type: String(t.task_type), room: String(t.room_code), cleanedBy: t.cleaned_by ?? "", mine: Number(t.cleaned_by_staff_id) === u.id })),
+      // v185: the room's second person, or anyone with «housekeeping.inspect» (owner / admin), approves.
+      inspect: inspect.rows.map((t) => ({ id: Number(t.id), status: String(t.status), type: String(t.task_type), room: String(t.room_code), cleanedBy: t.cleaned_by ?? "", mine: Number(t.cleaned_by_staff_id) === u.id, inspector: t.inspector_name ? String(t.inspector_name) : null,
+        canApprove: canApproveInspection({ userId: u.id, canInspect: can(u.role, "housekeeping.inspect", u.permissions), cleanerId: t.cleaned_by_staff_id == null ? null : Number(t.cleaned_by_staff_id), inspectorId: t.inspector_id == null ? null : Number(t.inspector_id) }) })),
     };
   }
   if (part === "department" && allow.department) out.department = { forwards: await departmentInbox(u.ownerId, depts) };

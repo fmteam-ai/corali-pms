@@ -5,11 +5,13 @@ import { requireApiUser } from "@/lib/auth";
 import { withTransaction } from "@/lib/db";
 import { createNotice } from "@/lib/maintenance-db";
 import { maintenanceSeverities, severityBlocksRoom, severityFrom } from "@/lib/maintenance";
-import { nextHousekeepingStatus, roomStatusAfter, validChecklist, validHousekeepingTransition } from "@/lib/housekeeping";
+import { canApproveInspection, nextHousekeepingStatus, roomStatusAfter, validChecklist, validHousekeepingTransition } from "@/lib/housekeeping";
+import { can } from "@/lib/security/permissions";
 import { pushNotification } from "@/lib/pms-notifications";
 import { enqueueAvailability } from "@/lib/channel-sync";
 import { addDays, hotelToday } from "@/lib/tape-chart";
 import { assertTrustedOrigin } from "@/lib/security/origin";
+import { deferStaffPush } from "@/lib/staff-push";
 
 const schema = z.object({
   action: z.enum(["start", "complete", "approve", "reject", "report_issue", "repair_done"]),
@@ -20,10 +22,11 @@ const schema = z.object({
   photos: z.array(z.string().max(3_500_000)).max(6).optional(),
 });
 
-const errorStatus: Record<string, number> = { NOT_FOUND: 404, NOT_ASSIGNED: 403, CHECKLIST_INCOMPLETE: 409, SECOND_REVIEW_REQUIRED: 409, INVALID_TRANSITION: 409, DESCRIPTION_REQUIRED: 400, INVALID_PHOTO: 400 };
+const errorStatus: Record<string, number> = { NOT_FOUND: 404, NOT_ASSIGNED: 403, INSPECTOR_ONLY: 403, FORBIDDEN: 403, CHECKLIST_INCOMPLETE: 409, SECOND_REVIEW_REQUIRED: 409, INVALID_TRANSITION: 409, DESCRIPTION_REQUIRED: 400, INVALID_PHOTO: 400 };
 
 async function handlePATCH(q: Request, { params }: { params: Promise<{ id: string }> }) {
-  const u = await requireApiUser("housekeeping.write");
+  // v185: approving needs «housekeeping.inspect» or being the room's second person (checked below), not «write».
+  const u = await requireApiUser("housekeeping.read");
   if (u instanceof Response) return u;
   try {
     assertTrustedOrigin(q);
@@ -33,12 +36,20 @@ async function handlePATCH(q: Request, { params }: { params: Promise<{ id: strin
       const r = (await c.query(`SELECT * FROM housekeeping_tasks WHERE owner_id=$1 AND id=$2 FOR UPDATE`, [u.ownerId, id])).rows[0];
       if (!r) throw Error("NOT_FOUND");
       const review = x.action === "approve" || x.action === "reject";
-      const reviewable = (r.status === "cleaned" || r.status === "repaired") && review;
-      // Housekeeping staff act on their own tasks; any other colleague may perform the second review.
-      if (u.role === "housekeeping" && r.assigned_to !== String(u.id) && !(reviewable && Number(r.cleaned_by_staff_id) !== u.id)) throw Error("NOT_ASSIGNED");
+      if (review) {
+        // v185: the second person set for the room, or anyone with «housekeeping.inspect» (owner / admin by default).
+        const inspector = (await c.query(`SELECT staff_user_id FROM housekeeping_room_inspectors WHERE owner_id=$1 AND room_id=$2`, [u.ownerId, r.room_id])).rows[0];
+        const cleaner = r.cleaned_by_staff_id === null ? null : Number(r.cleaned_by_staff_id);
+        if (!canApproveInspection({ userId: u.id, canInspect: can(u.role, "housekeeping.inspect", u.permissions), cleanerId: cleaner, inspectorId: inspector ? Number(inspector.staff_user_id) : null })) {
+          throw Error(inspector && Number(inspector.staff_user_id) === u.id ? "SECOND_REVIEW_REQUIRED" : "INSPECTOR_ONLY");
+        }
+      } else {
+        // Cleaning, defects and repairs: «housekeeping.write»; housekeeping staff only on the rooms given to them.
+        if (!can(u.role, "housekeeping.write", u.permissions)) throw Error("FORBIDDEN");
+        if (u.role === "housekeeping" && r.assigned_to !== String(u.id)) throw Error("NOT_ASSIGNED");
+      }
       if (!validHousekeepingTransition(r.status, x.action)) throw Error("INVALID_TRANSITION");
       if ((x.action === "report_issue" || x.action === "reject" || x.action === "repair_done") && !x.notes) throw Error("DESCRIPTION_REQUIRED");
-      if (review && Number(r.cleaned_by_staff_id) === u.id) throw Error("SECOND_REVIEW_REQUIRED");
       if (x.action === "complete" && !validChecklist(x.checklist, r.task_type)) throw Error("CHECKLIST_INCOMPLETE");
 
       const now = Date.now();
@@ -67,6 +78,11 @@ async function handlePATCH(q: Request, { params }: { params: Promise<{ id: strin
       const code = String((await c.query(`SELECT code FROM rooms WHERE owner_id=$1 AND id=$2`, [u.ownerId, r.room_id])).rows[0]?.code ?? r.room_id);
       // v176: the guest's open «please clean my room» (TV / phone) is done once the room is cleaned.
       if (x.action === "complete") await closeCleaningRequests(c, u.ownerId, Number(r.room_id), u.id);
+      // v185: the room's second person (if set) gets it on the phone to approve.
+      if (x.action === "complete" || x.action === "repair_done") {
+        const insp = (await c.query(`SELECT staff_user_id FROM housekeeping_room_inspectors WHERE owner_id=$1 AND room_id=$2`, [u.ownerId, r.room_id])).rows[0];
+        if (insp && Number(insp.staff_user_id) !== u.id) deferStaffPush(u.ownerId, { userIds: [Number(insp.staff_user_id)] }, { kind: "inspection", tag: `inspect-${id}`, url: "/staff?tab=housekeeping", title: { el: `🔍 Δωμάτιο ${code}: για έγκριση`, en: `🔍 Room ${code}: to approve` }, body: { el: "Ο καθαρισμός ολοκληρώθηκε. Ελέγξτε και εγκρίνετε.", en: "Cleaning is done. Please check and approve." } }, { committed: { table: "housekeeping_tasks", id } });
+      }
       if (x.action === "complete" || x.action === "repair_done") {
         await pushNotification(c, u.ownerId, { kind: "housekeeping", titleEl: x.action === "complete" ? `Δωμάτιο ${code} καθαρίστηκε · αναμονή επιθεώρησης` : `Δωμάτιο ${code} επισκευάστηκε · αναμονή δεύτερης έγκρισης`, titleEn: x.action === "complete" ? `Room ${code} cleaned · inspection pending` : `Room ${code} repaired · second sign-off pending`, link: "/pms/housekeeping" });
       } else if (x.action === "approve" && r.status === "repaired") {

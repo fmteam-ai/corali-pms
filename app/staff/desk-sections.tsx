@@ -7,7 +7,7 @@ import type { TvRequestRow } from "@/lib/tv-requests";
 type T = ReturnType<typeof pmsT>;
 type Stay = { id: number; version: number; guest: string; room: string | null; people: number; status: string; prefs?: string[] };
 type Order = { id: number; kind: string; title: string; amountCents: number; reference: string; guest: string; room: string | null; date: string | null; time: string | null; note: string };
-type Inspect = { id: number; status: string; type: string; room: string; cleanedBy: string; mine: boolean };
+type Inspect = { id: number; status: string; type: string; room: string; cleanedBy: string; mine: boolean; inspector: string | null; canApprove: boolean };
 type Reception = { arrivals: Stay[]; departures: Stay[]; requests: TvRequestRow[]; inspect: Inspect[]; orders: Order[] };
 type Notice = { id: number; room_code: string; severity: string; description: string; reporter_name: string | null; reported_at: number; photo_ids: number[]; assignee_name?: string | null };
 type Can = { checkInOut: boolean; housekeepingWrite: boolean; resolve: boolean; folioWrite?: boolean };
@@ -89,8 +89,8 @@ export function ReceptionSection({ lang, t, can, refreshKey, toast }: { lang: Pm
         {data.inspect.length ? <ul>{data.inspect.map((x) => (
           <li key={x.id} className="stRow">
             <span className="hkCode sm">{x.room}</span>
-            <span className="stMain"><b>{t(`hkb.st.${x.status}` as PmsKey)}</b><small>{x.cleanedBy}</small></span>
-            {can.housekeepingWrite && !x.mine && <>
+            <span className="stMain"><b>{t(`hkb.st.${x.status}` as PmsKey)}</b><small>{x.cleanedBy} · {x.inspector ? t("hkb.approvedBy", { name: x.inspector }) : t("hkb.approvedByAdmin")}</small></span>
+            {x.canApprove && <>
               <button type="button" className="stBtn" disabled={busy} onClick={() => void act(`/api/pms/housekeeping/${x.id}`, "PATCH", { action: "approve" }, t("hkb.updated"))}>✓ {t("stf.approve")}</button>
               <button type="button" className="stBtn ghost" disabled={busy} onClick={() => { const notes = prompt(t("hkb.inspectionNotes")); if (notes?.trim()) void act(`/api/pms/housekeeping/${x.id}`, "PATCH", { action: "reject", notes: notes.trim() }, t("hkb.updated")); }}>↩</button>
             </>}

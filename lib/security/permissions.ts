@@ -15,6 +15,8 @@ export const permissionKeys = [
   "rooms.delete",
   "housekeeping.read",
   "housekeeping.write",
+  // v185: approve a cleaned room when no second person is set for it (owner / admin by default).
+  "housekeeping.inspect",
   "maintenance.resolve",
   "pricing.read",
   "pricing.write",
@@ -85,7 +87,7 @@ export function parsePermissions(value: string): Partial<Record<Permission, bool
 }
 
 /** Module × action matrix shown in the user editor. Empty cells have no corresponding permission. */
-export const permissionColumns = ["view", "create", "edit", "delete", "financials", "reports", "settings"] as const;
+export const permissionColumns = ["view", "create", "edit", "delete", "approve", "financials", "reports", "settings"] as const;
 export type PermissionColumn = (typeof permissionColumns)[number];
 export const permissionMatrix: { module: string; cells: Partial<Record<PermissionColumn, Permission>> }[] = [
   { module: "dashboard", cells: { view: "dashboard.read", edit: "dashboard.write" } },
@@ -93,7 +95,7 @@ export const permissionMatrix: { module: string; cells: Partial<Record<Permissio
   { module: "guests", cells: { view: "reservations.read", edit: "reservations.write" } },
   { module: "folio", cells: { view: "folios.read", edit: "folios.write", financials: "folios.write" } },
   { module: "rooms", cells: { view: "rooms.read", create: "rooms.create", edit: "rooms.edit", delete: "rooms.delete" } },
-  { module: "housekeeping", cells: { view: "housekeeping.read", edit: "housekeeping.write" } },
+  { module: "housekeeping", cells: { view: "housekeeping.read", edit: "housekeeping.write", approve: "housekeeping.inspect" } },
   { module: "maintenance", cells: { view: "housekeeping.read", edit: "maintenance.resolve" } },
   { module: "pricing", cells: { view: "pricing.read", create: "pricing.create", edit: "pricing.edit", delete: "pricing.delete", settings: "pricing.write" } },
   { module: "reports", cells: { reports: "reports.read", financials: "reports.financial" } },

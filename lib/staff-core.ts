@@ -27,7 +27,7 @@ export function userModules(role: string, specialties: unknown[]): StaffModule[]
 
 // Alerts on the phone. Desk kinds mirror the PMS notifications; staff kinds are sent to the people concerned.
 export const deskAlertKinds = ["tv_request", "hk_message", "guest_order", "housekeeping", "direct_booking", "manual_booking", "ota_change", "guest_message", "payment"] as const;
-export const staffAlertKinds = ["message", "checkout", "assignment", "shift", "maintenance", "department"] as const;
+export const staffAlertKinds = ["message", "checkout", "assignment", "shift", "maintenance", "department", "inspection"] as const;
 export type AlertKind = (typeof deskAlertKinds)[number] | (typeof staffAlertKinds)[number];
 export const allAlertKinds: readonly AlertKind[] = [...staffAlertKinds, ...deskAlertKinds];
 

@@ -75,6 +75,16 @@ export function checklistProgress(v: Record<string, boolean> | undefined, taskTy
  * Damage: report_issue (description required; severe = out_of_order) → repair_done by staff → repaired →
  * approve by a different person (dual sign-off) → ready, the room returns to service as dirty for a fresh clean.
  */
+/**
+ * v185: who may approve (or send back) a cleaned / repaired room. The second person set for the room may — unless
+ * they cleaned it themselves; anyone with «housekeeping.inspect» (owner / admin by default) may, also for a room they
+ * cleaned (a small hotel where the manager both cleans and checks). Nobody else, other housekeepers included.
+ */
+export function canApproveInspection(x: { userId: number; canInspect: boolean; cleanerId: number | null; inspectorId: number | null }): boolean {
+  if (x.canInspect) return true;
+  return x.inspectorId !== null && x.userId === x.inspectorId && x.userId !== x.cleanerId;
+}
+
 export type HousekeepingAction = "start" | "complete" | "approve" | "reject" | "report_issue" | "repair_done";
 
 export function validHousekeepingTransition(status: string, action: HousekeepingAction): boolean {

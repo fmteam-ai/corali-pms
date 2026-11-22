@@ -4,16 +4,16 @@ import { useRouter } from "next/navigation";
 import type { MaintenanceSeverity } from "@/lib/maintenance";
 import { DefectForm } from "../maintenance/defect-form";
 import { NoticeModal } from "../maintenance/notice-modal";
-import { checklistFor, checklistLabels, checklistProgress } from "@/lib/housekeeping";
+import { canApproveInspection, checklistFor, checklistLabels, checklistProgress } from "@/lib/housekeeping";
 import { housekeepingColors, housekeepingState } from "@/lib/tape-chart";
 import { pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 
-type Task = { id: number; room_id: number; room_code: string; room_type: string; task_type: string; status: string; assigned_to: string | null; assigned_name: string | null; cleaned_by_staff_id: number | null; notes: string | null; inspection_notes: string | null; checklist_json: string };
+type Task = { id: number; room_id: number; room_code: string; room_type: string; task_type: string; status: string; assigned_to: string | null; assigned_name: string | null; cleaned_by_staff_id: number | null; notes: string | null; inspection_notes: string | null; checklist_json: string ; inspector_id?: number | null; inspector_name?: string | null };
 type Room = { id: number; code: string; operational_status: string; open_task_status: string | null; dnd_since?: number | string | null; clean_req?: number | string | null; open_notices?: number; top_notice?: { severity: string } | null };
 type Filter = "mine" | "all" | "review" | "ooo";
 type Pending = { taskId: number; action: "report_issue" | "reject" | "repair_done" } | null;
 
-export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite, canResolve = false }: { lang: PmsLang; initialTasks: Task[]; rooms: Room[]; userId: number; canWrite: boolean; canResolve?: boolean }) {
+export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite, canInspect = false, canResolve = false }: { lang: PmsLang; initialTasks: Task[]; rooms: Room[]; userId: number; canWrite: boolean; canInspect?: boolean; canResolve?: boolean }) {
   const t = pmsT(lang);
   const router = useRouter();
   const [noticeRoom, setNoticeRoom] = useState<{ id: number; code: string } | null>(null);
@@ -46,8 +46,10 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite,
 
   // Guests can switch on "Do not disturb" from the room TV (Corali TV → Requests).
   const dndRooms = new Set(rooms.filter((r) => r.dnd_since != null).map((r) => Number(r.id)));
-  const shown = tasks.filter((x) => filter === "all" ? true : filter === "mine" ? x.assigned_to === String(userId) : filter === "review" ? (x.status === "cleaned" || x.status === "repaired") && x.cleaned_by_staff_id !== userId : x.status === "out_of_order");
-  const counts: Record<Filter, number> = { mine: tasks.filter((x) => x.assigned_to === String(userId) && x.status !== "ready").length, all: tasks.filter((x) => x.status !== "ready").length, review: tasks.filter((x) => (x.status === "cleaned" || x.status === "repaired") && x.cleaned_by_staff_id !== userId).length, ooo: tasks.filter((x) => x.status === "out_of_order").length };
+  // v185: the room's second person, or anyone with «Έγκριση» (owner / admin), approves.
+  const mayApprove = (x: Task) => (x.status === "cleaned" || x.status === "repaired") && canApproveInspection({ userId, canInspect, cleanerId: x.cleaned_by_staff_id, inspectorId: x.inspector_id ?? null });
+  const shown = tasks.filter((x) => filter === "all" ? true : filter === "mine" ? x.assigned_to === String(userId) : filter === "review" ? mayApprove(x) : x.status === "out_of_order");
+  const counts: Record<Filter, number> = { mine: tasks.filter((x) => x.assigned_to === String(userId) && x.status !== "ready").length, all: tasks.filter((x) => x.status !== "ready").length, review: tasks.filter(mayApprove).length, ooo: tasks.filter((x) => x.status === "out_of_order").length };
 
   return (
     <>
@@ -65,7 +67,7 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite,
         {shown.map((task) => {
           const steps = checklistFor(task.task_type);
           const done = checklistProgress(checks[task.id], task.task_type);
-          const reviewer = task.cleaned_by_staff_id !== userId;
+          const reviewer = mayApprove(task);
           const form = pending?.taskId === task.id ? pending : null;
           return (
             <article key={task.id} className={`hkCard st-${task.status}`}>
@@ -73,7 +75,7 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite,
                 <div><h2>{t("hkb.room", { code: task.room_code })}{dndRooms.has(task.room_id) && <span className="dndBadge">🚫 {t("hk.dnd")}</span>}</h2><small>{task.room_type} · {label("hkb.type", task.task_type)}</small></div>
                 <span className={`hkStatus st-${task.status}`}>{label("hkb.st", task.status)}</span>
               </header>
-              <p className="hkAssigned">{t("hkb.assigned")}: {task.assigned_name ?? t("hkb.unassigned")}</p>
+              <p className="hkAssigned">{t("hkb.assigned")}: {task.assigned_name ?? t("hkb.unassigned")} · {task.inspector_name ? t("hkb.approvedBy", { name: task.inspector_name }) : t("hkb.approvedByAdmin")}</p>
               {task.notes && <p className="hkIssue"><b>{t("hkb.notes")}:</b> {task.notes}</p>}
               {task.inspection_notes && task.status !== "ready" && <p className="hkIssue"><b>{t("hkb.inspectionNotes")}:</b> {task.inspection_notes}</p>}
               {task.status === "in_progress" && (
@@ -98,17 +100,17 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite,
                   </div>
                 </div>
               )}
-              {canWrite && !form && (
+              {(canWrite || reviewer) && !form && (
                 <div className="actions hkActions">
-                  {task.status === "todo" && <button disabled={busy === task.id} onClick={() => act(task, "start")}>{t("hkb.start")}</button>}
-                  {task.status === "in_progress" && <button disabled={busy === task.id || done < steps.length} onClick={() => act(task, "complete")}>{t("hkb.complete")}</button>}
+                  {canWrite && task.status === "todo" && <button disabled={busy === task.id} onClick={() => act(task, "start")}>{t("hkb.start")}</button>}
+                  {canWrite && task.status === "in_progress" && <button disabled={busy === task.id || done < steps.length} onClick={() => act(task, "complete")}>{t("hkb.complete")}</button>}
                   {(task.status === "cleaned" || task.status === "repaired") && (reviewer
                     ? <><button disabled={busy === task.id} onClick={() => act(task, "approve")}>{t("hkb.approve")}</button><button className="danger" onClick={() => setPending({ taskId: task.id, action: "reject" })}>{t("hkb.reject")}</button></>
-                    : <small>{t("hkb.secondPerson")}</small>)}
-                  {task.status === "out_of_order" && (canResolve
+                    : <small>{task.inspector_id && task.inspector_id === userId ? t("hkb.secondPerson") : task.inspector_name ? t("hkb.waitInspector", { name: task.inspector_name }) : t("hkb.waitAdmin")}</small>)}
+                  {canWrite && task.status === "out_of_order" && (canResolve
                     ? <button onClick={() => setNoticeRoom({ id: task.room_id, code: task.room_code })}>{t("hkb.resolveDefect")}</button>
                     : <button onClick={() => setPending({ taskId: task.id, action: "repair_done" })}>{t("hkb.repairDone")}</button>)}
-                  {(task.status === "todo" || task.status === "in_progress") && <button className="danger" onClick={() => setPending({ taskId: task.id, action: "report_issue" })}>{t("hkb.report")}</button>}
+                  {canWrite && (task.status === "todo" || task.status === "in_progress") && <button className="danger" onClick={() => setPending({ taskId: task.id, action: "report_issue" })}>{t("hkb.report")}</button>}
                 </div>
               )}
             </article>

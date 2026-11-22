@@ -172,7 +172,7 @@ export function StaffApp({ lang, initialTab }: { lang: PmsLang; initialTab: stri
   const teamColor = (id: number | null) => base?.me.specialties.find((s) => s.id === id)?.color ?? "#2a7d8f";
   const ios = typeof navigator !== "undefined" && /iphone|ipad/i.test(navigator.userAgent);
   const standalone = typeof window !== "undefined" && (window.matchMedia?.("(display-mode: standalone)").matches || (navigator as unknown as { standalone?: boolean }).standalone === true);
-  const kindsShown = allAlertKinds.filter((k) => k !== "department" && (me?.desk || !(deskAlertKinds as readonly string[]).includes(k)));
+  const kindsShown = allAlertKinds.filter((k) => k !== "department" && k !== "inspection" && (me?.desk || !(deskAlertKinds as readonly string[]).includes(k)));
 
   return (
     <main className="hkApp stApp" lang={lang}>

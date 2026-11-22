@@ -2,7 +2,7 @@
 set -euo pipefail
 
 app_dir="${1:-}"
-expected_version="${2:-v184}"
+expected_version="${2:-v185}"
 port="${3:-}"
 [[ -d "$app_dir" && -f "$app_dir/app.js" && -f "$app_dir/runtime.env" ]] || {
   echo "Usage: bash smoke-runtime.sh APP_DIR [EXPECTED_VERSION] [PORT]" >&2
@@ -12,7 +12,7 @@ if [[ -z "$port" ]]; then
   port="$(node -e "const n=require('net').createServer();n.listen(0,'127.0.0.1',()=>{console.log(n.address().port);n.close()})")"
 fi
 log_file="$(mktemp)"
-# v184: one-time key for this staged process only, so the Cloudflare origin lock (Security center) does not refuse
+# v185: one-time key for this staged process only, so the Cloudflare origin lock (Security center) does not refuse
 # the installer's own loopback checks; the live applications never have it.
 smoke_token="$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")"
 export CORALI_SMOKE_TOKEN_SEND="$smoke_token"
