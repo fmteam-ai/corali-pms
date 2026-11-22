@@ -9,6 +9,7 @@ import { defaultAlertKinds, isDesk, addDaysIso } from "@/lib/staff-core";
 import { listShifts, staffMe } from "@/lib/staff";
 import { hotelToday } from "@/lib/tape-chart";
 import { listTvRequests } from "@/lib/tv-requests";
+import { departmentInbox, myDepartments } from "@/lib/department-forward";
 
 /**
  * Corali Staff app data. Always: who I am, my teams and sections, my shifts (2 weeks) and who works today.
@@ -19,11 +20,13 @@ export async function GET(request: Request) {
   if (u instanceof Response) return u;
   const part = new URL(request.url).searchParams.get("part");
   const today = hotelToday();
-  const [me, shifts, team] = await Promise.all([staffMe(u), listShifts(u.ownerId, today, addDaysIso(today, 13), u.id), listShifts(u.ownerId, today, today)]);
+  const [me, shifts, team, depts] = await Promise.all([staffMe(u), listShifts(u.ownerId, today, addDaysIso(today, 13), u.id), listShifts(u.ownerId, today, today), myDepartments(u.ownerId, u.id, u.role)]);
   const allow = {
     housekeeping: me.modules.includes("housekeeping") && can(u.role, "housekeeping.read", u.permissions),
     reception: me.modules.includes("reception") && can(u.role, "reservations.read", u.permissions),
     maintenance: me.modules.includes("maintenance") && can(u.role, "housekeeping.read", u.permissions),
+    // v184: guest requests forwarded to the departments of my teams (the front desk sees every department).
+    department: depts.length > 0,
   };
   const out: Record<string, unknown> = {
     ok: true, today,
@@ -56,6 +59,7 @@ export async function GET(request: Request) {
       inspect: inspect.rows.map((t) => ({ id: Number(t.id), status: String(t.status), type: String(t.task_type), room: String(t.room_code), cleanedBy: t.cleaned_by ?? "", mine: Number(t.cleaned_by_staff_id) === u.id })),
     };
   }
+  if (part === "department" && allow.department) out.department = { forwards: await departmentInbox(u.ownerId, depts) };
   if (part === "maintenance" && allow.maintenance) out.maintenance = { notices: await listNotices(u.ownerId, { status: "open", limit: 100 }) };
   return Response.json(out, { headers: { "Cache-Control": "no-store" } });
 }

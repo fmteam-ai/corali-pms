@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { vapidPublicKey } from "@/lib/staff-push";
+import { personalize } from "@/lib/tv-messages-core";
 
 export { vapidPublicKey };
 type Push = { title: string; body: string; tag: string; url?: string };
@@ -63,12 +64,12 @@ export function pushHotelMessageAfter(ownerId: string, bookingId: number, body: 
 }
 
 /** Hotel news / offer for every guest in house (or one booking). */
-export function pushAnnouncementAfter(ownerId: string, bookingId: number | null, t: { titleEl: string; titleEn: string; bodyEl: string; bodyEn: string }): void {
+export function pushAnnouncementAfter(ownerId: string, bookingId: number | number[] | null, t: { titleEl: string; titleEn: string; bodyEl: string; bodyEn: string }): void {
   const run = async () => {
     // Stays that ended no longer get anything: their phones are removed here.
     await db().query(`DELETE FROM guest_push_subscriptions s USING bookings b WHERE s.owner_id=$1 AND b.owner_id=s.owner_id AND b.id=s.booking_id AND b.status NOT IN ('confirmed','checked_in')`, [ownerId]);
-    const ids = bookingId !== null ? [bookingId] : (await db().query(`SELECT DISTINCT booking_id FROM guest_push_subscriptions WHERE owner_id=$1`, [ownerId])).rows.map((r) => Number(r.booking_id));
-    await sendGuestPush(ownerId, ids, (lang) => ({ title: (lang === "el" ? t.titleEl || t.titleEn : t.titleEn || t.titleEl) || "Hotel Corali", body: lang === "el" ? t.bodyEl || t.bodyEn : t.bodyEn || t.bodyEl, tag: "news" }));
+    const ids = Array.isArray(bookingId) ? bookingId : bookingId !== null ? [bookingId] : (await db().query(`SELECT DISTINCT booking_id FROM guest_push_subscriptions WHERE owner_id=$1`, [ownerId])).rows.map((r) => Number(r.booking_id));
+    await sendGuestPush(ownerId, ids, (lang) => ({ title: personalize((lang === "el" ? t.titleEl || t.titleEn : t.titleEn || t.titleEl) || "Hotel Corali", null), body: personalize(lang === "el" ? t.bodyEl || t.bodyEn : t.bodyEn || t.bodyEl, null), tag: "news" }));
   };
   try { after(() => run()); } catch { void run(); }
 }

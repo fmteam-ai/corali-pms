@@ -7,12 +7,14 @@ import { DepartmentIcon } from "./department-icon";
 
 type Data = Awaited<ReturnType<typeof portalData>>;
 type Item = Data["departments"][number]["items"][number];
+type Offer = NonNullable<Data["announcements"][number]["offer"]> & { announcementId: number };
 
 /** Guest portal in "My booking": messages from the hotel, then the departments' services (charged to the room). */
 export function GuestPortal({ token, lang, part }: { token: string; lang: BookingLanguage; part: "news" | "services" }) {
   const [data, setData] = useState<Data | null>(null);
   const [dept, setDept] = useState<number | null>(null);
   const [pick, setPick] = useState<Item | null>(null);
+  const [pickOffer, setPickOffer] = useState<Offer | null>(null);
   const [form, setForm] = useState({ quantity: 1, date: "", time: "", note: "" });
   const [slots, setSlots] = useState<string[] | null>(null);
   const [msg, setMsg] = useState("");
@@ -36,7 +38,10 @@ export function GuestPortal({ token, lang, part }: { token: string; lang: Bookin
 
   if (!data) return null;
   const t = data.texts;
-  const choose = (i: Item) => { setPick(i); setMsg(""); setSlots(null); setForm({ quantity: 1, date: current?.mode === "appointment" ? data.days[0] ?? "" : "", time: "", note: "" }); };
+  // v184: items on offer now (the lowest promo price when several offers name the same item).
+  const offers = new Map<number, Offer>();
+  for (const a of data.announcements) if (a.offer && (!offers.has(a.offer.itemId) || a.offer.promoCents < offers.get(a.offer.itemId)!.promoCents)) offers.set(a.offer.itemId, { ...a.offer, announcementId: a.id });
+  const choose = (i: Item) => { setPick(i); setPickOffer(offers.get(i.id) ?? null); setMsg(""); setSlots(null); setForm({ quantity: 1, date: current?.mode === "appointment" ? data.days[0] ?? "" : "", time: "", note: "" }); };
   async function post(body: object, okText: (d: Data) => string) {
     setBusy(true); setMsg("");
     try {
@@ -60,6 +65,7 @@ export function GuestPortal({ token, lang, part }: { token: string; lang: Bookin
               <small className="gpNoteKind">{a.personal ? t.forYou : t[a.kind]}{a.department ? ` · ${a.department}` : ""}{a.endsAt ? ` · ${t.until.replace("{time}", a.endsAt - a.startsAt < 86_400_000 ? time(a.endsAt) : day(new Date(a.endsAt).toISOString().slice(0, 10)))}` : ""}</small>
               {a.title && <b>{a.title}</b>}
               {a.body && <p>{a.body}</p>}
+              {a.offer && <p className="gpOfferPrice"><b>{a.offer.name}</b> {a.offer.promoCents < a.offer.listCents && <s>{money(a.offer.listCents)}</s>} <b>{money(a.offer.promoCents)}</b>{a.offer.percent > 0 && <em> −{a.offer.percent}%</em>}</p>}
             </div>
           </article>
         ))}
@@ -68,7 +74,7 @@ export function GuestPortal({ token, lang, part }: { token: string; lang: Bookin
   }
 
   if (!data.departments.length && !data.orders.length) return null;
-  const total = pick ? pick.priceCents * (current?.mode === "appointment" ? 1 : form.quantity) : 0;
+  const total = pick ? (pickOffer?.promoCents ?? pick.priceCents) * (current?.mode === "appointment" ? 1 : form.quantity) : 0;
   return (
     <section className="gOrders gPortal">
       <h3>{t.title}</h3>
@@ -85,7 +91,7 @@ export function GuestPortal({ token, lang, part }: { token: string; lang: Bookin
           {current.items.map((i) => (
             <article key={i.id} className="gOrderItem">
               <div><b>{i.name}</b>{i.description && <small>{i.description}</small>}{i.durationMin > 0 && <small>⏱ {t.minutes.replace("{n}", String(i.durationMin))}</small>}</div>
-              <span className="gOrderPrice">{money(i.priceCents)}</span>
+              <span className="gOrderPrice">{offers.has(i.id) && offers.get(i.id)!.promoCents < i.priceCents ? <><s>{money(i.priceCents)}</s> <FaTag aria-label={t.offer} /> {money(offers.get(i.id)!.promoCents)}</> : money(i.priceCents)}</span>
               <button type="button" className="gOrderBtn" disabled={!data.canOrder || (current.mode === "order" && !current.openNow)} onClick={() => choose(i)}>{current.mode === "appointment" ? t.book : t.order}</button>
             </article>
           ))}
@@ -104,7 +110,7 @@ export function GuestPortal({ token, lang, part }: { token: string; lang: Bookin
             <label className="gpQty">{t.quantity}<span><button type="button" aria-label="−" disabled={form.quantity <= 1} onClick={() => setForm({ ...form, quantity: form.quantity - 1 })}>−</button><b>{form.quantity}</b><button type="button" aria-label="+" disabled={form.quantity >= 20} onClick={() => setForm({ ...form, quantity: form.quantity + 1 })}>+</button></span></label>
           )}
           <label>{t.note}<input value={form.note} maxLength={300} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label>
-          <div className="gOrderActions"><button type="button" className="secondary" onClick={() => setPick(null)}>{t.cancel}</button><button type="button" disabled={busy || (current.mode === "appointment" && !form.time)} onClick={() => void post({ action: "order", itemId: pick.id, quantity: form.quantity, date: form.date || undefined, time: form.time || undefined, note: form.note }, () => t.charged.replace("{amount}", money(total)))}>{t.confirm.replace("{amount}", money(total))}</button></div>
+          <div className="gOrderActions"><button type="button" className="secondary" onClick={() => setPick(null)}>{t.cancel}</button><button type="button" disabled={busy || (current.mode === "appointment" && !form.time)} onClick={() => void post({ action: "order", itemId: pick.id, announcementId: pickOffer?.announcementId, quantity: form.quantity, date: form.date || undefined, time: form.time || undefined, note: form.note }, () => t.charged.replace("{amount}", money(total)))}>{t.confirm.replace("{amount}", money(total))}</button></div>
         </div>
       )}
       {msg && <p className="notice" role="status">{msg}</p>}

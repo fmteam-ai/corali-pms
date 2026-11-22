@@ -640,3 +640,19 @@
 .pms[data-theme="dark"] .guestStatus-ota_address{color:hsl(4 75% 72%)}
 .pms[data-theme="dark"] .ciMissing{color:hsl(22 75% 72%)}
 .pms[data-theme="dark"] .ciDone{color:hsl(138 59% 72%)}
+/* v184: forwarding, sales and advisor */
+.pms[data-theme="dark"] .fwdForm,.pms[data-theme="dark"] .depRouting{background:hsl(200 18% 13%);border-color:hsl(200 14% 26%)}
+.pms[data-theme="dark"] .fwdBadge{background:hsl(205 30% 22%);color:hsl(205 60% 85%)}
+.pms[data-theme="dark"] .fwdBadge.st-seen{background:hsl(42 40% 22%);color:hsl(42 80% 80%)}
+.pms[data-theme="dark"] .fwdBadge.st-done{background:hsl(140 25% 20%);color:hsl(140 50% 80%)}
+.pms[data-theme="dark"] .fwdMsg{color:hsl(140 50% 70%)}
+.pms[data-theme="dark"] .dsPage{--ds-bar:#3987e5;--ds-cash:#3987e5;--ds-card:#d95926;--ds-room:#199e70;--ds-other:#c98500;--ds-surface:#1a1a19;--ds-grid:hsl(200 12% 26%)}
+.pms[data-theme="dark"] .dsTile small,.pms[data-theme="dark"] .dsAxis{color:hsl(200 12% 70%)}
+.pms[data-theme="dark"] .dsUp,.pms[data-theme="dark"] .dsOk{color:hsl(140 50% 65%)}
+.pms[data-theme="dark"] .dsDown{color:hsl(0 70% 72%)}
+.pms[data-theme="dark"] .dsKey pre{background:hsl(200 18% 12%)}
+.pms[data-theme="dark"] .dsCol em{background:#f0efec;color:#0b0b0b}
+.pms[data-theme="dark"] .advKind{background:hsl(205 30% 22%);color:hsl(205 60% 85%)}
+.pms[data-theme="dark"] .advKind.kind-alert{background:hsl(0 40% 22%);color:hsl(0 80% 85%)}
+.pms[data-theme="dark"] .advMsg,.pms[data-theme="dark"] .advDraft{background:hsl(200 18% 13%);border-color:hsl(200 14% 26%)}
+.pms[data-theme="dark"] .advMeta{color:hsl(200 12% 70%)}

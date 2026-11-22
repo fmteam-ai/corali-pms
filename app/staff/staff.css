@@ -118,3 +118,7 @@
 .vcList li.st-fail{background:#fdecea}
 .vcList li.st-skip{opacity:.5}
 .vcList .vcErr{display:block;color:#b3261e;padding:0 4px 6px 38px}
+/* v184: department requests */
+.stActions{display:flex;gap:8px;flex-wrap:wrap}
+.stActions .hkBig{flex:1}
+.hkRoom.fwd-done{opacity:.65}

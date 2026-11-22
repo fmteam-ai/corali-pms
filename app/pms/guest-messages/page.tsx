@@ -12,7 +12,7 @@ export default async function GuestMessagesPage() {
   return (
     <section>
       <div className="pageTitle"><div><h1>{t("gm.title")}</h1><p>{t("gm.subtitle")}</p></div></div>
-      <GuestMessages lang={lang} initial={announcements} guests={guests} departments={departments.map((d) => ({ id: d.id, name: d.nameEl }))} canSend={can(u.role, "reservations.write", u.permissions)} />
+      <GuestMessages lang={lang} initial={announcements} guests={guests} departments={departments.map((d) => ({ id: d.id, name: d.nameEl, items: d.items.filter((i) => i.active).map((i) => ({ id: i.id, name: i.nameEl, priceCents: i.priceCents })) }))} canSend={can(u.role, "reservations.write", u.permissions)} />
     </section>
   );
 }

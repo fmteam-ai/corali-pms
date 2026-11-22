@@ -5,16 +5,18 @@ import { DepartmentIcon } from "@/app/manage-booking/department-icon";
 import type { Department, DepartmentItem, listDeptOrders } from "@/lib/guest-portal";
 import { departmentIcons, type DepartmentIcon as IconKey, type DepartmentMode } from "@/lib/guest-portal-core";
 import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
+import { salesT } from "@/lib/department-sales-texts";
+import { ForwardToDepartment, useForwards } from "../forward-to-department";
 
 type Order = Awaited<ReturnType<typeof listDeptOrders>>[number];
-type DeptForm = { id?: number; nameEl: string; nameEn: string; descriptionEl: string; descriptionEn: string; icon: IconKey; mode: DepartmentMode; openFrom: string; openTo: string; capacity: number; active: boolean; sortOrder: number };
-type ItemForm = { id?: number; departmentId: number; nameEl: string; nameEn: string; descriptionEl: string; descriptionEn: string; price: string; durationMin: number; active: boolean; sortOrder: number };
+type DeptForm = { id?: number; nameEl: string; nameEn: string; descriptionEl: string; descriptionEn: string; icon: IconKey; mode: DepartmentMode; openFrom: string; openTo: string; capacity: number; active: boolean; sortOrder: number; staffSpecialtyId: number | null; notifyEmail: string; autoForward: boolean };
+type ItemForm = { id?: number; departmentId: number; nameEl: string; nameEn: string; descriptionEl: string; descriptionEn: string; price: string; durationMin: number; active: boolean; sortOrder: number; posSku: string };
 
-const newDept = (): DeptForm => ({ nameEl: "", nameEn: "", descriptionEl: "", descriptionEn: "", icon: "bar", mode: "order", openFrom: "10:00", openTo: "23:00", capacity: 1, active: true, sortOrder: 0 });
-const newItem = (d: Department): ItemForm => ({ departmentId: d.id, nameEl: "", nameEn: "", descriptionEl: "", descriptionEn: "", price: "", durationMin: d.mode === "appointment" ? 60 : 0, active: true, sortOrder: 0 });
+const newDept = (): DeptForm => ({ nameEl: "", nameEn: "", descriptionEl: "", descriptionEn: "", icon: "bar", mode: "order", openFrom: "10:00", openTo: "23:00", capacity: 1, active: true, sortOrder: 0, staffSpecialtyId: null, notifyEmail: "", autoForward: true });
+const newItem = (d: Department): ItemForm => ({ departmentId: d.id, nameEl: "", nameEn: "", descriptionEl: "", descriptionEn: "", price: "", durationMin: d.mode === "appointment" ? 60 : 0, active: true, sortOrder: 0, posSku: "" });
 
-export function DepartmentsManager({ lang, initialDepartments, initialOrders, initialTab, canEdit, canHandle }: { lang: PmsLang; initialDepartments: Department[]; initialOrders: Order[]; initialTab: "orders" | "catalog"; canEdit: boolean; canHandle: boolean }) {
-  const t = pmsT(lang);
+export function DepartmentsManager({ lang, initialDepartments, initialOrders, initialTab, canEdit, canHandle, teams = [] }: { lang: PmsLang; initialDepartments: Department[]; initialOrders: Order[]; initialTab: "orders" | "catalog"; canEdit: boolean; canHandle: boolean; teams?: { id: number; name: string }[] }) {
+  const t = pmsT(lang), st = salesT(lang);
   const [tab, setTab] = useState(initialTab);
   const [departments, setDepartments] = useState(initialDepartments);
   const [orders, setOrders] = useState(initialOrders);
@@ -45,6 +47,7 @@ export function DepartmentsManager({ lang, initialDepartments, initialOrders, in
   };
 
   const open = orders.filter((o) => o.status === "placed" && (filter === "all" || o.departmentId === filter));
+  const [forwards, reloadForwards] = useForwards("dept_order", orders.filter((o) => o.status === "placed").map((o) => o.id));
   const past = orders.filter((o) => o.status !== "placed" && (filter === "all" || o.departmentId === filter));
 
   return (
@@ -69,6 +72,7 @@ export function DepartmentsManager({ lang, initialDepartments, initialOrders, in
                   {o.mode === "appointment" && o.date && <span>📅 {o.date.split("-").reverse().join("/")} {o.time}–{o.endTime}</span>}
                   {o.note && <span>📝 {o.note}</span>}
                   <small className="muted">{when(o.createdAt)} · {t("dep.charged")}</small>
+                  <ForwardToDepartment lang={lang} kind="dept_order" sourceId={o.id} forwards={forwards[o.id]} defaultDepartmentId={o.departmentId} canForward={canHandle} onDone={() => void reloadForwards()} />
                 </div>
                 <strong className="goAmount">{money(o.amountCents)}</strong>
                 {canHandle && <div className="goActions">
@@ -97,6 +101,12 @@ export function DepartmentsManager({ lang, initialDepartments, initialOrders, in
                 <div className="depHours"><label>{t("dep.openFrom")}<input type="time" value={dept.openFrom} onChange={(e) => setDept({ ...dept, openFrom: e.target.value })} /></label><label>{t("dep.openTo")}<input type="time" value={dept.openTo} onChange={(e) => setDept({ ...dept, openTo: e.target.value })} /></label></div>
                 {dept.mode === "appointment" && <label>{t("dep.capacity")}<input type="number" min={1} max={50} value={dept.capacity} onChange={(e) => setDept({ ...dept, capacity: Math.max(1, Number(e.target.value) || 1) })} /><small className="muted">{t("dep.capacityHint")}</small></label>}
                 <label>{t("dep.order")}<input type="number" min={0} max={999} value={dept.sortOrder} onChange={(e) => setDept({ ...dept, sortOrder: Number(e.target.value) || 0 })} /></label>
+                <fieldset className="depRouting"><legend>{st("fwd.routing")}</legend>
+                  <label>{st("fwd.team")}<select value={dept.staffSpecialtyId ?? 0} onChange={(e) => setDept({ ...dept, staffSpecialtyId: Number(e.target.value) || null })}><option value={0}>{st("fwd.noTeam")}</option>{teams.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+                  <label>{st("fwd.email")}<input type="email" value={dept.notifyEmail} maxLength={200} onChange={(e) => setDept({ ...dept, notifyEmail: e.target.value })} placeholder="spa@hotelcorali.gr" /></label>
+                  <label className="check"><input type="checkbox" checked={dept.autoForward} onChange={(e) => setDept({ ...dept, autoForward: e.target.checked })} />{st("fwd.autoForward")}</label>
+                  <small className="muted">{st("fwd.routingHelp")}</small>
+                </fieldset>
               </div>
               <div className="depIcons" role="radiogroup" aria-label={t("dep.icon")}>{departmentIcons.map((i) => <button type="button" role="radio" aria-checked={dept.icon === i} key={i} className={dept.icon === i ? "on" : ""} onClick={() => setDept({ ...dept, icon: i })}><DepartmentIcon icon={i} /></button>)}</div>
               <label className="check"><input type="checkbox" checked={dept.active} onChange={(e) => setDept({ ...dept, active: e.target.checked })} />{t("dep.active")}</label>
@@ -132,6 +142,7 @@ export function DepartmentsManager({ lang, initialDepartments, initialOrders, in
                     <label>{t("dep.price")} (€)<input inputMode="decimal" value={item.price} onChange={(e) => setItem({ ...item, price: e.target.value })} placeholder="8.50" /></label>
                     {d.mode === "appointment" && <label>{t("dep.duration")}<input type="number" min={15} max={600} step={15} value={item.durationMin} onChange={(e) => setItem({ ...item, durationMin: Number(e.target.value) || 0 })} /></label>}
                     <label>{t("dep.order")}<input type="number" min={0} max={999} value={item.sortOrder} onChange={(e) => setItem({ ...item, sortOrder: Number(e.target.value) || 0 })} /></label>
+                    <label>{t("dep.posSku")}<input value={item.posSku} maxLength={60} onChange={(e) => setItem({ ...item, posSku: e.target.value })} placeholder="—" /></label>
                   </div>
                   <label className="check"><input type="checkbox" checked={item.active} onChange={(e) => setItem({ ...item, active: e.target.checked })} />{t("dep.available")}</label>
                   <div className="actions"><button type="button" className="primaryAction" disabled={busy || !item.nameEl.trim() || !item.price.trim()} onClick={saveItem}>{t("dep.save")}</button><button type="button" className="secondaryButton" onClick={() => setItem(null)}>{t("dep.cancel")}</button></div>

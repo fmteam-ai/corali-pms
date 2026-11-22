@@ -897,6 +897,7 @@ table.numeric tr.selected td{background:#fff8e6}
 .gpNote div{display:grid;gap:3px;min-width:0;overflow-wrap:break-word}
 .gpNote p{margin:0;white-space:pre-line}
 .gpNoteKind{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#61788a}
+.gpOfferPrice{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}.gpOfferPrice s,.gOrderPrice s{color:#8a97a3;font-weight:400}.gpOfferPrice em{font-style:normal;font-weight:800;color:#b4442b}
 .gpTabs{display:flex;flex-wrap:wrap;gap:8px}
 .gpTabs button{display:inline-flex;align-items:center;gap:7px;border:1px solid #cbd6da;background:#fff;color:#173e47;border-radius:999px;padding:8px 14px;font:inherit;font-weight:700;cursor:pointer}
 .gpTabs button.on{background:#173e47;color:#fff;border-color:#173e47}

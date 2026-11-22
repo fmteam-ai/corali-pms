@@ -14,6 +14,7 @@ import {runTvPlugs} from "./tv-plug-worker.mjs";
 import {runGuestWifi} from "./guest-wifi-worker.mjs";
 import {runSecurityCheck} from "./security-worker.mjs";
 import {runCampaigns} from "./campaign-worker.mjs";
+import {advisorDue,runSalesAdvisor} from "./sales-advisor-worker.mjs";
 import {runMailInbox} from "./mail-inbox-worker.mjs";
 import {runWhatsAppInboxSetup} from "./whatsapp-inbox-worker.mjs";
 import {normalizeBrand,renderBrandedEmail,stayDate,withFallbacks} from "./email-brand-core.mjs";
@@ -80,6 +81,8 @@ try{
  await runAccessCards({pool,owner,seal,email,origin:process.env.BOOKING_ORIGIN}).catch(e=>console.error("Access cards failed",e))
  // Bulk messages to past guests (PMS → Bulk messages): a few per minute, consent and unsubscribes checked per message.
  await runCampaigns({pool,owner,secret,origin:process.env.BOOKING_ORIGIN,email,whatsappTemplate}).then(r=>r.campaigns&&console.log(`Campaigns: ${r.sent} sent, ${r.failed} failed`)).catch(e=>console.error("Campaigns failed",e))
+ // v184: sales advisor once a day (09:20 hotel time): rules always, Claude when an Anthropic key is set.
+ if(advisorDue())await limit("Sales advisor",170_000,(async()=>{const c=await credentials("anthropic").catch(()=>null);const apiKey=c?(!c.disabled&&c.secrets?.apiKey?String(c.secrets.apiKey):null):process.env.ANTHROPIC_API_KEY||null;return runSalesAdvisor({pool,owner,apiKey})})()).then(r=>console.log(`${new Date().toISOString()} Sales advisor: ${r.added} suggestion(s)${r.ai?" (AI)":""}${r.error?`, AI error ${r.error}`:""}`)).catch(e=>console.error("Sales advisor failed",e instanceof Error?e.message:e))
  // Open API webhooks (PMS → API): booking changes and folio charges / payments to the hotel's systems.
  await runApiWebhooks({pool,owner,unseal}).catch(e=>console.error("API webhooks failed",e))
  // Automatic pricing (PMS → Prices → Automatic pricing): hourly, inside the hotel's minimum / maximum.

@@ -155,3 +155,44 @@ export function MaintenanceSection({ lang, t, can, refreshKey, toast }: { lang: 
     </>
   );
 }
+
+type Forward = import("@/lib/department-forward").ForwardView;
+/** v184: guest requests forwarded to my department(s): «Το είδα» (the guest of a message is told), «Ολοκληρώθηκε». */
+export function DepartmentSection({ lang, refreshKey, toast }: { lang: PmsLang; refreshKey: number; toast: (s: string) => void }) {
+  const [data, load] = usePart<{ forwards: Forward[] }>("department", refreshKey);
+  const [busy, setBusy] = useState(0);
+  const el = lang === "el";
+  if (!data) return <p className="hkEmpty">…</p>;
+  async function mark(id: number, status: "seen" | "done") {
+    setBusy(id);
+    try {
+      const r = await fetch("/api/pms/department-forwards", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status }) });
+      if (!r.ok) toast(el ? "Δεν έγινε. Δοκιμάστε ξανά." : "Not done. Please try again.");
+      await load();
+    } finally { setBusy(0); }
+  }
+  const time = (ms: number) => new Date(ms).toLocaleString(el ? "el-GR" : "en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Athens" });
+  if (!data.forwards.length) return <p className="hkEmpty">{el ? "Κανένα αίτημα για το τμήμα σας." : "No requests for your department."}</p>;
+  return (
+    <ul className="hkList">
+      {data.forwards.map((f) => (
+        <li key={f.id} className={`hkRoom fwd-${f.status}`}>
+          <div className="hkRoomHead static">
+            <span className="hkCode">📨</span>
+            <span className="hkWhat"><b>{f.department}</b><small>{time(f.createdAt)}{f.by ? ` · ${f.by}` : f.automatic ? (el ? " · από την εφαρμογή" : " · from the app") : ""}</small></span>
+          </div>
+          <div className="hkRoomBody">
+            <p className="hkNote">{f.summary}</p>
+            {f.note && <p className="hkEmpty sm">💬 {f.note}</p>}
+            {f.status === "done" ? <p className="hkEmpty sm">✓ {el ? "Ολοκληρώθηκε" : "Done"}{f.doneBy ? ` · ${f.doneBy}` : ""}</p> : (
+              <div className="stActions">
+                {f.status === "sent" && <button type="button" className="hkBig" disabled={busy === f.id} onClick={() => void mark(f.id, "seen")}>👀 {el ? "Το είδα" : "Seen"}</button>}
+                <button type="button" className="hkBig" disabled={busy === f.id} onClick={() => void mark(f.id, "done")}>✓ {el ? "Ολοκληρώθηκε" : "Done"}</button>
+              </div>
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}

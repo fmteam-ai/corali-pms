@@ -13,8 +13,8 @@ test("app sections come from the role plus the person's specialties", () => {
 });
 
 test("default phone alerts follow what the person does", () => {
-  assert.deepEqual(defaultAlertKinds("staff", []), ["message", "shift"]);
-  assert.deepEqual(defaultAlertKinds("housekeeping", ["housekeeping"]), ["message", "shift", "checkout", "assignment"]);
+  assert.deepEqual(defaultAlertKinds("staff", []), ["message", "shift", "department"]);
+  assert.deepEqual(defaultAlertKinds("housekeeping", ["housekeeping"]), ["message", "shift", "department", "checkout", "assignment"]);
   assert.ok(defaultAlertKinds("reception", userModules("reception", [])).includes("tv_request"));
   assert.deepEqual(normalizeAlertKinds(["shift", "nope", "tv_request"]), ["shift", "tv_request"]);
 });

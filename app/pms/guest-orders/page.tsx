@@ -11,7 +11,7 @@ export default async function GuestOrdersPage() {
   return (
     <section>
       <div className="pageTitle"><div><h1>{t("go.title")}</h1><p>{t("go.subtitle")}</p></div></div>
-      <GuestOrdersManager lang={lang} initial={await listOrders(u.ownerId)} canHandle={can(u.role, "folios.write", u.permissions)} />
+      <GuestOrdersManager lang={lang} initial={await listOrders(u.ownerId)} canHandle={can(u.role, "folios.write", u.permissions)} canForward={can(u.role, "reservations.write", u.permissions)} />
     </section>
   );
 }

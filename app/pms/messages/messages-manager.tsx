@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
+import { ForwardToDepartment, useForwards } from "../forward-to-department";
 
 type Message = { id: number; booking_id: number; sender: string; body: string; created_at: number; ai_generated?: number; reference: string; guest_name: string; guest_email: string };
 
-export function MessagesManager({ lang, initial, initialBooking, canManageAi }: { lang: PmsLang; initial: Message[]; initialBooking?: number | null; canManageAi: boolean }) {
+export function MessagesManager({ lang, initial, initialBooking, canManageAi, canForward = false }: { lang: PmsLang; initial: Message[]; initialBooking?: number | null; canManageAi: boolean; canForward?: boolean }) {
   const t = pmsT(lang);
   const [rows, setRows] = useState(initial);
   const [selected, setSelected] = useState<number | null>(initialBooking && initial.some((m) => m.booking_id === initialBooking) ? initialBooking : initial[0]?.booking_id ?? null);
@@ -20,6 +21,8 @@ export function MessagesManager({ lang, initial, initialBooking, canManageAi }: 
   const threads = useMemo(() => Array.from(new Map(rows.map((x) => [x.booking_id, x])).values()), [rows]);
   const messages = rows.filter((x) => x.booking_id === selected).sort((a, b) => Number(a.created_at) - Number(b.created_at));
   const lastFromGuest = messages.at(-1)?.sender === "guest";
+  // v184: a guest message can be forwarded to the department that handles it.
+  const [forwards, reloadForwards] = useForwards("message", messages.filter((m) => m.sender === "guest").map((m) => Number(m.id)));
 
   async function send() {
     if (!selected || !draft.trim()) return;
@@ -55,7 +58,7 @@ export function MessagesManager({ lang, initial, initialBooking, canManageAi }: 
       <div className="messagesGrid">
         <aside>{threads.map((th) => <button className={selected === th.booking_id ? "active" : ""} onClick={() => { setSelected(th.booking_id); setDraft(""); setStatus(""); }} key={th.booking_id}><b>{th.guest_name}</b><small>{th.reference}</small></button>)}</aside>
         <article>
-          <div className="thread">{messages.map((m) => <div className={`bubble ${m.sender}`} key={m.id}><b>{m.sender === "guest" ? t("msg.guest") : "Hotel Corali"}{Number(m.ai_generated) === 1 && <span className="aiTag">🤖 {t("msg.aiTag")}</span>}</b><p>{m.body}</p><small>{new Date(Number(m.created_at)).toLocaleString(pmsLocale(lang))}</small></div>)}</div>
+          <div className="thread">{messages.map((m) => <div className={`bubble ${m.sender}`} key={m.id}><b>{m.sender === "guest" ? t("msg.guest") : "Hotel Corali"}{Number(m.ai_generated) === 1 && <span className="aiTag">🤖 {t("msg.aiTag")}</span>}</b><p>{m.body}</p><small>{new Date(Number(m.created_at)).toLocaleString(pmsLocale(lang))}</small>{m.sender === "guest" && <ForwardToDepartment lang={lang} kind="message" sourceId={Number(m.id)} forwards={forwards[Number(m.id)]} canForward={canForward} onDone={() => void reloadForwards()} />}</div>)}</div>
           {selected && (
             <div className="messageComposer">
               <textarea value={draft} onChange={(e) => setDraft(e.target.value)} required maxLength={4000} placeholder={t("msg.placeholder")} />

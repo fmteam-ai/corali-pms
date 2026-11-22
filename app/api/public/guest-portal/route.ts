@@ -7,7 +7,7 @@ import { bookingForToken } from "@/lib/guest-self-service";
 import { allowAttempt } from "@/lib/request-limit";
 
 const input = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("order"), token: z.string().min(32).max(200), lang: z.string().max(5).default("en"), itemId: z.number().int().positive(), quantity: z.number().int().min(1).max(20).default(1), date: z.string().max(10).optional(), time: z.string().max(5).optional(), note: z.string().max(300).optional() }),
+  z.object({ action: z.literal("order"), token: z.string().min(32).max(200), lang: z.string().max(5).default("en"), itemId: z.number().int().positive(), quantity: z.number().int().min(1).max(20).default(1), date: z.string().max(10).optional(), time: z.string().max(5).optional(), note: z.string().max(300).optional(), announcementId: z.number().int().positive().optional() }),
   z.object({ action: z.literal("cancel"), token: z.string().min(32).max(200), lang: z.string().max(5).default("en"), id: z.number().int().positive() }),
 ]);
 const errors: Record<string, number> = { NOT_IN_HOUSE: 409, NOT_AVAILABLE: 409, CLOSED: 409, SLOT_TAKEN: 409, TOO_LATE: 409, ALREADY_HANDLED: 409, NOT_FOUND: 404 };

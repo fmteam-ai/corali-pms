@@ -6,14 +6,14 @@ import type { HkMessage } from "@/lib/hk-mobile";
 import { pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 import { allAlertKinds, deskAlertKinds, type AlertKind } from "@/lib/staff-core";
 import type { Shift } from "@/lib/staff";
-import { MaintenanceSection, ReceptionSection } from "./desk-sections";
+import { DepartmentSection, MaintenanceSection, ReceptionSection } from "./desk-sections";
 import { HousekeepingSection } from "./housekeeping-section";
 import { VoiceCommand } from "./voice-command";
 
-type Tab = "housekeeping" | "reception" | "maintenance" | "messages" | "shifts" | "settings";
+type Tab = "housekeeping" | "reception" | "maintenance" | "department" | "messages" | "shifts" | "settings";
 type Me = {
   id: number; name: string; role: string; desk: boolean; specialties: { id: number; name: string; color: string }[];
-  sections: { housekeeping: boolean; reception: boolean; maintenance: boolean }; defaultKinds: AlertKind[];
+  sections: { housekeeping: boolean; reception: boolean; maintenance: boolean; department?: boolean }; defaultKinds: AlertKind[];
   can: { checkInOut: boolean; housekeepingWrite: boolean; resolve: boolean; folioWrite?: boolean };
 };
 type Base = { today: string; me: Me; shifts: Shift[]; team: Shift[] };
@@ -23,6 +23,7 @@ const tabs: { key: Tab; icon: string; label: PmsKey }[] = [
   { key: "housekeeping", icon: "🧹", label: "stf.tab.housekeeping" },
   { key: "reception", icon: "🛎️", label: "stf.tab.reception" },
   { key: "maintenance", icon: "🔧", label: "stf.tab.maintenance" },
+  { key: "department", icon: "📨", label: "stf.tab.department" },
   { key: "messages", icon: "💬", label: "hkm.messages" },
   { key: "shifts", icon: "📅", label: "stf.tab.shifts" },
   { key: "settings", icon: "⚙️", label: "stf.tab.settings" },
@@ -108,7 +109,7 @@ export function StaffApp({ lang, initialTab }: { lang: PmsLang; initialTab: stri
   }, [loadMessages]);
 
   const me = base?.me;
-  const available = tabs.filter((x) => (x.key === "housekeeping" || x.key === "reception" || x.key === "maintenance" ? Boolean(me?.sections[x.key]) : true));
+  const available = tabs.filter((x) => (x.key === "housekeeping" || x.key === "reception" || x.key === "maintenance" || x.key === "department" ? Boolean(me?.sections[x.key]) : true));
   const current: Tab = tab && available.some((x) => x.key === tab) ? tab : available[0]?.key ?? "messages";
   const inbound = (m: HkMessage) => m.fromId !== me?.id && m.direction === (me?.desk ? "to_reception" : "to_hk");
   const unread = messages.filter((m) => inbound(m) && !m.read).length;
@@ -171,7 +172,7 @@ export function StaffApp({ lang, initialTab }: { lang: PmsLang; initialTab: stri
   const teamColor = (id: number | null) => base?.me.specialties.find((s) => s.id === id)?.color ?? "#2a7d8f";
   const ios = typeof navigator !== "undefined" && /iphone|ipad/i.test(navigator.userAgent);
   const standalone = typeof window !== "undefined" && (window.matchMedia?.("(display-mode: standalone)").matches || (navigator as unknown as { standalone?: boolean }).standalone === true);
-  const kindsShown = allAlertKinds.filter((k) => me?.desk || !(deskAlertKinds as readonly string[]).includes(k));
+  const kindsShown = allAlertKinds.filter((k) => k !== "department" && (me?.desk || !(deskAlertKinds as readonly string[]).includes(k)));
 
   return (
     <main className="hkApp stApp" lang={lang}>
@@ -188,6 +189,7 @@ export function StaffApp({ lang, initialTab }: { lang: PmsLang; initialTab: stri
           : current === "housekeeping" ? <HousekeepingSection lang={lang} t={t} me={base.me.id} canWrite={base.me.can.housekeepingWrite} isHousekeeper={base.me.role === "housekeeping"} refreshKey={refreshKey} ring={ring} toast={toast} writeTo={(room) => { setCompose({ room }); setText(""); }} />
           : current === "reception" ? <ReceptionSection lang={lang} t={t} can={base.me.can} refreshKey={refreshKey} toast={toast} />
           : current === "maintenance" ? <MaintenanceSection lang={lang} t={t} can={base.me.can} refreshKey={refreshKey} toast={toast} />
+          : current === "department" ? <DepartmentSection lang={lang} refreshKey={refreshKey} toast={toast} />
           : current === "messages" ? (
             <div className="hkMessages">
               {!base.me.desk && <button type="button" className="hkBig" onClick={() => { setCompose({ room: null }); setText(""); }}>✎ {t("hkm.toReception")}</button>}

@@ -630,3 +630,81 @@ body:has(.pms){background:#f2f4f6}
 .pms .checkinSend{display:grid;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}.pms .checkinSend p{margin:0}.pms .checkinSend .actions{display:flex;flex-wrap:wrap;gap:8px}.pms .checkinSend small{display:block}
 .pms .ciMissing{display:block;font-size:12px;font-weight:700;color:#b54708;text-decoration:none}.pms .ciMissing:hover{text-decoration:underline}.pms .ciDone{display:block;font-size:12px;color:#1f7a3a}
 .pms .waManual{display:grid;gap:4px;margin:8px 0;padding:10px;border:1px dashed var(--border);border-radius:10px}.pms .waManual p{margin:0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}.pms .waManual code{word-break:break-all}
+
+/* v184: forwarding to a department */
+.pms .fwdBox{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px;font-size:13px}
+.pms .fwdBadge{border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700;background:#e8f1f6;color:#1d4f6b}
+.pms .fwdBadge.st-seen{background:#fff4d6;color:#7a5600}
+.pms .fwdBadge.st-done{background:#e3f4e8;color:#1f6b37}
+.pms .fwdForm{display:grid;gap:8px;width:100%;max-width:520px;padding:10px;border:1px solid #d6e0e7;border-radius:10px;background:#f8fbfd}
+.pms .fwdForm label{display:grid;gap:3px}
+.pms .fwdForm .actions{display:flex;gap:8px}
+.pms .fwdMsg{color:#1f6b37;font-weight:600}
+.pms .bubble .fwdBox{margin-top:6px}
+.pms .depRouting{grid-column:1/-1;display:grid;gap:8px;border:1px solid #d6e0e7;border-radius:10px;padding:10px 12px}
+.pms .depRouting legend{font-weight:700;padding:0 4px}
+
+/* v184: department sales (single-series bars: blue 450; payment mix: categorical slots 1–4, validated) */
+.pms .dsPage{--ds-bar:#2a78d6;--ds-cash:#2a78d6;--ds-card:#eb6834;--ds-room:#1baf7a;--ds-other:#eda100;--ds-surface:#fcfcfb;--ds-grid:#e6e9ec;display:grid;gap:14px}
+.pms .dsFilters{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+.pms .dsFilters label{display:grid;gap:3px}
+.pms .dsPresets{display:flex;gap:6px;flex-wrap:wrap}
+.pms .dsTiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.pms .dsTile{display:grid;gap:4px}
+.pms .dsTile b{font-size:26px;font-variant-numeric:tabular-nums}
+.pms .dsTile small{font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#61788a}
+.pms .dsUp{color:#1f6b37;font-weight:700}
+.pms .dsDown{color:#b03030;font-weight:700}
+.pms .dsTable td{font-variant-numeric:tabular-nums}
+.pms .dsTable tbody tr{cursor:pointer}
+.pms .dsTable tbody tr.on{background:rgba(42,120,214,.07)}
+.pms .dsBarCol{min-width:160px}
+.pms .dsBar{display:inline-block;vertical-align:middle;width:110px;height:10px;background:var(--ds-grid);border-radius:4px;overflow:hidden}
+.pms .dsBar i{display:block;height:100%;background:var(--ds-bar);border-radius:0 4px 4px 0}
+.pms .dsDetail h2{display:flex;gap:8px;align-items:center}
+.pms .dsStack{display:flex;gap:2px;height:16px;border-radius:4px;overflow:hidden;background:var(--ds-surface)}
+.pms .dsStack i{display:block;min-width:4px}
+.pms .pay-cash{background:var(--ds-cash)}.pms .pay-card{background:var(--ds-card)}.pms .pay-room{background:var(--ds-room)}.pms .pay-other{background:var(--ds-other)}
+.pms .dsLegend{list-style:none;display:flex;flex-wrap:wrap;gap:6px 16px;padding:0;margin:8px 0}
+.pms .dsLegend .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.pms .dsCharts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;margin:12px 0}
+.pms .dsCharts figure{margin:0}
+.pms .dsCharts figcaption{font-weight:700;margin-bottom:6px}
+.pms .dsCols{display:flex;align-items:flex-end;gap:2px;height:120px;border-bottom:1px solid var(--ds-grid)}
+.pms .dsCol{position:relative;flex:1;height:100%;display:flex;align-items:flex-end;outline:none}
+.pms .dsCol i{display:block;width:100%;max-width:18px;margin:0 auto;background:var(--ds-bar);border-radius:4px 4px 0 0;min-height:0}
+.pms .dsCol:hover i,.pms .dsCol:focus i{filter:brightness(.85)}
+.pms .dsCol em{display:none;position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);white-space:nowrap;font-style:normal;font-size:12px;background:#0b0b0b;color:#fff;padding:3px 7px;border-radius:6px;z-index:2;pointer-events:none}
+.pms .dsCol:hover em,.pms .dsCol:focus em{display:block}
+.pms .dsAxis{display:flex;justify-content:space-between;color:#61788a}
+.pms .dsOk{color:#1f6b37;font-weight:700}
+.pms .dsActions{display:flex;gap:6px;flex-wrap:wrap}
+.pms .dsKey{margin-top:10px;padding:12px;border:1px dashed #2a78d6;border-radius:10px;display:grid;gap:8px}
+.pms .dsKey code{word-break:break-all;font-size:13px}
+.pms .dsKey pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:#f3f6f8;padding:8px;border-radius:8px}
+.pms .dsCsv{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+.pms .dsCsv label{display:grid;gap:3px}
+@media (max-width:640px){.pms .dsBarCol{min-width:0}.pms .dsBar{width:60px}}
+
+/* v184: sales advisor */
+.pms .advPage{display:grid;gap:12px}
+.pms .advBar{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:center}
+.pms .advBar .actions,.pms .advItem .actions,.pms .advDraft .actions{display:flex;gap:8px;flex-wrap:wrap}
+.pms .advSummary p{margin:0;white-space:pre-line}
+.pms .advList{display:grid;gap:10px}
+.pms .advList.past .advItem{opacity:.75}
+.pms .advItem{display:grid;gap:6px;border-left:4px solid #2a78d6}
+.pms .advItem.kind-alert{border-left-color:#d03b3b}
+.pms .advItem.kind-happy_hour{border-left-color:#eb6834}
+.pms .advItem.kind-menu{border-left-color:#8a97a3}
+.pms .advItem header{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pms .advItem h3{margin:0}
+.pms .advItem p{margin:0}
+.pms .advKind{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;background:#e8f1f6;color:#1d4f6b}
+.pms .advKind.kind-alert{background:#fde8e8;color:#8a1f1f}
+.pms .advMeta{font-size:12px;color:#61788a}
+.pms .advMsg{margin:0;padding:8px 12px;border-left:3px solid #d6e0e7;background:#f8fbfd;border-radius:0 8px 8px 0;white-space:pre-line}
+.pms .advDraft{display:grid;gap:8px;padding:10px;border:1px solid #d6e0e7;border-radius:10px}
+.pms .advPlaybook{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.pms .advPlaybook h3{display:flex;gap:6px;align-items:center;margin:0 0 6px}
+.pms .advPlaybook ul{margin:6px 0;padding-left:18px}

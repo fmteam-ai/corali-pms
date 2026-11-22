@@ -2466,3 +2466,129 @@ CREATE TABLE IF NOT EXISTS security_events (
   PRIMARY KEY (owner_id, kind, ip, hour_at)
 );
 CREATE INDEX IF NOT EXISTS security_events_recent ON security_events(owner_id, hour_at);
+
+-- v184: department sales. Each department (bar, restaurant, spa, gym, beach…) can connect its own POS with a key bound
+-- to that department; the POS sends every receipt (cash, card or «charge to room»). Sales from the guest app
+-- (department_orders) and from the POS together give the sales per department in the PMS. Offers to guests in house
+-- can target a group of guests and carry a promo price on one item; the sales advisor (rules + Claude) watches the
+-- departments every day and proposes offers.
+CREATE TABLE IF NOT EXISTS department_pos (
+  owner_id TEXT NOT NULL,
+  department_id BIGINT NOT NULL,
+  name TEXT NOT NULL DEFAULT '',
+  prefix TEXT NOT NULL UNIQUE,
+  key_hash TEXT NOT NULL,
+  created_at BIGINT NOT NULL,
+  created_by BIGINT,
+  last_sale_at BIGINT,
+  last_seen_at BIGINT,
+  revoked_at BIGINT,
+  PRIMARY KEY (owner_id, department_id)
+);
+CREATE TABLE IF NOT EXISTS pos_sales (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  department_id BIGINT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'pos',
+  receipt_id TEXT NOT NULL,
+  sold_at BIGINT NOT NULL,
+  sold_date TEXT NOT NULL,
+  sold_hour SMALLINT NOT NULL DEFAULT 0,
+  total_cents BIGINT NOT NULL,
+  payment TEXT NOT NULL DEFAULT 'other',
+  covers INTEGER NOT NULL DEFAULT 0,
+  booking_id BIGINT,
+  folio_entry_id BIGINT,
+  announcement_id BIGINT,
+  status TEXT NOT NULL DEFAULT 'paid',
+  created_at BIGINT NOT NULL,
+  voided_at BIGINT,
+  UNIQUE (owner_id, department_id, receipt_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pos_sales_date ON pos_sales(owner_id, sold_date, department_id);
+CREATE INDEX IF NOT EXISTS idx_pos_sales_booking ON pos_sales(owner_id, booking_id) WHERE booking_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS pos_sale_items (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  sale_id BIGINT NOT NULL,
+  item_id BIGINT,
+  name TEXT NOT NULL,
+  sku TEXT NOT NULL DEFAULT '',
+  quantity NUMERIC(10,3) NOT NULL DEFAULT 1,
+  unit_cents BIGINT NOT NULL DEFAULT 0,
+  amount_cents BIGINT NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_pos_sale_items_sale ON pos_sale_items(owner_id, sale_id);
+ALTER TABLE department_items ADD COLUMN IF NOT EXISTS pos_sku TEXT NOT NULL DEFAULT '';
+ALTER TABLE guest_announcements ADD COLUMN IF NOT EXISTS audience_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE guest_announcements ADD COLUMN IF NOT EXISTS target_bookings_json TEXT;
+ALTER TABLE guest_announcements ADD COLUMN IF NOT EXISTS item_id BIGINT;
+ALTER TABLE guest_announcements ADD COLUMN IF NOT EXISTS promo_price_cents BIGINT;
+ALTER TABLE guest_announcements ADD COLUMN IF NOT EXISTS suggestion_id BIGINT;
+ALTER TABLE department_orders ADD COLUMN IF NOT EXISTS announcement_id BIGINT;
+ALTER TABLE department_orders ADD COLUMN IF NOT EXISTS list_price_cents BIGINT;
+CREATE TABLE IF NOT EXISTS sales_advisor_runs (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'rules',
+  summary TEXT NOT NULL DEFAULT '',
+  error TEXT NOT NULL DEFAULT '',
+  created_by BIGINT,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sales_advisor_runs ON sales_advisor_runs(owner_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS sales_suggestions (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  run_id BIGINT NOT NULL,
+  rule_key TEXT NOT NULL DEFAULT '',
+  department_id BIGINT,
+  kind TEXT NOT NULL DEFAULT 'offer',
+  title TEXT NOT NULL,
+  reasoning TEXT NOT NULL DEFAULT '',
+  audience_json TEXT NOT NULL DEFAULT '{}',
+  item_id BIGINT,
+  discount_percent INTEGER NOT NULL DEFAULT 0,
+  message_el TEXT NOT NULL DEFAULT '',
+  message_en TEXT NOT NULL DEFAULT '',
+  title_el TEXT NOT NULL DEFAULT '',
+  title_en TEXT NOT NULL DEFAULT '',
+  starts_hour SMALLINT,
+  duration_hours INTEGER NOT NULL DEFAULT 0,
+  confidence TEXT NOT NULL DEFAULT 'medium',
+  status TEXT NOT NULL DEFAULT 'open',
+  announcement_id BIGINT,
+  handled_by BIGINT,
+  handled_at BIGINT,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sales_suggestions_open ON sales_suggestions(owner_id, status, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_suggestions_rule_day ON sales_suggestions(owner_id, rule_key, run_id) WHERE rule_key <> '';
+-- v184: forwarding to a department. A guest message or order reaching the PMS can be passed to the department that
+-- handles it (its staff team in Corali Staff and / or its e-mail); the guest gets a confirmation that it was received
+-- and forwarded. Orders from the app reach their own department automatically when the department has recipients.
+ALTER TABLE hotel_departments ADD COLUMN IF NOT EXISTS staff_specialty_id BIGINT;
+ALTER TABLE hotel_departments ADD COLUMN IF NOT EXISTS notify_email TEXT NOT NULL DEFAULT '';
+ALTER TABLE hotel_departments ADD COLUMN IF NOT EXISTS auto_forward SMALLINT NOT NULL DEFAULT 1;
+CREATE TABLE IF NOT EXISTS department_forwards (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  department_id BIGINT NOT NULL,
+  source_kind TEXT NOT NULL,
+  source_id BIGINT NOT NULL,
+  booking_id BIGINT,
+  summary TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'sent',
+  automatic SMALLINT NOT NULL DEFAULT 0,
+  guest_notified SMALLINT NOT NULL DEFAULT 0,
+  forwarded_by BIGINT,
+  created_at BIGINT NOT NULL,
+  seen_by BIGINT,
+  seen_at BIGINT,
+  done_by BIGINT,
+  done_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_department_forwards_open ON department_forwards(owner_id, department_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_department_forwards_source ON department_forwards(owner_id, source_kind, source_id);
+ALTER TABLE sales_advisor_runs ADD COLUMN IF NOT EXISTS tips_json TEXT NOT NULL DEFAULT '[]';

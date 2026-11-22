@@ -1,4 +1,5 @@
 "use client";
+import { ForwardToDepartment, useForwards } from "../forward-to-department";
 import Link from "next/link";
 import { useState } from "react";
 import type { listOrders } from "@/lib/guest-orders";
@@ -6,7 +7,7 @@ import { pmsLocale, pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 
 type Order = Awaited<ReturnType<typeof listOrders>>[number];
 
-export function GuestOrdersManager({ lang, initial, canHandle }: { lang: PmsLang; initial: Order[]; canHandle: boolean }) {
+export function GuestOrdersManager({ lang, initial, canHandle, canForward = false }: { lang: PmsLang; initial: Order[]; canHandle: boolean; canForward?: boolean }) {
   const t = pmsT(lang);
   const [orders, setOrders] = useState(initial);
   const [msg, setMsg] = useState("");
@@ -23,6 +24,7 @@ export function GuestOrdersManager({ lang, initial, canHandle }: { lang: PmsLang
     } finally { setBusy(null); }
   }
   const pending = orders.filter((o) => o.status === "pending");
+  const [forwards, reloadForwards] = useForwards("guest_order", orders.filter((o) => o.status !== "declined" && o.status !== "cancelled").map((o) => o.id));
   return (
     <div className="goList">
       <p className="notice" role="status">{msg}</p>
@@ -35,6 +37,7 @@ export function GuestOrdersManager({ lang, initial, canHandle }: { lang: PmsLang
             {(o.date || o.time) && <span>📅 {o.date ? o.date.split("-").reverse().join("/") : ""} {o.time ?? ""}</span>}
             {o.note && <span>📝 {o.note}</span>}
             <small className="muted">{when(o.createdAt)} · {t(o.source === "checkin" ? "go.fromCheckin" : "go.fromManage")}{o.declineReason ? ` · ${o.declineReason}` : ""}</small>
+            {o.status !== "declined" && o.status !== "cancelled" && <ForwardToDepartment lang={lang} kind="guest_order" sourceId={o.id} forwards={forwards[o.id]} canForward={canForward} onDone={() => void reloadForwards()} />}
           </div>
           <strong className="goAmount">{money(o.amountCents)}</strong>
           {o.status === "pending" && canHandle ? (
