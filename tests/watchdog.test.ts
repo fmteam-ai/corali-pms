@@ -498,3 +498,30 @@ test("v204 review 7 watchdog: a hanging channel does not starve the others; dama
   assert.deepEqual(sent, [], "ntfy (new) does not get the old backlog");
   assert.equal(w4.state().outbox.length, 1, "the webhook still owes it");
 });
+
+test("v204 review 8 watchdog: digest text newest first even after collapsing; webhook body carries only the alert; no channel → no dead-man ping", async () => {
+  const { compactOutbox, ITEMS_MAX } = await import("../tools/watchdog/watchdog.mjs");
+  const box = [
+    { kind: "open", severity: "critical", check: "pms", at: 1, text: "OPEN pms #1" },
+    { kind: "resolved", check: "pms", at: 2, text: "RESOLVED pms #1" },
+    ...Array.from({ length: ITEMS_MAX }, (_, i) => ({ kind: "reminder", severity: "warning", check: `c${i}`, at: 3 + i, text: `r${i}` })),
+    { kind: "open", severity: "critical", check: "pms", at: 5000, text: "OPEN pms #2" },
+  ];
+  const d = compactOutbox(box, "QA", ["webhook"]).find((m) => m.kind === "digest")!;
+  assert.ok(d.text.indexOf("OPEN pms #2") >= 0 && (d.text.indexOf("RESOLVED pms #1") < 0 || d.text.indexOf("OPEN pms #2") < d.text.indexOf("RESOLVED pms #1")), "the current state is listed first");
+  let clock = Date.parse("2026-11-24T10:00:00Z");
+  const bodies: Record<string, unknown>[] = [];
+  let deadman = 0;
+  const fetchImpl = (async (url: string, init?: { body?: string }) => {
+    if (url.includes("deadman")) { deadman++; return new Response("ok"); }
+    if (url.includes("hook")) { bodies.push(JSON.parse(String(init?.body))); return new Response("ok"); }
+    return new Response(JSON.stringify({ ok: false }), { status: 503 });
+  }) as unknown as typeof fetch;
+  const wd = createWatchdog(cfgFor({ heartbeatUrl: "", deadmanUrl: "http://deadman/ping" }), { fetchImpl, now: () => clock, sleep: async () => {}, log: () => {} });
+  for (let i = 0; i < 3; i++) { await wd.cycle(); clock += 60_000; }
+  assert.ok(bodies.length && bodies.every((b) => !("delivered" in b) && !("errors" in b) && !("refused" in b)), "only the alert, no bookkeeping");
+  assert.equal(deadman, 3);
+  const w2 = createWatchdog(cfgFor({ heartbeatUrl: "", webhookUrl: "", deadmanUrl: "http://deadman/ping" }), { fetchImpl, now: () => clock, sleep: async () => {}, log: () => {} });
+  await w2.cycle();
+  assert.equal(deadman, 3, "no channel configured → the dead-man is not pinged (misconfiguration visible)");
+});

@@ -240,9 +240,9 @@ try {
       await pool.query(`UPDATE channel_sync_outbox SET status='sent',last_error=NULL,updated_at=$1 WHERE id=ANY($2::bigint[])`, [Date.now(), sendIds]);
       // v204 (review 6/7): the push works — changes that failed because the CHANNEL failed (network, 5xx, auth) are
       // tried in the next run instead of waiting for their backoff (up to 60′). Changes refused for their OWN content
-      // (Channex warnings / partial coverage) keep their backoff, so they are not pushed together with — and do not
-      // fail — every new change. The run still counts as failed until all are sent (strict rule below).
-      if (sendIds.length) await pool.query(`UPDATE channel_sync_outbox SET next_attempt_at=0 WHERE owner_id=$1 AND status='failed' AND COALESCE(last_error,'') !~ '(CHANNEX_WARNINGS|PARTIAL_COVERAGE)'`, [owner]);
+      // (Channex warnings / partial coverage / HTTP 400 · 422 validation) keep their backoff, so they are not pushed
+      // with — and do not fail — every new change in the meantime. The run still counts as failed until all are sent (strict rule below).
+      if (sendIds.length) await pool.query(`UPDATE channel_sync_outbox SET next_attempt_at=0 WHERE owner_id=$1 AND status='failed' AND COALESCE(last_error,'') !~ '(CHANNEX_WARNINGS|PARTIAL_COVERAGE|HTTP_4(00|22))'`, [owner]);
     } catch (error) {
       pushError = `availability push: ${String(error instanceof Error ? error.message : error).slice(0, 400)}`;
       for (const d of due.filter((x) => sendIds.includes(Number(x.id)))) await pool.query(`UPDATE channel_sync_outbox SET status='failed',attempts=attempts+${probeId ? "CASE WHEN id=" + probeId + " THEN 0 ELSE 1 END" : "1"},last_error=$1,next_attempt_at=$2,updated_at=$3 WHERE id=$4`, [String(error).slice(0, 500), Date.now() + Math.min(60, 2 ** Number(d.attempts)) * 60_000, Date.now(), d.id]);
