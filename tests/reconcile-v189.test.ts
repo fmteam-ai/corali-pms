@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { athensToday, compareRemote, groupMismatches, otaReconcile, parseRemoteAvailability, queueOtaResync } from "../scripts/ota-reconcile-core.mjs";
+import { athensToday, compareRemote, groupMismatches, missingCoverage, otaReconcile, parseRemoteAvailability, queueOtaResync } from "../scripts/ota-reconcile-core.mjs";
 import { sendOutcome, failedStatus } from "../scripts/delivery-policy-core.mjs";
 import { saveReconciliation, stripeReconcile } from "../scripts/stripe-reconcile-core.mjs";
 import { REHEARSAL_MARKER, backupTime, evaluateRehearsal, newestBackup, sameDatabase, tablesWithData, targetDecision } from "../scripts/restore-rehearsal-core.mjs";
@@ -43,7 +43,9 @@ test("v189 OTA reconciliation: a change that never reached the OTAs is found; qu
     assert.deepEqual(r.mismatches, [{ roomType: "double", from: addDays(today, 11), to: addDays(today, 12), pms: 1, ota: 2 }]);
     // Queued again: no longer a difference (it is on its way), and the queue holds exactly that range.
     assert.equal(await queueOtaResync({ pool, owner: o, mismatches: r.mismatches, now }), 1);
-    assert.deepEqual((await otaReconcile({ pool, owner: o, now, days: 20 })).mismatches, []);
+    const after = await otaReconcile({ pool, owner: o, now, days: 20 });
+    assert.deepEqual(after.mismatches, []);
+    assert.equal(after.pendingSync, 2, "v191: the queued dates are «pending sync», not agreement");
     const q = (await db.query<Row>(`SELECT date_from,date_to,reason FROM channel_sync_outbox`)).rows;
     assert.deepEqual(q, [{ date_from: addDays(today, 11), date_to: addDays(today, 12), reason: "reconcile" }]);
     assert.deepEqual(groupMismatches([{ roomType: "a", date: "2026-08-02", pms: 1, ota: 2 }, { roomType: "a", date: "2026-08-01", pms: 1, ota: 2 }, { roomType: "a", date: "2026-08-04", pms: 1, ota: 2 }]).map((m) => `${m.from}..${m.to}`), ["2026-08-01..2026-08-02", "2026-08-04..2026-08-04"]);
@@ -117,7 +119,16 @@ test("v190 OTA read-back parsing and comparison", () => {
   assert.deepEqual(parseRemoteAvailability({ data: [{ attributes: { room_type_id: "rt-2", date: "2026-08-01", availability: 3 } }] }, ext), { "single|2026-08-01": 3 });
   assert.equal(parseRemoteAvailability({ errors: ["x"] }, ext), null, "unknown shape: no conclusion");
   const current = [{ room_type: "double", date: "2026-08-01", free: 2 }, { room_type: "double", date: "2026-08-02", free: 0 }, { room_type: "double", date: "2026-08-03", free: 1 }];
-  assert.deepEqual(compareRemote(current, { "double|2026-08-01": 2, "double|2026-08-02": 1, "double|2026-08-03": 4 }, [{ date_from: "2026-08-03", date_to: "2026-08-03" }]), [{ roomType: "double", from: "2026-08-02", to: "2026-08-02", pms: 0, ota: 1 }]);
+  const c = compareRemote(current, { "double|2026-08-01": 2, "double|2026-08-02": 1, "double|2026-08-03": 4 }, [{ date_from: "2026-08-03", date_to: "2026-08-03" }]);
+  assert.deepEqual(c.mismatches, [{ roomType: "double", from: "2026-08-02", to: "2026-08-02", pms: 0, ota: 1 }]);
+  assert.deepEqual(c.counts, { MATCHED: 1, MISMATCHED: 1, NOT_RETURNED: 0, NOT_CHECKED: 1 });
+  assert.equal(c.complete, true);
+  // v191: a recognisable but partial answer is never full agreement.
+  const partial = compareRemote(current, { "double|2026-08-01": 2 }, []);
+  assert.deepEqual(partial.counts, { MATCHED: 1, MISMATCHED: 0, NOT_RETURNED: 2, NOT_CHECKED: 0 });
+  assert.equal(partial.complete, false);
+  assert.deepEqual(partial.notReturned.map((m) => `${m.from}..${m.to}`), ["2026-08-02..2026-08-02", "2026-08-03..2026-08-03"]);
+  assert.equal(compareRemote(current, {}, []).complete, false, "an empty answer checks nothing");
 });
 
 test("v190 send outcome: a timeout may have delivered (no automatic retry); a refusal did not", () => {
@@ -141,4 +152,11 @@ test("v190 rehearsal target: never the live database, never a foreign non-empty 
   assert.match(targetDecision({ sameUrl: false, nonceSeen: false, tables: ["bookings", "rooms"], marker: false }).reason!, /δεν είναι κενή \(bookings, rooms\)/);
   assert.equal(targetDecision({ sameUrl: false, nonceSeen: false, tables: [], marker: false }).ok, true, "empty");
   assert.equal(targetDecision({ sameUrl: false, nonceSeen: false, tables: [REHEARSAL_MARKER, "bookings"], marker: true }).ok, true, "ours from a previous run");
+});
+
+test("v191 push coverage: a queued range counts as sent only if every room type × date was pushed", () => {
+  const mappings = [{ room_type: "double", external_room_type_id: "rt-1" }, { room_type: "single", external_room_type_id: "rt-2" }];
+  const full = [{ room_type_id: "rt-1", date_from: "2026-08-01", date_to: "2026-08-03" }, { room_type_id: "rt-2", date_from: "2026-08-01", date_to: "2026-08-01" }, { room_type_id: "rt-2", date_from: "2026-08-02", date_to: "2026-08-03" }];
+  assert.deepEqual(missingCoverage({ mappings, values: full, from: "2026-08-01", to: "2026-08-03" }), []);
+  assert.deepEqual(missingCoverage({ mappings, values: full.slice(0, 2), from: "2026-08-01", to: "2026-08-03" }), [{ roomType: "single", date: "2026-08-02" }, { roomType: "single", date: "2026-08-03" }]);
 });

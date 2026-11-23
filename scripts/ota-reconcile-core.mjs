@@ -32,18 +32,21 @@ export async function otaReconcile({ pool, owner, now = Date.now(), days = 120 }
   // A booking's range is check-in .. check-out (exclusive end in the PMS, but the queue may hold either form).
   const queued = (d) => open.some((o) => o.date_from <= d && o.date_to >= d);
   const list = [];
-  let neverPushed = 0;
+  let neverPushed = 0, pendingSync = 0;
   for (const r of current) {
     const k = `${r.room_type}|${r.date}`;
-    if (queued(r.date)) continue;
     const pms = sellable(r.free);
+    // v191: a queued date is «pending sync» (counted and shown), not «in agreement». The queue pushes every mapped
+    // room type of a date together, and a row is marked sent only when the push covered every type × date (see
+    // missingCoverage), so a pending row really covers this room type too.
+    if (queued(r.date)) { if (!sent.has(k) || sent.get(k) !== pms) pendingSync++; continue; }
     // v190: a date never sent is a difference too (ota: null) and is queued like the others.
     if (!sent.has(k)) { neverPushed++; list.push({ roomType: r.room_type, date: r.date, pms, ota: null }); continue; }
     const ota = sent.get(k);
     if (pms !== ota) list.push({ roomType: r.room_type, date: r.date, pms, ota });
   }
   const mismatches = groupMismatches(list);
-  return { active: true, checked: current.length, neverPushed, mismatches, unsent: mismatches.filter((m) => m.ota === null), changed: mismatches.filter((m) => m.ota !== null) };
+  return { active: true, checked: current.length, neverPushed, pendingSync, mismatches, unsent: mismatches.filter((m) => m.ota === null), changed: mismatches.filter((m) => m.ota !== null) };
 }
 
 /** Queues a push for every difference (the next channel sync sends them). Returns how many ranges were queued. */
@@ -78,15 +81,34 @@ export function parseRemoteAvailability(body, typeByExternal) {
   return out;
 }
 
-/** Differences between what the PMS sells now and what the channel manager reports (queued dates excluded). */
+/**
+ * v191: every room type × date the PMS sells is classified against what the channel manager returned —
+ * MATCHED, MISMATCHED, NOT_RETURNED (expected but missing from the answer) or NOT_CHECKED (a push is queued for that
+ * date, so the answer may be out of date). complete is true only when nothing was NOT_RETURNED; a partial answer is
+ * never reported as full agreement.
+ */
 export function compareRemote(current, remote, open = []) {
   const queued = (d) => open.some((o) => o.date_from <= d && o.date_to >= d);
-  const list = [];
+  const mism = [], missing = [];
+  const counts = { MATCHED: 0, MISMATCHED: 0, NOT_RETURNED: 0, NOT_CHECKED: 0 };
   for (const r of current) {
-    const k = `${r.room_type}|${r.date}`;
-    if (!(k in remote) || queued(r.date)) continue;
-    const pms = sellable(r.free);
-    if (pms !== remote[k]) list.push({ roomType: r.room_type, date: r.date, pms, ota: remote[k] });
+    const k = `${r.room_type}|${r.date}`, pms = sellable(r.free);
+    if (queued(r.date)) { counts.NOT_CHECKED++; continue; }
+    if (!(k in remote)) { counts.NOT_RETURNED++; missing.push({ roomType: r.room_type, date: r.date, pms, ota: null }); continue; }
+    if (pms !== remote[k]) { counts.MISMATCHED++; mism.push({ roomType: r.room_type, date: r.date, pms, ota: remote[k] }); } else counts.MATCHED++;
   }
-  return groupMismatches(list);
+  return { counts, mismatches: groupMismatches(mism), notReturned: groupMismatches(missing), complete: counts.NOT_RETURNED === 0 };
+}
+
+/**
+ * v191 push coverage: the room type × date pairs of [from, to] that the availability values about to be marked «sent»
+ * do NOT cover (values use the channel manager's room type ids). Empty = every mapped type has every date.
+ */
+export function missingCoverage({ mappings, values, from, to }) {
+  const covered = new Set();
+  const typeOf = Object.fromEntries(mappings.map((m) => [m.external_room_type_id, m.room_type]));
+  for (const v of values) for (let d = v.date_from; d <= v.date_to; d = addDays(d, 1)) covered.add(`${typeOf[v.room_type_id]}|${d}`);
+  const out = [];
+  for (const m of mappings) for (let d = from; d <= to; d = addDays(d, 1)) if (!covered.has(`${m.room_type}|${d}`)) out.push({ roomType: m.room_type, date: d });
+  return out;
 }

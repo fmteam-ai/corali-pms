@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
-import { claimLease, createStepRunner, cronFinish, cronOverlap, cronStart, guardedPool, hardDeadline, heartbeatState, holdsLease, releaseLease, renewLease, withLease } from "../scripts/job-control-core.mjs";
+import { assertCurrentLease, claimLease, createStepRunner, cronFinish, cronOverlap, cronStart, guardedPool, hardDeadline, heartbeatState, holdsLease, releaseLease, renewLease, withLease } from "../scripts/job-control-core.mjs";
 
 async function fresh() {
   const db = new PGlite();
@@ -25,8 +25,8 @@ test("v189 leases: one holder at a time, expiry frees a crashed holder, withLeas
     assert.equal(await claimLease(pool, o, "step:x", "A", 60_000, t + 2000), 1, "the holder may renew, same token");
     const fB = await claimLease(pool, o, "step:x", "B", 60_000, t + 62_001);
     assert.equal(fB, 2, "expired: A crashed, B takes over with a higher token");
-    assert.equal(await holdsLease(pool, o, "step:x", "A", fA), false, "A's token is stale (fencing)");
-    assert.equal(await holdsLease(pool, o, "step:x", "B", fB), true);
+    assert.equal(await holdsLease(pool, o, "step:x", "A", fA, t + 62_002), false, "A's token is stale (fencing)");
+    assert.equal(await holdsLease(pool, o, "step:x", "B", fB, t + 62_002), true);
     assert.equal(await renewLease(pool, o, "step:x", "A", 60_000, t + 63_000), false, "A cannot extend B's lease");
     await releaseLease(pool, o, "step:x", "A");
     assert.equal(await claimLease(pool, o, "step:x", "C", 60_000, t + 63_000), 0, "A cannot release B's lease");
@@ -166,5 +166,28 @@ test("v190 a timed-out step keeps its lease until it really ends; a lost lease c
     }, { lease: "step:Room climate" });
     await p;
     assert.match(write, /CANCELLED: Room climate lost its lease/);
+  } finally { await db.close(); }
+});
+
+test("v191 lease expiry is a hard limit: no revival, no fencing pass, no send after the lease is lost", async () => {
+  const { db, pool } = await fresh();
+  try {
+    const t = 5_000_000;
+    const f = await claimLease(pool, o, "step:y", "A", 10_000, t);
+    assert.equal(await holdsLease(pool, o, "step:y", "A", f, t + 5_000), true);
+    assert.equal(await holdsLease(pool, o, "step:y", "A", f, t + 10_001), false, "expired, even though nobody took it");
+    assert.equal(await renewLease(pool, o, "step:y", "A", 10_000, t + 10_001), false, "an expired lease is not revived");
+    assert.equal(await renewLease(pool, o, "step:y", "A", 10_000, t + 9_000, f + 1), false, "wrong token");
+    assert.equal(await renewLease(pool, o, "step:y", "A", 10_000, t + 9_000, f), true);
+    // Inside a leased step: allowed while held; LEASE_LOST once taken over.
+    const runner = createStepRunner({ pool, owner: o, holder: "run-9", renewEveryMs: 1_000_000 });
+    const seen: string[] = [];
+    await runner.run("Send", 2000, async () => {
+      await assertCurrentLease(pool, o); seen.push("send 1");
+      await db.query(`UPDATE job_leases SET holder='other',fence=fence+1 WHERE lease_key='step:Send'`);
+      try { await assertCurrentLease(pool, o); seen.push("send 2"); } catch (e) { seen.push((e as Error).message); }
+    }, { lease: "step:Send" });
+    assert.deepEqual(seen, ["send 1", "LEASE_LOST"]);
+    await assertCurrentLease(pool, o); // outside a step: nothing to check
   } finally { await db.close(); }
 });

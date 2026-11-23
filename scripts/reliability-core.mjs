@@ -58,7 +58,7 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
     one(pool, `SELECT c.room_id,r.code,c.checked_at FROM room_climate c JOIN rooms r ON r.owner_id=c.owner_id AND r.id=c.room_id WHERE c.owner_id=$1 AND c.device_id<>'' AND c.read_at IS NULL AND c.checked_at IS NOT NULL AND COALESCE(c.error,'')=''`, [owner]).catch(() => []),
     one(pool, `SELECT a.room_id,r.code,a.updated_at FROM room_ac_devices a JOIN rooms r ON r.owner_id=a.owner_id AND r.id=a.room_id WHERE a.owner_id=$1 AND a.device_id<>'' AND a.state IS NULL AND a.changed_at IS NULL AND COALESCE(a.error,'')='' AND a.updated_at<$2::bigint-3600000`, P).catch(() => []),
     one(pool, `SELECT a.room_id,r.code FROM room_ac_devices a JOIN rooms r ON r.owner_id=a.owner_id AND r.id=a.room_id WHERE a.owner_id=$1 AND a.presence_device_id<>'' AND a.presence_seen_at IS NULL AND a.presence_checked_at IS NOT NULL`, [owner]).catch(() => []),
-    one(pool, `SELECT DISTINCT ON (kind) kind,ran_at,status,issues_json,error FROM reconciliation_runs WHERE owner_id=$1 ORDER BY kind,ran_at DESC`, [owner]).catch(() => []),
+    one(pool, `SELECT DISTINCT ON (kind) kind,ran_at,status,issues_json,totals_json,error FROM reconciliation_runs WHERE owner_id=$1 ORDER BY kind,ran_at DESC`, [owner]).catch(() => []),
     one(pool, `SELECT DISTINCT ON (kind) kind,started_at,finished_at,status,file,size_bytes,details_json,error FROM backup_runs WHERE owner_id=$1 AND status<>'running' ORDER BY kind,started_at DESC`, [owner]).catch(() => []),
     one(pool, `SELECT version,ran_at,status,checks_json,qa_json FROM release_checks WHERE scope='installation' ORDER BY ran_at DESC LIMIT 1`, []).catch(() => []),
     otaReconcile({ pool, owner, now }).catch((e) => ({ active: false, error: e instanceof Error ? e.message : String(e), mismatches: [] })),
@@ -82,7 +82,7 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
       ? { key: `ota-unsent:${m.roomType}:${m.from}`, level: "warn", text: `Διαθεσιμότητα «${m.roomType}» ${m.from}${m.to !== m.from ? ` → ${m.to}` : ""}: δεν έχει σταλεί ποτέ στον channel manager (PMS ${m.pms})`, action: { type: "resync_ota" }, at: now }
       : { key: `ota:${m.roomType}:${m.from}`, level: "fail", text: `Διαθεσιμότητα «${m.roomType}» ${m.from}${m.to !== m.from ? ` → ${m.to}` : ""}: PMS ${m.pms}, στάλθηκε στα OTA ${m.ota} — η αλλαγή δεν έχει σταλεί`, action: { type: "resync_ota" }, at: now });
     if (ota.mismatches.length > 30) add("channel", { key: "ota:more", level: "warn", text: `και ${ota.mismatches.length - 30} ακόμη διαστήματα με διαφορά`, action: { type: "resync_ota" }, at: now });
-    info("channel", `Συμφωνία διαθεσιμότητας: ${ota.checked} ημέρες×τύποι ελέγχθηκαν${ota.mismatches.length ? `, ${ota.mismatches.length} αποκλίσεις` : ", χωρίς αποκλίσεις"}${ota.neverPushed ? ` · ${ota.neverPushed} δεν έχουν σταλεί ακόμη` : ""}`);
+    info("channel", `Συμφωνία διαθεσιμότητας: ${ota.checked} ημέρες×τύποι${ota.mismatches.length ? `, ${ota.mismatches.length} διαστήματα με διαφορά` : ", χωρίς διαφορές"}${ota.pendingSync ? ` · ${ota.pendingSync} σε αναμονή αποστολής (δεν μετρούν ως συμφωνία)` : ""}`);
   }
   // v190 read-back: what Channex itself reports (hourly); a difference after our push was accepted.
   const rb = recon.find((r) => r.kind === "ota_readback");
@@ -91,7 +91,11 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
     try { issues = JSON.parse(String(rb.issues_json)); } catch { issues = []; }
     if (rb.status === "error") add("channel", { key: "readback:error", level: "warn", text: `Ανάγνωση διαθεσιμότητας από το Channex ${hhmm(rb.ran_at)}: δεν έγινε · ${String(rb.error).slice(0, 140)}`, at: Number(rb.ran_at) });
     else if (issues.length) for (const i of issues.slice(0, 10)) add("channel", { key: `readback:${i.reference}:${i.detail.slice(0, 40)}`, level: "warn", text: `Channex (ανάγνωση ${hhmm(rb.ran_at)}): ${i.detail}`, at: Number(rb.ran_at) });
-    else info("channel", `Ανάγνωση από το Channex ${hhmm(rb.ran_at)}: ίδια διαθεσιμότητα με το PMS`);
+    let t = {};
+    try { t = JSON.parse(String(rb.totals_json ?? "{}")); } catch { t = {}; }
+    const n = (k) => Number(t[k] ?? 0);
+    const summary = `ίδιες ${n("MATCHED")} · διαφορετικές ${n("MISMATCHED")} · δεν επιστράφηκαν ${n("NOT_RETURNED")} · δεν ελέγχθηκαν (σε αναμονή αποστολής) ${n("NOT_CHECKED")}`;
+    if (rb.status !== "error") info("channel", t.complete && !issues.length ? `Ανάγνωση από το Channex ${hhmm(rb.ran_at)}: πλήρης συμφωνία (${summary})` : `Ανάγνωση από το Channex ${hhmm(rb.ran_at)}: ${summary}`);
   }
   const syncBeat = beats.find((b) => b.job === "channel-sync");
   if (channelOn && syncBeat) {
@@ -204,6 +208,10 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
     if (version && rel.version !== version) add("release", { key: "release:mismatch", level: "warn", text: `Τρέχει η ${version} αλλά ο τελευταίος έλεγχος εγκατάστασης είναι για την ${rel.version}` });
     if (rel.status === "failed") add("release", { key: "release:failed", level: "fail", text: `Έλεγχος εγκατάστασης ${rel.version}: ${checks.filter((c) => c.status === "fail").map((c) => `${c.name} — ${c.detail}`).join(" · ").slice(0, 200)}` });
     else if (rel.status === "unverified") add("release", { key: "release:unverified", level: "warn", text: `Έκδοση ${rel.version}: ${checks.filter((c) => c.status !== "ok").map((c) => `${c.name} — ${c.detail}`).join(" · ").slice(0, 200)}` });
+    // v191: external providers not certified in sandbox for this package are said so, never implied as verified.
+    const sb = Array.isArray(qa.sandbox) ? qa.sandbox : [];
+    const notRun = sb.filter((x) => x.status !== "PASS");
+    if (notRun.length) add("release", { key: "release:sandbox", level: "warn", text: `Εξωτερικοί πάροχοι χωρίς πιστοποίηση σε sandbox για την ${rel.version}: ${notRun.map((x) => `${x.name} (${x.status})`).join(" · ").slice(0, 300)}` });
     if (qa.verdict) info("release", `${rel.version} · QA ${qa.passed}/${qa.total} ${qa.verdict} (${String(qa.at ?? "").slice(0, 10)}, commit ${qa.commit ?? "—"})${qa.files ? ` · ${qa.files} αρχεία επαληθεύτηκαν` : ""}`);
     info("release", `Έλεγχος εγκατάστασης ${hhmm(rel.ran_at)}: ${checks.map((c) => `${c.status === "ok" ? "✓" : c.status === "warn" ? "!" : "✗"} ${c.name}`).join(" · ")}`);
   }

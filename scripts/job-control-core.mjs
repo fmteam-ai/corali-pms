@@ -26,14 +26,18 @@ export async function claimLease(pool, owner, key, holder, ttlMs, now = Date.now
 }
 
 /** Extends the lease while the work is still running. False when this holder no longer has it (taken over). */
-export async function renewLease(pool, owner, key, holder, ttlMs, now = Date.now()) {
-  const r = await pool.query(`UPDATE job_leases SET expires_at=$4::bigint WHERE owner_id=$1 AND lease_key=$2 AND holder=$3 RETURNING fence`, [owner, key, holder, now + ttlMs]);
+export async function renewLease(pool, owner, key, holder, ttlMs, now = Date.now(), fence = null) {
+  // v191: an expired lease is not revived, even by its own holder: expiry is a hard limit (the work counts as lost).
+  const r = await pool.query(
+    `UPDATE job_leases SET expires_at=$4::bigint WHERE owner_id=$1 AND lease_key=$2 AND holder=$3 AND expires_at>$5::bigint AND ($6::bigint IS NULL OR fence=$6::bigint) RETURNING fence`,
+    [owner, key, holder, now + ttlMs, now, fence],
+  );
   return r.rows.length > 0;
 }
 
-/** Fencing check before an irreversible action: does this holder still hold the lease with this token? */
-export async function holdsLease(pool, owner, key, holder, fence) {
-  const r = await pool.query(`SELECT 1 FROM job_leases WHERE owner_id=$1 AND lease_key=$2 AND holder=$3 AND fence=$4::bigint`, [owner, key, holder, fence]);
+/** Fencing check before an irreversible action: same holder, same token AND not expired. */
+export async function holdsLease(pool, owner, key, holder, fence, now = Date.now()) {
+  const r = await pool.query(`SELECT 1 FROM job_leases WHERE owner_id=$1 AND lease_key=$2 AND holder=$3 AND fence=$4::bigint AND expires_at>$5::bigint`, [owner, key, holder, fence, now]);
   return r.rows.length > 0;
 }
 
@@ -121,7 +125,9 @@ export function installCancellableFetch() {
   fetchPatched = true;
 }
 
-const PASS = /^\s*(ROLLBACK|RELEASE|COMMIT)/i;
+// After cancellation only closing a transaction passes, and — v191 — a statement that records the outcome of a send
+// that was refused (marked /*corali:outcome*/), so «not sent» is written instead of leaving the row «processing».
+const PASS = /^\s*(ROLLBACK|RELEASE|COMMIT|\/\*corali:outcome\*\/)/i;
 const guard = (q) => function (...args) {
   const store = steps.getStore();
   const text = typeof args[0] === "string" ? args[0] : args[0]?.text ?? "";
@@ -173,7 +179,7 @@ export function createStepRunner({ pool, owner, record = async () => {}, holder 
     let renew = null;
     if (lease) {
       renew = setInterval(() => {
-        renewLease(pool, owner, lease, holder, ttl).then((ok) => { if (!ok) { store.lost = true; ctl.abort(); } }, () => {});
+        renewLease(pool, owner, lease, holder, ttl, Date.now(), fence).then((ok) => { if (!ok) { store.lost = true; ctl.abort(); } }, () => {});
       }, renewEveryMs);
       renew.unref?.();
     }
@@ -213,6 +219,20 @@ export function createStepRunner({ pool, owner, record = async () => {}, holder 
     return done;
   }
   return { run, drain, counts };
+}
+
+/**
+ * v191: call right before an irreversible action (sending an e-mail / WhatsApp, a charge). Inside a step with a lease,
+ * throws LEASE_LOST unless this run still holds the lease, with its token, unexpired — so a run that lost its lease
+ * never sends. Outside a leased step it does nothing. LEASE_LOST means «not sent» (safe to retry later).
+ */
+export async function assertCurrentLease(pool, owner, now = Date.now()) {
+  const s = steps.getStore();
+  if (!s?.lease) return;
+  if (s.lost || s.signal.aborted || !(await holdsLease(pool, owner, s.lease, s.holder, s.fence, now))) {
+    s.lost = true;
+    throw Error("LEASE_LOST");
+  }
 }
 
 /** Inside a step: the lease it holds and its fencing token (for a check right before an irreversible action). */

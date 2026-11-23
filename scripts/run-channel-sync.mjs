@@ -12,7 +12,7 @@ import pg from "pg";
 import { databaseSsl } from "./database-config.mjs";
 import { ROOM_READY_SQL } from "./room-ready-core.mjs";
 import { cronFinish, cronOverlap, cronStart } from "./job-control-core.mjs";
-import { compareRemote, parseRemoteAvailability, queueOtaResync } from "./ota-reconcile-core.mjs";
+import { compareRemote, missingCoverage, parseRemoteAvailability, queueOtaResync } from "./ota-reconcile-core.mjs";
 import { saveReconciliation } from "./stripe-reconcile-core.mjs";
 import { AVAILABILITY_SQL, CHANNEX_HOSTS, availabilityRanges, computeRestrictions, feedHasMore, normalizeRevision, planRevision, restrictionKey, restrictionRanges, sellable, typeNightlyCents, otaRate } from "./channel-core.mjs";
 
@@ -187,6 +187,9 @@ try {
       if (end >= from) {
         const rows = await availability(from, end);
         const values = mappings.flatMap((m) => availabilityRanges(rows.filter((r) => r.room_type === m.room_type).map((r) => ({ date: r.date, available: sellable(r.free) }))).map((range) => ({ property_id: propertyId, room_type_id: m.external_room_type_id, ...range })));
+        // v191: a queued range is marked «sent» only if this push covers every mapped room type for every date of it.
+        const gaps = missingCoverage({ mappings, values, from, to: end });
+        if (gaps.length) throw Error(`PARTIAL_COVERAGE: ${gaps.length} τύπος×ημερομηνία δεν καλύπτονται (π.χ. ${gaps.slice(0, 3).map((g) => `${g.roomType} ${g.date}`).join(", ")})`);
         for (let i = 0; i < values.length; i += 500) {
           const ack = await api(host, key, "/availability", { method: "POST", body: JSON.stringify({ values: values.slice(i, i + 500) }) });
           // v190: HTTP 200 with warnings means some values were not applied — not recorded as sent, retried.
@@ -263,10 +266,15 @@ try {
       const remote = parseRemoteAvailability(body, typeByExternal);
       if (!remote) throw Error("Άγνωστη μορφή απάντησης του Channex — δεν συγκρίθηκε");
       const [current, open] = await Promise.all([availability(rbFrom, rbTo), pool.query(`SELECT date_from,date_to FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed','processing')`, [owner]).then((r) => r.rows)]);
-      const diff = compareRemote(current, remote, open);
+      const cmp = compareRemote(current, remote, open);
+      const diff = [...cmp.mismatches, ...cmp.notReturned];
       if (diff.length) await queueOtaResync({ pool, owner, mismatches: diff });
       await pool.query(`UPDATE channel_availability_state SET remote_available=x.n,remote_read_at=$3 FROM jsonb_to_recordset($2::jsonb) AS x(k text,n int) WHERE owner_id=$1 AND room_type||'|'||date=x.k`, [owner, JSON.stringify(Object.entries(remote).map(([k, n]) => ({ k, n }))), ranAt]);
-      await saveReconciliation(pool, owner, "ota_readback", { ranAt, issues: diff.map((m) => ({ kind: "readback_mismatch", level: "warn", reference: m.roomType, amountCents: 0, detail: `«${m.roomType}» ${m.from}${m.to !== m.from ? ` → ${m.to}` : ""}: Channex ${m.ota}, PMS ${m.pms} — στάλθηκε ξανά` })), totals: { compared: Object.keys(remote).length } });
+      const span = (m) => `«${m.roomType}» ${m.from}${m.to !== m.from ? ` → ${m.to}` : ""}`;
+      await saveReconciliation(pool, owner, "ota_readback", { ranAt, issues: [
+        ...cmp.mismatches.map((m) => ({ kind: "MISMATCHED", level: "warn", reference: m.roomType, amountCents: 0, detail: `${span(m)}: Channex ${m.ota}, PMS ${m.pms} — στάλθηκε ξανά` })),
+        ...cmp.notReturned.map((m) => ({ kind: "NOT_RETURNED", level: "warn", reference: m.roomType, amountCents: 0, detail: `${span(m)}: το Channex δεν επέστρεψε τιμή — δεν ελέγχθηκε, στάλθηκε ξανά (PMS ${m.pms})` })),
+      ], totals: { ...cmp.counts, complete: cmp.complete } });
     } catch (e) {
       await saveReconciliation(pool, owner, "ota_readback", { ranAt, error: String(e instanceof Error ? e.message : e) }).catch(() => {});
     }

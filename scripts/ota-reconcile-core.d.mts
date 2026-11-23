@@ -2,7 +2,8 @@ type Pool = { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record
 export type OtaMismatch = { roomType: string; from: string; to: string; pms: number; ota: number | null };
 export declare function athensToday(now?: number): string;
 export declare function groupMismatches(list: { roomType: string; date: string; pms: number; ota: number | null }[]): OtaMismatch[];
-export declare function otaReconcile(x: { pool: Pool; owner: string; now?: number; days?: number }): Promise<{ active: boolean; checked: number; neverPushed: number; mismatches: OtaMismatch[]; unsent?: OtaMismatch[]; changed?: OtaMismatch[] }>;
+export declare function otaReconcile(x: { pool: Pool; owner: string; now?: number; days?: number }): Promise<{ active: boolean; checked: number; neverPushed: number; pendingSync?: number; mismatches: OtaMismatch[]; unsent?: OtaMismatch[]; changed?: OtaMismatch[] }>;
 export declare function queueOtaResync(x: { pool: Pool; owner: string; mismatches: OtaMismatch[]; now?: number }): Promise<number>;
 export declare function parseRemoteAvailability(body: unknown, typeByExternal: Record<string, string>): Record<string, number> | null;
-export declare function compareRemote(current: { room_type: string; date: string; free: number }[], remote: Record<string, number>, open?: { date_from: string; date_to: string }[]): OtaMismatch[];
+export declare function compareRemote(current: { room_type: string; date: string; free: number }[], remote: Record<string, number>, open?: { date_from: string; date_to: string }[]): { counts: { MATCHED: number; MISMATCHED: number; NOT_RETURNED: number; NOT_CHECKED: number }; mismatches: OtaMismatch[]; notReturned: OtaMismatch[]; complete: boolean };
+export declare function missingCoverage(x: { mappings: { room_type: string; external_room_type_id: string }[]; values: { room_type_id: string; date_from: string; date_to: string }[]; from: string; to: string }): { roomType: string; date: string }[];

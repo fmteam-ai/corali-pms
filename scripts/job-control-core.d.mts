@@ -1,7 +1,8 @@
 type Pool = { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
 export declare function claimLease(pool: Pool, owner: string, key: string, holder: string, ttlMs: number, now?: number): Promise<number>;
-export declare function renewLease(pool: Pool, owner: string, key: string, holder: string, ttlMs: number, now?: number): Promise<boolean>;
-export declare function holdsLease(pool: Pool, owner: string, key: string, holder: string, fence: number): Promise<boolean>;
+export declare function renewLease(pool: Pool, owner: string, key: string, holder: string, ttlMs: number, now?: number, fence?: number | null): Promise<boolean>;
+export declare function holdsLease(pool: Pool, owner: string, key: string, holder: string, fence: number, now?: number): Promise<boolean>;
+export declare function assertCurrentLease(pool: Pool, owner: string, now?: number): Promise<void>;
 export declare function currentLease(): { key: string; fence: number; holder: string; lost: boolean } | null;
 export declare function releaseLease(pool: Pool, owner: string, key: string, holder: string): Promise<void>;
 export declare function withLease<T>(pool: Pool, owner: string, key: string, ttlMs: number, fn: () => Promise<T>, holder?: string): Promise<{ ran: false } | { ran: true; value: T }>;
