@@ -617,7 +617,9 @@ try {
     const rep = JSON.parse(inc.report_json);
     must(rep.confirmed.join(" ").includes("Channex 503 (QA sentinel)") && rep.probableCauses.length && rep.proposedFix.length && rep.validation.length, "η αναφορά δεν έχει αποδεικτικά / διόρθωση / επαλήθευση");
     // A person fixes it; recovery is verified only after clean checks over time (simulated by moving last_seen back).
+    // v204: fixed = the change was sent AND the sync's latest run succeeded (the failing sync itself is the incident).
     await q(`UPDATE channel_sync_outbox SET status='sent' WHERE id=$1`, [fault]);
+    await q(`UPDATE channel_sync_state SET last_run_at=$2,last_ok_at=$2,last_error=NULL WHERE owner_id=$1`, [owner, Date.now()]);
     await q(`UPDATE sentinel_incidents SET last_seen_at=last_seen_at-$2 WHERE id=$1`, [inc.id, 15 * 60_000]);
     r = runSentinelCron(); r = runSentinelCron();
     const after = (await q(`SELECT status,recovery_verified_at FROM sentinel_incidents WHERE id=$1`, [inc.id])).rows[0];
