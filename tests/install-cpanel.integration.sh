@@ -60,6 +60,14 @@ EOF
 cat >"$release/scripts/init-postgres.mjs" <<'EOF'
 console.log("Simulated idempotent PostgreSQL migration: OK");
 EOF
+# v189: no database in this test — the post-install check runs on its file part only (the database part is
+# verified by the release QA, flow F15).
+mv "$release/scripts/post-install-check.mjs" "$release/scripts/post-install-check.real.mjs"
+cat >"$release/scripts/post-install-check.mjs" <<'EOF'
+import { spawnSync } from "node:child_process";
+const r = spawnSync(process.execPath, [new URL("./post-install-check.real.mjs", import.meta.url).pathname, ...process.argv.slice(2), "--no-db"], { stdio: "inherit" });
+process.exit(r.status ?? 1);
+EOF
 
 for app in "$pms" "$booking"; do
   printf 'old application\n' >"$app/app.js"
