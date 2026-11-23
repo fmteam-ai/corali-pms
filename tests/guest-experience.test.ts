@@ -2,16 +2,21 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
-import { comfortBoard, scoreRoom } from "../scripts/comfort-core.mjs";
+import { comfortBoard, normalizePolicy, rangeFor, saveComfortPolicy, scoreRoom } from "../scripts/comfort-core.mjs";
 import { confirmEquipment, evaluateTurnover, turnoverBoard, verifyTurnover } from "../scripts/turnover-core.mjs";
-import { actOnFinding, categorize, findRootCauses, rootCauses } from "../scripts/root-cause-core.mjs";
+import { actOnFinding, categorize, findRootCauses, meaningfulReason, resolutionState, rootCauses } from "../scripts/root-cause-core.mjs";
 
 const o = "hotel-corali", MIN = 60_000, H = 3_600_000;
 type Row = Record<string, unknown>;
 async function fresh() {
   const db = new PGlite();
   await db.exec(readFileSync("server/postgres-schema.sql", "utf8"));
-  const pool = { query: async (sql: string, params: unknown[] = []) => { const r = await db.query<Row>(sql, params); return { rows: r.rows, rowCount: r.affectedRows || r.rows.length }; } };
+  const query = async (sql: string, params: unknown[] = []) => { const r = await db.query<Row>(sql, params); return { rows: r.rows, rowCount: r.affectedRows || r.rows.length }; };
+  // One PGlite connection: transactions from connect() run one after another (separate PostgreSQL connections would
+  // be serialised the same way by the row / advisory locks).
+  let chain: Promise<void> = Promise.resolve();
+  const connect = async () => { let release!: () => void; const prev = chain; chain = new Promise<void>((r) => { release = r; }); await prev; return { query, release }; };
+  const pool = { query, connect };
   return { db, pool };
 }
 
@@ -115,5 +120,99 @@ test("v193 root causes: recurring room problem with rating association, shared c
     assert.match(String((await db.query<Row>(`SELECT description FROM maintenance_notices WHERE id=$1`, [a.maintenanceId])).rows[0].description), /\[Ανάλυση αιτιών\] Δωμάτιο 112/);
     assert.equal((await actOnFinding({ pool, owner: o, key: finding.key, action: "maintenance", userId: 1, now })).already, true, "only one task per finding");
     assert.equal((await rootCauses({ pool, owner: o, now })).findings.find((x) => x.key === "room:5:ac")!.action!.status, "maintenance");
+  } finally { await db.close(); }
+});
+
+test("v194 comfort: NULL / invalid / future readings are unknown, never 0 °C; seasonal and per-room limits", () => {
+  const now = Date.parse("2026-07-15T12:00:00Z"), winter = Date.parse("2026-01-15T12:00:00Z");
+  for (const temp of [null, undefined, "", "abc"]) {
+    const r = scoreRoom({ roomId: 1, climate: { temp, humidity: null, readAt: now - MIN }, requests: [], wifiUsed: false }, now);
+    assert.equal(r.score, 100, `temp=${String(temp)} must not count as 0 °C`);
+    assert.match(r.unknown.map((u) => u.detail).join(" "), /δεν έχει έγκυρη θερμοκρασία/);
+  }
+  const future = scoreRoom({ roomId: 1, climate: { temp: 35, humidity: 50, readAt: now + 3 * H }, requests: [], wifiUsed: false }, now);
+  assert.equal(future.score, 100);
+  assert.match(future.unknown[0].detail, /μελλοντική ώρα/);
+  const p = normalizePolicy({ cooling: { min: 23, max: 26 }, heating: { min: 20, max: 23 }, heatingMonths: [12, 1, 2], rooms: { "7": { min: 24, max: 27 } }, hardMargin: 1.5, humidMax: 65, staleMinutes: 60 });
+  assert.deepEqual([rangeFor(p, 1, now).source, rangeFor(p, 1, winter).source, rangeFor(p, 7, winter).source], ["cooling", "heating", "room"]);
+  assert.equal(scoreRoom({ roomId: 1, climate: { temp: 22.5, readAt: now - MIN }, requests: [], wifiUsed: false }, now, p).signals[0].penalty, 15, "summer: 22.5 below the cooling range");
+  assert.equal(scoreRoom({ roomId: 1, climate: { temp: 22.5, readAt: winter - MIN }, requests: [], wifiUsed: false }, winter, p).score, 100, "winter: inside the heating range");
+  assert.equal(scoreRoom({ roomId: 7, climate: { temp: 26.5, readAt: now - MIN }, requests: [], wifiUsed: false }, now, p).score, 100, "room 7 has its own limits");
+  assert.match(scoreRoom({ roomId: 1, climate: { temp: 23, readAt: now - 2 * H }, requests: [], wifiUsed: false }, now, p).unknown[0].detail, /τελευταία μέτρηση/, "older than the policy's 60′");
+  // Invalid policy values fall back to the defaults.
+  const bad = normalizePolicy({ cooling: { min: 30, max: 20 }, humidMax: 5, heatingMonths: [0, 13, 2] });
+  assert.deepEqual([bad.cooling, bad.humidMax, bad.heatingMonths], [{ min: 22, max: 26 }, 70, [2]]);
+});
+
+test("v194 turnover: a later stay's clean never proves an earlier departure; evidence used once; current vs verified readiness", async () => {
+  const { db, pool } = await fresh();
+  try {
+    const now = Date.now(), out1 = now - 30 * H, in2 = now - 26 * H, out2 = now - 3 * H;
+    await db.query(`INSERT INTO rooms(id,owner_id,code,room_type,capacity,active,base_rate_cents,operational_status) VALUES(5,$1,'112','d',2,1,1,'clean')`, [o]);
+    // Stay A left (out1), stay B arrived (in2) and left (out2). Only B's departure was cleaned and approved.
+    await db.query(`INSERT INTO bookings(id,owner_id,reference,guest_name,check_in,check_out,status,room_id,total_cents,balance_cents,created_at,checked_in_at,checked_out_at) VALUES(1,$1,'CR-A','A','2026-07-10','2026-07-14','checked_out',5,1,0,1,1,$2),(2,$1,'CR-B','B','2026-07-14','2026-07-15','checked_out',5,1,0,1,$3,$4)`, [o, out1, in2, out2]);
+    await db.query(`INSERT INTO housekeeping_tasks(id,owner_id,room_id,task_type,status,booking_id,completed_at,inspection_status,inspected_at) VALUES(50,$1,5,'departure_clean','ready',2,$2,'approved',$3)`, [o, out2 + H, out2 + 2 * H]);
+    let b = await turnoverBoard({ pool, owner: o, now, days: 3 });
+    const A = b.turnovers.find((t) => t.bookingId === 1)!, B = b.turnovers.find((t) => t.bookingId === 2)!;
+    assert.equal(A.steps.cleaning.state, "pending", "B's clean is not evidence for A's departure");
+    assert.equal(B.steps.cleaning.state, "done");
+    assert.equal(B.steps.cleaning.taskId, 50);
+    // An unbound (older) task done after A left but before B arrived counts for A only.
+    await db.query(`INSERT INTO housekeeping_tasks(id,owner_id,room_id,task_type,status,completed_at,inspection_status,inspected_at) VALUES(40,$1,5,'departure_clean','ready',$2,'approved',$2)`, [o, out1 + H]);
+    b = await turnoverBoard({ pool, owner: o, now, days: 3 });
+    assert.equal(b.turnovers.find((t) => t.bookingId === 1)!.steps.cleaning.taskId, 40);
+    assert.equal(b.turnovers.find((t) => t.bookingId === 2)!.steps.cleaning.taskId, 50);
+    // Verify B (transaction); the same cleaning can never be stored as evidence for another turnover.
+    await confirmEquipment({ pool, owner: o, bookingId: 2, roomId: 5, by: "Nikos", now });
+    const v = await verifyTurnover({ pool, owner: o, bookingId: 2, by: "Maria", now });
+    assert.equal(v.ok, true);
+    await assert.rejects(db.query(`INSERT INTO room_turnovers(owner_id,booking_id,room_id,status,hk_task_id,created_at,updated_at) VALUES($1,1,5,'verified',50,1,1)`, [o]), /duplicate key|unique/i);
+    assert.equal((await verifyTurnover({ pool, owner: o, bookingId: 2, by: "Maria", now })).already, true);
+    // A serious fault after the confirmation: still VERIFIED_AT, but NOT ready now (dynamic readiness).
+    await db.query(`INSERT INTO maintenance_notices(owner_id,room_id,severity,description,reported_at) VALUES($1,5,'major','Διαρροή νερού στο μπάνιο',$2)`, [o, now]);
+    b = await turnoverBoard({ pool, owner: o, now, days: 3 });
+    const B2 = b.turnovers.find((t) => t.bookingId === 2)!;
+    assert.equal(B2.status, "verified");
+    assert.ok(B2.verifiedAt);
+    assert.equal(B2.current.state, "not_ready");
+    assert.equal(B2.regressed, true);
+    assert.match(B2.current.detail, /Διαρροή νερού/);
+    assert.equal(B2.verifiedSteps!.equipment.state, "done", "the stored evidence is kept as it was");
+  } finally { await db.close(); }
+});
+
+test("v194 root cause actions: two clicks → one task; a dismissal needs a real reason; did the fix work?", async () => {
+  const { db, pool } = await fresh();
+  try {
+    const day = 86_400_000, now = Date.now();
+    await db.query(`INSERT INTO rooms(id,owner_id,code,room_type,capacity,active,base_rate_cents,operational_status) VALUES(5,$1,'112','d',2,1,1,'clean')`, [o]);
+    for (const id of [1, 2, 3]) await db.query(`INSERT INTO bookings(id,owner_id,reference,guest_name,check_in,check_out,status,room_id,total_cents,balance_cents,created_at) VALUES($2,$1,$3,'G','2026-06-01','2026-06-02','checked_out',5,1,0,1)`, [o, id, `CR-${id}`]);
+    for (const b of [1, 2, 3]) await db.query(`INSERT INTO tv_requests(owner_id,room_id,booking_id,kind,status,created_at,details_json) VALUES($1,5,$2,'problem','done',$3,'{"problem":"ac"}')`, [o, b, now - (50 - b * 10) * day]);
+    const key = "room:5:ac";
+    const [a, b] = await Promise.all([actOnFinding({ pool, owner: o, key, action: "maintenance", userId: 1, now }), actOnFinding({ pool, owner: o, key, action: "maintenance", userId: 2, now })]);
+    assert.equal(Number((await db.query<{ n: number }>(`SELECT count(*)::int n FROM maintenance_notices`)).rows[0].n), 1, "one task for one finding");
+    assert.deepEqual([a.ok, b.ok], [true, true]);
+    assert.equal([a.already, b.already].filter(Boolean).length, 1);
+    assert.equal((await actOnFinding({ pool, owner: o, key: "systemic:wifi", action: "dismiss", reason: "ok", now })).error, "REASON_REQUIRED");
+    assert.equal(meaningfulReason("........................"), false);
+    assert.equal(meaningfulReason("Αλλάχτηκε ήδη η μονάδα τον Ιούνιο"), true);
+    // Resolution: task open → fixed → stays without the problem → effective; recurrence → recurred.
+    let f = (await rootCauses({ pool, owner: o, now })).findings.find((x) => x.key === key)!;
+    assert.equal(f.action!.resolution!.state, "open_task");
+    const mid = f.action!.maintenanceId!;
+    await db.query(`UPDATE maintenance_notices SET status='resolved',resolved_at=$2,resolved_by=1,resolution_notes='αλλαγή φίλτρων',post_repair_state='clean' WHERE id=$1`, [mid, now - 20 * day]);
+    f = (await rootCauses({ pool, owner: o, now })).findings.find((x) => x.key === key)!;
+    assert.equal(f.action!.resolution!.state, "monitoring");
+    for (const id of [10, 11]) await db.query(`INSERT INTO bookings(id,owner_id,reference,guest_name,check_in,check_out,status,room_id,total_cents,balance_cents,created_at,checked_out_at) VALUES($2,$1,$3,'G','2026-07-01','2026-07-02','checked_out',5,1,0,1,$4)`, [o, id, `CR-${id}`, now - (15 - id) * day]);
+    f = (await rootCauses({ pool, owner: o, now })).findings.find((x) => x.key === key)!;
+    assert.equal(f.action!.resolution!.state, "effective");
+    await db.query(`INSERT INTO tv_requests(owner_id,room_id,booking_id,kind,status,created_at,details_json) VALUES($1,5,11,'problem','open',$2,'{"problem":"ac"}')`, [o, now - day]);
+    f = (await rootCauses({ pool, owner: o, now })).findings.find((x) => x.key === key)!;
+    assert.equal(f.action!.resolution!.state, "recurred");
+    assert.equal(f.severity, "high");
+    assert.deepEqual(resolutionState({ resolvedAt: null, eventsAfter: 0, staysAfter: 0 }).state, "open_task");
+    const saved = await saveComfortPolicy({ pool, owner: o, settings: { cooling: { min: 23, max: 25 } }, by: "Maria" });
+    assert.deepEqual(saved.cooling, { min: 23, max: 25 });
+    assert.deepEqual((await comfortBoard({ pool, owner: o })).policy.cooling, { min: 23, max: 25 });
   } finally { await db.close(); }
 });

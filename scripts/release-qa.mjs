@@ -481,6 +481,11 @@ try {
     v = await verifyTurnover({ pool: db, owner, bookingId: stay, by: "QA" });
     const tb = (await turnoverBoard({ pool: db, owner })).turnovers.find((x) => x.bookingId === stay);
     must(v.ok && tb.status === "verified" && tb.steps.wifi.state === "done", `παράδοση: ${JSON.stringify(v)} ${tb?.status}`);
+    // v194: a serious fault after the confirmation → still verified (documented), but NOT ready now.
+    await q(`INSERT INTO maintenance_notices(owner_id,room_id,severity,description,reported_at) VALUES($1,$2,'major','QA: διαρροή νερού',$3)`, [owner, rid, Date.now()]);
+    const reg = (await turnoverBoard({ pool: db, owner })).turnovers.find((x) => x.bookingId === stay);
+    must(reg.status === "verified" && reg.verifiedAt && reg.current.state === "not_ready" && reg.regressed, `δυναμική ετοιμότητα: ${JSON.stringify(reg.current)}`);
+    must((await verifyTurnover({ pool: db, owner, bookingId: stay, by: "QA" })).already === true, "δεύτερη επιβεβαίωση");
     // Root cause: A/C reported in 3 different stays of the same room → finding → one maintenance task.
     for (const [i, d] of [[1, 40], [2, 25]]) { const b = await bk(`QA-OLD${i}`, "checked_out", { ci: addDays(today, -d), co: addDays(today, -d + 2), out: t0 - d * D }); await q(`INSERT INTO tv_requests(owner_id,room_id,booking_id,kind,status,created_at,handled_at,details_json) VALUES($1,$2,$3,'problem','done',$4,$4,'{"problem":"ac"}')`, [owner, rid, b, t0 - d * D]); }
     const f = (await rootCauses({ pool: db, owner })).findings.find((x) => x.key === `room:${rid}:ac`);
@@ -488,7 +493,8 @@ try {
     const a = await actOnFinding({ pool: db, owner, key: f.key, action: "maintenance", userId: null });
     const again = await actOnFinding({ pool: db, owner, key: f.key, action: "maintenance", userId: null });
     must(a.ok && a.maintenanceId && again.already, `εργασία: ${JSON.stringify(a)} ${JSON.stringify(again)}`);
-    return `δωμάτιο QA9 με πελάτη: δείκτης ${c.score} (${c.signals.map((x) => x.label).join(", ")}) · παράδοση: χωρίς στοιχεία απορρίφθηκε, με τα στοιχεία → ${tb.status} · αιτία «${f.title}» → εργασία συντήρησης #${a.maintenanceId} (μία φορά)`;
+    await q(`UPDATE maintenance_notices SET status='resolved',resolved_at=$2,resolution_notes='QA' WHERE owner_id=$1 AND room_id=$3 AND description='QA: διαρροή νερού'`, [owner, Date.now(), rid]);
+    return `δωμάτιο QA9 με πελάτη: δείκτης ${c.score} (${c.signals.map((x) => x.label).join(", ")}) · παράδοση: χωρίς στοιχεία απορρίφθηκε, με τα στοιχεία → ${tb.status} · νέα σοβαρή βλάβη → επιβεβαιωμένο αλλά «τώρα δεν είναι έτοιμο» · αιτία «${f.title}» → εργασία συντήρησης #${a.maintenanceId} (μία φορά)`;
   });
 
   await flow("F11", "Αυτόματα tests του κώδικα (unit / integration)", async () => {

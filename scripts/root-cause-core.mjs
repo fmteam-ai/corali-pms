@@ -114,7 +114,7 @@ export async function rootCauses({ pool, owner, now = Date.now(), days = 90 }) {
   const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
   const [reqs, faults, ratings, handled, done] = await Promise.all([
     q(`SELECT q.id,q.room_id,r.code,q.booking_id,q.kind,q.details_json,q.created_at FROM tv_requests q JOIN rooms r ON r.owner_id=q.owner_id AND r.id=q.room_id WHERE q.owner_id=$1 AND q.created_at>=$2 AND q.kind='problem'`, [owner, since]).catch(() => []),
-    q(`SELECT m.id,m.room_id,r.code,m.description,m.reported_at,(SELECT b.id FROM bookings b WHERE b.owner_id=m.owner_id AND b.room_id=m.room_id AND b.check_in<=to_char(to_timestamp(m.reported_at/1000) AT TIME ZONE 'Europe/Athens','YYYY-MM-DD') AND b.check_out>=to_char(to_timestamp(m.reported_at/1000) AT TIME ZONE 'Europe/Athens','YYYY-MM-DD') AND b.status IN ('checked_in','checked_out') ORDER BY b.check_in DESC LIMIT 1) booking_id FROM maintenance_notices m JOIN rooms r ON r.owner_id=m.owner_id AND r.id=m.room_id WHERE m.owner_id=$1 AND m.reported_at>=$2`, [owner, since]).catch(() => []),
+    q(`SELECT m.id,m.room_id,r.code,m.description,m.reported_at,(SELECT b.id FROM bookings b WHERE b.owner_id=m.owner_id AND b.room_id=m.room_id AND b.check_in<=to_char(to_timestamp(m.reported_at/1000) AT TIME ZONE 'Europe/Athens','YYYY-MM-DD') AND b.check_out>=to_char(to_timestamp(m.reported_at/1000) AT TIME ZONE 'Europe/Athens','YYYY-MM-DD') AND b.status IN ('checked_in','checked_out') ORDER BY b.check_in DESC LIMIT 1) booking_id FROM maintenance_notices m JOIN rooms r ON r.owner_id=m.owner_id AND r.id=m.room_id WHERE m.owner_id=$1 AND m.reported_at>=$2 AND m.description NOT LIKE '[Ανάλυση αιτιών]%'`, [owner, since]).catch(() => []),
     q(`SELECT v.booking_id,v.rating,b.room_id,r.code FROM review_requests v JOIN bookings b ON b.owner_id=v.owner_id AND b.id=v.booking_id LEFT JOIN rooms r ON r.owner_id=b.owner_id AND r.id=b.room_id WHERE v.owner_id=$1 AND v.rating IS NOT NULL AND v.rated_at>=$2 AND b.room_id IS NOT NULL`, [owner, since]).catch(() => []),
     q(`SELECT kind,(handled_at-created_at)/60000.0 minutes FROM tv_requests WHERE owner_id=$1 AND created_at>=$2 AND handled_at IS NOT NULL AND kind NOT IN ('dnd_on','dnd_off','instay_good')`, [owner, since]).catch(() => []),
     q(`SELECT finding_key,status,maintenance_id,updated_at FROM root_cause_actions WHERE owner_id=$1`, [owner]).catch(() => []),
@@ -125,21 +125,94 @@ export async function rootCauses({ pool, owner, now = Date.now(), days = 90 }) {
   ];
   const findings = findRootCauses({ events, ratings: ratings.map((r) => ({ bookingId: Number(r.booking_id), roomId: Number(r.room_id), code: String(r.code), rating: Number(r.rating) })), handling: handled.map((h) => ({ kind: String(h.kind), minutes: Number(h.minutes) })) });
   const actions = new Map(done.map((d) => [String(d.finding_key), d]));
-  return { at: now, days, events: events.length, ratings: ratings.length, findings: findings.map((f) => ({ ...f, action: actions.get(f.key) ? { status: actions.get(f.key).status, maintenanceId: actions.get(f.key).maintenance_id ? Number(actions.get(f.key).maintenance_id) : null, at: Number(actions.get(f.key).updated_at) } : null })) };
+  // v194: for findings with a maintenance task, whether the fix worked (recurrences and clean stays after it).
+  const mIds = done.filter((d) => d.maintenance_id).map((d) => Number(d.maintenance_id));
+  const [fixes, staysAfter] = mIds.length ? await Promise.all([
+    q(`SELECT id,room_id,status,resolved_at FROM maintenance_notices WHERE owner_id=$1 AND id=ANY($2::bigint[])`, [owner, mIds]),
+    q(`SELECT room_id,checked_out_at FROM bookings WHERE owner_id=$1 AND status='checked_out' AND checked_out_at IS NOT NULL AND checked_out_at>=$2`, [owner, now - 365 * DAY]),
+  ]) : [[], []];
+  const withAction = (f) => {
+    const a = actions.get(f.key);
+    if (!a) return { ...f, action: null };
+    const action = { status: a.status, maintenanceId: a.maintenance_id ? Number(a.maintenance_id) : null, at: Number(a.updated_at), note: String(a.note ?? "") };
+    if (a.status !== "maintenance" || !action.maintenanceId) return { ...f, action };
+    const fix = fixes.find((x) => Number(x.id) === action.maintenanceId);
+    const resolvedAt = fix?.status === "resolved" && fix.resolved_at ? Number(fix.resolved_at) : null;
+    const eventsAfter = resolvedAt ? events.filter((e) => e.roomId === f.roomId && e.category === f.category && e.at > resolvedAt).length : 0;
+    const stays = resolvedAt ? staysAfter.filter((b) => Number(b.room_id) === f.roomId && Number(b.checked_out_at) > resolvedAt).length : 0;
+    const resolution = resolutionState({ resolvedAt, eventsAfter, staysAfter: stays });
+    return { ...f, severity: resolution.state === "recurred" ? "high" : f.severity, action: { ...action, resolution } };
+  };
+  return { at: now, days, events: events.length, ratings: ratings.length, findings: findings.map(withAction) };
 }
 
-/** «Δημιουργία εργασίας συντήρησης» from a room finding (once per finding), or «Αγνόηση» with a reason. */
+/** v194: a dismissal needs a real reason — at least 10 characters with letters, not just punctuation or repeats. */
+export function meaningfulReason(text) {
+  const t = String(text ?? "").trim();
+  const letters = (t.match(/\p{L}/gu) ?? []).length;
+  return t.length >= 10 && letters >= 6 && new Set(t.toLowerCase().replace(/\s/g, "")).size >= 4;
+}
+
+/**
+ * «Δημιουργία εργασίας συντήρησης» from a room finding, or «Αγνόηση» with a reason. v194: atomic and idempotent — one
+ * transaction claims the finding first (unique key per hotel and finding), then creates the task; two people clicking
+ * at the same time get one task (the second sees «already»).
+ */
 export async function actOnFinding({ pool, owner, key, action, userId = null, reason = "", now = Date.now() }) {
-  const existing = (await pool.query(`SELECT status FROM root_cause_actions WHERE owner_id=$1 AND finding_key=$2`, [owner, key])).rows[0];
-  if (existing?.status === "maintenance") return { ok: true, already: true };
-  if (action === "dismiss") {
-    await pool.query(`INSERT INTO root_cause_actions(owner_id,finding_key,status,note,created_by,updated_at) VALUES($1,$2,'dismissed',$3,$4,$5) ON CONFLICT(owner_id,finding_key) DO UPDATE SET status='dismissed',note=$3,created_by=$4,updated_at=$5`, [owner, key, String(reason).slice(0, 300), userId, now]);
-    return { ok: true };
+  if (action === "dismiss" && !meaningfulReason(reason)) return { ok: false, error: "REASON_REQUIRED" };
+  let finding = null;
+  if (action === "maintenance") {
+    const r = await rootCauses({ pool, owner, now });
+    finding = r.findings.find((x) => x.key === key);
+    if (!finding || !finding.roomId) return { ok: false, error: "NOT_A_ROOM_FINDING" };
   }
-  const r = await rootCauses({ pool, owner, now });
-  const f = r.findings.find((x) => x.key === key);
-  if (!f || !f.roomId) return { ok: false, error: "NOT_A_ROOM_FINDING" };
-  const m = await pool.query(`INSERT INTO maintenance_notices(owner_id,room_id,severity,description,reported_by,reported_at) VALUES($1,$2,'minor',$3,$4,$5) RETURNING id`, [owner, f.roomId, `[Ανάλυση αιτιών] ${f.title}. ${f.suggestion}`.slice(0, 900), userId, now]);
-  await pool.query(`INSERT INTO root_cause_actions(owner_id,finding_key,status,maintenance_id,created_by,updated_at) VALUES($1,$2,'maintenance',$3,$4,$5) ON CONFLICT(owner_id,finding_key) DO UPDATE SET status='maintenance',maintenance_id=$3,created_by=$4,updated_at=$5`, [owner, key, Number(m.rows[0].id), userId, now]);
-  return { ok: true, maintenanceId: Number(m.rows[0].id) };
+  const client = typeof pool.connect === "function" ? await pool.connect() : pool;
+  try {
+    await client.query("BEGIN");
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`rootcause:${owner}:${key}`]);
+    if (action === "maintenance") {
+      // Atomic claim on the unique (hotel, finding) key: only the transaction that inserts / takes over the row goes
+      // on to create the task; a concurrent one waits on that row and then finds it claimed.
+      const claim = await client.query(
+        `INSERT INTO root_cause_actions(owner_id,finding_key,status,created_by,updated_at) VALUES($1,$2,'creating',$3,$4)
+         ON CONFLICT(owner_id,finding_key) DO UPDATE SET status='creating',created_by=$3,updated_at=$4 WHERE root_cause_actions.status='dismissed' RETURNING finding_key`,
+        [owner, key, userId, now],
+      );
+      if (!claim.rows.length) {
+        const ex = (await client.query(`SELECT maintenance_id FROM root_cause_actions WHERE owner_id=$1 AND finding_key=$2`, [owner, key])).rows[0];
+        await client.query("ROLLBACK");
+        return { ok: true, already: true, maintenanceId: ex?.maintenance_id ? Number(ex.maintenance_id) : undefined };
+      }
+    } else {
+      const existing = (await client.query(`SELECT status FROM root_cause_actions WHERE owner_id=$1 AND finding_key=$2 FOR UPDATE`, [owner, key])).rows[0];
+      if (existing && existing.status !== "dismissed") { await client.query("ROLLBACK"); return { ok: false, error: "HAS_TASK" }; }
+    }
+    if (action === "dismiss") {
+      await client.query(`INSERT INTO root_cause_actions(owner_id,finding_key,status,note,created_by,updated_at) VALUES($1,$2,'dismissed',$3,$4,$5) ON CONFLICT(owner_id,finding_key) DO UPDATE SET status='dismissed',note=$3,created_by=$4,updated_at=$5`, [owner, key, String(reason).trim().slice(0, 300), userId, now]);
+      await client.query("COMMIT");
+      return { ok: true };
+    }
+    const m = await client.query(`INSERT INTO maintenance_notices(owner_id,room_id,severity,description,reported_by,reported_at) VALUES($1,$2,'minor',$3,$4,$5) RETURNING id`, [owner, finding.roomId, `[Ανάλυση αιτιών] ${finding.title}. ${finding.suggestion}`.slice(0, 900), userId, now]);
+    const id = Number(m.rows[0].id);
+    await client.query(`INSERT INTO root_cause_actions(owner_id,finding_key,status,maintenance_id,created_by,updated_at) VALUES($1,$2,'maintenance',$3,$4,$5) ON CONFLICT(owner_id,finding_key) DO UPDATE SET status='maintenance',maintenance_id=$3,note='',created_by=$4,updated_at=$5`, [owner, key, id, userId, now]);
+    await client.query("COMMIT");
+    return { ok: true, maintenanceId: id };
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally { if (client !== pool) { try { client.release?.(); } catch { /* released */ } } }
+}
+
+/**
+ * v194 resolution tracking: did the intervention fix it? For a room finding with a maintenance task:
+ *   open_task  — the task is not resolved yet;
+ *   recurred   — the same problem was reported in that room after the task was resolved (it did not fix it);
+ *   effective  — at least `stays` stays in that room checked out after the fix without the problem;
+ *   monitoring — fixed, not enough stays since to tell.
+ */
+export function resolutionState({ resolvedAt, eventsAfter, staysAfter, stays = 2 }) {
+  if (!resolvedAt) return { state: "open_task", detail: "η εργασία συντήρησης δεν έχει ολοκληρωθεί" };
+  if (eventsAfter > 0) return { state: "recurred", detail: `το ίδιο πρόβλημα αναφέρθηκε ξανά ${eventsAfter} φορ${eventsAfter === 1 ? "ά" : "ές"} μετά την επισκευή — η παρέμβαση δεν το έλυσε` };
+  if (staysAfter >= stays) return { state: "effective", detail: `${staysAfter} διαμονές μετά την επισκευή χωρίς το πρόβλημα` };
+  return { state: "monitoring", detail: `επισκευάστηκε · ${staysAfter}/${stays} διαμονές χωρίς το πρόβλημα μέχρι τώρα` };
 }

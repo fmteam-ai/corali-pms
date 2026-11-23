@@ -2863,3 +2863,16 @@ CREATE TABLE IF NOT EXISTS root_cause_actions (
   updated_at BIGINT NOT NULL,
   PRIMARY KEY (owner_id, finding_key)
 );
+
+-- v194 Turnover evidence bound to its stay: the departure clean carries the booking it follows, and one cleaning can
+-- prove one turnover only (never reused for another check-out).
+ALTER TABLE housekeeping_tasks ADD COLUMN IF NOT EXISTS booking_id BIGINT;
+ALTER TABLE room_turnovers ADD COLUMN IF NOT EXISTS hk_task_id BIGINT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_room_turnovers_hk_task ON room_turnovers(owner_id, hk_task_id) WHERE hk_task_id IS NOT NULL;
+-- v194 Adaptive comfort policies (cooling / heating season ranges, per-room limits, freshness of readings).
+CREATE TABLE IF NOT EXISTS comfort_policies (
+  owner_id TEXT PRIMARY KEY,
+  settings_json TEXT NOT NULL DEFAULT '{}',
+  updated_by TEXT NOT NULL DEFAULT '',
+  updated_at BIGINT NOT NULL
+);

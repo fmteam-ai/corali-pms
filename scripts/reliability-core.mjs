@@ -194,6 +194,8 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
   const turn = await turnoverBoard({ pool, owner, now, days: 3 }).catch(() => ({ turnovers: [] }));
   const todayAthens = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now));
   for (const x of turn.turnovers) {
+    // v194 dynamic readiness: a room confirmed ready that is no longer ready now (new serious fault, reversed inspection).
+    if (x.regressed) { add("turnover", { key: `turnover-regressed:${x.bookingId}`, level: x.nextArrival && x.nextArrival <= todayAthens ? "fail" : "warn", text: `Δωμάτιο ${x.code}: επιβεβαιώθηκε έτοιμο ${hhmm(x.verifiedAt)} αλλά ΤΩΡΑ δεν είναι — ${x.current.detail.slice(0, 180)}${x.nextArrival ? ` (επόμενη άφιξη ${x.nextArrival})` : ""}`, link: "/pms/guest-experience?tab=turnover", at: now }); continue; }
     if (x.status !== "failed") continue;
     const failedSteps = Object.entries(x.steps).filter(([, v]) => v.state === "failed").map(([k, v]) => `${k}: ${v.detail}`).join(" · ");
     add("turnover", { key: `turnover:${x.bookingId}`, level: x.nextArrival && x.nextArrival <= todayAthens ? "fail" : "warn", text: `Δωμάτιο ${x.code} μετά το check-out ${x.reference}${x.nextArrival ? ` (επόμενη άφιξη ${x.nextArrival})` : ""}: ${failedSteps.slice(0, 200)}`, link: "/pms/guest-experience?tab=turnover", at: Number(x.checkoutAt) });

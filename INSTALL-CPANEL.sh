@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="v193"
+VERSION="v194"
 release_dir="$(cd "$(dirname "$0")" && pwd)"
 pms_root="/home/corali/apps/corali-pms"
 booking_root="/home/corali/apps/corali-booking"
@@ -15,7 +15,7 @@ accept_uncertified=0
 
 usage() {
   cat <<'EOF'
-Hotel Corali v193 — automatic cPanel installer
+Hotel Corali v194 — automatic cPanel installer
 
 Usage:
   bash INSTALL-CPANEL.sh [options]
@@ -56,7 +56,7 @@ require_absolute "PMS root" "$pms_root"
 require_absolute "Booking root" "$booking_root"
 if [[ -n "$backup_dir" ]]; then require_absolute "Backup directory" "$backup_dir"; fi
 [[ "$pms_root" != "$booking_root" ]] || fail "PMS and booking roots must be different"
-[[ -f "$release_dir/DEPLOY_VERSION.txt" ]] || fail "Run the installer from the extracted v193 directory"
+[[ -f "$release_dir/DEPLOY_VERSION.txt" ]] || fail "Run the installer from the extracted v194 directory"
 [[ "$(tr -d '\r\n' < "$release_dir/DEPLOY_VERSION.txt")" == "$VERSION" ]] || fail "This installer requires $VERSION"
 [[ "$release_dir" != "$pms_root" && "$release_dir" != "$booking_root" ]] || fail "Extract the release outside the active application directories"
 
@@ -117,7 +117,7 @@ backup_dir="${backup_dir:-/home/$app_user/backups}"
 mkdir -p "$backup_dir"
 chmod 700 "$backup_dir"
 
-lock_dir="$apps_dir/.corali-v193-install.lock"
+lock_dir="$apps_dir/.corali-v194-install.lock"
 mkdir "$lock_dir" 2>/dev/null || fail "Another installation is running or a stale lock exists: $lock_dir"
 pms_stage="$apps_dir/.corali-pms-$VERSION-stage-$timestamp"
 booking_stage="$apps_dir/.corali-booking-$VERSION-stage-$timestamp"
@@ -184,10 +184,10 @@ fi
 
 echo "[4/9] Applying additive, idempotent database migrations..."
 node --env-file="$pms_stage/runtime.env" "$pms_stage/scripts/init-postgres.mjs"
-# v193: the installed files are the ones of the package that passed QA, every ON CONFLICT of the code is planned on
+# v194: the installed files are the ones of the package that passed QA, every ON CONFLICT of the code is planned on
 # this production database, every table exists. Any failure stops here (automatic rollback, nothing switched yet).
 echo "      Post-install check..."
-# v193: a package whose external providers were not certified in sandbox is NOT ACCEPTED; it installs only with the
+# v194: a package whose external providers were not certified in sandbox is NOT ACCEPTED; it installs only with the
 # operator's explicit --accept-uncertified-providers (recorded with the release check).
 accept_flag=()
 [[ "${accept_uncertified:-0}" == 1 ]] && accept_flag=(--accept-uncertified-providers)

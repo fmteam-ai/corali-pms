@@ -4,24 +4,59 @@
 // evidence, and says plainly when a signal is unknown (no sensor, no recent reading) instead of guessing.
 const MIN = 60_000, HOUR = 60 * MIN;
 export const COMFORT_RANGE = { min: 20, max: 26, hardMin: 18, hardMax: 28, humidMax: 70 };
+
+/**
+ * v194 adaptive comfort policy (PMS → Εμπειρία πελάτη → Άνεση → Όρια): a range for the cooling season and one for the
+ * heating season (heating months configurable), per-room limits overriding both, the margin beyond which a deviation
+ * weighs double, the humidity limit and how old a reading may be. Every value is the hotel's; defaults below.
+ */
+export const DEFAULT_POLICY = { cooling: { min: 22, max: 26 }, heating: { min: 20, max: 24 }, heatingMonths: [11, 12, 1, 2, 3], hardMargin: 2, humidMax: 70, staleMinutes: 120, rooms: {} };
+const num = (v, lo, hi, d) => { const n = Number(v); return Number.isFinite(n) && n >= lo && n <= hi ? n : d; };
+export function normalizePolicy(raw) {
+  let x = raw;
+  if (typeof x === "string") { try { x = JSON.parse(x); } catch { x = {}; } }
+  x = x && typeof x === "object" ? x : {};
+  const range = (r, d) => { const min = num(r?.min, 10, 35, d.min), max = num(r?.max, 10, 35, d.max); return min < max ? { min, max } : d; };
+  const months = Array.isArray(x.heatingMonths) ? [...new Set(x.heatingMonths.map(Number).filter((m) => m >= 1 && m <= 12))] : DEFAULT_POLICY.heatingMonths;
+  const rooms = {};
+  for (const [id, r] of Object.entries(x.rooms && typeof x.rooms === "object" ? x.rooms : {})) if (/^\d+$/.test(id)) rooms[id] = range(r, { min: 0, max: 0 }).max ? range(r, DEFAULT_POLICY.cooling) : null;
+  for (const k of Object.keys(rooms)) if (!rooms[k]) delete rooms[k];
+  return { cooling: range(x.cooling, DEFAULT_POLICY.cooling), heating: range(x.heating, DEFAULT_POLICY.heating), heatingMonths: months, hardMargin: num(x.hardMargin, 0.5, 10, DEFAULT_POLICY.hardMargin), humidMax: num(x.humidMax, 40, 95, DEFAULT_POLICY.humidMax), staleMinutes: num(x.staleMinutes, 10, 1440, DEFAULT_POLICY.staleMinutes), rooms };
+}
+/** The range that applies to a room now: its own limits, else the season's (Athens month). */
+export function rangeFor(policy, roomId, now = Date.now()) {
+  const own = policy.rooms?.[String(roomId)];
+  if (own) return { ...own, source: "room" };
+  const month = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Athens", month: "numeric" }).format(new Date(now)));
+  return policy.heatingMonths.includes(month) ? { ...policy.heating, source: "heating" } : { ...policy.cooling, source: "cooling" };
+}
+/** A usable number or null (null, undefined, "", NaN are not 0 °C). */
+export const reading = (v) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 const URGENT_PROBLEMS = new Set(["ac", "hot_water", "water_leak", "door_lock", "electrical"]);
 
 const ago = (now, t) => { const m = Math.max(0, Math.round((now - Number(t)) / MIN)); return m < 60 ? `${m}′` : `${Math.floor(m / 60)} ώρ. ${m % 60}′`; };
 
 /** Pure: the score of one room from its gathered facts. 100 = nothing needs attention. */
-export function scoreRoom(f, now = Date.now()) {
+export function scoreRoom(f, now = Date.now(), policy = normalizePolicy(null)) {
   const signals = [], unknown = [];
   const add = (key, penalty, label, detail) => signals.push({ key, penalty, label, detail });
-  // Temperature / humidity (only a reading of the last 2 hours counts).
+  const range = rangeFor(policy, f.roomId, now);
+  const src = { room: "όριο δωματίου", heating: "περίοδος θέρμανσης", cooling: "περίοδος ψύξης" }[range.source];
+  // Temperature / humidity: only a valid reading, not from the future, not older than the policy allows.
   if (f.climate) {
-    const fresh = f.climate.readAt && now - Number(f.climate.readAt) <= 2 * HOUR;
-    if (!fresh) unknown.push({ key: "climate", label: "Θερμοκρασία", detail: f.climate.readAt ? `τελευταία μέτρηση πριν ${ago(now, f.climate.readAt)}` : "ο αισθητήρας δεν έχει δώσει μέτρηση" });
+    const readAt = reading(f.climate.readAt), temp = reading(f.climate.temp), humidity = reading(f.climate.humidity);
+    if (!readAt) unknown.push({ key: "climate", label: "Θερμοκρασία", detail: "ο αισθητήρας δεν έχει δώσει μέτρηση" });
+    else if (readAt > now + 5 * MIN) unknown.push({ key: "climate", label: "Θερμοκρασία", detail: "μέτρηση με μελλοντική ώρα — δεν λαμβάνεται υπόψη (ελέγξτε το ρολόι του αισθητήρα)" });
+    else if (now - readAt > policy.staleMinutes * MIN) unknown.push({ key: "climate", label: "Θερμοκρασία", detail: `τελευταία μέτρηση πριν ${ago(now, readAt)}` });
     else {
-      const t = Number(f.climate.temp);
-      if (Number.isFinite(t) && (t < COMFORT_RANGE.hardMin || t > COMFORT_RANGE.hardMax)) add("temp", 30, "Θερμοκρασία", `${t.toFixed(1)}°C (εκτός ${COMFORT_RANGE.hardMin}–${COMFORT_RANGE.hardMax}°C)`);
-      else if (Number.isFinite(t) && (t < COMFORT_RANGE.min || t > COMFORT_RANGE.max)) add("temp", 15, "Θερμοκρασία", `${t.toFixed(1)}°C (εκτός ${COMFORT_RANGE.min}–${COMFORT_RANGE.max}°C)`);
-      if (Number(f.climate.humidity) > COMFORT_RANGE.humidMax) add("humidity", 10, "Υγρασία", `${f.climate.humidity}% (πάνω από ${COMFORT_RANGE.humidMax}%)`);
+      if (temp === null) unknown.push({ key: "temp", label: "Θερμοκρασία", detail: "η πρόσφατη μέτρηση δεν έχει έγκυρη θερμοκρασία" });
+      else if (temp < range.min - policy.hardMargin || temp > range.max + policy.hardMargin) add("temp", 30, "Θερμοκρασία δωματίου", `${temp.toFixed(1)}°C (εκτός ${range.min}–${range.max}°C κατά ${policy.hardMargin}°C+, ${src})`);
+      else if (temp < range.min || temp > range.max) add("temp", 15, "Θερμοκρασία δωματίου", `${temp.toFixed(1)}°C (εκτός ${range.min}–${range.max}°C, ${src})`);
+      if (humidity !== null && humidity > policy.humidMax) add("humidity", 10, "Υγρασία", `${humidity}% (πάνω από ${policy.humidMax}%)`);
     }
+    // The A/C setpoint (when a native A/C integration reports it) is shown apart from the room temperature.
+    const setpoint = reading(f.climate.setpoint);
+    if (setpoint !== null && (setpoint < range.min - policy.hardMargin || setpoint > range.max + policy.hardMargin)) add("setpoint", 5, "Ρύθμιση κλιματιστικού", `επιλεγμένο ${setpoint}°C (θερμοκρασία δωματίου μετριέται χωριστά)`);
   } else unknown.push({ key: "climate", label: "Θερμοκρασία", detail: "χωρίς αισθητήρα στο δωμάτιο" });
   // Open requests from the TV / app, by age; technical problems weigh more.
   for (const r of f.requests ?? []) {
@@ -52,6 +87,7 @@ export function scoreRoom(f, now = Date.now()) {
 /** Every occupied room now, worst first. */
 export async function comfortBoard({ pool, owner, now = Date.now() }) {
   const q = (sql, p = [owner]) => pool.query(sql, p).then((r) => r.rows);
+  const policy = normalizePolicy((await q(`SELECT settings_json FROM comfort_policies WHERE owner_id=$1`).catch(() => []))[0]?.settings_json ?? null);
   const [rooms, climate, requests, orders, faults, tvs, wifi, wifiUsed] = await Promise.all([
     q(`SELECT r.id room_id,r.code,b.id booking_id,b.reference,b.guest_name,b.check_out FROM bookings b JOIN rooms r ON r.owner_id=b.owner_id AND r.id=b.room_id WHERE b.owner_id=$1 AND b.status='checked_in' ORDER BY r.code`),
     q(`SELECT room_id,temp,humidity,read_at FROM room_climate WHERE owner_id=$1 AND device_id<>''`).catch(() => []),
@@ -72,15 +108,23 @@ export async function comfortBoard({ pool, owner, now = Date.now() }) {
     });
     const tv = tvs.find((x) => Number(x.room_id) === Number(r.room_id));
     const facts = {
-      climate: c ? { temp: c.temp === null ? null : Number(c.temp), humidity: c.humidity === null ? null : Number(c.humidity), readAt: c.read_at ? Number(c.read_at) : null } : null,
+      roomId: Number(r.room_id),
+      climate: c ? { temp: reading(c.temp), humidity: reading(c.humidity), readAt: reading(c.read_at) } : null,
       requests: reqs,
       orders: orders.filter((x) => Number(x.booking_id) === Number(r.booking_id)).map((x) => ({ id: Number(x.id), title: String(x.title_el), createdAt: Number(x.created_at) })),
       faults: faults.filter((x) => Number(x.room_id) === Number(r.room_id)).map((x) => ({ id: Number(x.id), severity: x.severity, description: String(x.description), reportedAt: Number(x.reported_at) })),
       tv: tv ? { lastSeenAt: tv.last_seen_at ? Number(tv.last_seen_at) : null } : null,
       wifiUsed, wifi: wifi.find((x) => Number(x.booking_id) === Number(r.booking_id)) ?? null,
     };
-    return { roomId: Number(r.room_id), code: String(r.code), bookingId: Number(r.booking_id), reference: String(r.reference), guest: String(r.guest_name ?? "").split(" ")[0], checkOut: String(r.check_out), ...scoreRoom(facts, now) };
+    return { roomId: Number(r.room_id), code: String(r.code), bookingId: Number(r.booking_id), reference: String(r.reference), guest: String(r.guest_name ?? "").split(" ")[0], checkOut: String(r.check_out), range: rangeFor(policy, r.room_id, now), ...scoreRoom(facts, now, policy) };
   });
   out.sort((a, b) => a.score - b.score || a.code.localeCompare(b.code));
-  return { at: now, rooms: out, summary: { rooms: out.length, act: out.filter((r) => r.level === "act").length, attention: out.filter((r) => r.level === "attention").length, ok: out.filter((r) => r.level === "ok").length } };
+  return { at: now, policy, rooms: out, summary: { rooms: out.length, act: out.filter((r) => r.level === "act").length, attention: out.filter((r) => r.level === "attention").length, ok: out.filter((r) => r.level === "ok").length } };
+}
+
+/** Saves the hotel's comfort policy (normalised; invalid values fall back to the defaults). */
+export async function saveComfortPolicy({ pool, owner, settings, by, now = Date.now() }) {
+  const p = normalizePolicy(settings);
+  await pool.query(`INSERT INTO comfort_policies(owner_id,settings_json,updated_by,updated_at) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id) DO UPDATE SET settings_json=$2,updated_by=$3,updated_at=$4`, [owner, JSON.stringify(p), String(by).slice(0, 80), now]);
+  return p;
 }

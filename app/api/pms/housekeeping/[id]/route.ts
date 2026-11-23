@@ -114,8 +114,8 @@ async function handlePATCH(q: Request, { params }: { params: Promise<{ id: strin
         );
         // Back in service: schedule a fresh clean for the room's default housekeeper.
         await c.query(
-          `INSERT INTO housekeeping_tasks(owner_id,room_id,task_type,status,assigned_to,due_at,checklist_json,inspection_status)
-           SELECT $1,$2,'departure_clean','todo',(SELECT staff_user_id::text FROM housekeeping_staff_room_defaults WHERE owner_id=$1 AND room_id=$2 ORDER BY staff_user_id LIMIT 1),$3,'{}','pending'
+          `INSERT INTO housekeeping_tasks(owner_id,room_id,task_type,status,assigned_to,due_at,checklist_json,inspection_status,booking_id)
+           SELECT $1,$2,'departure_clean','todo',(SELECT staff_user_id::text FROM housekeeping_staff_room_defaults WHERE owner_id=$1 AND room_id=$2 ORDER BY staff_user_id LIMIT 1),$3,'{}','pending',(SELECT booking_id FROM housekeeping_tasks WHERE owner_id=$1 AND id=$4)
             WHERE NOT EXISTS (SELECT 1 FROM housekeeping_tasks WHERE owner_id=$1 AND room_id=$2 AND status IN ('todo','in_progress','cleaned') AND id<>$4)`,
           [u.ownerId, r.room_id, now, id],
         );

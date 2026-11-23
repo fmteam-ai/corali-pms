@@ -77,9 +77,12 @@ async function handlePATCH(request: Request, context: { params: Promise<{ id: st
         await client.query(`UPDATE rooms SET operational_status='dirty' WHERE owner_id=$1 AND id=$2 AND operational_status<>'out_of_order'`,[user.ownerId,next.roomId]);
         // The guest has left: their "Do not disturb" from the room TV no longer applies.
         await client.query(`UPDATE tv_screens SET dnd_since=NULL WHERE owner_id=$1 AND room_id=$2`,[user.ownerId,next.roomId]);
-        await client.query(`INSERT INTO housekeeping_tasks(owner_id,room_id,task_type,status,assigned_to,due_at,checklist_json,inspection_status)
-          SELECT $1,$2,'departure_clean','todo',(SELECT staff_user_id::text FROM housekeeping_staff_room_defaults WHERE owner_id=$1 AND room_id=$2 ORDER BY staff_user_id LIMIT 1),$3,'{}','pending'
-           WHERE NOT EXISTS (SELECT 1 FROM housekeeping_tasks WHERE owner_id=$1 AND room_id=$2 AND status IN ('todo','in_progress','cleaned'))`,[user.ownerId,next.roomId,now]);
+        // v194: the departure clean carries the booking it follows (turnover evidence is bound to this stay); an open
+        // task already in the room becomes this departure's clean.
+        await client.query(`INSERT INTO housekeeping_tasks(owner_id,room_id,task_type,status,assigned_to,due_at,checklist_json,inspection_status,booking_id)
+          SELECT $1,$2,'departure_clean','todo',(SELECT staff_user_id::text FROM housekeeping_staff_room_defaults WHERE owner_id=$1 AND room_id=$2 ORDER BY staff_user_id LIMIT 1),$3,'{}','pending',$4
+           WHERE NOT EXISTS (SELECT 1 FROM housekeeping_tasks WHERE owner_id=$1 AND room_id=$2 AND status IN ('todo','in_progress','cleaned'))`,[user.ownerId,next.roomId,now,id]);
+        await client.query(`UPDATE housekeeping_tasks SET booking_id=$3 WHERE owner_id=$1 AND room_id=$2 AND status IN ('todo','in_progress','cleaned') AND booking_id IS NULL`,[user.ownerId,next.roomId,id]);
         // v186: the room is no longer ready — tonight's OTA availability is sent again (it returns once approved).
         const today=hotelToday(); await enqueueAvailability(client,user.ownerId,today,today,"room_ready");
       }
