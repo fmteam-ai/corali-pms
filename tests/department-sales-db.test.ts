@@ -86,7 +86,10 @@ test("POS key: shown once, hash stored, bound to the department, revoked keys re
   try {
     const key = await (sales.createPosKey as (o: string, d: number, u: number, n: string) => Promise<string>)(o, 3, 1, "SoftOne");
     const row = (await database.query<{ key_hash: string }>(`SELECT key_hash FROM department_pos`)).rows[0];
-    assert.ok(!row.key_hash.includes(key.split("_")[2]));
+    // The secret part (after "cpos_<8>_") is never stored, only the SHA-256 of the whole key.
+    const secret = key.slice("cpos_".length + 9);
+    assert.ok(secret.length >= 32 && !row.key_hash.includes(secret));
+    assert.equal(row.key_hash, (await import("node:crypto")).createHash("sha256").update(key).digest("hex"));
     const require = sales.requirePosKey as (r: Request) => Promise<unknown>;
     assert.deepEqual(plain(await require(new Request("https://x/api/v1/pos/sales", { headers: { authorization: `Bearer ${key}` } }))), { ownerId: o, departmentId: 3, department: "Μπαρ" });
     await (sales.revokePosKey as (o: string, d: number) => Promise<void>)(o, 3);
