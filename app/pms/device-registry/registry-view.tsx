@@ -13,11 +13,15 @@ const LEVEL: Record<string, { el: string; en: string; cls: string }> = {
 };
 const STATE: Record<string, { el: string; cls: string }> = {
   VERIFIED: { el: "ισχύει", cls: "ok" }, EXPIRED: { el: "έληξε — χρειάζεται νέα δοκιμή", cls: "warn" }, REVALIDATION_REQUIRED: { el: "χρειάζεται επανεπιβεβαίωση (αλλαγή firmware/υλικού)", cls: "warn" },
-  FAILED: { el: "απέτυχε", cls: "fail" }, REVOKED: { el: "ανακλήθηκε", cls: "fail" }, NOT_TESTED: { el: "δεν δοκιμάστηκε", cls: "inactive" }, NOT_APPLICABLE: { el: "—", cls: "inactive" },
+  FAILED: { el: "απέτυχε", cls: "fail" }, CLOCK_SKEW: { el: "χρόνος μεταγενέστερος του ρολογιού του PMS — δεν ισχύει", cls: "fail" }, SIGNATURE_INVALID: { el: "η υπογραφή της αυτόματης εγγραφής δεν επαληθεύεται — δεν ισχύει", cls: "fail" }, REVOKED: { el: "ανακλήθηκε", cls: "fail" }, NOT_TESTED: { el: "δεν δοκιμάστηκε", cls: "inactive" }, NOT_APPLICABLE: { el: "—", cls: "inactive" },
 };
 const FN: Record<string, string> = { power: "On/Off", setpoint: "Θερμοκρασία ρύθμισης", mode: "Λειτουργία (mode)", fan: "Ανεμιστήρας", room_temperature: "Θερμοκρασία χώρου" };
 const VER: Record<string, string> = { PROBE: "AC Probe", MANUALLY_ATTESTED: "χειροκίνητη βεβαίωση", AUTOMATIC_READBACK_VERIFIED: "αυτόματη επαλήθευση με νέα ανάγνωση" };
 const ERRORS: Record<string, string> = {
+  REPORT_IN_THE_FUTURE: "Η ώρα της αναφοράς είναι μεταγενέστερη από το ρολόι του PMS (πάνω από 2′) — διορθώστε το ρολόι του υπολογιστή που έτρεξε το AC Probe.",
+  CALIBRATION_METHOD_REQUIRED: "Για θερμοκρασία χώρου δηλώστε τη μέθοδο αναφοράς (θερμόμετρο αναφοράς, θερμοστάτης τοίχου, οθόνη μονάδας).", TOLERANCE_REQUIRED: "Δηλώστε την ανοχή σε °C.", TOLERANCE_TOO_WIDE: "Η ανοχή δεν μπορεί να ξεπερνά 1,5 °C.",
+  TEMPERATURE_OUTSIDE_TOLERANCE: "Η τιμή διαφέρει από την αναφορά περισσότερο από την ανοχή — πιθανώς λάθος datapoint.", TEMPERATURE_OUT_OF_RANGE: "Τιμή εκτός λογικού εύρους — ελέγξτε τον συντελεστή κλίμακας (π.χ. 0,1) και τη μονάδα (°C/°F).",
+  MAPPING_NOT_NUMERIC: "Η τιμή πρέπει να είναι αριθμός.", REMOTE_CHANGE_NEEDS_ADAPTER: "Την αλλαγή από το τηλεχειριστήριο την καταγράφει μόνο το PMS μέσω πιστοποιημένου adapter.",
   NOT_AN_AC_PROBE_REPORT_V4: "Δεν είναι αναφορά AC Probe v4 ή νεότερη.", SHAREABLE_REPORT_HAS_NO_IDENTIFIERS: "Αυτή είναι η αναφορά κοινής χρήσης (χωρίς αναγνωριστικά) — εισάγετε την πλήρη, προστατευμένη αναφορά.",
   PREVIOUS_LEVEL_NOT_PROVEN: "Πρώτα πρέπει να ισχύει το προηγούμενο επίπεδο.", VALUES_REQUIRED: "Χρειάζονται οι τιμές που διαβάστηκαν.", MAPPING_REQUIRED: "Χρειάζεται η τιμή που διαβάστηκε και τι έδειξε η μονάδα.",
   MAPPING_DOES_NOT_MATCH: "Η τιμή που διαβάστηκε δεν ταιριάζει με αυτό που έδειξε η μονάδα.", FUNCTION_READ_NOT_CONFIRMED: "Πρώτα πρέπει να επιβεβαιωθεί η ανάγνωση αυτής της λειτουργίας.",
@@ -60,10 +64,19 @@ export function RegistryView({ lang, initial, canManage }: { lang: PmsLang; init
   function mapRead(u: Unit) {
     const fn = ask("Λειτουργία που επιβεβαιώνεται (power, setpoint, mode, fan, room_temperature):"); if (!fn) return;
     const dp = ask("Datapoint / πεδίο (π.χ. 2):") ?? "";
-    const value = ask("Τιμή που διαβάστηκε από το module:"); if (value === null) return;
-    const observed = ask("Τι έδειχνε η ίδια η μονάδα / το τηλεχειριστήριο εκείνη τη στιγμή:"); if (observed === null) return;
+    const value = ask("Τιμή που διαβάστηκε από το module (ακατέργαστη):"); if (value === null) return;
+    const numeric = fn === "setpoint" || fn === "room_temperature";
+    const scale = numeric ? Number((ask("Συντελεστής κλίμακας (1, ή 0.1 αν το module δίνει π.χ. 245 για 24,5 °C):", "1") ?? "1").replace(",", ".")) : undefined;
+    const unit = numeric ? ((ask("Μονάδα του module (C ή F):", "C") ?? "C").toUpperCase() === "F" ? "F" : "C") : undefined;
+    const observed = ask(fn === "room_temperature" ? "Θερμοκρασία αναφοράς την ίδια στιγμή (°C):" : "Τι έδειχνε η ίδια η μονάδα / το τηλεχειριστήριο εκείνη τη στιγμή:"); if (observed === null) return;
+    let method: string | undefined, tolerance: number | undefined;
+    if (fn === "room_temperature") {
+      method = ({ "1": "reference_thermometer", "2": "wall_thermostat", "3": "unit_display" } as Record<string, string>)[ask("Μέθοδος αναφοράς: 1 = θερμόμετρο αναφοράς, 2 = θερμοστάτης τοίχου, 3 = οθόνη μονάδας", "1") ?? ""];
+      tolerance = Number((ask("Ανοχή σε °C (έως 1,5):", "1") ?? "").replace(",", "."));
+    }
     const detail = ask("Πώς έγινε ο έλεγχος;") ?? "";
-    void post({ action: "evidence", unitId: u.id, level: "STATUS_READ", result: "PASS", method: "manual-mapping", function: fn, detail, functions: { mapping: { dp, value, observed } } }, el ? "Η αντιστοίχιση καταγράφηκε (χειροκίνητη βεβαίωση)." : "Mapping recorded.");
+    const num = (x: string) => (numeric && x.trim() !== "" && Number.isFinite(Number(x.replace(",", "."))) ? Number(x.replace(",", ".")) : x);
+    void post({ action: "evidence", unitId: u.id, level: "STATUS_READ", result: "PASS", method: "manual-mapping", function: fn, detail, functions: { mapping: { dp, value: num(value), observed: num(observed), ...(numeric ? { scale, unit } : {}), ...(method ? { method, tolerance } : {}) } } }, el ? "Η αντιστοίχιση καταγράφηκε (χειροκίνητη βεβαίωση)." : "Mapping recorded.");
   }
   function command(u: Unit) {
     const fn = ask("Ποια λειτουργία δοκιμάστηκε; (power, setpoint, mode, fan)"); if (!fn) return;
@@ -105,16 +118,17 @@ export function RegistryView({ lang, initial, canManage }: { lang: PmsLang; init
           <article key={u.id} className={`card rcArea st-${LEVEL[u.level].cls}`}>
             <header><h2>{u.room ? `${el ? "Δωμάτιο" : "Room"} ${u.room}` : u.label || `#${u.id}`}</h2></header>
             <p className="rcSummary"><b>{LEVEL[u.level][lang]}</b> · {m ? `${m.acBrand} ${m.acModel} · ${m.wifiModule}${m.firmware ? ` · fw ${m.firmware}` : ""}` : (el ? "μοντέλο δεν έχει οριστεί" : "model not set")} · {u.detected.protocol || "—"}</p>
+            {u.timeUncertain && <p className="rcItem lv-warn"><span className="rcDot" aria-hidden>⏱</span><span>{el ? "Τεκμήρια με απόκλιση ρολογιού: ισχύουν για ανάγνωση, όχι για αυτόματο έλεγχο." : "Evidence with clock skew: valid for reading, never for automatic control."}</span></p>}
             {u.revalidation && <p className="rcItem lv-warn"><span className="rcDot" aria-hidden>!</span><span>{el ? "Αλλαγή" : "Change"} {when(u.revalidation.at)}: {u.revalidation.reason} — {el ? "τεκμήρια πριν από αυτή δεν ισχύουν" : "earlier evidence no longer counts"}</span></p>}
             <ul className="rcItems">{(["DISCOVERED", "AUTHENTICATED", "STATUS_READ"] as const).map((l) => { const j = u.levels[l]; return <li key={l} className={`rcItem lv-${STATE[j.state].cls}`}><span className="rcDot" aria-hidden>{j.state === "VERIFIED" ? "✓" : "…"}</span><span><b>{LEVEL[l][lang]}</b>: {STATE[j.state].el}{j.lastVerifiedAt ? ` · τελευταία επιβεβαίωση ${when(j.lastVerifiedAt)}` : ""}{j.validUntil ? ` · ισχύει έως ${when(j.validUntil)}` : ""}</span></li>; })}</ul>
             <table className="table"><thead><tr><th>{el ? "Λειτουργία" : "Function"}</th><th>{el ? "Ανάγνωση" : "Read"}</th><th>{el ? "Εντολή" : "Command"}</th><th /></tr></thead>
-              <tbody>{data.functions.map((f) => { const s = u.functions[f]; return <tr key={f}><td>{FN[f]}{u.candidates[f] !== undefined ? <small className="muted"> (υποψήφιο: {String(u.candidates[f])})</small> : null}</td>
+              <tbody>{data.functions.map((f) => { const s = u.functions[f]; const guard = (u.allowed.guard as Record<string, { step: string; ok: boolean }[]>)[f]; return <tr key={f}><td>{FN[f]}{u.candidates[f] !== undefined ? <small className="muted"> (υποψήφιο: {String(u.candidates[f])})</small> : null}</td>
                 <td className={STATE[s.read.state].cls === "ok" ? "credit" : ""}>{STATE[s.read.state].el}{s.read.verification ? ` · ${VER[s.read.verification]}` : ""}</td>
-                <td className={STATE[s.command.state].cls === "ok" ? "credit" : s.command.state === "REVOKED" ? "debit" : ""}>{STATE[s.command.state].el}{s.command.verification ? ` · ${VER[s.command.verification]}` : ""}{u.allowed.automation[f as "power"] ? " · αυτόματος έλεγχος ✓" : ""}</td>
+                <td className={STATE[s.command.state].cls === "ok" ? "credit" : s.command.state === "REVOKED" ? "debit" : ""}>{STATE[s.command.state].el}{s.command.verification ? ` · ${VER[s.command.verification]}` : ""}{u.allowed.automation[f as "power"] ? " · αυτόματος έλεγχος ✓" : ""}{guard ? <><br /><small className="muted">Temperature Guard: {guard.map((g) => `${g.ok ? "✓" : "…"} ${({ read: "ανάγνωση", remote_change_detected: "αλλαγή τηλεχειριστηρίου εντοπίστηκε από το PMS", test_command_readback: "δοκιμαστική εντολή + νέα ανάγνωση (adapter)" } as Record<string, string>)[g.step]}`).join(" · ")}</small></> : null}</td>
                 <td>{canManage && s.command.state === "VERIFIED" && <button type="button" className="secondaryButton" disabled={busy} onClick={() => revoke(u, f)}>{el ? "Ανάκληση" : "Revoke"}</button>}</td></tr>; })}</tbody></table>
             {u.refs && <small className="muted">{el ? "Προστατευμένα στοιχεία" : "Protected"}: {u.refs.ip} · {u.refs.mac ?? "—"}{u.refs.tuyaDeviceId ? ` · ${u.refs.tuyaDeviceId}` : ""}</small>}
             <details><summary>{el ? "Ιστορικό δοκιμών" : "Test history"} ({u.evidence.length})</summary>
-              <ul className="rcItems">{u.evidence.map((e) => <li key={e.id} className={`rcItem lv-${e.result === "PASS" ? "ok" : e.result === "INCONCLUSIVE" ? "warn" : "fail"}`}><span className="rcDot" aria-hidden>{e.result === "PASS" ? "✓" : e.result === "INCONCLUSIVE" ? "?" : "✕"}</span><span><b>{LEVEL[e.level][lang]}{e.function ? ` · ${FN[e.function]}` : ""}</b> {e.result} — {e.detail} <small className="muted">{VER[e.verification] ?? e.verification} · {e.method} · {e.by} · {when(e.at)}</small></span></li>)}</ul>
+              <ul className="rcItems">{u.evidence.map((e) => <li key={e.id} className={`rcItem lv-${e.result === "PASS" ? "ok" : e.result === "INCONCLUSIVE" ? "warn" : "fail"}`}><span className="rcDot" aria-hidden>{e.result === "PASS" ? "✓" : e.result === "INCONCLUSIVE" ? "?" : "✕"}</span><span><b>{LEVEL[e.level][lang]}{e.function ? ` · ${FN[e.function]}` : ""}</b> {e.result} — {e.detail} <small className="muted">{VER[e.verification] ?? e.verification}{e.signed ? " · υπογεγραμμένο" : ""}{e.commandId ? ` · εντολή ${e.commandId.slice(0, 8)}` : ""}{e.clockSkewMs ? ` · απόκλιση ρολογιού ${Math.round(e.clockSkewMs / 1000)}″` : ""} · {e.method} · {e.by} · {when(e.at)}</small></span></li>)}</ul>
             </details>
             {canManage && <span>
               <button type="button" className="secondaryButton" disabled={busy} onClick={() => assign(u)}>{el ? "Μοντέλο / δωμάτιο" : "Model / room"}</button>{" "}

@@ -3,7 +3,8 @@ import { db } from "@/lib/db";
 import { assignUnit, deviceRegistry, importProbeReport, markHardwareChange, recordEvidence, revokeFunction, seedHotelModules } from "../scripts/device-compat-core.mjs";
 
 /** Network identifiers (IP / MAC / device id) are protected diagnostics: only for users who manage rooms. */
-export const registryFor = (ownerId: string, includeRefs: boolean) => deviceRegistry({ pool: db(), owner: ownerId, includeRefs });
+// Automatic (adapter) records are verified with the server key; the key never leaves the server.
+export const registryFor = (ownerId: string, includeRefs: boolean) => deviceRegistry({ pool: db(), owner: ownerId, includeRefs, signingKey: process.env.PMS_DOCUMENT_KEY ?? null });
 export const probeImported = (ownerId: string, report: unknown, by: string) => importProbeReport({ pool: db(), owner: ownerId, report, by });
 /** A person's record is always MANUALLY_ATTESTED (enforced in the core) — the API cannot claim an automatic one. */
 export const evidenceRecorded = (ownerId: string, x: { unitId: number; level: string; result: string; method: string; detail: string; function?: string; functions?: Record<string, unknown> }, by: string) => recordEvidence({ pool: db(), owner: ownerId, ...x, by });

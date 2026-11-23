@@ -24,7 +24,7 @@ const input = z.discriminatedUnion("action", [
   // A person's test record (always MANUALLY_ATTESTED). function: which function a read mapping / command test is for.
   z.object({ action: z.literal("evidence"), unitId: z.number().int().positive(), level, result: z.enum(["PASS", "FAIL", "INCONCLUSIVE"]), method: z.string().trim().min(2).max(80), detail: z.string().trim().max(300),
     function: z.enum(["", "power", "setpoint", "mode", "fan", "room_temperature"]).default(""),
-    functions: z.object({ raw: z.record(z.string(), value).optional(), mapping: z.object({ dp: z.string().max(20).optional(), value, observed: value }).optional(), command: z.object({ value }).optional(), before: z.object({ value }).optional(), after: z.object({ value }).optional() }).default({}) }),
+    functions: z.object({ raw: z.record(z.string(), value).optional(), mapping: z.object({ dp: z.string().max(20).optional(), value, observed: value, scale: z.number().positive().max(10).optional(), unit: z.enum(["C", "F"]).optional(), method: z.enum(["reference_thermometer", "wall_thermostat", "unit_display"]).optional(), tolerance: z.number().positive().max(5).optional() }).optional(), command: z.object({ value }).optional(), before: z.object({ value }).optional(), after: z.object({ value }).optional() }).default({}) }),
   z.object({ action: z.literal("revoke"), unitId: z.number().int().positive(), function: z.enum(["power", "setpoint", "mode", "fan"]), detail: z.string().trim().max(300) }),
   z.object({ action: z.literal("hardware_change"), unitId: z.number().int().positive(), reason: z.string().trim().max(200) }),
   z.object({ action: z.literal("seed_hotel_modules") }),

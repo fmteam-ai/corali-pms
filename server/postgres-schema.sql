@@ -2973,3 +2973,12 @@ ALTER TABLE device_compat_units ADD COLUMN IF NOT EXISTS revalidate_reason TEXT 
 ALTER TABLE device_compat_models ADD COLUMN IF NOT EXISTS target_level TEXT NOT NULL DEFAULT '';
 ALTER TABLE device_compat_models ADD COLUMN IF NOT EXISTS installed BIGINT NOT NULL DEFAULT 1;
 ALTER TABLE device_compat_models ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT '';
+
+-- v200 registry: an evidence fingerprint (an imported record is stored once even when two imports run at the same
+-- time), the clock skew a record was accepted with, and the signed, adapter-produced records (command id, adapter).
+ALTER TABLE device_compat_evidence ADD COLUMN IF NOT EXISTS fingerprint TEXT;
+ALTER TABLE device_compat_evidence ADD COLUMN IF NOT EXISTS clock_skew_ms BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE device_compat_evidence ADD COLUMN IF NOT EXISTS command_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE device_compat_evidence ADD COLUMN IF NOT EXISTS adapter TEXT NOT NULL DEFAULT '';
+ALTER TABLE device_compat_evidence ADD COLUMN IF NOT EXISTS signature TEXT NOT NULL DEFAULT '';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_device_compat_evidence_fp ON device_compat_evidence(owner_id,fingerprint);

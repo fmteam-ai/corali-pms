@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
-import { EVIDENCE_TTL_DAYS, allowedOperations, assignUnit, deviceRegistry, importProbeReport, markHardwareChange, probeEvidence, recordAutomaticCommandTest, recordEvidence, revokeFunction, seedHotelModules, unitState, validateEvidence } from "../scripts/device-compat-core.mjs";
+import { CLOCK_SKEW_MS, EVIDENCE_TTL_DAYS, allowedOperations, assignUnit, deviceRegistry, importProbeReport, markHardwareChange, observeRemoteChange, probeEvidence, recordEvidence, registerAdapter, revokeFunction, runAdapterCommandTest, seedHotelModules, unitState, validateEvidence } from "../scripts/device-compat-core.mjs";
 
 const o = "hotel-corali", DAY = 86_400_000;
 type Row = Record<string, unknown>;
@@ -10,7 +10,11 @@ async function fresh() {
   const db = new PGlite();
   await db.exec(readFileSync("server/postgres-schema.sql", "utf8"));
   const query = async (sql: string, params: unknown[] = []) => { const r = await db.query<Row>(sql, params); return { rows: r.rows, rowCount: r.affectedRows || r.rows.length }; };
-  return { db, pool: { query } };
+  // One PGlite connection: transactions from connect() run one after another (PostgreSQL connections are serialised
+  // the same way by the row lock + the unique fingerprint index).
+  let chain: Promise<void> = Promise.resolve();
+  const connect = async () => { let release!: () => void; const prev = chain; chain = new Promise<void>((r) => { release = r; }); await prev; return { query, release }; };
+  return { db, pool: { query, connect } };
 }
 // A full (protected) AC Probe v4 report, as tools/ac-probe/ac_probe.py writes it.
 const report = (at = "2026-11-20T10:00:00+0200") => ({
@@ -107,35 +111,126 @@ test("v199 P2: evidence expires and a firmware / hardware change forces revalida
   } finally { await db.close(); }
 });
 
-test("v199 P2: MANUALLY_ATTESTED vs AUTOMATIC_READBACK_VERIFIED — only the PMS's own complete record authorises automatic control", async () => {
+const KEY = "k".repeat(32);
+// A fake device behind a certified-adapter interface: the only way automatic evidence is produced.
+function fakeDevice(deviceId: string, state: Record<string, unknown>, opts: { obey?: boolean; echoId?: boolean } = {}) {
+  let t = now0 + 10_000;
+  return {
+    state,
+    impl: {
+      read: async () => ({ deviceId, values: { ...state }, at: (t += 10) }),
+      send: async (_refs: unknown, fn: string, value: unknown, commandId: string) => { if (opts.obey !== false) state[fn] = value; return { ok: true, commandId: opts.echoId === false ? "other" : commandId, at: (t += 10) }; },
+    },
+  };
+}
+
+test("v200 P2: automatic evidence only from a certified adapter — same physical unit, command id, new read, signed; Temperature Guard order", async () => {
   const { db, pool } = await fresh();
   try {
     await importProbeReport({ pool, owner: o, report: report(), by: "M", now: now0 });
     const id = (await deviceRegistry({ pool, owner: o, includeRefs: true, now: now0 })).units.find((x) => x.refs!.ip === "192.168.10.21")!.id;
     await recordEvidence({ pool, owner: o, unitId: id, level: "STATUS_READ", result: "PASS", method: "manual-mapping", function: "setpoint", detail: "DP 2 = 24 και η οθόνη έδειχνε 24", functions: { mapping: { dp: "2", value: 24, observed: 24 } }, by: "N", now: now0 });
-    // A person's command test: recorded, but MANUALLY_ATTESTED (the API cannot claim automatic).
-    const m = await recordEvidence({ pool, owner: o, unitId: id, level: "COMMAND_CONFIRMED", result: "PASS", method: "manual-test", function: "setpoint", detail: "εντολή 22 από την εφαρμογή, η οθόνη έδειξε 22", functions: { command: { value: 22 }, before: { value: 24 }, after: { value: 22 } }, by: "N", now: now0 + 1000 });
-    assert.equal(m.ok, true);
-    let u = (await deviceRegistry({ pool, owner: o, now: now0 + 2000 })).units.find((x) => x.id === id)!;
-    assert.equal(u.allowed.commands.setpoint, "MANUALLY_ATTESTED");
-    assert.equal(u.allowed.automation.setpoint, false, "no Temperature Guard on a manual attestation");
-    // The automatic path needs the full record in order: read before → request → device answer → new read.
-    const t = now0 + 3000;
-    const auto = (over: Row = {}) => recordAutomaticCommandTest({ pool, owner: o, unitId: id, function: "setpoint", value: 23, before: { value: 22, at: t }, request: { at: t + 10, payload: "dps 2=23" }, response: { at: t + 200, ok: true }, after: { value: 23, at: t + 3000 }, method: "tuya-local", now: t + 4000, ...over });
-    assert.equal((await auto({ response: { at: t + 200, ok: false } })).error, "DEVICE_DID_NOT_ACCEPT");
-    assert.equal((await auto({ after: { value: 23, at: t + 5 } })).error, "AUTOMATIC_RECORD_OUT_OF_ORDER");
-    assert.equal((await auto({ after: { value: 22, at: t + 3000 } })).error, "READBACK_DOES_NOT_MATCH");
-    assert.equal((await auto({ request: undefined })).error, "AUTOMATIC_RECORD_INCOMPLETE");
-    assert.equal((await auto()).ok, true);
-    u = (await deviceRegistry({ pool, owner: o, now: t + 5000 })).units.find((x) => x.id === id)!;
-    assert.deepEqual([u.allowed.commands.setpoint, u.allowed.automation.setpoint, u.allowed.automation.power], ["AUTOMATIC_READBACK_VERIFIED", true, false]);
-    // Revoke: the function stops at once (recorded, not deleted).
-    assert.equal((await revokeFunction({ pool, owner: o, unitId: id, function: "setpoint", detail: "η μονάδα αγνόησε δεύτερη εντολή", by: "N", now: t + 6000 })).ok, true);
-    u = (await deviceRegistry({ pool, owner: o, now: t + 7000 })).units.find((x) => x.id === id)!;
-    assert.deepEqual([u.allowed.commands.setpoint, u.allowed.automation.setpoint], [null, false]);
-    // The API route cannot reach the automatic path or set a verification.
+    let n = now0 + 20_000;
+    const clock = () => (n += 1000);
+    const run = (adapter: string, value = 22) => runAdapterCommandTest({ pool, owner: o, unitId: id, adapter, function: "setpoint", value, signingKey: KEY, now: clock });
+    assert.equal((await run("not-registered")).error, "NO_CERTIFIED_ADAPTER", "no adapter, no automatic evidence");
+    assert.equal((await runAdapterCommandTest({ pool, owner: o, unitId: id, adapter: "x", function: "setpoint", value: 22, signingKey: null, now: clock })).error, "SIGNING_KEY_REQUIRED");
+    registerAdapter("fake-other-unit", fakeDevice("bfOTHER", { setpoint: 24 }).impl);
+    assert.equal((await run("fake-other-unit")).error, "DEVICE_IDENTITY_MISMATCH", "a read from another physical unit is refused");
+    registerAdapter("fake-wrong-id", fakeDevice("bf1234567890abcdef", { setpoint: 24 }, { echoId: false }).impl);
+    assert.equal((await run("fake-wrong-id")).error, "COMMAND_ID_MISMATCH");
+    registerAdapter("fake-ignores", fakeDevice("bf1234567890abcdef", { setpoint: 24 }, { obey: false }).impl);
+    const ignored = await run("fake-ignores");
+    assert.deepEqual([ignored.error, ignored.recorded], ["READBACK_DOES_NOT_MATCH", true], "a failed read-back is recorded as a signed FAIL");
+    const dev = fakeDevice("bf1234567890abcdef", { setpoint: 24 });
+    registerAdapter("fake-good", dev.impl);
+    { const g = await run("fake-good"); assert.equal(g.ok, true, JSON.stringify(g)); }
+    let u = (await deviceRegistry({ pool, owner: o, now: n + 1000, signingKey: KEY })).units.find((x) => x.id === id)!;
+    assert.equal(u.allowed.commands.setpoint, "AUTOMATIC_READBACK_VERIFIED");
+    assert.equal(u.allowed.automation.setpoint, false, "the remote-change step is still missing");
+    assert.deepEqual(u.allowed.guard.setpoint.map((g) => [g.step, g.ok]), [["read", true], ["remote_change_detected", false], ["test_command_readback", true]]);
+    // Step 2: a person changes the remote; the PMS detects it through the adapter (no change → refused).
+    assert.equal((await observeRemoteChange({ pool, owner: o, unitId: id, adapter: "fake-good", function: "setpoint", signingKey: KEY, waitForChange: async () => {}, now: clock })).error, "NO_CHANGE_OBSERVED");
+    assert.equal((await observeRemoteChange({ pool, owner: o, unitId: id, adapter: "fake-good", function: "setpoint", signingKey: KEY, waitForChange: async () => { dev.state.setpoint = 25; }, now: clock })).ok, true);
+    u = (await deviceRegistry({ pool, owner: o, now: n + 1000, signingKey: KEY })).units.find((x) => x.id === id)!;
+    assert.equal(u.allowed.automation.setpoint, true);
+    assert.equal(u.allowed.automation.power, false);
+    // Revoking the function stops automatic control at once (recorded, not deleted).
+    const before = (await db.query<{ n: number }>(`SELECT count(*)::int n FROM device_compat_evidence`)).rows[0].n;
+    assert.equal((await revokeFunction({ pool, owner: o, unitId: id, function: "setpoint", detail: "η μονάδα αγνόησε δεύτερη εντολή", by: "N", now: n + 500 })).ok, true);
+    const revoked = (await deviceRegistry({ pool, owner: o, now: n + 1000, signingKey: KEY })).units.find((x) => x.id === id)!;
+    assert.deepEqual([revoked.allowed.commands.setpoint, revoked.allowed.automation.setpoint], [null, false]);
+    assert.equal((await db.query<{ n: number }>(`SELECT count(*)::int n FROM device_compat_evidence`)).rows[0].n, before + 1);
+    await db.query(`DELETE FROM device_compat_evidence WHERE result='REVOKED'`);
+    // Without the server key (or with a tampered record) the automatic records do not count.
+    assert.equal((await deviceRegistry({ pool, owner: o, now: n + 1000, signingKey: null })).units.find((x) => x.id === id)!.allowed.automation.setpoint, false);
+    await db.query(`UPDATE device_compat_evidence SET functions_json=replace(functions_json,'"value":22','"value":21') WHERE verification='AUTOMATIC_READBACK_VERIFIED' AND result='PASS' AND level='COMMAND_CONFIRMED'`);
+    u = (await deviceRegistry({ pool, owner: o, now: n + 1000, signingKey: KEY })).units.find((x) => x.id === id)!;
+    assert.equal(u.functions.setpoint.command.state, "SIGNATURE_INVALID");
+    assert.equal(u.allowed.automation.setpoint, false);
+    // A person cannot record a remote change or an automatic verification through the manual path.
+    assert.equal((await recordEvidence({ pool, owner: o, unitId: id, level: "STATUS_READ", result: "PASS", method: "manual", function: "setpoint", detail: "άλλαξα το τηλεχειριστήριο σε 26", functions: { remoteChange: { before: { value: 24, at: 1 }, after: { value: 26, at: 2 } } }, by: "N", now: n })).error, "REMOTE_CHANGE_NEEDS_ADAPTER");
     const route = readFileSync("app/api/pms/device-registry/route.ts", "utf8");
-    assert.doesNotMatch(route, /recordAutomaticCommandTest|verification/);
+    assert.doesNotMatch(route, /runAdapterCommandTest|observeRemoteChange|registerAdapter|verification|signature/);
+  } finally { await db.close(); }
+});
+
+test("v200 P2: a record dated after the PMS clock is CLOCK_SKEW, never VERIFIED; an accepted skew is time-uncertain and never automates", async () => {
+  const future = now0 + 3 * 60_000;
+  const s = unitState(statusRead(future), { now: now0 });
+  assert.equal(s.level, "NONE", "the reported case: three records 3′ in the future → not STATUS_READ");
+  assert.equal(s.levels.DISCOVERED.state, "CLOCK_SKEW");
+  assert.equal(s.levels.DISCOVERED.skewMs, 3 * 60_000);
+  const skewed = statusRead(now0).map((e) => ({ ...e, clockSkewMs: 60_000 }));
+  const s2 = unitState(skewed, { now: now0 + 1000 });
+  assert.equal(s2.level, "STATUS_READ");
+  assert.equal(s2.timeUncertain, true);
+  assert.equal(s2.levels.DISCOVERED.timeUncertain, true);
+  const { db, pool } = await fresh();
+  try {
+    const at = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "+0000");
+    const tooFar = await importProbeReport({ pool, owner: o, report: report(at(now0 + CLOCK_SKEW_MS + 60_000)), by: "M", now: now0 });
+    assert.equal(tooFar.error, "REPORT_IN_THE_FUTURE");
+    const near = await importProbeReport({ pool, owner: o, report: report(at(now0 + 60_000)), by: "M", now: now0 });
+    assert.deepEqual([near.ok, near.clockSkewMs], [true, 60_000], "the skew is recorded");
+    let u = (await deviceRegistry({ pool, owner: o, includeRefs: true, now: now0 })).units.find((x) => x.refs!.ip === "192.168.10.21")!;
+    assert.equal(u.level, "NONE", "still ahead of the PMS clock");
+    u = (await deviceRegistry({ pool, owner: o, includeRefs: true, now: now0 + 5 * 60_000 })).units.find((x) => x.refs!.ip === "192.168.10.21")!;
+    assert.deepEqual([u.level, u.timeUncertain], ["STATUS_READ", true]);
+    assert.ok(Object.values(u.allowed.automation).every((v) => v === false));
+  } finally { await db.close(); }
+});
+
+test("v200 P2: room temperature needs a calibration — unit, scale, documented method and a tolerance of at most 1.5 °C", () => {
+  const st = unitState(statusRead(now0), { now: now0 });
+  const v = (fn: string, mapping: Row) => validateEvidence({ level: "STATUS_READ", function: fn, result: "PASS", method: "manual-mapping", verification: "MANUALLY_ATTESTED", detail: "σύγκριση με θερμόμετρο αναφοράς", functions: { mapping } }, st);
+  assert.equal(v("room_temperature", { value: 27, observed: 26.4 }), "CALIBRATION_METHOD_REQUIRED", "the v199 gap: no rule at all");
+  assert.equal(v("room_temperature", { value: 27, observed: 26.4, method: "reference_thermometer" }), "TOLERANCE_REQUIRED");
+  assert.equal(v("room_temperature", { value: 27, observed: 26.4, method: "reference_thermometer", tolerance: 3 }), "TOLERANCE_TOO_WIDE");
+  assert.equal(v("room_temperature", { value: 27, observed: 26.4, method: "reference_thermometer", tolerance: 1 }), null, "a plausible sensor deviation");
+  assert.equal(v("room_temperature", { value: 27, observed: 24, method: "reference_thermometer", tolerance: 1 }), "TEMPERATURE_OUTSIDE_TOLERANCE", "a wrong datapoint");
+  assert.equal(v("room_temperature", { value: 270, observed: 27, method: "reference_thermometer", tolerance: 1 }), "TEMPERATURE_OUT_OF_RANGE", "a missing ×0.1 scale is caught");
+  assert.equal(v("room_temperature", { value: 270, scale: 0.1, observed: 27, method: "reference_thermometer", tolerance: 1 }), null);
+  assert.equal(v("room_temperature", { value: 80, unit: "F", observed: 26.8, method: "wall_thermostat", tolerance: 1 }), null, "°F converted (80 °F = 26.7 °C)");
+  assert.equal(v("setpoint", { value: 240, scale: 0.1, observed: 24 }), null, "setpoint with a documented scale");
+  assert.equal(v("setpoint", { value: 240, observed: 24 }), "TEMPERATURE_OUT_OF_RANGE");
+  assert.equal(v("mode", { value: "cold", observed: "heat" }), "MAPPING_DOES_NOT_MATCH");
+});
+
+test("v200 P2: two imports of the same report at the same time store every record once (fingerprint + transaction)", async () => {
+  const { db, pool } = await fresh();
+  try {
+    const results = await Promise.all([1, 2, 3].map(() => importProbeReport({ pool, owner: o, report: report(), by: "M", now: now0 })));
+    assert.ok(results.every((r) => r.ok));
+    const total = results.reduce((s2, r) => s2 + (r.evidence ?? 0), 0);
+    const rows = (await db.query<{ n: number }>(`SELECT count(*)::int n FROM device_compat_evidence`)).rows[0].n;
+    assert.equal(rows, total, "only what was actually inserted");
+    assert.equal(rows, results[0].evidence! || results.find((r) => r.evidence)!.evidence, "one import's worth");
+    const dup = await db.query<{ n: number }>(`SELECT count(*)::int n FROM (SELECT unit_id,level,function,method,at FROM device_compat_evidence GROUP BY 1,2,3,4,5 HAVING count(*)>1) x`);
+    assert.equal(dup.rows[0].n, 0);
+    // The database itself refuses a second copy, even without the code's checks.
+    const fp = (await db.query<{ fingerprint: string; unit_id: number }>(`SELECT fingerprint,unit_id FROM device_compat_evidence LIMIT 1`)).rows[0];
+    await assert.rejects(db.query(`INSERT INTO device_compat_evidence(owner_id,unit_id,level,result,method,recorded_by,at,fingerprint) VALUES($1,$2,'DISCOVERED','PASS','x','x',1,$3)`, [o, fp.unit_id, fp.fingerprint]), /duplicate key|unique/i);
   } finally { await db.close(); }
 });
 
