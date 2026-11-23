@@ -1,0 +1,143 @@
+{
+  "version": "v188",
+  "verdict": "PASS",
+  "at": "2026-11-23T10:02:53.201Z",
+  "durationMs": 36366,
+  "package": {
+    "file": "corali-pms-cpanel-v188-root.tar.gz",
+    "sha256": "fd03a20ce569563f6a8fa3f223c3dd28a82bc5c159fb7bb2c7b48553f1657c2a"
+  },
+  "commit": "0c0ef0e",
+  "node": "v22.23.5",
+  "database": "PostgreSQL 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1) (temporary cluster)",
+  "flows": [
+    {
+      "id": "F01",
+      "name": "Βάση δεδομένων: εγκατάσταση σχήματος και επανάληψη μεταναστεύσεων (idempotent)",
+      "status": "PASS",
+      "detail": "160 πίνακες, δύο εφαρμογές του σχήματος χωρίς σφάλμα · PostgreSQL 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1) (temporary cluster)",
+      "ms": 4173
+    },
+    {
+      "id": "F02",
+      "name": "Εφαρμογές πακέτου: εκκίνηση PMS και Booking, έλεγχος υγείας και έκδοσης",
+      "status": "PASS",
+      "detail": "PMS και Booking v188: υγιείς",
+      "ms": 1748
+    },
+    {
+      "id": "F03",
+      "name": "Διαθεσιμότητα σελίδας κρατήσεων: πωλήσιμο / σε προετοιμασία / εκτός λειτουργίας (σήμερα και αύριο)",
+      "status": "PASS",
+      "detail": "σήμερα: 101 (έτοιμο), 104 (έτοιμο σε 30′) · αύριο: +102 · 103 εκτός λειτουργίας ποτέ",
+      "ms": 78
+    },
+    {
+      "id": "F04",
+      "name": "Διαθεσιμότητα προς OTA (channel manager): ίδιος κανόνας με τη σελίδα κρατήσεων",
+      "status": "PASS",
+      "detail": "σήμερα 101:1 102:0 103:0 104:1 · αύριο 102:1 103:0",
+      "ms": 333
+    },
+    {
+      "id": "F05",
+      "name": "POS → folio: χρέωση δωματίου, επανάληψη χωρίς διπλή χρέωση, ακύρωση με αντιλογισμό",
+      "status": "PASS",
+      "detail": "€19.00 στο folio μία φορά · επανάληψη = duplicate · λάθος κλειδί 401 · ακύρωση → 0",
+      "ms": 152
+    },
+    {
+      "id": "F06",
+      "name": "Stripe webhook: υπογεγραμμένο event, διπλή παράδοση → μία κράτηση, μία πληρωμή, λάθος υπογραφή απορρίπτεται",
+      "status": "PASS",
+      "detail": "2 παραδόσεις → 1 κράτηση, 1 συναλλαγή, 1 πληρωμή €300 στο folio · λάθος υπογραφή απορρίφθηκε",
+      "ms": 93
+    },
+    {
+      "id": "F07",
+      "name": "Συμφωνία οικονομικών: καθαρή μετά τις F05–F06, εντοπίζει τεχνητή απόκλιση",
+      "status": "PASS",
+      "detail": "σύνολα: πάροχοι €300.00 = folio online €300.00 · ορφανή πληρωμή €42 εντοπίστηκε",
+      "ms": 24
+    },
+    {
+      "id": "F08",
+      "name": "Guest Journey: έλεγχος πριν την άφιξη, ειδοποίηση μία φορά, ανάκτηση, ιστορικό, επιβεβαίωση",
+      "status": "PASS",
+      "detail": "δωμάτιο μη έτοιμο → αποτυχία + 1 ειδοποίηση → έγκριση → επιτυχία · αποτυχημένο email → αυτόματη επανάληψη",
+      "ms": 54
+    },
+    {
+      "id": "F09",
+      "name": "Cron πακέτου: ολοκληρώνεται, υπενθύμιση υπολοίπου 1 μέρα πριν την αναχώρηση, καταγραφή κάθε βήματος",
+      "status": "PASS",
+      "detail": "υπενθύμιση υπολοίπου: failed (SMTP_NOT_CONFIGURED — χωρίς SMTP στη δοκιμή) · 10 βήματα cron καταγράφηκαν",
+      "ms": 285
+    },
+    {
+      "id": "F10",
+      "name": "Κλείδωμα Cloudflare + έλεγχοι εγκατάστασης (smoke) για PMS και Booking",
+      "status": "PASS",
+      "detail": "smoke OK και για τις δύο με το κλείδωμα ενεργό · αίτημα χωρίς κλειδί: HTTP 200",
+      "ms": 2230
+    },
+    {
+      "id": "F12",
+      "name": "Κέντρο αξιοπιστίας: εντοπίζει μεταβολή διαθεσιμότητας που δεν συγχρονίστηκε και την ξαναστέλνει",
+      "status": "PASS",
+      "detail": "εντοπίστηκε («Μεταβολή διαθεσιμότητας 2026-12-03 → 2026-12-05 (qa) δεν έχει συγχρονι…») και μπήκε ξανά σε συγχρονισμό · 8 περιοχές ελέγχθηκαν",
+      "ms": 24
+    },
+    {
+      "id": "F11",
+      "name": "Αυτόματα tests του κώδικα (unit / integration)",
+      "status": "PASS",
+      "detail": "433/433 PASS",
+      "ms": 26808
+    }
+  ],
+  "sandbox": [
+    {
+      "flow": "payments",
+      "name": "Stripe test: card payment succeeds and the amount matches",
+      "status": "NOT RUN",
+      "detail": "missing STRIPE_TEST_SECRET_KEY"
+    },
+    {
+      "flow": "payments",
+      "name": "Stripe test: the same request twice (idempotency key) creates one payment",
+      "status": "NOT RUN",
+      "detail": "missing STRIPE_TEST_SECRET_KEY"
+    },
+    {
+      "flow": "payments",
+      "name": "Stripe test: refund and reconciliation of the balance",
+      "status": "NOT RUN",
+      "detail": "missing STRIPE_TEST_SECRET_KEY"
+    },
+    {
+      "flow": "payments",
+      "name": "Stripe test: declined card is reported, not booked",
+      "status": "NOT RUN",
+      "detail": "missing STRIPE_TEST_SECRET_KEY"
+    },
+    {
+      "flow": "payments",
+      "name": "Viva demo: OAuth token",
+      "status": "NOT RUN",
+      "detail": "missing VIVA_DEMO_CLIENT_ID, VIVA_DEMO_CLIENT_SECRET"
+    },
+    {
+      "flow": "channel manager",
+      "name": "Channex staging: properties and room types readable",
+      "status": "NOT RUN",
+      "detail": "missing CHANNEX_STAGING_API_KEY"
+    },
+    {
+      "flow": "messaging",
+      "name": "WhatsApp Cloud API: test phone number reachable",
+      "status": "NOT RUN",
+      "detail": "missing WHATSAPP_TEST_TOKEN, WHATSAPP_TEST_PHONE_ID"
+    }
+  ]
+}
