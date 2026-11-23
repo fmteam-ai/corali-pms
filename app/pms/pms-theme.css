@@ -733,3 +733,26 @@ body:has(.pms){background:#f2f4f6}
 .pms .jyAction .actions{display:flex;gap:6px;flex-wrap:wrap}
 .pms .jyHistory{list-style:none;padding:0;margin:6px 0;display:grid;gap:4px;font-size:13px}
 .pms tr.jyBad td{background:rgba(208,59,59,.06)}
+
+/* v188: reliability center */
+.pms .rcPage{display:grid;gap:12px}
+.pms .rcBar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.pms .rcOverall{font-weight:800;padding:6px 12px;border-radius:999px;background:#e3f4e8;color:#1f6b37}
+.pms .rcOverall.st-warn{background:#fff4d6;color:#7a5600}
+.pms .rcOverall.st-fail{background:#fde8e8;color:#8a1f1f}
+.pms .rcGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+.pms .rcArea{display:grid;gap:8px;align-content:start;border-top:4px solid #1f8a4c}
+.pms .rcArea.st-warn{border-top-color:#eda100}
+.pms .rcArea.st-fail{border-top-color:#d03b3b}
+.pms .rcArea.st-inactive{border-top-color:#b8c2cc;opacity:.8}
+.pms .rcArea header{display:flex;gap:8px;align-items:center}
+.pms .rcArea h2{margin:0;font-size:17px}
+.pms .rcSummary{margin:0;font-weight:600}
+.pms .rcDot{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;font-weight:900;font-size:12px;background:#e3f4e8;color:#1f6b37;flex:none}
+.pms .st-warn .rcDot,.pms .lv-warn .rcDot{background:#fff4d6;color:#7a5600}
+.pms .st-fail .rcDot,.pms .lv-fail .rcDot{background:#fde8e8;color:#8a1f1f}
+.pms .st-inactive .rcDot{background:#eef2f5;color:#61788a}
+.pms .rcItems{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.pms .rcItem{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;font-size:14px}
+.pms .rcItem>span:nth-child(2){flex:1 1 200px}
+.pms .navRcBadge{display:inline-block;min-width:18px;padding:0 5px;border-radius:999px;background:#d03b3b;color:#fff;font-size:11px;font-weight:800;text-align:center;margin-left:4px}

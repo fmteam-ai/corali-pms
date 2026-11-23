@@ -244,6 +244,19 @@ try {
     } finally { await q(`UPDATE security_settings SET edge_enforce=0`); }
   });
 
+  await flow("F12", "Κέντρο αξιοπιστίας: εντοπίζει μεταβολή διαθεσιμότητας που δεν συγχρονίστηκε και την ξαναστέλνει", async () => {
+    const { checkReliability, recoverReliability } = await import(path.join(pmsDir, "scripts/reliability-core.mjs"));
+    const id = Number((await q(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,status,attempts,last_error,created_at,updated_at) VALUES($1,$2,$3,'qa','failed',4,'Channex 503 (QA)',$4,$4) RETURNING id`, [owner, addDays(today, 10), addDays(today, 12), Date.now() - 45 * 60_000])).rows[0].id);
+    const r = await checkReliability({ pool: db, owner });
+    const ch = r.areas.find((a) => a.key === "channel");
+    const it = ch.items.find((i) => i.key === `outbox:${id}`);
+    must(ch.status === "fail" && it && it.action?.type === "retry_outbox", `channel ${ch.status}: ${JSON.stringify(ch.items).slice(0, 200)}`);
+    must(await recoverReliability({ pool: db, owner, type: "retry_outbox", id }) === 1, "η επανάληψη δεν μπήκε στην ουρά");
+    must((await q(`SELECT status FROM channel_sync_outbox WHERE id=$1`, [id])).rows[0].status === "pending", "δεν επανήλθε σε αναμονή");
+    await q(`DELETE FROM channel_sync_outbox WHERE id=$1`, [id]);
+    return `εντοπίστηκε («${it.text.slice(0, 70)}…») και μπήκε ξανά σε συγχρονισμό · ${r.areas.length} περιοχές ελέγχθηκαν`;
+  });
+
   await flow("F11", "Αυτόματα tests του κώδικα (unit / integration)", async () => {
     const files = readdirSync(path.join(project, "tests")).filter((f) => f.endsWith(".test.ts")).map((f) => path.join("tests", f));
     const r = spawnSync(process.execPath, ["--experimental-strip-types", "--test", "--test-reporter=tap", ...files], { cwd: project, encoding: "utf8", timeout: 600_000, maxBuffer: 64 * 1024 * 1024 });

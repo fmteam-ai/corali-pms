@@ -2681,3 +2681,11 @@ CREATE INDEX IF NOT EXISTS idx_automation_failures ON automation_failures(owner_
 -- without its WHERE and every such insert failed (42P10). A full unique index on the same columns is equivalent
 -- (NULL references stay allowed, NULLs are distinct) and makes the inference work.
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_payment_provider_reference_all" ON "payment_transactions" ("provider", "provider_reference");
+
+-- v188 Operational Reliability Center: the problems already told (so each is notified once) and the last result.
+CREATE TABLE IF NOT EXISTS reliability_state (
+  owner_id TEXT PRIMARY KEY,
+  alerted_json TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'ok',
+  checked_at BIGINT NOT NULL DEFAULT 0
+);

@@ -16,6 +16,7 @@ import {runSecurityCheck} from "./security-worker.mjs";
 import {runCampaigns} from "./campaign-worker.mjs";
 import {advisorDue,runSalesAdvisor} from "./sales-advisor-worker.mjs";
 import {recordAutomation,runJourney} from "./journey-worker.mjs";
+import {runReliabilityAlerts} from "./reliability-core.mjs";
 import {runMailInbox} from "./mail-inbox-worker.mjs";
 import {runWhatsAppInboxSetup} from "./whatsapp-inbox-worker.mjs";
 import {normalizeBrand,renderBrandedEmail,stayDate,withFallbacks} from "./email-brand-core.mjs";
@@ -96,4 +97,6 @@ try{
  await track("WhatsApp inbox setup",runWhatsAppInboxSetup({pool,owner,credentials,origin:process.env.BOOKING_ORIGIN})).then(r=>r.ran&&console.log(`WhatsApp inbox setup: ${r.result}`)).catch(e=>console.error("WhatsApp inbox setup failed",e))
  // v187: Guest Journey Orchestrator every 2 minutes (readiness, instructions, comfort, TV welcome).
  if(new Date().getMinutes()%2===0)await limit("Guest journey",60_000,runJourney({pool,owner})).then(r=>(r.actions.length||r.counts.failed)&&console.log(`${new Date().toISOString()} Guest journey: ${r.bookings} stays, ${r.actions.length} action(s), ${r.counts.failed} failed`)).catch(e=>console.error("Guest journey failed",e instanceof Error?e.message:e))
+ // v188: Operational Reliability Center every 10 minutes: unfinished / failed tasks of every service → one PMS notification each.
+ if(new Date().getMinutes()%10===3)await limit("Reliability check",60_000,runReliabilityAlerts({pool,owner})).then(r=>r.told&&console.log(`${new Date().toISOString()} Reliability: ${r.told} new problem(s)`)).catch(e=>console.error("Reliability check failed",e instanceof Error?e.message:e))
  await whatsappTokenReminder().catch(e=>console.error("WhatsApp token reminder failed",e))}finally{await warm;await pool.end()}
