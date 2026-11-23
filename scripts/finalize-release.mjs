@@ -27,7 +27,7 @@ if (mode === "finalize") {
   for (const k of ["verdict", "commit", "at"]) if (evidence.qa?.[k] !== report[k]) fail(`evidence ${k} «${evidence.qa?.[k]}» ≠ report «${report[k]}»`);
   if (evidence.qa?.testedPackageSha256 !== report.package.sha256) fail("the evidence does not name the archive this report tested");
   const tested = report.package.tested ?? { file: report.package.file, sha256: report.package.sha256 };
-  report.package = { ...report.package, tested, final: { file: path.basename(archive), sha256: sha, contentHash: evidence.contentHash, files: evidence.files?.length ?? null, addedAfterQa: ["RELEASE-EVIDENCE.json"], finalizedAt: new Date().toISOString() } };
+  report.package = { ...report.package, tested, final: { file: path.basename(archive), sha256: sha, contentHash: evidence.contentHash, files: Array.isArray(evidence.files) ? evidence.files.length : evidence.files && typeof evidence.files === "object" ? Object.keys(evidence.files).length : null, addedAfterQa: ["RELEASE-EVIDENCE.json"], finalizedAt: new Date().toISOString() } };
   writeFileSync(jsonPath, JSON.stringify(report, null, 2));
   const md = readFileSync(mdPath, "utf8").split("\n");
   const i = md.findIndex((l) => l.startsWith("- Πακέτο:"));
