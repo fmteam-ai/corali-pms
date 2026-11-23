@@ -92,7 +92,7 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
   // Is the OTA-sync incident open right now? (kept open through the grace window: no false «recovered»)
   // (only a notified one — high / critical; a «low» from TESTING does not skip the grace after activation)
   const incidentOpen = (await one(pool, `SELECT 1 FROM alerts WHERE owner_id=$1 AND alert_key='rel:sync:ota' AND resolved_at IS NULL AND priority IN ('high','critical')`, [owner]).catch(() => [])).length > 0;
-  const channelStats = { credentials: chCredentials.reason, credentialsMissing: chCredentials.missing, failingSince: st?.failing_since == null ? null : Number(st.failing_since), incidentOpen,
+  const channelStats = { credentials: chCredentials.reason, credentialsMissing: chCredentials.missing, failingSince: st && !("failing_since" in st) ? undefined : st?.failing_since == null ? null : Number(st.failing_since), incidentOpen,
     connection: chState, live: Number(stats.live ?? 0), past: Number(stats.past ?? 0), soon: Number(stats.soon ?? 0), failed: Number(stats.failed ?? 0), oldestAt: stats.oldest == null ? null : Number(stats.oldest), oldestRange: oldestRow ? `${oldestRow.date_from}${oldestRow.date_to !== oldestRow.date_from ? ` → ${oldestRow.date_to}` : ""}, ${oldestRow.reason || "—"}` : null, lastRunAt: st?.last_run_at == null ? null : Number(st.last_run_at), lastOkAt: st?.last_ok_at == null ? null : Number(st.last_ok_at), lastError: st?.last_error || null };
   if (!channelOn) {
     if (chRow && Number(chRow.active) && !chCredentials.ok) info("channel", `Η σύνδεση Channel Manager είναι ενεργή αλλά ελλιπής (${chCredentials.reason === "MISSING" ? `λείπουν: ${chCredentials.missing.join(", ")}` : chCredentials.reason}) — θεωρείται μη ρυθμισμένη`);
@@ -113,7 +113,7 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
       add("channel", { key: `outbox:${o.id}`, level: syncDead ? "warn" : o.status === "failed" || Number(o.attempts) >= 3 || age > 30 * MIN ? "fail" : "warn", text: `Μεταβολή διαθεσιμότητας ${o.date_from}${o.date_to !== o.date_from ? ` → ${o.date_to}` : ""} (${o.reason || "—"}) δεν έχει συγχρονιστεί εδώ και ${ago(now, o.created_at)}${Number(o.attempts) ? ` · ${o.attempts} προσπάθειες` : ""}${o.err ? ` · ${o.err.slice(0, 120)}` : ""}`, action: { type: "retry_outbox", id: Number(o.id) }, at: Number(o.created_at) });
     }
     // v204: judged by the LATEST run (a failure after a recent success counts), after SYNC_FAIL_GRACE_MS of failing.
-    if (!syncDead && lastRunFailed(st) && now - (st?.failing_since != null && Number(st.failing_since) >= Number(st?.last_ok_at ?? 0) ? Number(st.failing_since) : Number(st?.last_ok_at ?? st?.last_run_at ?? now)) >= SYNC_FAIL_GRACE_MS) add("channel", { key: "sync:stale", level: "fail", text: `Η τελευταία εκτέλεση του συγχρονισμού απέτυχε · τελευταία επιτυχία ${st?.last_ok_at ? hhmm(st.last_ok_at) : "ποτέ"}${st?.last_error ? ` · ${String(st.last_error).slice(0, 120)}` : ""}`, action: { type: "sync_now" }, at: Number(st?.last_ok_at ?? st?.last_run_at ?? 0) });
+    if (!syncDead && lastRunFailed(st) && now - (st?.failing_since != null && Number(st.failing_since) >= Number(st?.last_ok_at ?? 0) ? Number(st.failing_since) : st?.last_ok_at != null ? Number(st.last_ok_at) : st && !("failing_since" in st) ? 0 : Number(st?.last_run_at ?? now)) >= SYNC_FAIL_GRACE_MS) add("channel", { key: "sync:stale", level: "fail", text: `Η τελευταία εκτέλεση του συγχρονισμού απέτυχε · τελευταία επιτυχία ${st?.last_ok_at ? hhmm(st.last_ok_at) : "ποτέ"}${st?.last_error ? ` · ${String(st.last_error).slice(0, 120)}` : ""}`, action: { type: "sync_now" }, at: Number(st?.last_ok_at ?? st?.last_run_at ?? 0) });
   }
   for (const b of otaNoRoom) add("channel", { key: `noroom:${b.id}`, level: "warn", text: `Κράτηση OTA ${b.reference} (${b.guest_name}, άφιξη ${b.check_in}) χωρίς δωμάτιο — τύπος ${b.external_room_type}`, link: `/pms/reservations?q=${encodeURIComponent(b.reference)}` });
   // v189 OTA reconciliation: what the PMS sells now ≠ what was last sent, with nothing queued to fix it.
@@ -347,8 +347,13 @@ export async function runReliabilityAlerts({ pool, owner, now = Date.now(), emai
   told += silent;
   // v204: an OTA-sync alert that closes because the connection was switched off / back to testing was NOT fixed —
   // it closes without a «recovered» notice.
+  // The same applies to every channel alert (OTA differences, sync) when the connection is not activated — except an
+  // OTA booking without a room, which concerns the PMS itself. And a per-item alert absorbed into its group
+  // («rel:ota:<range>» → «rel:ota:*») closes silently too: it was not fixed, it is now counted in the group.
   const activated = ["ACTIVE", "DEGRADED", "UNVERIFIED"].includes(r.integrations?.channelManager);
-  const resolved = await resolveAlerts({ pool, owner, activeKeys: incidents.map((i) => `rel:${i.key}`), now, silentKeys: activated ? [] : ["rel:sync:ota"] });
+  const groups = new Set(incidents.filter((i) => i.key.endsWith(":*")).map((i) => i.key.slice(0, -2)));
+  const closesSilently = (a) => (!activated && a.area === "channel" && !String(a.alert_key).startsWith("rel:noroom:")) || groups.has(String(a.alert_key).replace(/^rel:/, "").split(":")[0]);
+  const resolved = await resolveAlerts({ pool, owner, activeKeys: incidents.map((i) => `rel:${i.key}`), now, silent: closesSilently });
   const escalated = await escalateAlerts({ pool, owner, now, emails });
   await pool.query(`INSERT INTO reliability_state(owner_id,alerted_json,status,checked_at) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id) DO UPDATE SET alerted_json=$2,status=$3,checked_at=$4`, [owner, JSON.stringify(incidents.map((i) => i.key).slice(0, 300)), r.status, now]);
   return { status: r.status, told, resolved, escalated, failing: failing.length, alerts: incidents.length, incidents: incidents.map((i) => ({ key: i.key, priority: i.priority, count: i.count })) };

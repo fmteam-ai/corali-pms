@@ -454,9 +454,29 @@ test("v204 review 3: stale failure start ignored; a «low» from TESTING does no
     assert.equal(await n(db, `SELECT count(*)::int AS n FROM alerts WHERE alert_key='rel:sync:ota' AND resolved_at IS NULL`), 0);
     assert.equal(await n(db, `SELECT count(*)::int AS n FROM alert_outbox WHERE purpose='recovery'`), 0, "no false «recovered»");
   } finally { await db.close(); }
-  // The whole cron stopped → the automations incident only (the OTA «not running» is its symptom).
+  // Review 4: no cron correlation (it practically never applies to alerts — they run inside that cron — and made the
+  // Sentinel «verify» a recovery that did not happen). 12 OTA ranges are still ONE incident.
   const rel = { integrations: { channelManager: "ACTIVE" }, channelStats: { connection: "ACTIVE", credentials: "OK", live: 2, oldestAt: t0 - HOUR, lastRunAt: t0 - 2 * HOUR, lastOkAt: t0 - 2 * HOUR },
     areas: [{ key: "automations", el: "Cron", items: [{ key: "cron:stopped", level: "fail", text: "Το cron έχει σταματήσει" }] }, { key: "channel", el: "Channel", items: Array.from({ length: 12 }, (_, i) => ({ key: `ota:double:2026-12-${String(i + 1).padStart(2, "0")}`, level: "fail", text: `range ${i}` })) }] };
   const inc = buildIncidents(rel, t0).map((i) => i.key).sort();
-  assert.deepEqual(inc, ["cron:stopped", "ota:*"], "one incident per cause; 12 OTA ranges = one incident");
+  assert.deepEqual(inc, ["cron:stopped", "ota:*", "sync:ota"], "12 OTA ranges = one incident; no correlation filter");
+});
+
+test("v204 review 4: switching off closes every channel alert silently; items absorbed into a group close silently; schema-fallback grace", async () => {
+  const { channelIncident } = await import("../scripts/alert-intel-core.mjs");
+  // Schema update not run (failingSince undefined) and never succeeded → no endless grace.
+  assert.ok(channelIncident({ connection: "DEGRADED", credentials: "OK", live: 0, lastRunAt: t0 - MIN, lastOkAt: null, lastError: "HTTP_401", failingSince: undefined }, t0));
+  const { db, pool } = await fresh();
+  try {
+    await connection(db, 1, true);
+    await db.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at) VALUES($1,$2,$2)`, [o, t0 - MIN]);
+    // An open per-range OTA alert from an earlier version, already e-mailed (sent).
+    const id = Number((await db.query<{ id: number }>(`INSERT INTO alerts(owner_id,alert_key,area,severity,priority,details_json,title,link,created_at) VALUES($1,'rel:ota:double:2026-12-01','channel','fail','high','{"problem":"x"}','x','/',$2) RETURNING id`, [o, t0 - HOUR])).rows[0].id);
+    await db.query(`INSERT INTO alert_outbox(owner_id,alert_id,occurrence,channel,recipient,purpose,status,created_at,updated_at) VALUES($1,$2,1,'email',$3,'alert','sent',$4,$4)`, [o, id, ADMIN[0], t0 - HOUR]);
+    // Switched off → the alert closes, no «recovered».
+    await db.query(`UPDATE provider_connections SET active=0`);
+    await runReliabilityAlerts({ pool, owner: o, now: t0, emails: ADMIN });
+    assert.equal(await n(db, `SELECT count(*)::int AS n FROM alerts WHERE resolved_at IS NULL AND area='channel'`), 0);
+    assert.equal(await n(db, `SELECT count(*)::int AS n FROM alert_outbox WHERE purpose='recovery'`), 0, "no false «recovered» on switch-off");
+  } finally { await db.close(); }
 });

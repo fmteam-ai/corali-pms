@@ -539,15 +539,17 @@ try {
       // v204: that run is a FAILED run for the health of the connection (latest run after the last success, error kept).
       const ss = (await q(`SELECT last_run_at,last_ok_at,last_error FROM channel_sync_state WHERE owner_id=$1`, [owner])).rows[0];
       must(ss && Number(ss.last_run_at) > Number(ss.last_ok_at ?? 0) && /availability push: .*CHANNEX_WARNINGS/.test(ss.last_error ?? ""), `κατάσταση συγχρονισμού μετά από αποτυχημένη αποστολή: ${JSON.stringify(ss)}`);
-      warn = false;
-      // v204: the failure start is recorded; the next run has nothing due (the failed change waits for its retry) —
-      // it is NOT a success: the failure and its start are kept. After the change is sent, a run succeeds and clears it.
+      // v204: the failure start is recorded. The next run has nothing due, so it RE-TESTS the oldest failed change
+      // (health probe): still refused → still failed, the start kept. Channex fixed → the next run sends it and
+      // succeeds, clearing the failure — without waiting for the retry backoff.
       const fs1 = (await q(`SELECT failing_since FROM channel_sync_state WHERE owner_id=$1`, [owner])).rows[0]?.failing_since;
       must(fs1 != null, "failing_since δεν καταγράφηκε");
+      const probesBefore = posts.length;
       await sync();
       const ss2 = (await q(`SELECT last_run_at,last_ok_at,last_error,failing_since FROM channel_sync_state WHERE owner_id=$1`, [owner])).rows[0];
-      must(Number(ss2.last_run_at) > Number(ss2.last_ok_at ?? 0) && /περιμένουν επανάληψη/.test(ss2.last_error ?? "") && String(ss2.failing_since) === String(fs1), `εκτέλεση χωρίς αποστολή μετά από αποτυχία: ${JSON.stringify(ss2)}`);
-      await q(`UPDATE channel_sync_outbox SET next_attempt_at=0 WHERE owner_id=$1 AND status='failed'`, [owner]);
+      must(posts.length > probesBefore, "η αποτυχημένη αλλαγή δεν ξαναδοκιμάστηκε (health probe)");
+      must(Number(ss2.last_run_at) > Number(ss2.last_ok_at ?? 0) && /CHANNEX_WARNINGS/.test(ss2.last_error ?? "") && String(ss2.failing_since) === String(fs1), `εκτέλεση μετά από αποτυχία: ${JSON.stringify(ss2)}`);
+      warn = false;
       await sync();
       const ss3 = (await q(`SELECT last_run_at,last_ok_at,last_error,failing_since FROM channel_sync_state WHERE owner_id=$1`, [owner])).rows[0];
       must(String(ss3.last_ok_at) === String(ss3.last_run_at) && !ss3.last_error && ss3.failing_since == null, `επιτυχία μετά την επανάληψη: ${JSON.stringify(ss3)}`);

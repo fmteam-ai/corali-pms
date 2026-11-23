@@ -140,7 +140,7 @@ const lock = await pool.connect();
 let runId = null, runStatus = "ok", runError = "";
 // v204: a failed availability push inside an otherwise completed run makes the run FAILED (not «ok» with the error
 // wiped): last_run_at moves, last_ok_at does not, last_error keeps the reason.
-let pushError = null;
+let pushError = null, pushedOk = false;
 /** Writes the sync state; falls back to the pre-v204 columns if the schema update has not run yet (no failing_since). */
 const writeState = (sql, legacySql, params) => pool.query(sql, params).catch((e) => (e?.code === "42703" ? pool.query(legacySql, params) : Promise.reject(e)));
 /**
@@ -195,6 +195,10 @@ try {
   // 2) Push availability for queued ranges, including OTA bookings just imported. v192: every queue row is classified
   //    first (planOutbox): SENT candidates, OUT_OF_RANGE (beyond today+500, retried when they enter the window),
   //    SKIPPED (entirely past). Only rows whose dates this push really covered are marked sent.
+  // v204 health probe: when nothing is due but changes failed earlier, the OLDEST failed change is tried now — every
+  // run then really tests the push (no «recovered» while it still fails, no hour-long wait after it is fixed).
+  await pool.query(`UPDATE channel_sync_outbox SET next_attempt_at=0 WHERE id=(SELECT id FROM channel_sync_outbox WHERE owner_id=$1 AND status='failed' ORDER BY next_attempt_at,id LIMIT 1)
+    AND NOT EXISTS (SELECT 1 FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed') AND next_attempt_at<=$2)`, [owner, Date.now()]);
   const due = (await pool.query(`SELECT id,date_from,date_to,attempts FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed','out_of_range') AND next_attempt_at<=$2 ORDER BY id LIMIT 200`, [owner, Date.now()])).rows;
   const plan = planOutbox(due, today);
   const dayMs = (d) => Date.parse(`${d}T00:00:00Z`);
@@ -233,6 +237,7 @@ try {
         await pool.query(`UPDATE channel_sync_outbox SET date_to=$2 WHERE id=$1`, [x.id, x.keepTo]);
       }
       await pool.query(`UPDATE channel_sync_outbox SET status='sent',last_error=NULL,updated_at=$1 WHERE id=ANY($2::bigint[])`, [Date.now(), sendIds]);
+      pushedOk = sendIds.length > 0;
     } catch (error) {
       pushError = `availability push: ${String(error instanceof Error ? error.message : error).slice(0, 400)}`;
       for (const d of due.filter((x) => sendIds.includes(Number(x.id)))) await pool.query(`UPDATE channel_sync_outbox SET status='failed',attempts=attempts+1,last_error=$1,next_attempt_at=$2,updated_at=$3 WHERE id=$4`, [String(error).slice(0, 500), Date.now() + Math.min(60, 2 ** Number(d.attempts)) * 60_000, Date.now(), d.id]);
@@ -278,8 +283,9 @@ try {
       } catch (error) {
         // Not stored as sent: the same dates are tried again next run.
         console.error("restrictions push failed", m.room_type, String(error));
-        await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_error) VALUES($1,$2,$3) ON CONFLICT(owner_id) DO UPDATE SET last_error=$3`, [owner, Date.now(), `restrictions ${m.room_type}: ${String(error).slice(0, 400)}`]);
-        throw error;
+        // v204: the run fails with this reason (written once, by the run's failure handler — so the failure start is
+        // computed from the state as it was before this run).
+        throw new Error(`restrictions ${m.room_type}: ${String(error instanceof Error ? error.message : error).slice(0, 400)}`);
       }
     }
   }
@@ -313,15 +319,21 @@ try {
   // v204: a run that sent nothing is NOT proof that sending works — while earlier failed changes wait for their
   // retry, the failure continues (otherwise a broken push would look «recovered» between retries).
   if (!pushError) {
-    const waiting = (await pool.query(`SELECT count(*)::int AS n,max(last_error) AS err FROM channel_sync_outbox WHERE owner_id=$1 AND status='failed'`, [owner])).rows[0];
-    if (Number(waiting?.n ?? 0) > 0) pushError = `${waiting.n} μεταβολές περιμένουν επανάληψη μετά από αποτυχία: ${String(waiting.err ?? "").slice(0, 300)}`;
+    const n = Number((await pool.query(`SELECT count(*)::int AS n FROM channel_sync_outbox WHERE owner_id=$1 AND status='failed'`, [owner])).rows[0]?.n ?? 0);
+    if (n > 0 && pushedOk) {
+      // The push works again: the remaining failed changes go in the next run (no backoff wait).
+      await pool.query(`UPDATE channel_sync_outbox SET next_attempt_at=0 WHERE owner_id=$1 AND status='failed'`, [owner]);
+    } else if (n > 0) {
+      const err = (await pool.query(`SELECT last_error FROM channel_sync_outbox WHERE owner_id=$1 AND status='failed' ORDER BY updated_at DESC LIMIT 1`, [owner])).rows[0]?.last_error;
+      pushError = `${n} μεταβολές περιμένουν επανάληψη μετά από αποτυχία: ${String(err ?? "").slice(0, 300)}`;
+    }
   }
   if (pushError) {
     runStatus = "failed"; runError = pushError;
     await writeFailure(pushError);
   } else await writeState(
     `INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error,failing_since) VALUES($1,$2,$2,NULL,NULL) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$2,last_error=NULL,failing_since=NULL`,
-    `INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$2,NULL) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$2,last_error=NULL`, [owner, Date.now()]);;
+    `INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$2,NULL) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$2,last_error=NULL`, [owner, Date.now()]);
   console.log(`Channel sync: ${sendIds.length} availability range(s) sent, ${plan.outOfRange.length} beyond the horizon, ${plan.skipped.length} past, ${restrictionDays} restriction day(s), ${rateDays} rate day(s), ${imported} OTA revision(s) imported.`);
 } catch (error) {
   runStatus = "failed"; runError = String(error);

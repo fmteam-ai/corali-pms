@@ -7,7 +7,7 @@ export declare function alertRecipients(pool: Pool, owner: string, envList?: str
 export declare const ALERT_EMAIL_COOLDOWN_MS: number;
 export declare const ALERT_EMAILS_PER_HOUR: number;
 export declare function raiseAlert(x: { pool: Pool; owner: string; key: string; area?: string; severity?: "fail" | "warn"; priority?: "critical" | "high" | "medium" | "low" | null; title: string; titleEn?: string | null; link?: string; now?: number; emails?: string[] | null; notify?: boolean; details?: Record<string, unknown> | null }): Promise<{ id: number; fresh: boolean; worsened: boolean; notified: boolean }>;
-export declare function resolveAlerts(x: { pool: Pool; owner: string; activeKeys: string[]; prefix?: string; now?: number; silentKeys?: string[] }): Promise<number>;
+export declare function resolveAlerts(x: { pool: Pool; owner: string; activeKeys: string[]; prefix?: string; now?: number; silent?: ((alert: Record<string, unknown>) => boolean) | null }): Promise<number>;
 export declare function acknowledgeAlert(x: { pool: Pool; owner: string; id: number; by: string; now?: number }): Promise<boolean>;
 export declare function escalateAlerts(x: { pool: Pool; owner: string; now?: number; emails?: string[] | null }): Promise<number>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

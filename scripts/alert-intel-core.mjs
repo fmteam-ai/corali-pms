@@ -84,8 +84,10 @@ export function channelIncident(s, now) {
   if (runFailed) {
     // failingSince counts only if it is after the last success (a stale value is ignored); unknown → the last success
     // bounds it; never succeeded → the failed run.
+    // (failingSince === undefined: the schema update has not run — the start is unknown; never succeeded → the
+    // grace is not applied, otherwise it would restart at every run.)
     const fs = s.failingSince == null ? null : Number(s.failingSince);
-    const since = fs != null && fs >= Number(s.lastOkAt ?? 0) ? fs : Number(s.lastOkAt ?? s.lastRunAt);
+    const since = fs != null && fs >= Number(s.lastOkAt ?? 0) ? fs : s.lastOkAt != null ? Number(s.lastOkAt) : s.failingSince === undefined ? 0 : Number(s.lastRunAt);
     const failingFor = now - since;
     const failing = { ...base, priority: failingFor > 6 * HOUR ? "critical" : "high", problem: "Ο συγχρονισμός εκτελείται αλλά η τελευταία εκτέλεση απέτυχε — οι αλλαγές δεν φτάνουν στον Channel Manager." + soon,
       rootCause: `Επιβεβαιωμένο: ${evidence} Αποτυγχάνει συνεχώς εδώ και ${days(failingFor)}.`,
@@ -120,7 +122,8 @@ export function buildIncidents(reliability, now) {
       // v204: a channel manager that is not activated never alerts (TESTING / NOT_CONFIGURED / DISABLED).
       if (a.key === "channel" && reliability?.integrations && !["ACTIVE", "DEGRADED", "UNVERIFIED"].includes(reliability.integrations.channelManager) && !key.startsWith("noroom:")) continue;
       // Many items of one kind = one incident: «<kind>:<number>» and the per-range / per-room families.
-      const m = /^([a-z_]+):\d+$/i.exec(key) ?? /^(ota|ota-unsent|turnover-soon|noroom|recon):/.exec(key);
+      // (Per-range OTA reconciliation differences only: one cause, the channel sync. Other kinds stay separate.)
+      const m = /^([a-z_]+):\d+$/i.exec(key) ?? /^(ota|ota-unsent):/.exec(key);
       const gk = m ? `${m[1]}:*` : key;
       const g = groups.get(gk) ?? { key: gk, items: [] };
       g.items.push(i);
@@ -134,10 +137,7 @@ export function buildIncidents(reliability, now) {
         rootCause: null, causes: [], action: "Δείτε το Κέντρο αξιοπιστίας — κάθε εκκρεμότητα έχει την ενέργεια αποκατάστασης.", examples: g.items.slice(0, 5).map((i) => ({ key: i.key, text: i.text })) });
     }
   }
-  // v204 correlation: when the whole cron has stopped (automations), «the OTA sync does not run» is its symptom,
-  // not a second incident (one push / e-mail for one cause).
-  const cronDown = out.some((i) => i.area === "automations" && /^cron:(stopped|hung)$/.test(i.key));
-  return out.filter((i) => !(cronDown && i.key === "sync:ota" && i.cause === "not_running")).sort((x, y) => priorityRank(y.priority) - priorityRank(x.priority));
+  return out.sort((x, y) => priorityRank(y.priority) - priorityRank(x.priority));
 }
 
 /** The message (subject + text) of one delivery, in the incident format. purpose: alert · escalation · reminder:* · worsened · recovery. */

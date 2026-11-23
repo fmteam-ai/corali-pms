@@ -119,8 +119,8 @@ async function queueDeliveries(pool, owner, id, occurrence, priority, purpose, n
   }
 }
 
-export async function resolveAlerts({ pool, owner, activeKeys, prefix = "rel:", now = Date.now(), silentKeys = [] }) {
-  const r = await pool.query(`UPDATE alerts SET resolved_at=$3 WHERE owner_id=$1 AND resolved_at IS NULL AND alert_key LIKE $4 AND NOT (alert_key = ANY($2::text[])) RETURNING id,alert_key,occurrence,priority,details_json`, [owner, activeKeys, now, `${prefix}%`]);
+export async function resolveAlerts({ pool, owner, activeKeys, prefix = "rel:", now = Date.now(), silent = null }) {
+  const r = await pool.query(`UPDATE alerts SET resolved_at=$3 WHERE owner_id=$1 AND resolved_at IS NULL AND alert_key LIKE $4 AND NOT (alert_key = ANY($2::text[])) RETURNING id,alert_key,area,occurrence,priority,details_json`, [owner, activeKeys, now, `${prefix}%`]);
   if (!r.rows.length) return 0;
   // A resolved alert's pending deliveries of THIS occurrence are no longer needed (a pending «recovered» notice of an
   // earlier occurrence is still owed and stays).
@@ -128,8 +128,8 @@ export async function resolveAlerts({ pool, owner, activeKeys, prefix = "rel:", 
   // v202: ONE recovery notice, only to whoever was actually told about this occurrence (sent). A return that was
   // not e-mailed (cooldown) does not send «recovered» either, so a flapping problem stays quiet.
   // Alerts from before v202 (no incident details — e.g. one per queued row) are closed silently.
-  // … and so are alerts closed for a reason other than a fix (silentKeys, e.g. the connection was switched off).
-  for (const a of r.rows.filter((x) => String(x.details_json ?? "{}") !== "{}" && !silentKeys.includes(String(x.alert_key)))) {
+  // … and so are alerts closed for a reason other than a fix (silent(alert): e.g. the connection was switched off).
+  for (const a of r.rows.filter((x) => String(x.details_json ?? "{}") !== "{}" && !(silent && silent(x)))) {
     const told = (await pool.query(`SELECT DISTINCT channel,recipient FROM alert_outbox WHERE owner_id=$1 AND alert_id=$2 AND occurrence=$3 AND status='sent' AND purpose<>'recovery'`, [owner, a.id, a.occurrence])).rows;
     if (told.length) await queueDeliveries(pool, owner, Number(a.id), Number(a.occurrence), a.priority || "high", "recovery", now, told.filter((t) => t.channel === "email").map((t) => String(t.recipient)), new Set(told.map((t) => `${t.channel}|${t.recipient}`)));
   }

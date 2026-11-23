@@ -65,7 +65,7 @@ const bytes = (t) => Buffer.byteLength(t, "utf8");
 /** A message text from lines, within TEXT_MAX bytes: the head, the lines that fit, then «… και N ακόμη». */
 export function listText(head, lines) {
   let text = head, shown = 0;
-  const tail = (n) => `\n… και ${n} ακόμη — όλες στο log του watchdog (fly logs) και στο webhook`;
+  const tail = (n) => `\n… και ${n} ακόμη — όλες στο log του watchdog (fly logs)`;
   for (const l of lines) {
     const next = `${text}\n• ${l}`;
     if (bytes(next) + bytes(tail(lines.length)) > TEXT_MAX) break;
@@ -129,8 +129,13 @@ export function compactOutbox(outbox, label = "") {
 export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = (l) => console.log(l) } = {}) {
   let state = { checks: {}, outbox: [], progress: {} };
   if (cfg.stateFile) { try { state = { ...state, ...JSON.parse(readFileSync(cfg.stateFile, "utf8")) }; } catch { /* first start */ } }
+  // A damaged state file must not stop the watchdog: anything but the expected shapes is reset (and reported in the log).
+  if (!Array.isArray(state.outbox)) { log(JSON.stringify({ level: "error", event: "state_outbox_invalid" })); state.outbox = []; }
+  if (!state.checks || typeof state.checks !== "object") state.checks = {};
+  if (!state.progress || typeof state.progress !== "object") state.progress = {};
+  state.outbox = state.outbox.filter((m) => m && typeof m === "object" && typeof m.text === "string");
   // Messages saved by an older version may be longer than the channels accept.
-  for (const m of state.outbox ?? []) if (typeof m?.text === "string") m.text = clipText(m.text);
+  for (const m of state.outbox) m.text = clipText(m.text);
   // Returns false when the state could not be saved — reported as the «state_storage» check, never silent.
   let storageError = null;
   const persist = () => {
@@ -298,9 +303,14 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     persist();
     // v204: delivery has a time budget per cycle (a slow channel cannot stretch one cycle to an hour); what is left
     // waits for the next cycle, in order.
-    const pending = [], down = new Set(), deadline = now() + Math.max(10_000, cfg.intervalS * 1000 * 0.8);
-    // Most important first (critical «open» / «escalated» before reminders), otherwise in order.
-    const ordered = state.outbox.map((m, i) => ({ m, i })).sort((a, b) => priorityOf(a.m) - priorityOf(b.m) || a.i - b.i).map((x) => x.m);
+    const pending = [], down = new Set(), deadline = t + Math.max(10_000, cfg.intervalS * 1000 * 0.8); // from the cycle's start
+    // Most important CHECKS first, but the messages of one check always in their own order (an «open» is never
+    // overtaken by its «resolved», a «warning» by its «escalated»): each check's group is ranked by its most urgent
+    // message and its first position; batches / digests are groups of their own.
+    const groupOf = (m, i) => (m.check && m.check !== "*" ? m.check : `#${i}`);
+    const rank = new Map(), first = new Map();
+    state.outbox.forEach((m, i) => { const g = groupOf(m, i); rank.set(g, Math.min(rank.get(g) ?? 9, priorityOf(m))); if (!first.has(g)) first.set(g, i); });
+    const ordered = state.outbox.map((m, i) => ({ m, i, g: groupOf(m, i) })).sort((a, b) => rank.get(a.g) - rank.get(b.g) || first.get(a.g) - first.get(b.g) || a.i - b.i).map((x) => x.m);
     for (const msg of ordered) {
       if (now() > deadline) { pending.push(msg); continue; }
       if (!(await deliver(msg, down, deadline))) pending.push(msg);

@@ -364,3 +364,29 @@ test("v204 review 3 watchdog: a broken channel (401 / chat not found) never give
   assert.ok(order.indexOf(order.find((t) => t.includes("«pms»"))!) < order.findIndex((t) => t.startsWith("REMINDER")), `critical first: ${order.join(" | ")}`);
   assert.equal(wd.state().outbox.length, 0);
 });
+
+test("v204 review 4 watchdog: messages of one check keep their order; a damaged state file does not stop the watchdog", async () => {
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const clock = Date.parse("2026-11-24T10:00:00Z");
+  const order: string[] = [];
+  const fetchImpl = (async (url: string, init?: { body?: string }) => {
+    if (url.includes("hook")) { order.push((JSON.parse(String(init?.body)) as { text: string }).text); return new Response("ok"); }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const wd = createWatchdog(cfgFor({ pmsHealthUrl: "", heartbeatUrl: "" }), { fetchImpl, now: () => clock, sleep: async () => {}, log: () => {} });
+  (wd.state().outbox as { kind: string; check: string; text: string; severity?: string }[]).push(
+    { kind: "open", severity: "critical", check: "pms", text: "pms-open-1" },
+    { kind: "reminder", severity: "warning", check: "db", text: "db-reminder" },
+    { kind: "resolved", check: "pms", text: "pms-resolved" },
+    { kind: "resolved", check: "db", text: "db-resolved" },
+    { kind: "open", severity: "critical", check: "pms", text: "pms-open-2" });
+  await wd.cycle();
+  assert.deepEqual(order, ["pms-open-1", "pms-resolved", "pms-open-2", "db-reminder", "db-resolved"], "per check in order; the critical check first");
+  const dir = mkdtempSync(join(tmpdir(), "wd3-"));
+  writeFileSync(join(dir, "state.json"), JSON.stringify({ outbox: { broken: true }, checks: null }));
+  const w2 = createWatchdog(cfgFor({ pmsHealthUrl: "", heartbeatUrl: "", stateFile: join(dir, "state.json") }), { fetchImpl, now: () => clock, sleep: async () => {}, log: () => {} });
+  assert.deepEqual(w2.state().outbox, []);
+  await w2.cycle();
+});
