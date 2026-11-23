@@ -5,13 +5,17 @@ import { db } from "@/lib/db";
 import { enqueueAvailability } from "@/lib/channel-sync";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 import { addDays, hotelToday } from "@/lib/tape-chart";
-import { channelStatus, checkChannelConnection, newChannexWebhook } from "@/lib/channel-sync";
+import { activateChannel, channelStatus, checkChannelConnection, deactivateChannel, newChannexWebhook, verifyChannelActivation } from "@/lib/channel-sync";
 
 const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("map"), roomType: z.string().min(1).max(120), externalId: z.string().trim().max(120), ratePlanId: z.string().trim().max(120).default("") }),
   z.object({ action: z.literal("full_sync") }),
   z.object({ action: z.literal("check") }),
   z.object({ action: z.literal("webhook") }),
+  // v202 Integration lifecycle: prove the prerequisites, then activate (only then sync failures are alerted).
+  z.object({ action: z.literal("verify_activation") }),
+  z.object({ action: z.literal("activate") }),
+  z.object({ action: z.literal("deactivate") }),
 ]);
 
 export async function GET() {
@@ -27,6 +31,13 @@ async function handlePOST(request: Request) {
     assertTrustedOrigin(request);
     const x = input.parse(await request.json());
     if (x.action === "check") return Response.json({ ok: true, ...(await channelStatus(u.ownerId)), check: await checkChannelConnection(u.ownerId) });
+    const by = u.displayName || u.username;
+    if (x.action === "verify_activation") { const check = await verifyChannelActivation(u.ownerId, by); return Response.json({ ok: true, ...(await channelStatus(u.ownerId)), check }); }
+    if (x.action === "activate") {
+      const r = await activateChannel(u.ownerId, by);
+      return Response.json({ ok: r.ok, error: r.error, ...(await channelStatus(u.ownerId)) }, { status: r.ok ? 200 : 409 });
+    }
+    if (x.action === "deactivate") { await deactivateChannel(u.ownerId); return Response.json({ ok: true, ...(await channelStatus(u.ownerId)) }); }
     if (x.action === "webhook") { await newChannexWebhook(u.ownerId); return Response.json({ ok: true, ...(await channelStatus(u.ownerId)) }); }
     if (x.action === "map") {
       if (x.externalId) await db().query(`INSERT INTO channel_room_mappings(owner_id,room_type,external_room_type_id,external_rate_plan_id,updated_at) VALUES($1,$2,$3,$5,$4) ON CONFLICT(owner_id,room_type) DO UPDATE SET external_room_type_id=$3,external_rate_plan_id=$5,updated_at=$4`, [u.ownerId, x.roomType, x.externalId, Date.now(), x.ratePlanId || null]);

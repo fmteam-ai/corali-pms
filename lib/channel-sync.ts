@@ -5,7 +5,8 @@ import { decryptField, encryptField } from "@/lib/security/encryption";
 import { providerCredentials } from "@/lib/provider-connections";
 import { addDays, hotelToday } from "@/lib/tape-chart";
 import type { PoolClient } from "pg";
-import { AVAILABILITY_SQL, CHANNEX_HOSTS, sellable } from "../scripts/channel-core.mjs";
+import { AVAILABILITY_SQL, CHANNEX_HOSTS, PUSH_HORIZON_DAYS, sellable } from "../scripts/channel-core.mjs";
+import { PREREQUISITES, STATE_EL, activationReadiness, activateIntegration, deactivateIntegration, integrationStates, recordIntegrationCheck } from "../scripts/integration-state-core.mjs";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -29,7 +30,8 @@ export async function channelStatus(ownerId: string) {
   ]);
   const st = state.rows[0];
   const webhook = await channexWebhookInfo(ownerId);
-  return { webhook, roomTypes: types.rows, mappings: mappings.rows, outbox: outbox.rows, imports: imports.rows, lastRun: st ? { at: st.last_run_at === null ? null : Number(st.last_run_at), okAt: st.last_ok_at === null ? null : Number(st.last_ok_at), error: st.last_error as string | null } : null };
+  const lifecycle = await channelLifecycle(ownerId);
+  return { lifecycle, webhook, roomTypes: types.rows, mappings: mappings.rows, outbox: outbox.rows, imports: imports.rows, lastRun: st ? { at: st.last_run_at === null ? null : Number(st.last_run_at), okAt: st.last_ok_at === null ? null : Number(st.last_ok_at), error: st.last_error as string | null } : null };
 }
 
 
@@ -40,7 +42,34 @@ export type CheckItem = { key: string; ok: boolean | null; detail: string };
  * to a Channex room type of this property, Channex room counts, the availability Channex holds for the next 14 days
  * compared with what the PMS would send, and how many OTA revisions wait in the feed.
  */
-export async function checkChannelConnection(ownerId: string): Promise<{ items: CheckItem[]; channexRoomTypes: { id: string; title: string; rooms: number }[]; channexRatePlans: { id: string; title: string; roomTypeId: string }[] }> {
+/** v202 Integration lifecycle of the Channel Manager: state + the activation prerequisites and their evidence. */
+export async function channelLifecycle(ownerId: string) {
+  const states = await integrationStates({ pool: db(), owner: ownerId, providers: ["channelManager"] });
+  const checks = (await db().query(`SELECT check_key,ok,detail,checked_at FROM integration_checks WHERE owner_id=$1 AND provider_key='channelManager' ORDER BY checked_at DESC LIMIT 50`, [ownerId])).rows;
+  const s = states.channelManager;
+  return { state: s.state as string, stateEl: STATE_EL[s.state as keyof typeof STATE_EL], activatedAt: s.activatedAt, activatedBy: s.activatedBy, readiness: activationReadiness("channelManager", checks), prerequisites: PREREQUISITES.channelManager };
+}
+
+/**
+ * v202 activation check: the full connection check with the read-back over the whole push horizon (500 days), and
+ * the two prerequisites recorded as evidence: room / rate mapping verified, initial full reconciliation without
+ * differences. Read-only towards Channex.
+ */
+export async function verifyChannelActivation(ownerId: string, by: string) {
+  const check = await checkChannelConnection(ownerId, { readbackDays: PUSH_HORIZON_DAYS });
+  const maps = check.items.filter((i) => i.key.startsWith("map:") || i.key.startsWith("plan:"));
+  const mappingOk = check.items.some((i) => i.key.startsWith("map:")) && maps.every((i) => i.ok === true);
+  const bad = maps.filter((i) => i.ok !== true).map((i) => i.detail);
+  await recordIntegrationCheck({ pool: db(), owner: ownerId, provider: "channelManager", check: "room_rate_mapping", ok: mappingOk, detail: mappingOk ? `${maps.length} αντιστοιχίσεις τύπων / rate plans επαληθεύτηκαν στο Channex` : bad.join(" · ") || "Καμία αντιστοίχιση", by });
+  const rb = check.items.find((i) => i.key === "readback");
+  await recordIntegrationCheck({ pool: db(), owner: ownerId, provider: "channelManager", check: "initial_reconciliation", ok: rb?.ok === true, detail: rb?.detail ?? "Η σύγκριση δεν εκτελέστηκε", by });
+  return check;
+}
+
+export const activateChannel = (ownerId: string, by: string) => activateIntegration({ pool: db(), owner: ownerId, provider: "channelManager", by });
+export const deactivateChannel = (ownerId: string) => deactivateIntegration({ pool: db(), owner: ownerId, provider: "channelManager" });
+
+export async function checkChannelConnection(ownerId: string, opts: { readbackDays?: number } = {}): Promise<{ items: CheckItem[]; channexRoomTypes: { id: string; title: string; rooms: number }[]; channexRatePlans: { id: string; title: string; roomTypeId: string }[] }> {
   const items: CheckItem[] = [];
   const add = (key: string, ok: boolean | null, detail: string) => items.push({ key, ok, detail });
   const c = await providerCredentials(ownerId, "channelManager").catch(() => null);
@@ -87,8 +116,9 @@ export async function checkChannelConnection(ownerId: string): Promise<{ items: 
       else add(`plan:${t.room_type}`, true, `«${t.room_type}»: περιορισμοί → rate plan «${plan.title}».`);
     }
   }
-  // Read-back: what Channex holds now against what the PMS would send (next 14 days).
-  const today = hotelToday(), end = addDays(today, 13);
+  // Read-back: what Channex holds now against what the PMS would send (next 14 days; the whole horizon for activation).
+  const readbackDays = Math.max(1, Math.min(PUSH_HORIZON_DAYS, opts.readbackDays ?? 14));
+  const today = hotelToday(), end = addDays(today, readbackDays - 1);
   try {
     const [held, local] = await Promise.all([
       api(`/availability?filter[property_id]=${encodeURIComponent(property)}&filter[date][gte]=${today}&filter[date][lte]=${end}`),
@@ -102,7 +132,7 @@ export async function checkChannelConnection(ownerId: string): Promise<{ items: 
         if (Number(have) !== want) diffs.push(`${m.room_type} ${row.date}: Channex ${have ?? "—"}, PMS ${want}`);
       }
     }
-    add("readback", diffs.length === 0, diffs.length ? `Διαφορές διαθεσιμότητας (14 ημέρες): ${diffs.slice(0, 6).join(" · ")}${diffs.length > 6 ? ` · +${diffs.length - 6}` : ""}. Πατήστε «Πλήρης συγχρονισμός».` : "Η διαθεσιμότητα στο Channex ταιριάζει με το PMS για τις επόμενες 14 ημέρες.");
+    add("readback", diffs.length === 0, diffs.length ? `Διαφορές διαθεσιμότητας (${readbackDays} ημέρες): ${diffs.slice(0, 6).join(" · ")}${diffs.length > 6 ? ` · +${diffs.length - 6}` : ""}. Πατήστε «Πλήρης συγχρονισμός».` : `Η διαθεσιμότητα στο Channex ταιριάζει με το PMS για τις επόμενες ${readbackDays} ημέρες.`);
   } catch (e) {
     add("readback", null, `Δεν διαβάστηκε η διαθεσιμότητα από το Channex: ${e instanceof Error ? e.message : e}`);
   }

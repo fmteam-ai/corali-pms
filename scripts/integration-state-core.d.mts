@@ -1,0 +1,15 @@
+type Pool = { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
+export type IntegrationState = "NOT_CONFIGURED" | "DISABLED" | "TESTING" | "ACTIVE" | "DEGRADED";
+export declare const INTEGRATION_STATES: IntegrationState[];
+export declare const STATE_EL: Record<IntegrationState, string>;
+export declare const PREREQUISITES: Record<string, { key: string; el: string }[]>;
+export declare const PREREQUISITE_MAX_AGE_MS: number;
+export declare const ALERTING_STATES: Set<string>;
+export declare function integrationState(x: { row: Record<string, unknown> | null; activation?: Record<string, unknown> | null; healthy?: boolean | null }): IntegrationState;
+export declare function mayAlert(state: string): boolean;
+export type Readiness = { provider: string; ready: boolean; items: { key: string; el: string; ok: boolean; detail: string; checkedAt: number | null }[] };
+export declare function activationReadiness(provider: string, checks: Record<string, unknown>[], now?: number): Readiness;
+export declare function recordIntegrationCheck(x: { pool: Pool; owner: string; provider: string; check: string; ok: boolean; detail?: string; by?: string; now?: number }): Promise<void>;
+export declare function integrationStates(x: { pool: Pool; owner: string; providers?: string[] | null; health?: Record<string, boolean | null> }): Promise<Record<string, { state: IntegrationState; activatedAt: number | null; activatedBy: string | null }>>;
+export declare function activateIntegration(x: { pool: Pool; owner: string; provider: string; by: string; now?: number }): Promise<{ ok: boolean; error?: string; readiness: Readiness }>;
+export declare function deactivateIntegration(x: { pool: Pool; owner: string; provider: string; now?: number }): Promise<boolean>;

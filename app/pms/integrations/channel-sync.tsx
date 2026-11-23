@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 
-type Status = { webhook?: { url: string | null; lastAt: number | null }; roomTypes: { room_type: string; rooms: number }[]; mappings: { room_type: string; external_room_type_id: string; external_rate_plan_id: string }[]; outbox: { status: string; total: number; last: number | null; error: string | null }[]; imports: { revision_id: string; status: string; booking_ids: string; error: string | null; created_at: number }[]; lastRun: { at: number | null; okAt: number | null; error: string | null } | null };
+type Lifecycle = { state: string; stateEl: string; activatedAt: number | null; activatedBy: string | null; readiness: { ready: boolean; items: { key: string; el: string; ok: boolean; detail: string; checkedAt: number | null }[] } };
+type Status = { lifecycle?: Lifecycle; webhook?: { url: string | null; lastAt: number | null }; roomTypes: { room_type: string; rooms: number }[]; mappings: { room_type: string; external_room_type_id: string; external_rate_plan_id: string }[]; outbox: { status: string; total: number; last: number | null; error: string | null }[]; imports: { revision_id: string; status: string; booking_ids: string; error: string | null; created_at: number }[]; lastRun: { at: number | null; okAt: number | null; error: string | null } | null };
 type Check = { items: { key: string; ok: boolean | null; detail: string }[]; channexRoomTypes: { id: string; title: string; rooms: number }[]; channexRatePlans: { id: string; title: string; roomTypeId: string }[] };
 
 export function ChannelSyncPanel({ initial, canWrite }: { initial: Status; canWrite: boolean }) {
@@ -12,7 +13,10 @@ export function ChannelSyncPanel({ initial, canWrite }: { initial: Status; canWr
   async function post(body: object, ok: string) {
     const r = await fetch("/api/pms/channel-sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({}));
-    if (r.ok) { setStatus(d); setMsg(ok); if (d.check) setCheck(d.check); } else setMsg("Η αποθήκευση απέτυχε. / Saving failed.");
+    if (r.ok) { setStatus(d); setMsg(ok); if (d.check) setCheck(d.check); }
+    else if (d.error === "PREREQUISITES_NOT_MET") { setStatus(d); setMsg("Η ενεργοποίηση απορρίφθηκε: δεν έχουν αποδειχθεί όλες οι προϋποθέσεις."); }
+    else if (d.error === "NOT_CONFIGURED" || d.error === "DISABLED") { setStatus(d); setMsg("Ρυθμίστε και ενεργοποιήστε πρώτα τον πάροχο στις Συνδέσεις → Channel Manager."); }
+    else setMsg("Η αποθήκευση απέτυχε. / Saving failed.");
   }
   async function runCheck() {
     setChecking(true);
@@ -27,6 +31,21 @@ export function ChannelSyncPanel({ initial, canWrite }: { initial: Status; canWr
     <section className="wide channelSync">
       <h2>Channel Manager · συγχρονισμός OTA (Booking.com, Expedia, Airbnb)</h2>
       <p>Ρυθμίστε τον πάροχο στις Συνδέσεις → Channel Manager (Channex: property id και API key) και αντιστοιχίστε κάθε τύπο δωματίου. Κάθε κράτηση, ακύρωση, μετακίνηση ή δωμάτιο εκτός λειτουργίας ενημερώνει τη διαθεσιμότητα στα κανάλια· οι κρατήσεις OTA εισάγονται αυτόματα (cron run-channel-sync.mjs κάθε λεπτό).</p>
+      {status.lifecycle && (
+        <div className={`channelLifecycle state-${status.lifecycle.state}`} role="status">
+          <p><b>Κατάσταση σύνδεσης: {status.lifecycle.stateEl}</b> ({status.lifecycle.state}){status.lifecycle.activatedAt ? ` · ενεργοποιήθηκε ${new Date(status.lifecycle.activatedAt).toLocaleString("el-GR")} από ${status.lifecycle.activatedBy ?? "—"}` : ""}</p>
+          {status.lifecycle.state === "NOT_CONFIGURED" && <p>Channel Manager not configured — OTA synchronization inactive. Οι μεταβολές διαθεσιμότητας κρατούνται στο ιστορικό· δεν στέλνονται ειδοποιήσεις.</p>}
+          {status.lifecycle.state !== "NOT_CONFIGURED" && status.lifecycle.state !== "ACTIVE" && status.lifecycle.state !== "DEGRADED" && (
+            <>
+              <p>Πριν την ενεργοποίηση πρέπει να αποδειχθούν (οι αποτυχίες συγχρονισμού ειδοποιούνται μόνο μετά):</p>
+              <ul>{status.lifecycle.readiness.items.map((i) => <li key={i.key} className={i.ok ? "ok" : "bad"}><span aria-hidden>{i.ok ? "✅" : "❌"}</span>{i.el}{i.detail ? ` — ${i.detail.slice(0, 200)}` : ""}{i.checkedAt ? ` (${new Date(i.checkedAt).toLocaleString("el-GR")})` : ""}</li>)}</ul>
+              {canWrite && <button type="button" className="secondaryButton" disabled={checking} onClick={async () => { setChecking(true); try { await post({ action: "verify_activation" }, "Ο έλεγχος ενεργοποίησης ολοκληρώθηκε."); } finally { setChecking(false); } }}>{checking ? "Έλεγχος…" : "Έλεγχος προϋποθέσεων ενεργοποίησης (500 ημέρες)"}</button>}
+              {canWrite && <button type="button" className="primaryAction" disabled={!status.lifecycle.readiness.ready} onClick={() => post({ action: "activate" }, "Ο Channel Manager ενεργοποιήθηκε — οι αποτυχίες συγχρονισμού θα ειδοποιούνται.")}>Ενεργοποίηση</button>}
+            </>
+          )}
+          {canWrite && (status.lifecycle.state === "ACTIVE" || status.lifecycle.state === "DEGRADED") && <button type="button" className="secondaryButton" onClick={() => { if (confirm("Η σύνδεση επιστρέφει σε δοκιμή: οι αποτυχίες συγχρονισμού δεν θα ειδοποιούνται. Συνέχεια;")) void post({ action: "deactivate" }, "Η σύνδεση επέστρεψε σε δοκιμή."); }}>Επιστροφή σε δοκιμή</button>}
+        </div>
+      )}
       {canWrite && (
         <div className="channelCheck">
           <button type="button" className="primaryAction" disabled={checking} onClick={runCheck}>{checking ? "Έλεγχος…" : "Έλεγχος σύνδεσης Channex"}</button>

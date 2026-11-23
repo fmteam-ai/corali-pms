@@ -19,6 +19,11 @@ test("v188 reliability center: unfinished work per area, recovery, one alert per
 
     await db.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at) VALUES($1,$2,$3)`, [o, now - 60_000, now - 3 * 3_600_000]);
     await db.query(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,status,attempts,last_error,created_at,updated_at) VALUES($1,'2026-08-01','2026-08-03','direct_booking','failed',4,'Channex 503',$2,$2)`, [o, now - 45 * 60_000]);
+    // v202: a sync that ran is not enough — without a saved, activated connection the channel stays «inactive».
+    r = await checkReliability({ pool, owner: o, now });
+    assert.equal(r.areas.find((a) => a.key === "channel")?.status, "inactive");
+    await db.query(`INSERT INTO provider_connections(owner_id,provider_key,active,secrets_encrypted,updated_by,updated_at) VALUES($1,'channelManager',1,'sealed','qa',$2)`, [o, now]);
+    await db.query(`INSERT INTO integration_activation(owner_id,provider_key,activated_at,activated_by) VALUES($1,'channelManager',$2,'qa')`, [o, now - 86_400_000]);
     await db.query(`INSERT INTO rooms(id,owner_id,code,room_type,capacity,active,base_rate_cents,operational_status) VALUES(5,$1,'112','double',2,1,1,'clean')`, [o]);
     await db.query(`INSERT INTO bookings(id,owner_id,reference,guest_name,check_in,check_out,status,room_id,total_cents,balance_cents,created_at) VALUES(1,$1,'CR-1','Anna','2026-07-14','2026-07-18','checked_in',5,1,0,1)`, [o]);
     await db.query(`INSERT INTO message_deliveries(owner_id,booking_id,event_key,channel,scheduled_at,status,last_error,attempts,created_at,updated_at) VALUES($1,1,'checkin','email',$2,'failed','SMTP 550',3,$2,$2)`, [o, now - 3_600_000]);
@@ -122,7 +127,7 @@ test("v189 reliability center: heartbeat, devices never connected, backups, rele
   } finally { await db.close(); }
 });
 
-test("v190 every critical problem becomes an alert (none dropped beyond 40); at most 10 notifications + a summary", async () => {
+test("v190→v202 every critical problem is alerted (none dropped) — as ONE aggregated incident per kind, not one per row", async () => {
   const db = new PGlite();
   try {
     await db.exec(readFileSync("server/postgres-schema.sql", "utf8"));
@@ -131,11 +136,12 @@ test("v190 every critical problem becomes an alert (none dropped beyond 40); at 
     await db.query(`INSERT INTO bookings(id,owner_id,reference,guest_name,check_in,check_out,status,total_cents,balance_cents,created_at) VALUES(1,$1,'CR-1','Anna','2026-07-14','2026-07-18','checked_in',1,0,1)`, [o]);
     for (let i = 0; i < 45; i++) await db.query(`INSERT INTO fiscal_documents(owner_id,booking_id,payer,invoice_type,series,aa,issue_date,buckets_json,document_json,total_cents,status,attempts,last_error,created_by,created_at,updated_at) VALUES($1,1,'guest','11.1','A',$2,'2026-07-15','[]','{}',100,'failed',3,'AADE','system',$3,$3)`, [o, i + 1, now - 3_600_000]);
     const r = await runReliabilityAlerts({ pool, owner: o, now, emails: [] });
-    const alerts = Number((await db.query<{ n: number }>(`SELECT count(*)::int n FROM alerts WHERE alert_key LIKE 'rel:fiscal:%'`)).rows[0].n);
-    assert.equal(alerts, 45, "all 45 failing documents have an alert");
-    assert.equal(Number((await db.query<{ n: number }>(`SELECT count(*)::int n FROM alert_outbox`)).rows[0].n), 45 + r.failing - 45, "each one queued for delivery");
+    // v202 Alert Intelligence: the 45 failing documents are ONE incident (none dropped: the count is in it).
+    const alerts = (await db.query<{ alert_key: string; details_json: string }>(`SELECT alert_key,details_json FROM alerts WHERE alert_key LIKE 'rel:fiscal:%'`)).rows;
+    assert.deepEqual(alerts.map((a) => a.alert_key), ["rel:fiscal:*"], "one alert for all 45 documents");
+    assert.equal(JSON.parse(alerts[0].details_json).count, 45);
+    assert.ok(r.failing >= 45 && r.alerts < r.failing);
     const notes = (await db.query<{ title_el: string }>(`SELECT title_el FROM pms_notifications ORDER BY id`)).rows;
     assert.ok(notes.length <= 11);
-    assert.match(notes.at(-1)!.title_el, /Και \d+ ακόμη νέα προβλήματα/);
   } finally { await db.close(); }
 });

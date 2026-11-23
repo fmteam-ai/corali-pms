@@ -9,6 +9,7 @@ const hhmm = (t) => new Intl.DateTimeFormat("el-GR", { timeZone: "Europe/Athens"
 const worst = (items) => (items.some((i) => i.level === "fail") ? "fail" : items.some((i) => i.level === "warn") ? "warn" : "ok");
 const one = async (pool, sql, params) => (await pool.query(sql, params)).rows;
 import { heartbeatState } from "./job-control-core.mjs";
+import { integrationState, mayAlert } from "./integration-state-core.mjs";
 import { alertDeliveryIssues } from "./alert-core.mjs";
 import { otaReconcile, queueOtaResync } from "./ota-reconcile-core.mjs";
 import { turnoverBoard } from "./turnover-core.mjs";
@@ -34,7 +35,7 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
   const [outbox, syncState, channex, otaNoRoom, deliveries, stuckDeliveries, campaignFails, sessions, balanceLinks, fiscal, tvs, climate, ac, bridge, wifi, cards, hooks, steps] = await Promise.all([
     one(pool, `SELECT id,date_from,date_to,reason,status,attempts,COALESCE(last_error,'') err,created_at FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed','processing') AND created_at<$2::bigint-10*60000 ORDER BY created_at LIMIT 50`, P),
     one(pool, `SELECT last_run_at,last_ok_at,COALESCE(last_error,'') last_error,last_webhook_at FROM channel_sync_state WHERE owner_id=$1`, [owner]),
-    one(pool, `SELECT 1 FROM provider_connections WHERE owner_id=$1 AND provider_key IN ('channex','channelManager') AND active=1`, [owner]).catch(() => []),
+    one(pool, `SELECT p.provider_key,p.active,p.secrets_encrypted,a.activated_at,a.deactivated_at FROM provider_connections p LEFT JOIN integration_activation a ON a.owner_id=p.owner_id AND a.provider_key='channelManager' WHERE p.owner_id=$1 AND p.provider_key IN ('channex','channelManager') ORDER BY (p.provider_key='channelManager') DESC LIMIT 1`, [owner]),
     one(pool, `SELECT id,reference,guest_name,check_in,external_room_type FROM bookings WHERE owner_id=$1 AND room_id IS NULL AND external_room_type IS NOT NULL AND status='confirmed' AND check_in<=(to_char(now() AT TIME ZONE 'Europe/Athens','YYYY-MM-DD')::date+14)::text ORDER BY check_in LIMIT 30`, [owner]),
     one(pool, `SELECT d.id,d.event_key,d.channel,COALESCE(d.last_error,'') err,d.attempts,d.updated_at,b.reference,b.guest_name FROM message_deliveries d JOIN bookings b ON b.owner_id=d.owner_id AND b.id=d.booking_id WHERE d.owner_id=$1 AND d.status='failed' AND d.updated_at>$2::bigint-7*86400000 ORDER BY d.updated_at DESC LIMIT 50`, P),
     one(pool, `SELECT d.id,d.event_key,d.channel,d.status,d.scheduled_at,d.updated_at,b.reference FROM message_deliveries d JOIN bookings b ON b.owner_id=d.owner_id AND b.id=d.booking_id WHERE d.owner_id=$1 AND ((d.status='pending' AND d.scheduled_at<$2::bigint-20*60000 AND d.scheduled_at>$2::bigint-3*86400000) OR (d.status='processing' AND d.updated_at<$2::bigint-15*60000) OR (d.status='uncertain' AND d.updated_at>$2::bigint-7*86400000)) ORDER BY d.scheduled_at LIMIT 50`, P),
@@ -72,12 +73,35 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
   const info = (key, s) => { (areas[key] ??= { items: [], info: [] }).info.push(s); };
 
   // Booking & Channel Manager: every availability change must reach the OTAs; OTA bookings need a room.
-  const st = syncState[0], channelOn = channex.length > 0 || Boolean(st?.last_run_at);
-  for (const o of outbox) {
-    const age = now - Number(o.created_at);
-    add("channel", { key: `outbox:${o.id}`, level: o.status === "failed" || Number(o.attempts) >= 3 || age > 30 * MIN ? "fail" : "warn", text: `Μεταβολή διαθεσιμότητας ${o.date_from}${o.date_to !== o.date_from ? ` → ${o.date_to}` : ""} (${o.reason || "—"}) δεν έχει συγχρονιστεί εδώ και ${ago(now, o.created_at)}${Number(o.attempts) ? ` · ${o.attempts} προσπάθειες` : ""}${o.err ? ` · ${o.err.slice(0, 120)}` : ""}`, action: { type: "retry_outbox", id: Number(o.id) }, at: Number(o.created_at) });
+  // v202 Integration lifecycle: «not activated yet» is not «not working». NOT_CONFIGURED / DISABLED → one info
+  // notice, the queued changes are kept (history) but are not problems; TESTING → shown, never alerted; only an
+  // ACTIVATED connection (ACTIVE / DEGRADED) raises sync failures.
+  const st = syncState[0];
+  const chRow = channex[0] ?? null;
+  const chActivation = chRow?.activated_at ? { activated_at: chRow.activated_at, deactivated_at: chRow.deactivated_at } : null;
+  const syncDead = !st?.last_run_at || now - Number(st.last_run_at) > 30 * MIN;
+  const syncFailing = Boolean(st?.last_error) && (!st?.last_ok_at || now - Number(st.last_ok_at) > 30 * MIN);
+  const chState = integrationState({ row: chRow, activation: chActivation, healthy: !(syncDead || syncFailing) });
+  const channelOn = chState === "TESTING" || mayAlert(chState);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(new Date(now));
+  const in14 = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(new Date(now + 14 * 24 * HOUR));
+  const stats = (await one(pool, `SELECT count(*) FILTER (WHERE date_to>=$3)::int AS live,count(*) FILTER (WHERE date_to<$3)::int AS past,count(*) FILTER (WHERE date_to>=$3 AND date_from<=$4)::int AS soon,count(*) FILTER (WHERE date_to>=$3 AND status='failed')::int AS failed,min(created_at) FILTER (WHERE date_to>=$3) AS oldest FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed','processing') AND created_at<$2::bigint-10*60000`, [owner, now, today, in14]))[0] ?? {};
+  const live = outbox.filter((o) => String(o.date_to) >= today);
+  const oldestRow = live[0];
+  const channelStats = { connection: chState, live: Number(stats.live ?? 0), past: Number(stats.past ?? 0), soon: Number(stats.soon ?? 0), failed: Number(stats.failed ?? 0), oldestAt: stats.oldest == null ? null : Number(stats.oldest), oldestRange: oldestRow ? `${oldestRow.date_from}${oldestRow.date_to !== oldestRow.date_from ? ` → ${oldestRow.date_to}` : ""}, ${oldestRow.reason || "—"}` : null, lastRunAt: st?.last_run_at == null ? null : Number(st.last_run_at), lastOkAt: st?.last_ok_at == null ? null : Number(st.last_ok_at), lastError: st?.last_error || null };
+  if (!channelOn) {
+    info("channel", chState === "DISABLED" ? "Channel Manager disabled — OTA synchronization inactive (Ο Channel Manager είναι απενεργοποιημένος)" : "Channel Manager not configured — OTA synchronization inactive (Ο Channel Manager δεν έχει ρυθμιστεί)");
+    if (channelStats.live + channelStats.past) info("channel", `${channelStats.live + channelStats.past} μεταβολές διαθεσιμότητας διατηρούνται στο ιστορικό της ουράς — δεν είναι σφάλμα· θα καλυφθούν από την αρχική πλήρη σύγκριση κατά την ενεργοποίηση`);
+  } else {
+    if (chState === "TESTING") add("channel", { key: "integration:channelManager", level: "warn", text: "Ο Channel Manager είναι σε δοκιμή — δεν έχει ενεργοποιηθεί. Ολοκληρώστε την επαλήθευση αντιστοίχισης και την αρχική πλήρη σύγκριση διαθεσιμότητας (Συνδέσεις → Channel Manager → Ενεργοποίηση)", link: "/pms/integrations" });
+    if (channelStats.past) info("channel", `${channelStats.past} παλιές μεταβολές αφορούν μόνο ημερομηνίες που πέρασαν — δεν επηρεάζουν πωλήσεις`);
+    if (syncDead && live.length) add("channel", { key: "sync:not_running", level: "fail", text: `Ο συγχρονισμός με τον channel manager δεν εκτελείται (${st?.last_run_at ? `τελευταία εκτέλεση ${hhmm(st.last_run_at)}` : "δεν έχει εκτελεστεί ποτέ"}) — ${channelStats.live} μεταβολές διαθεσιμότητας σε αναμονή. Ελέγξτε το cron του scripts/run-channel-sync.mjs στο cPanel`, action: { type: "sync_now" }, at: Number(st?.last_run_at ?? 0) });
+    for (const o of live) {
+      const age = now - Number(o.created_at);
+      add("channel", { key: `outbox:${o.id}`, level: syncDead ? "warn" : o.status === "failed" || Number(o.attempts) >= 3 || age > 30 * MIN ? "fail" : "warn", text: `Μεταβολή διαθεσιμότητας ${o.date_from}${o.date_to !== o.date_from ? ` → ${o.date_to}` : ""} (${o.reason || "—"}) δεν έχει συγχρονιστεί εδώ και ${ago(now, o.created_at)}${Number(o.attempts) ? ` · ${o.attempts} προσπάθειες` : ""}${o.err ? ` · ${o.err.slice(0, 120)}` : ""}`, action: { type: "retry_outbox", id: Number(o.id) }, at: Number(o.created_at) });
+    }
+    if (!syncDead && st?.last_ok_at && now - Number(st.last_ok_at) > 30 * MIN && live.length) add("channel", { key: "sync:stale", level: "fail", text: `Τελευταίος επιτυχής συγχρονισμός ${hhmm(st.last_ok_at)}${st.last_error ? ` · ${st.last_error.slice(0, 120)}` : ""}`, action: { type: "sync_now" }, at: Number(st.last_ok_at) });
   }
-  if (channelOn && st?.last_ok_at && now - Number(st.last_ok_at) > 30 * MIN && outbox.length) add("channel", { key: "sync:stale", level: "fail", text: `Τελευταίος επιτυχής συγχρονισμός ${hhmm(st.last_ok_at)}${st.last_error ? ` · ${st.last_error.slice(0, 120)}` : ""}`, action: { type: "sync_now" }, at: Number(st.last_ok_at) });
   for (const b of otaNoRoom) add("channel", { key: `noroom:${b.id}`, level: "warn", text: `Κράτηση OTA ${b.reference} (${b.guest_name}, άφιξη ${b.check_in}) χωρίς δωμάτιο — τύπος ${b.external_room_type}`, link: `/pms/reservations?q=${encodeURIComponent(b.reference)}` });
   // v189 OTA reconciliation: what the PMS sells now ≠ what was last sent, with nothing queued to fix it.
   if (ota.active) {
@@ -112,7 +136,6 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
     else if (h.status === "hung") add("channel", { key: "cron:channel-sync:hung", level: "fail", text: `Ο συγχρονισμός channel manager τρέχει από ${hhmm(syncBeat.running_since)} χωρίς να τελειώνει`, at: Number(syncBeat.running_since) });
   }
   if (channelOn && st?.last_ok_at) info("channel", `Τελευταίος συγχρονισμός επιβεβαιωμένος ${hhmm(st.last_ok_at)}`);
-  if (!channelOn) info("channel", "Ο channel manager δεν είναι συνδεδεμένος");
 
   // Guest messaging: a failed or stuck message, failed campaign messages.
   for (const d of deliveries) add("messaging", { key: `delivery:${d.id}`, level: "fail", text: `${d.reference} · ${d.guest_name}: «${d.event_key}» (${d.channel}) απέτυχε · ${d.err.slice(0, 140) || "σφάλμα"} · ${d.attempts} προσπάθειες`, action: { type: "retry_delivery", id: Number(d.id) }, at: Number(d.updated_at) });
@@ -252,12 +275,16 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
     info("release", `Έλεγχος εγκατάστασης ${hhmm(rel.ran_at)}: ${checks.map((c) => `${c.status === "ok" ? "✓" : c.status === "warn" ? "!" : "✗"} ${c.name}`).join(" · ")}`);
   }
 
+  // v202: a connection in TESTING is shown, never alerted (its problems are warnings); NOT_CONFIGURED / DISABLED
+  // keep only what concerns the PMS itself (OTA bookings without a room).
+  if (areas.channel && chState === "TESTING") for (const i of areas.channel.items) if (i.level === "fail") i.level = "warn";
+  if (areas.channel && !channelOn) areas.channel.items = areas.channel.items.filter((i) => String(i.key).startsWith("noroom:"));
   const out = AREAS.map((a) => {
     const x = areas[a.key] ?? { items: [], info: [] };
     const inactive = a.key === "channel" && !channelOn && !x.items.length;
     return { key: a.key, el: a.el, en: a.en, status: inactive ? "inactive" : worst(x.items), summary: x.items.length ? `${x.items.length} ${x.items.length === 1 ? "θέμα" : "θέματα"}` : x.info[0] ?? "Χωρίς εκκρεμότητες", info: x.info, items: x.items.sort((p, q) => (p.level === q.level ? Number(q.at ?? 0) - Number(p.at ?? 0) : p.level === "fail" ? -1 : 1)) };
   });
-  return { at: now, status: out.some((a) => a.status === "fail") ? "fail" : out.some((a) => a.status === "warn") ? "warn" : "ok", areas: out };
+  return { at: now, status: out.some((a) => a.status === "fail") ? "fail" : out.some((a) => a.status === "warn") ? "warn" : "ok", areas: out, channelStats, integrations: { channelManager: chState } };
 }
 
 /** Recovery actions (the PMS «Επανάληψη» buttons). Returns how many tasks were queued again. */
@@ -288,23 +315,25 @@ export async function recoverReliability({ pool, owner, type, id = null, now = D
  */
 export async function runReliabilityAlerts({ pool, owner, now = Date.now(), emails = null }) {
   const { raiseAlert, resolveAlerts, escalateAlerts } = await import("./alert-core.mjs");
+  const { buildIncidents } = await import("./alert-intel-core.mjs");
   const r = await checkReliability({ pool, owner, now });
   const failing = r.areas.flatMap((a) => a.items.filter((i) => i.level === "fail").map((i) => ({ area: a, item: i })));
-  // v190: EVERY critical problem becomes an alert (none dropped), most important areas first. The PMS notification
-  // list gets at most 10 new entries per run plus one summary; every alert still gets its deliveries, which the
-  // alert outbox sends in order, 30 per minute.
-  const PRIORITY = ["payments", "channel", "automations", "turnover", "backups", "release", "mydata", "messaging", "network", "devices", "integrations"];
-  const rank = (k) => { const i = PRIORITY.indexOf(k); return i < 0 ? PRIORITY.length : i; };
-  failing.sort((a, b) => rank(a.area.key) - rank(b.area.key));
+  // v202 Alert Intelligence: one incident per real problem (aggregated, deduplicated, with severity and root cause)
+  // instead of one alert per pending row. The key does not depend on which rows are pending, so new rows of the same
+  // kind do not raise it again while it is open; the cooldown / escalation / recovery rules are in alert-core.
+  const incidents = buildIncidents(r, now);
+  const areaOf = (k) => r.areas.find((a) => a.key === k) ?? { el: k, en: k };
   let told = 0, silent = 0;
-  for (const f of failing) {
-    const res = await raiseAlert({ pool, owner, key: `rel:${f.item.key}`, area: f.area.key, severity: "fail", title: `${f.area.el}: ${f.item.text}`, titleEn: `${f.area.en}: problem (see Reliability center)`, link: "/pms/reliability", now, emails, notify: told < 10 });
-    if (res.fresh) { if (told < 10) told++; else silent++; }
+  for (const inc of incidents) {
+    const a = areaOf(inc.area);
+    const details = { service: inc.service, priority: inc.priority, problem: inc.problem, summary: inc.summary, rootCause: inc.rootCause, causes: inc.causes, action: inc.action, count: inc.count, oldestAt: inc.oldestAt, connection: inc.connection ?? null, examples: inc.examples ?? [] };
+    const res = await raiseAlert({ pool, owner, key: `rel:${inc.key}`, area: inc.area, priority: inc.priority, title: `${a.el}: ${inc.problem}`.slice(0, 300), titleEn: `${a.en}: ${inc.service} ${inc.priority} (see Reliability center)`, link: "/pms/reliability", now, emails, notify: told < 10, details });
+    if (res.fresh && res.notified) { if (told < 10) told++; else silent++; }
   }
   if (silent) await pool.query(`INSERT INTO pms_notifications(owner_id,kind,title_el,title_en,link,created_at) VALUES($1,'system',$2,$3,'/pms/reliability',$4)`, [owner, `⚠️ Και ${silent} ακόμη νέα προβλήματα — δείτε το Κέντρο αξιοπιστίας`, `⚠️ ${silent} more new problems — see the Reliability center`, now]);
   told += silent;
-  const resolved = await resolveAlerts({ pool, owner, activeKeys: failing.map((f) => `rel:${f.item.key}`), now });
+  const resolved = await resolveAlerts({ pool, owner, activeKeys: incidents.map((i) => `rel:${i.key}`), now });
   const escalated = await escalateAlerts({ pool, owner, now, emails });
-  await pool.query(`INSERT INTO reliability_state(owner_id,alerted_json,status,checked_at) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id) DO UPDATE SET alerted_json=$2,status=$3,checked_at=$4`, [owner, JSON.stringify(failing.map((f) => f.item.key).slice(0, 300)), r.status, now]);
-  return { status: r.status, told, resolved, escalated, failing: failing.length };
+  await pool.query(`INSERT INTO reliability_state(owner_id,alerted_json,status,checked_at) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id) DO UPDATE SET alerted_json=$2,status=$3,checked_at=$4`, [owner, JSON.stringify(incidents.map((i) => i.key).slice(0, 300)), r.status, now]);
+  return { status: r.status, told, resolved, escalated, failing: failing.length, alerts: incidents.length, incidents: incidents.map((i) => ({ key: i.key, priority: i.priority, count: i.count })) };
 }

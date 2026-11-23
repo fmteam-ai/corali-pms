@@ -6,14 +6,16 @@ import { sendStaffPush } from "@/lib/staff-push";
 import { sendEmail } from "@/lib/notifications/email";
 import { acknowledgeAlert, deliverAlerts, raiseAlert } from "../scripts/alert-core.mjs";
 import { heartbeatState } from "../scripts/job-control-core.mjs";
+import { formatAlertMessage } from "../scripts/alert-intel-core.mjs";
 
-type OutboxRow = { title: string; link: string; purpose: string; alert_id: number; recipient: string };
+type OutboxRow = { title: string; link: string; purpose: string; alert_id: number; recipient: string; priority?: string; details_json?: string };
 
 export const alertSenders = (ownerId: string) => ({
-  push: (row: OutboxRow) => sendStaffPush(ownerId, { desk: true }, { kind: "reliability", title: { el: String(row.title).slice(0, 120), en: "Corali PMS alert" }, body: { el: row.purpose === "escalation" ? "Υπενθύμιση: δεν έχει επιβεβαιωθεί" : "Κέντρο αξιοπιστίας", en: row.purpose === "escalation" ? "Reminder: not acknowledged" : "Reliability center" }, url: row.link || "/pms/reliability", tag: `alert-${row.alert_id}` }),
+  push: (row: OutboxRow) => sendStaffPush(ownerId, { desk: true }, { kind: "reliability", title: { el: `${row.purpose === "recovery" ? "✅ Αποκαταστάθηκε: " : row.purpose === "worsened" ? "⬆️ Επιδείνωση: " : ""}${String(row.title)}`.slice(0, 120), en: row.purpose === "recovery" ? "Corali PMS: recovered" : "Corali PMS alert" }, body: { el: row.purpose === "escalation" || row.purpose.startsWith("reminder") ? "Υπενθύμιση: δεν έχει επιβεβαιωθεί" : "Κέντρο αξιοπιστίας", en: row.purpose === "escalation" || row.purpose.startsWith("reminder") ? "Reminder: not acknowledged" : "Reliability center" }, url: row.link || "/pms/reliability", tag: `alert-${row.alert_id}` }),
   email: async (row: OutboxRow) => {
-    const origin = (process.env.PMS_ORIGIN ?? "").replace(/\/$/, "");
-    await sendEmail(row.recipient, `${row.purpose === "escalation" ? "[Υπενθύμιση] " : ""}[Corali PMS] ${String(row.title).slice(0, 150)}`, `${row.title}\n\n${origin}${row.link || "/pms/reliability"}\n\nΕπιβεβαιώστε στο PMS → Αξιοπιστία ότι το είδατε.`);
+    // v202: the incident format (service, priority, problem, summary, root cause, action, notification policy).
+    const m = formatAlertMessage({ ...row, origin: process.env.PMS_ORIGIN ?? "" });
+    await sendEmail(row.recipient, m.subject, m.text);
   },
 });
 

@@ -4,6 +4,7 @@
 //   /api/monitoring/heartbeat for an external watchdog: the minimum safe facts (statuses, progress counters, no data),
 //                             HMAC-signed with MONITORING_SECRET so the watchdog knows it came from this PMS.
 // A component the PMS cannot read is «unknown» — never «ok».
+import { integrationState } from "./integration-state-core.mjs";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { heartbeatState } from "./job-control-core.mjs";
 
@@ -22,9 +23,13 @@ export function evaluateHealth(f, now) {
     return { status: h.level === "ok" ? "ok" : h.level === "fail" ? "fail" : "warn", state: h.status, lastStartAgoS: row?.last_start_at ? Math.round((now - Number(row.last_start_at)) / 1000) : null, runs: Number(row?.runs ?? 0) };
   };
   c.automations = job(f.automations, "cron", 5 * MIN);
-  c.channelSync = f.channelOn ? job(f.channelSync, "channel sync", 5 * MIN) : { status: "ok", state: "not_configured" };
+  // v202 Integration lifecycle: a Channel Manager that is not configured / disabled / still in TESTING is not a
+  // failure — its sync job and its queue are only judged once it has been activated.
+  const chState = f.channelState ?? (f.channelOn ? "ACTIVE" : "NOT_CONFIGURED");
+  const chJudged = chState === "ACTIVE" || chState === "DEGRADED";
+  c.channelSync = chJudged ? job(f.channelSync, "channel sync", 5 * MIN) : { status: "ok", state: chState };
   c.steps = f.steps === null ? { status: "unknown" } : (() => { const bad = f.steps.filter((s) => Number(s.consecutive_failures) >= 3); return { status: bad.length ? "fail" : f.steps.some((s) => !["ok", "skipped"].includes(s.last_status)) ? "warn" : "ok", failing: bad.map((s) => s.name) }; })();
-  c.otaQueue = f.outboxOldest === null ? { status: "unknown" } : { status: f.outboxOldest && now - f.outboxOldest > 30 * MIN ? "fail" : f.outboxOldest && now - f.outboxOldest > 10 * MIN ? "warn" : "ok", oldestPendingAgoS: f.outboxOldest ? Math.round((now - f.outboxOldest) / 1000) : null };
+  c.otaQueue = !chJudged ? { status: "ok", state: chState } : f.outboxOldest === null ? { status: "unknown" } : { status: f.outboxOldest && now - f.outboxOldest > 30 * MIN ? "fail" : f.outboxOldest && now - f.outboxOldest > 10 * MIN ? "warn" : "ok", oldestPendingAgoS: f.outboxOldest ? Math.round((now - f.outboxOldest) / 1000) : null };
   c.alerts = f.alertIssues === null ? { status: "unknown" } : { status: f.alertIssues > 0 ? "warn" : "ok", undelivered: f.alertIssues };
   c.social = f.socialStuck === null ? { status: "unknown" } : { status: f.socialStuck > 0 ? "warn" : "ok", needsAttention: f.socialStuck };
   // v201: the Sentinel itself (its cron every 5′): stale = the monitoring is blind → fail.
@@ -47,11 +52,12 @@ export async function deepHealth({ pool, owner, now = Date.now() }) {
     q(pool, `SELECT count(*)::int n FROM social_posts WHERE owner_id=$1 AND (status='uncertain' OR (status='processing' AND lease_until<$2::bigint))`, [owner, now]),
     q(pool, `SELECT count(*)::int n FROM rooms WHERE owner_id=$1 AND active=1`, [owner]),
     q(pool, `SELECT max(finished_at) m FROM backup_runs WHERE owner_id=$1 AND kind='backup' AND status='ok'`, [owner]),
-    q(pool, `SELECT 1 FROM provider_connections WHERE owner_id=$1 AND provider_key IN ('channex','channelManager') AND active=1`, [owner]),
+    q(pool, `SELECT p.active,p.secrets_encrypted,a.activated_at,a.deactivated_at FROM provider_connections p LEFT JOIN integration_activation a ON a.owner_id=p.owner_id AND a.provider_key='channelManager' WHERE p.owner_id=$1 AND p.provider_key IN ('channex','channelManager') ORDER BY (p.provider_key='channelManager') DESC LIMIT 1`, [owner]),
     q(pool, `SELECT (SELECT max(finished_at) FROM sentinel_runs WHERE owner_id=$1 AND finished_at IS NOT NULL) AS last_finished,(SELECT status FROM sentinel_runs WHERE owner_id=$1 AND finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 1) AS last_status,(SELECT count(*)::int FROM sentinel_runs WHERE owner_id=$1) AS runs,(SELECT count(*)::int FROM sentinel_incidents WHERE owner_id=$1 AND status='open') AS open_incidents`, [owner]),
   ]);
   const facts = {
-    dbMs, channelOn: Boolean(channel?.length),
+    dbMs, channelOn: Boolean(channel?.length && Number(channel[0].active)),
+    channelState: channel === null ? undefined : integrationState({ row: channel[0] ?? null, activation: channel[0]?.activated_at ? channel[0] : null }),
     automations: beats === null ? null : beats.find((b) => b.job === "automations") ?? {},
     channelSync: beats === null ? null : beats.find((b) => b.job === "channel-sync") ?? {},
     steps, outboxOldest: outbox === null ? null : outbox[0]?.m ? Number(outbox[0].m) : 0,

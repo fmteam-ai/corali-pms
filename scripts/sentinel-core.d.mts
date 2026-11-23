@@ -8,7 +8,7 @@ export declare const INVENTORY: InventoryItem[];
 export declare function playbookFor(key: string): { impact: string; probable: string[]; fix: string[]; risks: string[]; validate: string[] };
 export declare function severityOf(f: { key: string; area: string; level: string }): "critical" | "high" | "medium";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export declare function findingsFrom(reliability: any, health: any): { key: string; area: string; level: string; title: string; evidence: Record<string, unknown>[] }[];
+export declare function findingsFrom(reliability: any, health: any, now?: number): { key: string; area: string; level: string; title: string; evidence: Record<string, unknown>[] }[];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export declare function buildReport(inc: any, now: number): SentinelReport;
 export declare function readOnlyPool(client: Pool): Pool;

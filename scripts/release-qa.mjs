@@ -313,17 +313,45 @@ try {
     }
   });
 
-  await flow("F12", "Κέντρο αξιοπιστίας: εντοπίζει μεταβολή διαθεσιμότητας που δεν συγχρονίστηκε και την ξαναστέλνει", async () => {
-    const { checkReliability, recoverReliability } = await import(path.join(pmsDir, "scripts/reliability-core.mjs"));
+  await flow("F12", "Κέντρο αξιοπιστίας + Alert Intelligence: ανενεργός Channel Manager → μία πληροφορία, κανένα email· ενεργοποιημένος → ένα κρίσιμο συμβάν, επανάληψη αποστολής", async () => {
+    const { checkReliability, recoverReliability, runReliabilityAlerts } = await import(path.join(pmsDir, "scripts/reliability-core.mjs"));
     const id = Number((await q(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,status,attempts,last_error,created_at,updated_at) VALUES($1,$2,$3,'qa','failed',4,'Channex 503 (QA)',$4,$4) RETURNING id`, [owner, addDays(today, 10), addDays(today, 12), Date.now() - 45 * 60_000])).rows[0].id);
-    const r = await checkReliability({ pool: db, owner });
-    const ch = r.areas.find((a) => a.key === "channel");
-    const it = ch.items.find((i) => i.key === `outbox:${id}`);
-    must(ch.status === "fail" && it && it.action?.type === "retry_outbox", `channel ${ch.status}: ${JSON.stringify(ch.items).slice(0, 200)}`);
-    must(await recoverReliability({ pool: db, owner, type: "retry_outbox", id }) === 1, "η επανάληψη δεν μπήκε στην ουρά");
-    must((await q(`SELECT status FROM channel_sync_outbox WHERE id=$1`, [id])).rows[0].status === "pending", "δεν επανήλθε σε αναμονή");
-    await q(`DELETE FROM channel_sync_outbox WHERE id=$1`, [id]);
-    return `εντοπίστηκε («${it.text.slice(0, 70)}…») και μπήκε ξανά σε συγχρονισμό · ${r.areas.length} περιοχές ελέγχθηκαν`;
+    const prevState = (await q(`SELECT * FROM channel_sync_state WHERE owner_id=$1`, [owner])).rows[0] ?? null;
+    let it = null;
+    const mails = async () => Number((await q(`SELECT count(*)::int AS n FROM alert_outbox o JOIN alerts a ON a.id=o.alert_id WHERE a.owner_id=$1 AND a.area='channel' AND o.channel='email' AND o.status NOT IN ('cancelled','skipped')`, [owner])).rows[0].n);
+    try {
+      // 1) Not configured (the hotel's real state): one information line, no failure, no e-mail, the row is kept.
+      await q(`DELETE FROM provider_connections WHERE owner_id=$1 AND provider_key='channelManager'`, [owner]);
+      let r = await checkReliability({ pool: db, owner });
+      let ch = r.areas.find((a) => a.key === "channel");
+      must(ch.status === "inactive" && ch.items.length === 0 && ch.info.filter((x) => /OTA synchronization inactive/.test(x)).length === 1, `μη ρυθμισμένος: ${JSON.stringify(ch).slice(0, 240)}`);
+      for (let i = 0; i < 3; i++) await runReliabilityAlerts({ pool: db, owner, emails: ["qa@example.invalid"] });
+      must(await mails() === 0, "email για μη ρυθμισμένο Channel Manager");
+      must((await q(`SELECT 1 FROM channel_sync_outbox WHERE id=$1`, [id])).rows.length === 1, "η εγγραφή της ουράς χάθηκε");
+      // 2) Activated, the sync runs and fails → ONE critical incident (not one per row), the row can be retried.
+      await q(`INSERT INTO provider_connections(owner_id,provider_key,active,settings_json,secrets_encrypted,updated_by,updated_at) VALUES($1,'channelManager',1,'{}','qa','qa',$2)`, [owner, Date.now()]);
+      await q(`INSERT INTO integration_activation(owner_id,provider_key,activated_at,activated_by) VALUES($1,'channelManager',$2,'qa') ON CONFLICT(owner_id,provider_key) DO UPDATE SET activated_at=$2,deactivated_at=NULL`, [owner, Date.now() - 86_400_000]);
+      await q(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$3,'Channex 503 (QA)') ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$3,last_error='Channex 503 (QA)'`, [owner, Date.now() - 60_000, Date.now() - 8 * 3_600_000]);
+      r = await checkReliability({ pool: db, owner });
+      ch = r.areas.find((a) => a.key === "channel");
+      it = ch.items.find((i) => i.key === `outbox:${id}`);
+      must(ch.status === "fail" && it && it.action?.type === "retry_outbox", `channel ${ch.status}: ${JSON.stringify(ch.items).slice(0, 200)}`);
+      const res = await runReliabilityAlerts({ pool: db, owner, emails: ["qa@example.invalid"] });
+      const ota = res.incidents.filter((x) => x.key === "sync:ota");
+      must(ota.length === 1 && ota[0].priority === "critical" && !res.incidents.some((x) => /^outbox:/.test(x.key)), `συμβάντα: ${JSON.stringify(res.incidents)}`);
+      must(await mails() === 1, `ένα email για το συμβάν, όχι ένα ανά εγγραφή (${await mails()})`);
+      must(await recoverReliability({ pool: db, owner, type: "retry_outbox", id }) === 1, "η επανάληψη δεν μπήκε στην ουρά");
+      must((await q(`SELECT status FROM channel_sync_outbox WHERE id=$1`, [id])).rows[0].status === "pending", "δεν επανήλθε σε αναμονή");
+    } finally {
+      await q(`DELETE FROM channel_sync_outbox WHERE id=$1`, [id]);
+      await q(`DELETE FROM provider_connections WHERE owner_id=$1 AND provider_key='channelManager'`, [owner]);
+      await q(`DELETE FROM integration_activation WHERE owner_id=$1 AND provider_key='channelManager'`, [owner]);
+      if (prevState) await q(`UPDATE channel_sync_state SET last_run_at=$2,last_ok_at=$3,last_error=$4 WHERE owner_id=$1`, [owner, prevState.last_run_at, prevState.last_ok_at, prevState.last_error]);
+      else await q(`DELETE FROM channel_sync_state WHERE owner_id=$1`, [owner]);
+      await q(`UPDATE alerts SET resolved_at=$2 WHERE owner_id=$1 AND area='channel' AND resolved_at IS NULL`, [owner, Date.now()]);
+      await q(`UPDATE alert_outbox SET status='cancelled' WHERE owner_id=$1 AND status='pending' AND alert_id IN (SELECT id FROM alerts WHERE owner_id=$1 AND area='channel')`, [owner]);
+    }
+    return `μη ρυθμισμένος: μία πληροφορία, 0 email, η εγγραφή διατηρήθηκε · ενεργοποιημένος με αποτυχία: ένα κρίσιμο συμβάν sync:ota, 1 email · «${it.text.slice(0, 60)}…» μπήκε ξανά σε συγχρονισμό`;
   });
 
   const cron = (extra = {}) => spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/run-message-automations.mjs"], { cwd: pmsDir, encoding: "utf8", timeout: 290_000, env: { ...process.env, SMTP_HOST: "127.0.0.1", SMTP_PORT: "9", SMTP_FROM: "qa@example.invalid", ...extra } });
@@ -567,6 +595,11 @@ try {
   await flow("F20", "Corali Sentinel (μόνο ανάγνωση) + Fly.io watchdog: συμβάν με αποδεικτικά και αναφορά, επιβεβαιωμένη αποκατάσταση, υπογεγραμμένο heartbeat, ειδοποίηση σε διακοπή", async () => {
     const runSentinelCron = () => spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/run-sentinel.mjs"], { cwd: pmsDir, encoding: "utf8", timeout: 150_000 });
     // A real fault: an availability change that failed to reach the OTAs 45′ ago.
+    // v202: only an ACTIVATED Channel Manager whose sync fails is a fault (an inactive one is not).
+    await q(`INSERT INTO provider_connections(owner_id,provider_key,active,settings_json,secrets_encrypted,updated_by,updated_at) VALUES($1,'channelManager',1,'{}','qa','qa',$2) ON CONFLICT(owner_id,provider_key) DO UPDATE SET active=1`, [owner, Date.now()]);
+    await q(`INSERT INTO integration_activation(owner_id,provider_key,activated_at,activated_by) VALUES($1,'channelManager',$2,'qa') ON CONFLICT(owner_id,provider_key) DO UPDATE SET activated_at=$2,deactivated_at=NULL`, [owner, Date.now() - 86_400_000]);
+    const prevSync = (await q(`SELECT * FROM channel_sync_state WHERE owner_id=$1`, [owner])).rows[0] ?? null;
+    await q(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$3,'Channex 503 (QA sentinel)') ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$3,last_error='Channex 503 (QA sentinel)'`, [owner, Date.now() - 60_000, Date.now() - 8 * 3_600_000]);
     const fault = Number((await q(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,status,attempts,last_error,created_at,updated_at) VALUES($1,$2,$3,'qa-sentinel','failed',4,'Channex 503 (QA sentinel)',$4,$4) RETURNING id`, [owner, addDays(today, 20), addDays(today, 21), Date.now() - 45 * 60_000])).rows[0].id);
     const prodBefore = JSON.stringify((await q(`SELECT (SELECT count(*) FROM channel_sync_outbox) a,(SELECT count(*) FROM bookings) b,(SELECT count(*) FROM alerts) c,(SELECT max(updated_at) FROM channel_sync_outbox) d`)).rows);
     let r = runSentinelCron();
@@ -574,7 +607,7 @@ try {
     const line = JSON.parse(r.stdout.trim().split("\n").pop());
     must(line.event === "sentinel_run" && line.status === "ok" && line.correlationId, `sentinel: ${r.stdout.slice(-200)}`);
     must(JSON.stringify((await q(`SELECT (SELECT count(*) FROM channel_sync_outbox) a,(SELECT count(*) FROM bookings) b,(SELECT count(*) FROM alerts) c,(SELECT max(updated_at) FROM channel_sync_outbox) d`)).rows) === prodBefore, "ο Sentinel άλλαξε δεδομένα παραγωγής");
-    const inc = (await q(`SELECT * FROM sentinel_incidents WHERE owner_id=$1 AND incident_key=$2`, [owner, `outbox:${fault}`])).rows[0];
+    const inc = (await q(`SELECT * FROM sentinel_incidents WHERE owner_id=$1 AND incident_key=$2`, [owner, "sync:ota"])).rows[0];
     must(inc && inc.severity === "critical" && inc.status === "open", `συμβάν: ${JSON.stringify(inc ?? null).slice(0, 200)}`);
     const rep = JSON.parse(inc.report_json);
     must(rep.confirmed.join(" ").includes("Channex 503 (QA sentinel)") && rep.probableCauses.length && rep.proposedFix.length && rep.validation.length, "η αναφορά δεν έχει αποδεικτικά / διόρθωση / επαλήθευση");
@@ -584,6 +617,10 @@ try {
     r = runSentinelCron(); r = runSentinelCron();
     const after = (await q(`SELECT status,recovery_verified_at FROM sentinel_incidents WHERE id=$1`, [inc.id])).rows[0];
     must(after.status === "resolved" && after.recovery_verified_at, `αποκατάσταση: ${JSON.stringify(after)}`);
+    await q(`UPDATE provider_connections SET active=0 WHERE owner_id=$1 AND provider_key='channelManager'`, [owner]);
+    await q(`DELETE FROM integration_activation WHERE owner_id=$1 AND provider_key='channelManager'`, [owner]);
+    if (prevSync) await q(`UPDATE channel_sync_state SET last_run_at=$2,last_ok_at=$3,last_error=$4 WHERE owner_id=$1`, [owner, prevSync.last_run_at, prevSync.last_ok_at, prevSync.last_error]);
+    else await q(`DELETE FROM channel_sync_state WHERE owner_id=$1`, [owner]);
     // Endpoints: deep health is internal (no session → refused); the heartbeat is signed and minimal.
     const deep = await fetch(`${pms.url}/api/health/deep`);
     must([401, 403].includes(deep.status), `/api/health/deep χωρίς σύνδεση: HTTP ${deep.status}`);
@@ -610,7 +647,7 @@ try {
       for (let i = 0; i < 3; i++) await down.cycle();
       must(received.some((a) => a.kind === "open" && a.check === "pms"), `καμία ειδοποίηση σε διακοπή: ${JSON.stringify(received)}`);
     } finally { receiver.close(); }
-    return { detail: `συμβάν outbox:${fault} (critical) με αποδεικτικά και αναφορά → αποκατάσταση επιβεβαιώθηκε · δεδομένα παραγωγής αμετάβλητα · heartbeat υπογεγραμμένο και επαληθευμένο από τον watchdog · διακοπή → ${received.length} ειδοποίηση(εις) σε ανεξάρτητο παραλήπτη`,
+    return { detail: `συμβάν sync:ota (critical, εγγραφή #${fault}) με αποδεικτικά και αναφορά → αποκατάσταση επιβεβαιώθηκε · δεδομένα παραγωγής αμετάβλητα · heartbeat υπογεγραμμένο και επαληθευμένο από τον watchdog · διακοπή → ${received.length} ειδοποίηση(εις) σε ανεξάρτητο παραλήπτη`,
       evidence: { SENTINEL_READ_ONLY: "PASS", INCIDENT_REPORT: "PASS", RECOVERY_VERIFIED: "PASS", WATCHDOG_ALERT: "PASS" } };
   });
 

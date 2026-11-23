@@ -16,6 +16,13 @@ async function fresh() {
   return { db, pool: { query, connect } };
 }
 
+// v202: the OTA sync is judged only for an ACTIVATED Channel Manager whose sync runs and fails (Channex 503).
+async function activeChannel(db: PGlite, t0: number) {
+  await db.query(`INSERT INTO provider_connections(owner_id,provider_key,active,secrets_encrypted,updated_by,updated_at) VALUES($1,'channelManager',1,'sealed','qa',$2)`, [o, t0]);
+  await db.query(`INSERT INTO integration_activation(owner_id,provider_key,activated_at,activated_by) VALUES($1,'channelManager',$2,'qa')`, [o, t0 - 86_400_000]);
+  await db.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$3,'Channex 503 Service Unavailable')`, [o, t0 - MIN, t0 - 8 * 3_600_000]);
+}
+
 test("v201 Sentinel inventory: every packaged cron job and every critical subsystem has documented monitoring coverage", () => {
   const packaged = [...readFileSync("scripts/package-cpanel.sh", "utf8").matchAll(/scripts\/(run-[a-z-]+\.mjs)/g)].map((m) => m[1]);
   for (const script of new Set(packaged)) assert.ok(INVENTORY.some((i) => i.script === script), `${script} has no inventory entry`);
@@ -49,13 +56,14 @@ test("v201 incident engine: dedup, severity, evidence, three-question report, re
   const { db, pool } = await fresh();
   try {
     const t0 = Date.now();
+    await activeChannel(db, t0);
     await db.query(`INSERT INTO rooms(id,owner_id,code,room_type,capacity,active,base_rate_cents,operational_status) VALUES(1,$1,'101','d',2,1,1,'clean')`, [o]);
     // A real fault: an availability change that failed to reach the OTAs 45′ ago.
     const outbox = (await db.query<{ id: number }>(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,status,attempts,last_error,created_at,updated_at) VALUES($1,'2026-12-01','2026-12-02','qa','failed',4,'Channex 503 Service Unavailable',$2,$2) RETURNING id`, [o, t0 - 45 * MIN])).rows[0].id;
     const r1 = await runSentinel({ pool, owner: o, now: t0, correlationId: "corr-1" });
     assert.equal(r1.status, "ok");
     let st = await sentinelIncidents({ pool, owner: o });
-    const inc = st.incidents.find((i) => i.key === `outbox:${outbox}`)!;
+    const inc = st.incidents.find((i) => i.key === "sync:ota")!;
     assert.ok(inc, `incident for the failed OTA sync: ${st.incidents.map((i) => i.key).join(", ")}`);
     assert.equal(inc.severity, "critical", "OTA sync failure = critical (overbooking risk)");
     assert.equal(inc.correlationId, "corr-1");
@@ -68,21 +76,21 @@ test("v201 incident engine: dedup, severity, evidence, three-question report, re
     // Same fault next run → same incident (dedup), occurrences + 1.
     await runSentinel({ pool, owner: o, now: t0 + 5 * MIN, correlationId: "corr-2" });
     st = await sentinelIncidents({ pool, owner: o });
-    assert.equal(st.incidents.filter((i) => i.key === `outbox:${outbox}`).length, 1);
-    assert.equal(st.incidents.find((i) => i.key === `outbox:${outbox}`)!.occurrences, 2);
+    assert.equal(st.incidents.filter((i) => i.key === "sync:ota").length, 1);
+    assert.equal(st.incidents.find((i) => i.key === "sync:ota")!.occurrences, 2);
     // A person fixes it (the Sentinel never does): it is not «resolved» at the first clean check.
     await db.query(`UPDATE channel_sync_outbox SET status='sent' WHERE id=$1`, [outbox]);
     await runSentinel({ pool, owner: o, now: t0 + 10 * MIN });
-    assert.equal((await sentinelIncidents({ pool, owner: o })).incidents.find((i) => i.key === `outbox:${outbox}`)!.status, "recovering");
+    assert.equal((await sentinelIncidents({ pool, owner: o })).incidents.find((i) => i.key === "sync:ota")!.status, "recovering");
     await runSentinel({ pool, owner: o, now: t0 + 5 * MIN + RECOVERY_MIN_MS + MIN });
-    const done = (await sentinelIncidents({ pool, owner: o })).incidents.find((i) => i.key === `outbox:${outbox}`)!;
+    const done = (await sentinelIncidents({ pool, owner: o })).incidents.find((i) => i.key === "sync:ota")!;
     assert.equal(done.status, "resolved");
     assert.ok(done.recoveryVerifiedAt);
     assert.match(done.report.recovery!.method, /2 διαδοχικούς ελέγχους/);
     // The fault comes back → a NEW incident (history kept).
     await db.query(`UPDATE channel_sync_outbox SET status='failed' WHERE id=$1`, [outbox]);
     await runSentinel({ pool, owner: o, now: t0 + 60 * MIN });
-    assert.equal((await sentinelIncidents({ pool, owner: o })).incidents.filter((i) => i.key === `outbox:${outbox}`).length, 2);
+    assert.equal((await sentinelIncidents({ pool, owner: o })).incidents.filter((i) => i.key === "sync:ota").length, 2);
     // The Sentinel's own failure is an incident too.
     const blind = await runSentinel({ pool, owner: o, now: t0 + 65 * MIN, collect: async () => { throw new Error("connection terminated"); } });
     assert.equal(blind.status, "check_failed");
@@ -124,9 +132,10 @@ test("v202 P1: a failed collection changes no other incident — recovery only f
   const { db, pool } = await fresh();
   try {
     const t0 = Date.now();
+    await activeChannel(db, t0);
     const outbox = (await db.query<{ id: number }>(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,status,attempts,last_error,created_at,updated_at) VALUES($1,'2026-12-01','2026-12-02','qa','failed',4,'Channex 503',$2,$2) RETURNING id`, [o, t0 - 45 * MIN])).rows[0].id;
     await runSentinel({ pool, owner: o, now: t0 });
-    const key = `outbox:${outbox}`;
+    const key = "sync:ota";
     const get = async () => (await sentinelIncidents({ pool, owner: o })).incidents.find((i) => i.key === key && i.status !== "resolved") ?? (await sentinelIncidents({ pool, owner: o })).incidents.find((i) => i.key === key)!;
     assert.equal((await get()).status, "open");
     // The collection fails three times, long after — the OTA incident is NOT absent, it is unobserved.

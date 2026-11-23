@@ -3021,3 +3021,32 @@ CREATE TABLE IF NOT EXISTS sentinel_runs (
  error TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_sentinel_runs_owner ON sentinel_runs(owner_id,started_at DESC);
+
+-- v202 Integration lifecycle + Alert Intelligence.
+CREATE TABLE IF NOT EXISTS integration_checks (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  provider_key TEXT NOT NULL,
+  check_key TEXT NOT NULL,
+  ok INTEGER NOT NULL DEFAULT 0,
+  detail TEXT NOT NULL DEFAULT '',
+  checked_by TEXT NOT NULL DEFAULT 'system',
+  checked_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS integration_checks_lookup ON integration_checks(owner_id,provider_key,check_key,checked_at);
+CREATE TABLE IF NOT EXISTS integration_activation (
+  owner_id TEXT NOT NULL,
+  provider_key TEXT NOT NULL,
+  activated_at BIGINT,
+  activated_by TEXT,
+  evidence_json TEXT NOT NULL DEFAULT '[]',
+  deactivated_at BIGINT,
+  PRIMARY KEY (owner_id, provider_key)
+);
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'high';
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS details_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS reminded_at BIGINT;
+-- v202 one-time flood stop (idempotent, nothing deleted): pending e-mail / push deliveries of the pre-v202 alerts
+-- that were raised once per queued availability row are cancelled; the alerts and their history stay.
+UPDATE alert_outbox SET status='cancelled',last_error='v202: ομαδοποιήθηκε σε ένα συμβάν (Alert Intelligence)',updated_at=(extract(epoch from now())*1000)::bigint
+ WHERE status='pending' AND alert_id IN (SELECT id FROM alerts WHERE alert_key ~ '^rel:outbox:[0-9]+$');

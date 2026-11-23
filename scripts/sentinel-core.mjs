@@ -6,6 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { checkReliability } from "./reliability-core.mjs";
 import { deepHealth } from "./health-core.mjs";
+import { buildIncidents, priorityRank } from "./alert-intel-core.mjs";
 
 const MIN = 60_000;
 /** A resolved incident needs this many consecutive clean checks spanning at least RECOVERY_MIN_MS. */
@@ -74,16 +75,31 @@ export const playbookFor = (key) => PLAYBOOK.find((p) => p.match.test(key)) ?? F
 const CRITICAL_AREAS = new Set(["payments", "channel", "automations", "turnover"]);
 /** critical · high · medium — from the finding's level and how critical its area is. */
 export function severityOf(f) {
+  if (f.priority === "critical" || f.priority === "high" || f.priority === "medium") return f.priority;
+  if (f.priority === "low") return "medium";
   if (f.level === "fail" && (CRITICAL_AREAS.has(f.area) || /^health:(database|booking|automations|sentinel)/.test(f.key))) return "critical";
   return f.level === "fail" ? "high" : "medium";
 }
 
 /** Pure: findings from the reliability check and the deep health (what is observed, with its evidence reference). */
-export function findingsFrom(reliability, health) {
+export function findingsFrom(reliability, health, now = Date.now()) {
   const out = [];
+  // v202 Alert Intelligence: one finding per real problem (aggregated by kind, with the root cause), not one per
+  // queued row; a connection that is not configured / disabled is not a failure and gives no finding. Warnings
+  // (pending items, TESTING connections) stay one finding per item kind as before.
+  for (const inc of buildIncidents(reliability, now)) {
+    out.push({ key: inc.key, area: inc.area, level: priorityRank(inc.priority) >= priorityRank("high") ? "fail" : "warn", priority: inc.priority, title: `${(reliability?.areas ?? []).find((a) => a.key === inc.area)?.el ?? inc.service}: ${String(inc.problem).slice(0, 200)}`,
+      evidence: [{ source: "reliability", area: inc.area, item: inc.key, observed: [inc.summary, inc.rootCause].filter(Boolean).join(" · ").slice(0, 400), at: Number(inc.oldestAt ?? 0) || null, link: "/pms/reliability" }, ...(inc.examples ?? []).slice(0, 3).map((e) => ({ source: "reliability", area: inc.area, item: String(e.key), observed: String(e.text).slice(0, 300), link: "/pms/reliability" }))] });
+  }
+  const seen = new Set(out.map((f) => f.key));
   for (const a of reliability?.areas ?? []) for (const i of a.items ?? []) {
-    if (!["fail", "warn"].includes(i.level)) continue;
-    out.push({ key: String(i.key), area: a.key, level: i.level, title: `${a.el}: ${String(i.text).slice(0, 200)}`, evidence: [{ source: "reliability", area: a.key, item: String(i.key), observed: String(i.text).slice(0, 400), at: Number(i.at ?? 0) || null, link: i.link ?? "/pms/reliability" }] });
+    if (i.level !== "warn") continue;
+    if (a.key === "channel" && /^(outbox:|sync:)/.test(String(i.key))) continue;
+    const m = /^([a-z_]+):\d+$/i.exec(String(i.key));
+    const key = m ? `${m[1]}:*` : String(i.key);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, area: a.key, level: "warn", title: `${a.el}: ${String(i.text).slice(0, 200)}`, evidence: [{ source: "reliability", area: a.key, item: String(i.key), observed: String(i.text).slice(0, 400), at: Number(i.at ?? 0) || null, link: i.link ?? "/pms/reliability" }] });
   }
   for (const [name, c] of Object.entries(health?.components ?? {})) {
     if (!["fail", "warn", "unknown"].includes(c.status)) continue;
@@ -158,7 +174,7 @@ export async function runSentinel({ pool, owner, now = Date.now(), correlationId
   let findings, collected = false, blindAreas = new Set(), blindHealth = new Set();
   try {
     const { reliability, health } = await collect({ pool, owner, now, readPool });
-    findings = findingsFrom(reliability, health);
+    findings = findingsFrom(reliability, health, now);
     collected = true;
     // v202: what this run could NOT observe — an area whose data was unreadable, a health component that is unknown.
     // Incidents there are not «absent», they are unobserved: their state stays as it is.
