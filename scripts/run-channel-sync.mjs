@@ -298,12 +298,13 @@ try {
 
   if (pushError) {
     runStatus = "failed"; runError = pushError;
-    await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_error) VALUES($1,$2,$3) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_error=$3`, [owner, Date.now(), pushError]);
-  } else await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$2,NULL) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$2,last_error=NULL`, [owner, Date.now()]);
+    await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_error,failing_since) VALUES($1,$2,$3,$2) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_error=$3,failing_since=COALESCE(channel_sync_state.failing_since,$2)`, [owner, Date.now(), pushError]);
+  } else await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error,failing_since) VALUES($1,$2,$2,NULL,NULL) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$2,last_error=NULL,failing_since=NULL`, [owner, Date.now()]);
   console.log(`Channel sync: ${sendIds.length} availability range(s) sent, ${plan.outOfRange.length} beyond the horizon, ${plan.skipped.length} past, ${restrictionDays} restriction day(s), ${rateDays} rate day(s), ${imported} OTA revision(s) imported.`);
 } catch (error) {
   runStatus = "failed"; runError = String(error);
-  await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_error) VALUES($1,$2,$3) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_error=$3`, [owner, Date.now(), String(error).slice(0, 500)]).catch(() => {});
+  // v204: failing_since = when the CURRENT failure started (kept across failed runs, cleared by a success).
+  await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_error,failing_since) VALUES($1,$2,$3,$2) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_error=$3,failing_since=COALESCE(channel_sync_state.failing_since,$2)`, [owner, Date.now(), String(error).slice(0, 500)]).catch(() => {});
   throw error;
 } finally {
   if (runId) await cronFinish(pool, owner, "channel-sync", runId, { status: runStatus, error: runError, startedAt }).catch(() => {});

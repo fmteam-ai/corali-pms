@@ -339,9 +339,12 @@ test("v204 P1: without its required credentials a connection is never TESTING/AC
 test("v204 review: incident and reliability judge the LATEST run too, after 10′ of continuous failure (no wrong root cause)", async () => {
   const { channelIncident } = await import("../scripts/alert-intel-core.mjs");
   const base = { connection: "DEGRADED", credentials: "OK", live: 3, oldestAt: t0 - HOUR, lastRunAt: t0 - MIN, lastError: "HTTP 503" };
-  // The reviewer's scenario: success 5′ ago, failed run 1′ ago → not yet an incident (grace), and NEVER the
-  // «sync succeeds but rows stay» diagnosis.
-  assert.equal(channelIncident({ ...base, lastOkAt: t0 - 5 * MIN }, t0), null);
+  // The reviewer's scenario: success 5′ ago, failed run 1′ ago → inside the grace: no incident without a backlog;
+  // with an hour-old backlog it is reported with the FAILING RUN as its cause — never «sync succeeds but rows stay».
+  assert.equal(channelIncident({ ...base, live: 0, oldestAt: null, lastOkAt: t0 - 5 * MIN }, t0), null);
+  const early = channelIncident({ ...base, lastOkAt: t0 - 5 * MIN }, t0)!;
+  assert.match(early.problem, /απέτυχε/);
+  assert.doesNotMatch(early.rootCause!, /λανθασμένη κατάσταση outbox/);
   const inc = channelIncident({ ...base, lastOkAt: t0 - 11 * MIN }, t0)!;
   assert.equal(inc.priority, "high");
   assert.match(inc.problem, /η τελευταία εκτέλεση απέτυχε/);
@@ -361,4 +364,56 @@ test("v204 review: incident and reliability judge the LATEST run too, after 10�
     assert.equal(r.integrations?.channelManager, "DEGRADED");
     assert.ok(r.areas.find((a) => a.key === "channel")!.items.some((i) => i.key === "sync:stale" && /τελευταία εκτέλεση/.test(i.text)));
   } finally { await db.close(); }
+});
+
+test("v204 review 2: grace from the START of the current failure; an open incident is never «recovered» during the grace; one incident; TESTING never alerts", async () => {
+  const { channelIncident } = await import("../scripts/alert-intel-core.mjs");
+  const b = { connection: "DEGRADED", credentials: "OK", live: 3, oldestAt: t0 - 3 * HOUR, soon: 2, lastRunAt: t0 - MIN, lastError: "HTTP_503" };
+  // (1) success 5′ ago, failing since 4′, incident already open → stays open (no false recovery).
+  assert.ok(channelIncident({ ...b, lastOkAt: t0 - 5 * MIN, failingSince: t0 - 4 * MIN, incidentOpen: true }, t0));
+  // … not open yet, but a 3-hour-old backlog → still reported (with the failing run as cause).
+  assert.match(channelIncident({ ...b, lastOkAt: t0 - 5 * MIN, failingSince: t0 - 4 * MIN, incidentOpen: false }, t0)!.problem, /απέτυχε/);
+  // … no backlog, not open, inside the grace → nothing yet.
+  assert.equal(channelIncident({ ...b, live: 0, oldestAt: null, lastOkAt: t0 - 5 * MIN, failingSince: t0 - 4 * MIN }, t0), null);
+  // (2) first failure of a newly activated connection (never succeeded) → grace, not an immediate critical.
+  assert.equal(channelIncident({ ...b, live: 0, oldestAt: null, lastOkAt: null, failingSince: t0 - MIN }, t0), null);
+  assert.equal(channelIncident({ ...b, live: 0, oldestAt: null, lastOkAt: null, failingSince: t0 - 11 * MIN }, t0)!.priority, "high");
+  assert.equal(channelIncident({ ...b, live: 0, oldestAt: null, lastOkAt: null, failingSince: t0 - 7 * HOUR }, t0)!.priority, "critical");
+  // Full flow on the database: the alert opened, then a single success and new failures — no recovery notice.
+  const { db, pool } = await fresh();
+  try {
+    await connection(db, 1, true);
+    await db.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error,failing_since) VALUES($1,$2,$3,'HTTP_503',$4)`, [o, t0 - MIN, t0 - 2 * HOUR, t0 - 2 * HOUR]);
+    await db.query(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,status,created_at,updated_at) VALUES($1,'2026-12-24','2026-12-26','qa','pending',$2,$2)`, [o, t0 - 3 * HOUR]);
+    await runReliabilityAlerts({ pool, owner: o, now: t0, emails: ADMIN });
+    await deliverAlerts({ pool, owner: o, send, now: t0 + MIN });
+    // One success at t0+5′, then failing again from t0+6′; checked at t0+10′ (inside the grace).
+    await db.query(`UPDATE channel_sync_state SET last_run_at=$2,last_ok_at=$3,last_error='HTTP_503',failing_since=$2 WHERE owner_id=$1`, [o, t0 + 9 * MIN, t0 + 5 * MIN]);
+    await runReliabilityAlerts({ pool, owner: o, now: t0 + 10 * MIN, emails: ADMIN });
+    assert.equal(await n(db, `SELECT count(*)::int AS n FROM alerts WHERE alert_key='rel:sync:ota' AND resolved_at IS NULL`), 1, "still open");
+    assert.equal(await n(db, `SELECT count(*)::int AS n FROM alert_outbox WHERE purpose='recovery'`), 0, "no false «recovered»");
+    // (3) cron stopped > 30′ on an activated connection → exactly ONE incident for the OTA sync.
+    await db.query(`INSERT INTO cron_heartbeat(owner_id,job,last_start_at,last_finish_at,runs,last_status) VALUES($1,'channel-sync',$2,$2,10,'ok') ON CONFLICT DO NOTHING`, [o, t0 - 2 * HOUR]);
+    await db.query(`UPDATE channel_sync_state SET last_run_at=$2 WHERE owner_id=$1`, [o, t0 - 2 * HOUR]);
+    const r = await runReliabilityAlerts({ pool, owner: o, now: t0 + 20 * MIN, emails: ADMIN });
+    assert.deepEqual(r.incidents.filter((i) => i.key.includes("sync") || i.key.includes("cron:channel")).map((i) => i.key), ["sync:ota"]);
+  } finally { await db.close(); }
+  // (4) TESTING connection with a stopped cron and failures → no push / e-mail incident at all.
+  const t = await fresh();
+  try {
+    await connection(t.db, 1, false);
+    await t.db.query(`INSERT INTO cron_heartbeat(owner_id,job,last_start_at,last_finish_at,runs,last_status) VALUES($1,'channel-sync',$2,$2,10,'ok') ON CONFLICT DO NOTHING`, [o, t0 - 2 * HOUR]);
+    await t.db.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_error) VALUES($1,$2,'HTTP_401')`, [o, t0 - 2 * HOUR]);
+    const r = await runReliabilityAlerts({ pool: t.pool, owner: o, now: t0, emails: ADMIN });
+    assert.ok(r.incidents.filter((i) => ["critical", "high", "medium"].includes(i.priority)).every((i) => !["channel"].includes(i.key.split(":")[0]) && !/sync|cron:channel|ota/.test(i.key)), JSON.stringify(r.incidents));
+    assert.equal(await t.db.query(`SELECT count(*)::int AS n FROM alert_outbox o JOIN alerts a ON a.id=o.alert_id WHERE a.area='channel'`).then((x) => Number((x.rows[0] as { n: number }).n)), 0, "nothing pushed or e-mailed for a TESTING channel");
+  } finally { await t.db.close(); }
+  // (5) Sentinel still sees the «unverified» / «revalidate» warnings.
+  const { findingsFrom } = await import("../scripts/sentinel-core.mjs");
+  const f = findingsFrom({ areas: [{ key: "channel", el: "Channel", items: [{ key: "integration:channelManager:unverified", level: "warn", text: "x" }, { key: "integration:channelManager:revalidate", level: "warn", text: "y" }] }] }, { at: t0, components: {} }, t0);
+  assert.deepEqual(f.map((x) => x.key).sort(), ["integration:channelManager:revalidate", "integration:channelManager:unverified"]);
+  // (9) credentials as the workers need them.
+  const { REQUIRED_CREDENTIALS } = await import("../scripts/integration-state-core.mjs");
+  assert.deepEqual(REQUIRED_CREDENTIALS.omada.settings, ["interfaceUrl", "omadacId"]);
+  assert.deepEqual(REQUIRED_CREDENTIALS.viva.settings, []);
 });

@@ -58,13 +58,13 @@ export const ALERTING_STATES = new Set(["ACTIVE", "DEGRADED", "UNVERIFIED"]);
  */
 export const REQUIRED_CREDENTIALS = {
   channelManager: { secrets: ["apiKey"], settings: ["propertyCode"] },
-  viva: { secrets: ["clientId", "clientSecret"], settings: ["merchantId"] },
+  viva: { secrets: ["clientId", "clientSecret"], settings: [] },
   stripe: { secrets: ["secretKey", "webhookSecret"], settings: [] },
   whatsapp: { secrets: ["accessToken"], settings: ["phoneNumberId"] },
   mydata: { secrets: ["username", "subscriptionKey"], settings: ["issuerVat"] },
   meta: { secrets: ["pageAccessToken"], settings: ["pageId"] },
   tuya: { secrets: ["accessId", "accessSecret"], settings: [] },
-  omada: { secrets: ["clientId", "clientSecret"], settings: ["interfaceUrl"] },
+  omada: { secrets: ["clientId", "clientSecret"], settings: ["interfaceUrl", "omadacId"] },
 };
 export const CREDENTIAL_FREE = new Set();
 
@@ -118,7 +118,7 @@ export function integrationState({ row, credentials = null, activation = null, h
     if (!activated) return "NOT_CONFIGURED";
     // v204: an ACTIVATED connection that lost its credentials (key rotated, field cleared) is a FAILURE that must be
     // alerted, never a silent «not configured»; when this process cannot check them at all, it is UNVERIFIED.
-    return credentials?.reason === "CANNOT_VERIFY" ? "UNVERIFIED" : "DEGRADED";
+    return !credentials || credentials.reason === "CANNOT_VERIFY" ? "UNVERIFIED" : "DEGRADED";
   }
   if (!activated) return "TESTING";
   // v203: only a confirmed healthy check is ACTIVE; unknown health is UNVERIFIED, never «working».

@@ -94,7 +94,7 @@ export function findingsFrom(reliability, health, now = Date.now()) {
   const seen = new Set(out.map((f) => f.key));
   for (const a of reliability?.areas ?? []) for (const i of a.items ?? []) {
     if (i.level !== "warn") continue;
-    if (a.key === "channel" && /^(outbox:|sync:|integration:channelManager)/.test(String(i.key))) continue;
+    if (a.key === "channel" && /^(outbox:|sync:|integration:channelManager:credentials|cron:channel-sync)/.test(String(i.key))) continue;
     const m = /^([a-z_]+):\d+$/i.exec(String(i.key));
     const key = m ? `${m[1]}:*` : String(i.key);
     if (seen.has(key)) continue;

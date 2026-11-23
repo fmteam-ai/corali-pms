@@ -76,15 +76,22 @@ export function channelIncident(s, now) {
       causes: ["Λείπει το cron του run-channel-sync.mjs στο cPanel", "Το cron αποτυγχάνει πριν ξεκινήσει (δείτε /home/corali/logs/corali-channels.log)"],
       action: "Ελέγξτε στο cPanel → Cron Jobs ότι υπάρχει το scripts/run-channel-sync.mjs (κάθε λεπτό) και το log του. Μετά: Κέντρο αξιοπιστίας → «Συγχρονισμός τώρα»." };
   }
-  // v204: judged by the LATEST run; raised after SYNC_FAIL_GRACE_MS of continuous failure (no success since).
+  // v204: judged by the LATEST run; raised after SYNC_FAIL_GRACE_MS of CONTINUOUS failure, measured from when the
+  // current failure started (failingSince, written by run-channel-sync; unknown → the failed run itself). During the
+  // grace window an incident that is already open stays open (no false «recovered»), and an old backlog is still
+  // reported — never the «sync succeeds» diagnosis.
   const runFailed = !s.lastOkAt || Number(s.lastOkAt) < Number(s.lastRunAt) || Boolean(String(s.lastError ?? "").trim());
   if (runFailed) {
-    const failingFor = s.lastOkAt ? now - Number(s.lastOkAt) : Infinity;
-    if (failingFor < SYNC_FAIL_GRACE_MS) return null;
-    return { ...base, priority: failingFor > 6 * HOUR ? "critical" : "high", problem: "Ο συγχρονισμός εκτελείται αλλά η τελευταία εκτέλεση απέτυχε — οι αλλαγές δεν φτάνουν στον Channel Manager." + soon,
-      rootCause: `Επιβεβαιωμένο: ${evidence}`,
+    // Unknown start (rows written before v204) → the last success bounds it; never succeeded → the failed run.
+    const since = Number(s.failingSince ?? s.lastOkAt ?? s.lastRunAt);
+    const failingFor = now - since;
+    const failing = { ...base, priority: failingFor > 6 * HOUR ? "critical" : "high", problem: "Ο συγχρονισμός εκτελείται αλλά η τελευταία εκτέλεση απέτυχε — οι αλλαγές δεν φτάνουν στον Channel Manager." + soon,
+      rootCause: `Επιβεβαιωμένο: ${evidence} Αποτυγχάνει συνεχώς εδώ και ${days(failingFor)}.`,
       causes: ["Λάθος / ληγμένο API key ή property ID στο Channex", "Το Channex δεν απαντά (5xx / χρονικό όριο) ή επιστρέφει warnings", "Μη αντιστοιχισμένος τύπος δωματίου ή rate plan"],
       action: "Κάντε «Έλεγχος σύνδεσης Channex» στο PMS· διορθώστε ό,τι δείχνει το σφάλμα· μετά «Συγχρονισμός τώρα» και επιβεβαιώστε ότι η επόμενη εκτέλεση πετυχαίνει." };
+    if (failingFor >= SYNC_FAIL_GRACE_MS || s.incidentOpen) return failing;
+    if (live > 0 && oldest > 30 * MIN) return { ...failing, problem: "Μεταβολές διαθεσιμότητας σε αναμονή και η τελευταία εκτέλεση του συγχρονισμού απέτυχε." + soon };
+    return null;
   }
   if (live > 0 && oldest > 30 * MIN) {
     return { ...base, priority: "high", problem: "Ο συγχρονισμός πετυχαίνει, αλλά μεταβολές διαθεσιμότητας παραμένουν σε αναμονή." + soon,
@@ -106,7 +113,10 @@ export function buildIncidents(reliability, now) {
       if (i.level !== "fail") continue;
       const key = String(i.key);
       // The OTA sync items are the channel incident's symptoms (rows of its backlog).
-      if (a.key === "channel" && /^(outbox:|sync:|integration:channelManager)/.test(key)) continue;
+      // The OTA sync's own items (rows of its backlog, sync / cron state, credentials) are the ONE channel incident.
+      if (a.key === "channel" && /^(outbox:|sync:|integration:channelManager:credentials|cron:channel-sync)/.test(key)) continue;
+      // v204: a channel manager that is not activated never alerts (TESTING / NOT_CONFIGURED / DISABLED).
+      if (a.key === "channel" && reliability?.integrations && !["ACTIVE", "DEGRADED", "UNVERIFIED"].includes(reliability.integrations.channelManager) && !key.startsWith("noroom:")) continue;
       const m = /^([a-z_]+):\d+$/i.exec(key);
       const gk = m ? `${m[1]}:*` : key;
       const g = groups.get(gk) ?? { key: gk, items: [] };

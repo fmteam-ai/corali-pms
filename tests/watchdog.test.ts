@@ -249,6 +249,8 @@ test("v204 review: no duplicate digests to a channel that already accepted, ntfy
   const greek = Array.from({ length: 80 }, (_, i) => `🔴 Ξενοδοχείο: «υποσύστημα_${i}» — η υπηρεσία δεν απαντά εδώ και πολλή ώρα`);
   const t = listText("🔴 Πολλές ειδοποιήσεις", greek);
   assert.ok(Buffer.byteLength(t) <= TEXT_MAX, `${Buffer.byteLength(t)} bytes`);
+  const { clipText } = await import("../tools/watchdog/watchdog.mjs");
+  for (const long of ["Χ".repeat(5000), "🔴".repeat(3000), "a".repeat(9000)]) assert.ok(Buffer.byteLength(clipText(long)) <= TEXT_MAX, "clipText within the byte limit");
   assert.match(t, /… και \d+ ακόμη — όλες στο log του watchdog/);
   // Telegram accepts, ntfy always fails: 120 messages already on Telegram are merged into a digest that Telegram
   // never receives again; only ntfy is retried.
@@ -281,4 +283,53 @@ test("v204 review: no duplicate digests to a channel that already accepted, ntfy
   const items = compacted.flatMap((m) => (m.kind === "digest" ? m.items ?? [] : [m]));
   assert.ok(items.length <= QUEUE_MAX + ITEMS_MAX);
   assert.equal(items.reduce((n, x) => n + (Number((x as { count?: number }).count) || 1), 0), huge.length, "every reminder still counted");
+});
+
+test("v204 review 2 watchdog: a long detail is clipped; a message refused by a channel does not block the others and is reported; delivery saved at once; time budget", async () => {
+  const { mkdtempSync, readFileSync: rf } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const { TEXT_MAX } = await import("../tools/watchdog/watchdog.mjs");
+  const stateFile = join(mkdtempSync(join(tmpdir(), "wd2-")), "state.json");
+  let clock = Date.parse("2026-11-24T10:00:00Z");
+  const sentTelegram: string[] = [];
+  let savedBeforeNtfy: boolean | null = null;
+  const fetchImpl = (async (url: string, init?: { body?: string }) => {
+    if (url.endsWith("/api/health")) return new Response(JSON.stringify({ ok: false, reason: "Χ".repeat(5000) }), { status: 503 });
+    if (url.includes("booking")) return new Response(JSON.stringify({ ok: false, reason: "down" }), { status: 503 });
+    if (url.includes("api.telegram.org")) {
+      const text = JSON.parse(String(init?.body)).text as string;
+      if (text.length > 4096) return new Response(JSON.stringify({ ok: false, error_code: 400, description: "Bad Request: message is too long" }), { status: 400 });
+      if (text.includes("FORBIDDEN-WORD")) return new Response(JSON.stringify({ ok: false, error_code: 400, description: "Bad Request: can't parse" }), { status: 400 });
+      sentTelegram.push(text); return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+    if (url.includes("ntfy.example")) {
+      try { savedBeforeNtfy = JSON.parse(rf(stateFile, "utf8")).outbox.some((m: { delivered?: string[] }) => m.delivered?.includes("telegram")); } catch { savedBeforeNtfy = false; }
+      return new Response(JSON.stringify({ id: "n1" }), { status: 200 });
+    }
+    return new Response("?", { status: 404 });
+  }) as unknown as typeof fetch;
+  const cfg = cfgFor({ pmsHealthUrl: "http://pms/api/health", bookingHealthUrl: "http://booking/api/health", heartbeatUrl: "", webhookUrl: "", telegram: { token: "T", chat: "C" }, ntfyUrl: "https://ntfy.example/t", stateFile });
+  const wd = createWatchdog(cfg, { fetchImpl, now: () => clock, sleep: async () => {}, log: () => {} });
+  for (let i = 0; i < 3; i++) { await wd.cycle(); clock += 60_000; }
+  // (6) the 5000-character detail was clipped: delivered to Telegram, and the booking alert too.
+  assert.ok(sentTelegram.some((t) => t.includes("«pms»") && Buffer.byteLength(t) <= TEXT_MAX), "pms alert delivered, clipped");
+  assert.ok(sentTelegram.some((t) => t.includes("«booking»")), "the other alert is not blocked");
+  // (7) the Telegram acceptance was on disk before the next channel was tried.
+  assert.equal(savedBeforeNtfy, true);
+  // A message that Telegram refuses by content: other messages still go; after 3 cycles it is given up for Telegram,
+  // logged and reported — not retried forever.
+  (wd.state().outbox as { kind: string; check: string; text: string; severity?: string }[]).push({ kind: "open", severity: "critical", check: "x", text: "FORBIDDEN-WORD alert" });
+  for (let i = 0; i < 4; i++) { await wd.cycle(); clock += 60_000; }
+  const r = await wd.cycle();
+  assert.equal(r.results.alert_undeliverable?.ok, false);
+  assert.equal(wd.state().outbox.filter((m) => m.text.includes("FORBIDDEN-WORD")).length, 0, "no longer retried (given up for Telegram, delivered to ntfy)");
+  // (8) time budget: a slow channel (each call takes 20 s of clock) stops the delivery loop for this cycle.
+  let calls = 0;
+  const slow = (async (url: string) => { if (url.includes("ntfy.example")) { calls++; clock += 20_000; return new Response(JSON.stringify({ id: "s" }), { status: 200 }); } return new Response(JSON.stringify({ ok: true }), { status: 200 }); }) as unknown as typeof fetch;
+  const w3 = createWatchdog(cfgFor({ pmsHealthUrl: "", bookingHealthUrl: "", heartbeatUrl: "", webhookUrl: "", ntfyUrl: "https://ntfy.example/t", intervalS: 60 }), { fetchImpl: slow, now: () => clock, sleep: async () => {}, log: () => {} });
+  for (let i = 0; i < 10; i++) (w3.state().outbox as { kind: string; check: string; text: string }[]).push({ kind: "reminder", check: `s${i}`, text: `s${i}` });
+  await w3.cycle();
+  assert.ok(calls <= 3, `delivery stopped by the time budget (${calls} calls)`);
+  assert.equal(w3.state().outbox.length, 10 - calls, "the rest wait, in order");
 });

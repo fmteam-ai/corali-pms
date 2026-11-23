@@ -73,6 +73,15 @@ export function listText(head, lines) {
   }
   return shown < lines.length ? text + tail(lines.length - shown) : text;
 }
+/** A single text within TEXT_MAX bytes (cut on a character boundary). */
+export function clipText(t) {
+  const text = String(t ?? "");
+  if (bytes(text) <= TEXT_MAX) return text;
+  const suffix = "… (περικομμένο — πλήρες στο log)", room = TEXT_MAX - bytes(suffix);
+  let out = "", size = 0;
+  for (const ch of text) { const b = bytes(ch); if (size + b > room) break; out += ch; size += b; }
+  return out + suffix;
+}
 const priorityOf = (m) => ((m.kind === "open" || m.kind === "escalated" || m.kind === "batch") && m.severity === "critical" ? 1 : m.kind === "open" || m.kind === "batch" || m.kind === "escalated" ? 2 : m.kind === "resolved" ? 3 : 4);
 const itemsOf = (m) => (m.kind === "batch" || m.kind === "digest" ? m.items ?? [] : [{ kind: m.kind, severity: m.severity, check: m.check, at: m.at, text: m.text }]);
 /** Bounded state without loss: beyond ITEMS_MAX, items of the same check and kind are counted together. */
@@ -172,12 +181,14 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
    * Anything else keeps the message in the queue (retried in the next cycle, also after a restart).
    */
   async function accepted(name, r) {
-    if (!r?.ok) return `HTTP ${r?.status ?? "—"}`;
+    // v204: { reason, messageSpecific } — a 4xx (except 408 / 429) refuses THIS message (too long, bad request),
+    // the channel itself works; 5xx / network / 408 / 429 = the channel is down for now.
+    if (!r?.ok) return { reason: `HTTP ${r?.status ?? "—"}`, messageSpecific: r?.status >= 400 && r?.status < 500 && ![408, 429].includes(r?.status) };
     if (name === "webhook") return true;
     const body = await r.json().catch(() => null);
-    if (name === "telegram") return body?.ok === true ? true : `Telegram: ${String(body?.description ?? "ok≠true").slice(0, 120)}`;
-    if (name === "ntfy") return body && typeof body.id === "string" && body.id ? true : "ntfy: απάντηση χωρίς id μηνύματος";
-    return `άγνωστος πάροχος ${name}`;
+    if (name === "telegram") return body?.ok === true ? true : { reason: `Telegram: ${String(body?.description ?? "ok≠true").slice(0, 120)}`, messageSpecific: Number(body?.error_code) >= 400 && Number(body?.error_code) < 500 && Number(body?.error_code) !== 429 };
+    if (name === "ntfy") return body && typeof body.id === "string" && body.id ? true : { reason: "ntfy: απάντηση χωρίς id μηνύματος", messageSpecific: false };
+    return { reason: `άγνωστος πάροχος ${name}`, messageSpecific: false };
   }
 
   /**
@@ -193,20 +204,36 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     if (cfg.webhookUrl) targets.push(["webhook", () => fetchImpl(cfg.webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg), signal: AbortSignal.timeout(cfg.timeoutMs) })]);
     msg.delivered ??= [];
     msg.errors ??= {};
+    msg.refused ??= {};
+    msg.gaveUp ??= {};
     for (const [name, send] of targets) {
-      if (msg.delivered.includes(name) || down.has(name)) continue;
+      if (msg.delivered.includes(name) || msg.gaveUp[name] || down.has(name)) continue;
+      let refusedNow = false;
       for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const r = await send();
-          const verdict = await accepted(name, r);
-          if (verdict === true) { msg.delivered.push(name); delete msg.errors[name]; break; }
-          msg.errors[name] = verdict;
-        } catch (e) { msg.errors[name] = `σύνδεση: ${String(e?.message ?? e).slice(0, 120)}`; }
+        let verdict;
+        try { verdict = await accepted(name, await send()); } catch (e) { verdict = { reason: `σύνδεση: ${String(e?.message ?? e).slice(0, 120)}`, messageSpecific: false }; }
+        if (verdict === true) {
+          msg.delivered.push(name); delete msg.errors[name];
+          persist(); // v204: saved at once — a restart now cannot send it to this channel again
+          break;
+        }
+        msg.errors[name] = verdict.reason;
+        if (verdict.messageSpecific) { refusedNow = true; break; } // the same message would be refused again
         await sleep(200 * 2 ** attempt);
       }
-      if (!msg.delivered.includes(name)) down.add(name);
+      if (msg.delivered.includes(name)) continue;
+      if (refusedNow) {
+        // The channel works but refuses this message: other messages still go through it. After 3 cycles of refusal
+        // the message is given up FOR THIS CHANNEL — logged in full and reported (alert_undeliverable), never silent.
+        msg.refused[name] = (msg.refused[name] ?? 0) + 1;
+        if (msg.refused[name] >= 3) {
+          msg.gaveUp[name] = msg.errors[name];
+          state.undeliverable = { count: (state.undeliverable?.count ?? 0) + 1, at: now(), last: `${name}: ${msg.errors[name]}` };
+          log(JSON.stringify({ level: "error", event: "alert_undeliverable", target: name, reason: msg.errors[name], kind: msg.kind, check: msg.check, text: msg.text }));
+        }
+      } else down.add(name);
     }
-    return targets.length > 0 && targets.every(([name]) => msg.delivered.includes(name));
+    return targets.length > 0 && targets.every(([name]) => msg.delivered.includes(name) || msg.gaveUp[name]);
   }
 
   async function cycle() {
@@ -221,6 +248,8 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     const queuedItems = state.outbox.reduce((n, m) => n + (m.kind === "batch" || m.kind === "digest" ? (m.items ?? []).reduce((k, x) => k + (Number(x.count) || 1), 0) : 1), 0);
     if (queuedItems >= QUEUE_WARN) results.alert_queue = { ok: false, severity: "warning", detail: `${queuedItems} ειδοποιήσεις δεν έχουν παραδοθεί σε όλα τα κανάλια (${state.outbox.length} μηνύματα) — ελέγξτε ntfy / Telegram / webhook` };
     else if (state.outbox.length || state.checks.alert_queue) results.alert_queue = { ok: true };
+    if (state.undeliverable && now() - state.undeliverable.at < 24 * 60 * MIN) results.alert_undeliverable = { ok: false, severity: "warning", detail: `${state.undeliverable.count} ειδοποίηση(εις) απορρίφθηκαν από κανάλι (${state.undeliverable.last}) — πλήρες κείμενο στο log (fly logs)` };
+    else if (state.checks.alert_undeliverable) results.alert_undeliverable = { ok: true };
     if (cfg.stateFile) results.state_storage = storageError ? { ok: false, severity: "warning", detail: `η κατάσταση του watchdog δεν αποθηκεύεται (${storageError}) — μετά από επανεκκίνηση χάνεται` } : { ok: true };
     const fresh = [];
     for (const [name, r] of Object.entries(results)) {
@@ -241,6 +270,8 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
         else if (c.open && t - c.lastAlertAt >= remind) { c.lastAlertAt = t; fresh.push({ kind: "reminder", severity: c.severity, check: name, at: t, text: `${c.severity === "warning" ? "🟠" : "🔴"} ${cfg.label}: «${name}» εξακολουθεί — ${r.detail} (από ${Math.round((t - c.openedAt) / MIN)}′)` }); }
       }
     }
+    // v204: every text within TEXT_MAX bytes (a detail from the PMS can be long; a too-long message is refused).
+    for (const m of fresh) m.text = clipText(m.text);
     // Every alert is written to the log when it is decided: the complete record, also of lines that a long message
     // cannot show (fly logs).
     for (const m of fresh) log(JSON.stringify({ event: "alert", at: new Date(m.at).toISOString(), kind: m.kind, severity: m.severity ?? null, check: m.check, text: m.text }));
@@ -253,8 +284,13 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     } else state.outbox.push(...fresh);
     // Saved BEFORE delivering: an alert decided in this cycle survives a restart even if delivery never happened.
     persist();
-    const pending = [], down = new Set();
-    for (const msg of state.outbox) if (!(await deliver(msg, down))) pending.push(msg);
+    // v204: delivery has a time budget per cycle (a slow channel cannot stretch one cycle to an hour); what is left
+    // waits for the next cycle, in order.
+    const pending = [], down = new Set(), deadline = now() + Math.max(10_000, cfg.intervalS * 1000 * 0.8);
+    for (const msg of state.outbox) {
+      if (now() > deadline) { pending.push(msg); continue; }
+      if (!(await deliver(msg, down))) pending.push(msg);
+    }
     // v204: nothing is dropped. Above QUEUE_MAX the least important messages are MERGED into one digest (their items
     // kept); critical «open» / «escalated» messages are kept individually first.
     state.outbox = compactOutbox(pending, cfg.label);

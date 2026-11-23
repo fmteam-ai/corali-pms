@@ -3050,3 +3050,4 @@ ALTER TABLE alerts ADD COLUMN IF NOT EXISTS reminded_at BIGINT;
 -- that were raised once per queued availability row are cancelled; the alerts and their history stay.
 UPDATE alert_outbox SET status='cancelled',last_error='v202: ομαδοποιήθηκε σε ένα συμβάν (Alert Intelligence)',updated_at=(extract(epoch from now())*1000)::bigint
  WHERE status='pending' AND alert_id IN (SELECT id FROM alerts WHERE alert_key ~ '^rel:outbox:[0-9]+$');
+ALTER TABLE channel_sync_state ADD COLUMN IF NOT EXISTS failing_since BIGINT;
