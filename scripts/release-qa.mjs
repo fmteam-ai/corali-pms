@@ -488,7 +488,7 @@ try {
     const a = await actOnFinding({ pool: db, owner, key: f.key, action: "maintenance", userId: null });
     const again = await actOnFinding({ pool: db, owner, key: f.key, action: "maintenance", userId: null });
     must(a.ok && a.maintenanceId && again.already, `εργασία: ${JSON.stringify(a)} ${JSON.stringify(again)}`);
-    return `δωμάτιο QA9 με πελάτη: δείκτης ${c.score} (${c.signals.map((x) => x.label).join(", ")}) · παράδοση: χωρίς στοιχεία δεν επιβεβαιώνεται (${v.ok ? "" : ""}${tb.status}) · αιτία «${f.title}» → εργασία συντήρησης #${a.maintenanceId} (μία φορά)`;
+    return `δωμάτιο QA9 με πελάτη: δείκτης ${c.score} (${c.signals.map((x) => x.label).join(", ")}) · παράδοση: χωρίς στοιχεία απορρίφθηκε, με τα στοιχεία → ${tb.status} · αιτία «${f.title}» → εργασία συντήρησης #${a.maintenanceId} (μία φορά)`;
   });
 
   await flow("F11", "Αυτόματα tests του κώδικα (unit / integration)", async () => {
