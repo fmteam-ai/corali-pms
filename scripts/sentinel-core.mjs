@@ -127,7 +127,13 @@ export function readOnlyPool(client) {
     },
   };
 }
-export async function collectReadOnly({ pool, owner, now }) {
+export async function collectReadOnly({ pool, owner, now, readPool = null }) {
+  // v202: with a dedicated read-only pool (every connection opened with default_transaction_read_only=on) the checks
+  // run their reads in parallel on separate connections — no queueing several queries on one client.
+  if (readPool) {
+    const ro = readOnlyPool(readPool);
+    return { reliability: await checkReliability({ pool: ro, owner, now }), health: await deepHealth({ pool: ro, owner, now }) };
+  }
   const c = typeof pool.connect === "function" ? await pool.connect() : pool;
   try {
     await c.query("SET default_transaction_read_only = on");
@@ -147,12 +153,20 @@ const parse = (s, d) => { try { return JSON.parse(String(s)); } catch { return d
  * One Sentinel run: collect (read only) → incidents (dedup by key, severity, evidence, report) → recovery verification
  * (an incident absent in RECOVERY_CHECKS consecutive runs spanning RECOVERY_MIN_MS is resolved, recovery verified).
  */
-export async function runSentinel({ pool, owner, now = Date.now(), correlationId = randomUUID(), collect = collectReadOnly }) {
+export async function runSentinel({ pool, owner, now = Date.now(), correlationId = randomUUID(), collect = collectReadOnly, readPool = null }) {
   const run = (await pool.query(`INSERT INTO sentinel_runs(owner_id,correlation_id,started_at,status) VALUES($1,$2,$3,'running') RETURNING id`, [owner, correlationId, now])).rows[0];
-  let findings;
+  let findings, collected = false, blindAreas = new Set(), blindHealth = new Set();
   try {
-    const { reliability, health } = await collect({ pool, owner, now });
+    const { reliability, health } = await collect({ pool, owner, now, readPool });
     findings = findingsFrom(reliability, health);
+    collected = true;
+    // v202: what this run could NOT observe — an area whose data was unreadable, a health component that is unknown.
+    // Incidents there are not «absent», they are unobserved: their state stays as it is.
+    for (const f of findings) {
+      if (f.key.startsWith("data-unavailable:")) blindAreas.add(f.area);
+      if (f.key.startsWith("health:") && f.evidence?.[0]?.observed?.includes('"status":"unknown"')) blindHealth.add(f.key);
+    }
+    for (const a of reliability?.areas ?? []) if (a.status === "unknown") blindAreas.add(a.key);
   } catch (e) {
     // The check itself failed: that is an incident too (the monitoring is blind), with the error as evidence.
     findings = [{ key: "sentinel:check-failed", area: "sentinel", level: "fail", title: "Ο Sentinel δεν μπόρεσε να ολοκληρώσει τους ελέγχους", evidence: [{ source: "sentinel", observed: String(e?.message ?? e).slice(0, 300), at: now }] }];
@@ -173,8 +187,11 @@ export async function runSentinel({ pool, owner, now = Date.now(), correlationId
     }
   }
   let resolved = 0;
-  for (const a of active) {
+  // v202: recovery only from a COMPLETED check that observed normal operation. A failed collection changes no other
+  // incident (no clean check counted, nothing «recovering», nothing resolved); an unobserved area neither.
+  for (const a of collected ? active : []) {
     if (seen.has(a.incident_key)) continue;
+    if (blindAreas.has(a.area) || blindHealth.has(a.incident_key)) continue;
     const clean = Number(a.clean_checks) + 1;
     const verified = clean >= RECOVERY_CHECKS && now - Number(a.last_seen_at) >= RECOVERY_MIN_MS;
     if (verified) {

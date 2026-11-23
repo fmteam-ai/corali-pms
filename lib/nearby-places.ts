@@ -33,7 +33,7 @@ export async function recordGoogleCalls(ownerId: string, n: number): Promise<voi
 
 export async function placesUsage(ownerId: string): Promise<{ today: number; month: number }> {
   const day = athensDay();
-  const r = (await db().query(`SELECT coalesce(sum(calls) FILTER (WHERE day=$2),0)::int today,coalesce(sum(calls),0)::int month FROM places_api_usage WHERE owner_id=$1 AND day LIKE $3`, [ownerId, day, `${day.slice(0, 7)}%`])).rows[0];
+  const r = (await db().query(`SELECT coalesce(sum(calls) FILTER (WHERE day=$2),0)::int AS today,coalesce(sum(calls),0)::int AS month FROM places_api_usage WHERE owner_id=$1 AND day LIKE $3`, [ownerId, day, `${day.slice(0, 7)}%`])).rows[0];
   return { today: Number(r?.today ?? 0), month: Number(r?.month ?? 0) };
 }
 

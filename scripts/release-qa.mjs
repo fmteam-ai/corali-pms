@@ -601,7 +601,10 @@ try {
       const cfg = { pmsHealthUrl: `${pms.url}/api/health`, bookingHealthUrl: `${booking.url}/api/health`, heartbeatUrl: `${pms.url}/api/monitoring/heartbeat`, secret: monitoringSecret, intervalS: 60, failThreshold: 3, remindMin: 60, heartbeatMaxAgeS: 300, progressStaleS: 1200, timeoutMs: 5000, telegram: null, ntfyUrl: "", webhookUrl: `http://127.0.0.1:${rport}/alert`, deadmanUrl: "", stateFile: "", label: "QA" };
       const healthy = createWatchdog(cfg, { log: () => {} });
       const c1 = await healthy.cycle();
-      must(Object.values(c1.results).every((x) => x.ok), `watchdog σε υγιές PMS: ${JSON.stringify(c1.results)}`);
+      // v202: only an exact «ok» is health. The core checks must be ok; anything else the QA database legitimately
+      // shows (no backup yet, a cron run minutes ago) must be REPORTED with a severity and a reason — never hidden.
+      for (const k of ["pms", "booking", "heartbeat", "database", "sentinel"]) must(c1.results[k]?.ok, `watchdog: ${k} ${JSON.stringify(c1.results[k])}`);
+      must(Object.values(c1.results).every((x) => x.ok || (["warning", "critical"].includes(x.severity) && x.detail)), `watchdog: αποτέλεσμα χωρίς σοβαρότητα: ${JSON.stringify(c1.results)}`);
       const deadPort = await freePort();
       const down = createWatchdog({ ...cfg, pmsHealthUrl: `http://127.0.0.1:${deadPort}/api/health`, heartbeatUrl: `http://127.0.0.1:${deadPort}/api/monitoring/heartbeat`, bookingHealthUrl: "" }, { log: () => {}, sleep: async () => {} });
       for (let i = 0; i < 3; i++) await down.cycle();

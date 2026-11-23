@@ -37,7 +37,7 @@ async function handlePOST(request: Request, { params }: { params: Promise<{ id: 
       if (!room) throw Error("NOT_FOUND");
       const targets = x.applyToType ? (await c.query(`SELECT id FROM rooms WHERE owner_id=$1 AND room_type=$2 ORDER BY id`, [u.ownerId, room.room_type])).rows.map((r) => Number(r.id)) : [Number(room.id)];
       for (const target of targets) {
-        const existing = (await c.query(`SELECT count(*)::int n, COALESCE(max(sort_order),0)::int last FROM room_photos WHERE owner_id=$1 AND room_id=$2`, [u.ownerId, target])).rows[0];
+        const existing = (await c.query(`SELECT count(*)::int AS n, COALESCE(max(sort_order),0)::int AS last FROM room_photos WHERE owner_id=$1 AND room_id=$2`, [u.ownerId, target])).rows[0];
         if (Number(existing.n) + photos.length > MAX_ROOM_PHOTOS) throw Error("TOO_MANY_PHOTOS");
         let sort = Number(existing.last);
         for (const p of photos) await c.query(`INSERT INTO room_photos(owner_id,room_id,mime,data_base64,byte_size,sort_order,created_by,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [u.ownerId, target, p!.mime, p!.base64, p!.bytes, ++sort, u.id, Date.now()]);

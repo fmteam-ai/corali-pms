@@ -13,8 +13,8 @@ export declare function findingsFrom(reliability: any, health: any): { key: stri
 export declare function buildReport(inc: any, now: number): SentinelReport;
 export declare function readOnlyPool(client: Pool): Pool;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export declare function collectReadOnly(x: { pool: Pool; owner: string; now: number }): Promise<{ reliability: any; health: any }>;
+export declare function collectReadOnly(x: { pool: Pool; owner: string; now: number; readPool?: Pool | null }): Promise<{ reliability: any; health: any }>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export declare function runSentinel(x: { pool: Pool; owner: string; now?: number; correlationId?: string; collect?: (x: any) => Promise<any> }): Promise<{ correlationId: string; status: string; findings: number; open: number; resolved: number }>;
+export declare function runSentinel(x: { pool: Pool; owner: string; now?: number; correlationId?: string; collect?: (x: any) => Promise<any>; readPool?: Pool | null }): Promise<{ correlationId: string; status: string; findings: number; open: number; resolved: number }>;
 export declare function sentinelIncidents(x: { pool: Pool; owner: string; limit?: number }): Promise<{ inventory: InventoryItem[]; runs: { correlationId: string; startedAt: number; finishedAt: number | null; status: string; checks: number; open: number }[]; incidents: SentinelIncident[] }>;
 export declare function reportMarkdown(inc: SentinelIncident): string;

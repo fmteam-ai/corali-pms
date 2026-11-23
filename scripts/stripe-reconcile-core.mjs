@@ -32,7 +32,7 @@ export async function stripeReconcile({ pool, owner, secretKey, fromMs, toMs = D
   const ours = intents.filter((pi) => pi.status === "succeeded" && (!pi.metadata?.owner_id || pi.metadata.owner_id === owner));
   const ids = ours.map((pi) => String(pi.id));
   const recorded = ids.length
-    ? (await pool.query(`SELECT t.provider_reference ref,t.amount_cents,t.status,b.reference FROM payment_transactions t LEFT JOIN bookings b ON b.owner_id=t.owner_id AND b.id=t.booking_id WHERE t.owner_id=$1 AND t.provider='stripe' AND t.provider_reference=ANY($2::text[])`, [owner, ids])).rows
+    ? (await pool.query(`SELECT t.provider_reference AS ref,t.amount_cents,t.status,b.reference FROM payment_transactions t LEFT JOIN bookings b ON b.owner_id=t.owner_id AND b.id=t.booking_id WHERE t.owner_id=$1 AND t.provider='stripe' AND t.provider_reference=ANY($2::text[])`, [owner, ids])).rows
     : [];
   const byRef = new Map(recorded.map((r) => [String(r.ref), r]));
   const issues = [];
@@ -47,7 +47,7 @@ export async function stripeReconcile({ pool, owner, secretKey, fromMs, toMs = D
   }
   // PMS payments in the period that Stripe does not list (only checked when Stripe's list was complete).
   if (complete) {
-    const pmsOnly = (await pool.query(`SELECT t.provider_reference ref,t.amount_cents,b.reference FROM payment_transactions t LEFT JOIN bookings b ON b.owner_id=t.owner_id AND b.id=t.booking_id WHERE t.owner_id=$1 AND t.provider='stripe' AND t.kind='payment' AND t.status IN ('succeeded','paid') AND t.provider_reference LIKE 'pi\\_%' AND t.created_at>=$2 AND t.created_at<$3 AND NOT (t.provider_reference=ANY($4::text[]))`, [owner, fromMs + 5 * 60_000, toMs - 5 * 60_000, ids])).rows;
+    const pmsOnly = (await pool.query(`SELECT t.provider_reference AS ref,t.amount_cents,b.reference FROM payment_transactions t LEFT JOIN bookings b ON b.owner_id=t.owner_id AND b.id=t.booking_id WHERE t.owner_id=$1 AND t.provider='stripe' AND t.kind='payment' AND t.status IN ('succeeded','paid') AND t.provider_reference LIKE 'pi\\_%' AND t.created_at>=$2 AND t.created_at<$3 AND NOT (t.provider_reference=ANY($4::text[]))`, [owner, fromMs + 5 * 60_000, toMs - 5 * 60_000, ids])).rows;
     for (const r of pmsOnly) issues.push({ kind: "pms_not_in_stripe", level: "warn", reference: r.reference ?? "—", amountCents: Number(r.amount_cents), providerRef: r.ref, detail: `Πληρωμή ${r.ref} (${eur(r.amount_cents)}${r.reference ? ` · ${r.reference}` : ""}) καταγράφηκε στο PMS αλλά δεν εμφανίζεται επιτυχής στο Stripe.` });
   }
   return { fromMs, toMs, complete, totals: { stripeCents, intents: ours.length, recorded: recorded.length }, issues };

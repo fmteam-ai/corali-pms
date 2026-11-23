@@ -90,3 +90,78 @@ test("v201 watchdog: database failure, stalled Sentinel, stale / invalid heartbe
     assert.equal(r.wd.state().outbox.length, 0);
   } finally { r.close(); }
 });
+
+// v202: a fake PMS through fetchImpl — exact control of the signed heartbeat body.
+function fakeFetch(state: { body: string | (() => string); now: () => number; alerts: { kind: string; check: string; severity?: string; text: string }[]; receiverDown?: boolean }) {
+  return (async (url: string, init?: { body?: string }) => {
+    if (url.includes("/alert")) { if (state.receiverDown) return new Response("down", { status: 500 }); state.alerts.push(JSON.parse(String(init?.body))); return new Response("ok"); }
+    if (url.endsWith("/api/health")) return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    const body = typeof state.body === "function" ? state.body() : state.body, t = state.now();
+    return new Response(body, { status: 200, headers: { "X-Corali-Signature": `t=${t},v1=${signHeartbeat(SECRET, t, body)}` } });
+  }) as unknown as typeof fetch;
+}
+const cfgFor = (extra: Record<string, unknown> = {}) => ({ pmsHealthUrl: "http://pms/api/health", bookingHealthUrl: "", heartbeatUrl: "http://pms/api/monitoring/heartbeat", secret: SECRET, intervalS: 60, failThreshold: 3, remindMin: 60, heartbeatMaxAgeS: 300, progressStaleS: 1200, timeoutMs: 2000, telegram: null, ntfyUrl: "", webhookUrl: "http://hook/alert", deadmanUrl: "", stateFile: "", label: "QA", ...extra });
+const hbBody = (components: Record<string, unknown>, runs = { s: 1, a: 1 }) => JSON.stringify({ service: "corali-pms", version: "v202", at: 1, status: "ok", components, progress: { sentinelRuns: runs.s, automationsRuns: runs.a, sentinelLastRunAgoS: 60 } });
+
+test("v202 P1 watchdog: only an exact «ok» is health — unknown / warn / missing are failures, by severity", async () => {
+  let clock = Date.parse("2026-11-24T10:00:00Z");
+  const st = { body: hbBody({ database: "unknown", sentinel: "warn", automations: "unknown" }), now: () => clock, alerts: [] as { kind: string; check: string; severity?: string; text: string }[] };
+  const wd = createWatchdog(cfgFor(), { fetchImpl: fakeFetch(st), now: () => clock, sleep: async () => {}, log: () => {} });
+  // The reported case: a valid signed heartbeat that knows nothing is NOT healthy.
+  const r = (await wd.cycle()).results;
+  assert.equal(r.heartbeat.ok, true, "the heartbeat itself is valid");
+  assert.deepEqual([r.database.ok, r.cron.ok, r.sentinel.ok], [false, false, false]);
+  assert.deepEqual([r.database.severity, r.cron.severity, r.sentinel.severity], ["critical", "critical", "warning"]);
+  for (let i = 0; i < 2; i++) { clock += 60_000; await wd.cycle(); }
+  assert.deepEqual(st.alerts.filter((a) => a.kind === "open").map((a) => [a.check, a.severity]).sort(), [["cron", "critical"], ["database", "critical"]], "critical after 3 checks; the warning later");
+  for (let i = 0; i < 6; i++) { clock += 60_000; await wd.cycle(); }
+  assert.ok(st.alerts.some((a) => a.kind === "open" && a.check === "sentinel" && a.severity === "warning" && a.text.startsWith("🟠")), "warning after 9 checks");
+  // A warning that turns critical is escalated at once.
+  st.body = hbBody({ database: "unknown", sentinel: "fail", automations: "unknown" });
+  for (let i = 0; i < 3; i++) { clock += 60_000; await wd.cycle(); }
+  assert.ok(st.alerts.some((a) => a.kind === "escalated" && a.check === "sentinel"));
+  // A component missing altogether = invalid heartbeat; any other component is watched too.
+  st.body = hbBody({ database: "ok", automations: "ok" });
+  assert.match((await wd.cycle()).results.heartbeat.detail!, /HEARTBEAT_INVALID: λείπει το component sentinel/);
+  st.body = hbBody({ database: "ok", automations: "ok", sentinel: "ok", otaQueue: "fail" }, { s: 2, a: 2 });
+  assert.equal((await wd.cycle()).results["component:otaQueue"].severity, "critical");
+});
+
+test("v202 P2 watchdog: a signed but malformed heartbeat is HEARTBEAT_INVALID (counted), never an exception that skips the cycle", async () => {
+  let clock = Date.parse("2026-11-24T10:00:00Z");
+  const st = { body: "{not json", now: () => clock, alerts: [] as { kind: string; check: string; text: string }[] };
+  const wd = createWatchdog(cfgFor(), { fetchImpl: fakeFetch(st), now: () => clock, sleep: async () => {}, log: () => {} });
+  for (const body of ["{not json", "[]", "null", JSON.stringify({ service: "x", at: 1, components: { database: "ok", automations: "ok", sentinel: "ok" } })]) {
+    st.body = body;
+    const r = await wd.cycle();
+    assert.equal(r.results.pms.ok, true, "the other checks still ran");
+    assert.match(r.results.heartbeat.detail!, /^HEARTBEAT_INVALID/, body);
+    clock += 60_000;
+  }
+  assert.ok(st.alerts.some((a) => a.kind === "open" && a.check === "heartbeat"), "the failures were counted → alert after 3");
+});
+
+test("v202 P2 watchdog: state survives a restart — open incidents are not re-alerted, undelivered alerts are delivered after the restart", async () => {
+  const { mkdtempSync, readFileSync: rf } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const stateFile = join(mkdtempSync(join(tmpdir(), "wd-")), "state.json");
+  let clock = Date.parse("2026-11-24T10:00:00Z");
+  const st = { body: hbBody({ database: "fail", sentinel: "ok", automations: "ok" }), now: () => clock, alerts: [] as { kind: string; check: string; text: string }[], receiverDown: true };
+  const deps = { fetchImpl: fakeFetch(st), now: () => clock, sleep: async () => {}, log: () => {} };
+  const a = createWatchdog(cfgFor({ stateFile }), deps);
+  for (let i = 0; i < 3; i++) { await a.cycle(); clock += 60_000; }
+  assert.equal(st.alerts.length, 0, "the receiver is down: nothing delivered yet");
+  assert.ok(JSON.parse(rf(stateFile, "utf8")).outbox.length > 0, "the undelivered alert is on disk");
+  // The machine restarts (a new process reading the same volume); the receiver works again.
+  st.receiverDown = false;
+  const b = createWatchdog(cfgFor({ stateFile }), deps);
+  await b.cycle();
+  assert.equal(st.alerts.filter((x) => x.kind === "open" && x.check === "database").length, 1, "delivered after the restart, exactly once");
+  clock += 60_000; await b.cycle();
+  assert.equal(st.alerts.filter((x) => x.check === "database").length, 1, "the open incident is remembered: no new «open» alert");
+  // A state file that cannot be written is itself reported.
+  const c = createWatchdog(cfgFor({ stateFile: "/proc/no-such-dir/state.json" }), deps);
+  await c.cycle();
+  assert.equal((await c.cycle()).results.state_storage.ok, false);
+});

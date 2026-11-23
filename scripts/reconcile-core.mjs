@@ -7,11 +7,11 @@ export async function reconcile({ pool, owner, fromMs, toMs = Date.now() }) {
   const q = (sql, extra = []) => pool.query(sql, [owner, fromMs, toMs, ...extra]).then((r) => r.rows);
   const [orphanProvider, orphanFolio, dupFolio, posMissing, posVoid, orderMissing, orderCancel, totals] = await Promise.all([
     // A payment the provider confirmed, with no payment line on that booking's folio.
-    q(`SELECT t.provider,t.provider_reference ref,t.amount_cents,b.reference FROM payment_transactions t LEFT JOIN bookings b ON b.owner_id=t.owner_id AND b.id=t.booking_id
+    q(`SELECT t.provider,t.provider_reference AS ref,t.amount_cents,b.reference FROM payment_transactions t LEFT JOIN bookings b ON b.owner_id=t.owner_id AND b.id=t.booking_id
         WHERE t.owner_id=$1 AND t.created_at>=$2 AND t.created_at<$3 AND t.status IN ('succeeded','paid') AND t.kind='payment' AND t.provider_reference IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM folio_entries f WHERE f.owner_id=t.owner_id AND f.entry_type='payment' AND (f.receipt_reference=t.provider_reference OR f.receipt_reference LIKE t.provider_reference || '#%'))`),
     // A folio payment that says it came from a provider (Stripe / Viva reference) with no provider transaction.
-    q(`SELECT f.id,f.receipt_reference ref,f.amount_cents,b.reference FROM folio_entries f JOIN bookings b ON b.owner_id=f.owner_id AND b.id=f.booking_id
+    q(`SELECT f.id,f.receipt_reference AS ref,f.amount_cents,b.reference FROM folio_entries f JOIN bookings b ON b.owner_id=f.owner_id AND b.id=f.booking_id
         WHERE f.owner_id=$1 AND f.created_at>=$2 AND f.created_at<$3 AND f.entry_type='payment' AND f.payment_method IN ('stripe','viva') AND f.receipt_reference IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM payment_transactions t WHERE t.owner_id=f.owner_id AND t.provider_reference=split_part(f.receipt_reference,'#',1))`),
     // The same charge twice on a folio within two minutes (a retried request charged twice).

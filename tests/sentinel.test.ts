@@ -119,3 +119,30 @@ test("v201 deep health: unknown is never ok; a stale Sentinel is a failure; the 
   assert.equal(fs[0].key, "health:database");
   assert.equal(buildReport({ key: "health:database", title: "x", severity: "critical", evidence: fs[0].evidence }, now).impact.length > 10, true);
 });
+
+test("v202 P1: a failed collection changes no other incident — recovery only from a completed check that observed normal operation", async () => {
+  const { db, pool } = await fresh();
+  try {
+    const t0 = Date.now();
+    const outbox = (await db.query<{ id: number }>(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,status,attempts,last_error,created_at,updated_at) VALUES($1,'2026-12-01','2026-12-02','qa','failed',4,'Channex 503',$2,$2) RETURNING id`, [o, t0 - 45 * MIN])).rows[0].id;
+    await runSentinel({ pool, owner: o, now: t0 });
+    const key = `outbox:${outbox}`;
+    const get = async () => (await sentinelIncidents({ pool, owner: o })).incidents.find((i) => i.key === key && i.status !== "resolved") ?? (await sentinelIncidents({ pool, owner: o })).incidents.find((i) => i.key === key)!;
+    assert.equal((await get()).status, "open");
+    // The collection fails three times, long after — the OTA incident is NOT absent, it is unobserved.
+    const broken = async () => { throw new Error("connection terminated"); };
+    for (let i = 1; i <= 3; i++) await runSentinel({ pool, owner: o, now: t0 + i * 20 * MIN, collect: broken });
+    let inc = await get();
+    assert.deepEqual([inc.status, inc.cleanChecks], ["open", 0], "unchanged: no clean check, not recovering, not resolved");
+    // The area's data unreadable (DATA_UNAVAILABLE) → also unobserved.
+    const blind = async () => ({ reliability: { areas: [{ key: "channel", el: "Channel", status: "fail", items: [{ key: "data-unavailable:channel:outbox", level: "fail", text: "DATA_UNAVAILABLE", at: t0 }] }] }, health: { at: t0, components: {} } });
+    for (let i = 4; i <= 6; i++) await runSentinel({ pool, owner: o, now: t0 + i * 20 * MIN, collect: blind });
+    inc = await get();
+    assert.deepEqual([inc.status, inc.cleanChecks], ["open", 0]);
+    // Only completed checks that see the fault gone count — then recovery is verified as before.
+    await db.query(`UPDATE channel_sync_outbox SET status='sent' WHERE id=$1`, [outbox]);
+    await runSentinel({ pool, owner: o, now: t0 + 140 * MIN });
+    await runSentinel({ pool, owner: o, now: t0 + 160 * MIN });
+    assert.equal((await sentinelIncidents({ pool, owner: o })).incidents.find((i) => i.key === key)!.status, "resolved");
+  } finally { await db.close(); }
+});

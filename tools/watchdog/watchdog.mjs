@@ -33,10 +33,38 @@ export function verifySignature(secret, header, body, now, maxAgeMs) {
   return a.length === b.length && timingSafeEqual(a, b) ? "ok" : "invalid";
 }
 
+/** Only the exact "ok" is health; "warn" → warning; "fail" / "unknown" / anything else / missing → critical. */
+export function componentResult(name, status, hb) {
+  if (status === "ok") return { ok: true };
+  const extra = name === "sentinel" ? ` (τελευταία εκτέλεση πριν ${hb?.progress?.sentinelLastRunAgoS ?? "?"}″)` : "";
+  if (status === "warn") return { ok: false, severity: "warning", detail: `${name}: warn${extra}` };
+  if (status === undefined || status === null) return { ok: false, severity: "critical", detail: `${name}: λείπει από το heartbeat` };
+  return { ok: false, severity: "critical", detail: `${name}: ${String(status).slice(0, 20)}${extra}` };
+}
+
+/** Safe parse + schema check of the heartbeat body. */
+const REQUIRED = ["database", "automations", "sentinel"];
+export function parseHeartbeat(text) {
+  let v;
+  try { v = JSON.parse(text); } catch { return { error: "το σώμα δεν είναι έγκυρο JSON" }; }
+  if (!v || typeof v !== "object" || Array.isArray(v)) return { error: "το σώμα δεν είναι αντικείμενο" };
+  if (typeof v.service !== "string" || !Number.isFinite(Number(v.at))) return { error: "λείπουν service / at" };
+  if (!v.components || typeof v.components !== "object" || Array.isArray(v.components)) return { error: "λείπουν τα components" };
+  for (const k of REQUIRED) if (!(k in v.components)) return { error: `λείπει το component ${k}` };
+  if (!v.progress || typeof v.progress !== "object" || !Number.isFinite(Number(v.progress.sentinelRuns)) || !Number.isFinite(Number(v.progress.automationsRuns))) return { error: "λείπουν οι μετρητές προόδου" };
+  return { value: v };
+}
+
 export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = (l) => console.log(l) } = {}) {
   let state = { checks: {}, outbox: [], progress: {} };
   if (cfg.stateFile) { try { state = { ...state, ...JSON.parse(readFileSync(cfg.stateFile, "utf8")) }; } catch { /* first start */ } }
-  const persist = () => { if (!cfg.stateFile) return; try { writeFileSync(`${cfg.stateFile}.tmp`, JSON.stringify(state)); renameSync(`${cfg.stateFile}.tmp`, cfg.stateFile); } catch (e) { log(JSON.stringify({ level: "error", event: "state_write_failed", error: String(e.message) })); } };
+  // Returns false when the state could not be saved — reported as the «state_storage» check, never silent.
+  let storageError = null;
+  const persist = () => {
+    if (!cfg.stateFile) return true;
+    try { writeFileSync(`${cfg.stateFile}.tmp`, JSON.stringify(state)); renameSync(`${cfg.stateFile}.tmp`, cfg.stateFile); storageError = null; return true; }
+    catch (e) { storageError = String(e.message).slice(0, 120); log(JSON.stringify({ level: "error", event: "state_write_failed", error: storageError })); return false; }
+  };
   const get = async (url) => {
     const ctl = AbortSignal.timeout(cfg.timeoutMs);
     const r = await fetchImpl(url, { headers: { "User-Agent": "corali-watchdog" }, signal: ctl, cache: "no-store" });
@@ -48,25 +76,31 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     catch (e) { return { ok: false, detail: e?.name === "TimeoutError" ? `καμία απάντηση σε ${cfg.timeoutMs / 1000}″` : `μη προσβάσιμο (${e?.cause?.code ?? e?.message ?? e})` }; }
   }
 
-  /** The heartbeat gives several checks: signature, freshness, database, sentinel, cron progress. */
+  /**
+   * The heartbeat gives several checks. ONLY the exact status "ok" is health: "warn" is a warning, "fail",
+   * "unknown", anything else or a missing component is critical. A body that is not valid JSON or does not match the
+   * schema is HEARTBEAT_INVALID — never an exception that skips the cycle.
+   */
   async function heartbeat(t) {
     const out = {};
     let r;
-    try { r = await get(cfg.heartbeatUrl); } catch (e) { out.heartbeat = { ok: false, detail: `μη προσβάσιμο (${e?.cause?.code ?? e?.message ?? e})` }; return out; }
-    if (r.status !== 200) { out.heartbeat = { ok: false, detail: `HTTP ${r.status}` }; return out; }
+    try { r = await get(cfg.heartbeatUrl); } catch (e) { out.heartbeat = { ok: false, severity: "critical", detail: `μη προσβάσιμο (${e?.cause?.code ?? e?.message ?? e})` }; return out; }
+    if (r.status !== 200) { out.heartbeat = { ok: false, severity: "critical", detail: `HTTP ${r.status}` }; return out; }
     const sig = verifySignature(cfg.secret, r.headers.get("x-corali-signature"), r.text, t, cfg.heartbeatMaxAgeS * 1000);
-    if (sig !== "ok") { out.heartbeat = { ok: false, detail: `υπογραφή ${sig} — το heartbeat δεν μπορεί να επαληθευτεί` }; return out; }
-    const hb = JSON.parse(r.text);
+    if (sig !== "ok") { out.heartbeat = { ok: false, severity: "critical", detail: `υπογραφή ${sig} — το heartbeat δεν μπορεί να επαληθευτεί` }; return out; }
+    const parsed = parseHeartbeat(r.text);
+    if (parsed.error) { out.heartbeat = { ok: false, severity: "critical", detail: `HEARTBEAT_INVALID: ${parsed.error}` }; return out; }
+    const hb = parsed.value;
     out.heartbeat = { ok: true };
-    out.database = hb.components?.database === "fail" ? { ok: false, detail: "η βάση δεδομένων του PMS δεν απαντά" } : { ok: true };
-    out.sentinel = ["fail", "unknown"].includes(hb.components?.sentinel) ? { ok: false, detail: `Sentinel: ${hb.components?.sentinel} (τελευταία εκτέλεση πριν ${hb.progress?.sentinelLastRunAgoS ?? "?"}″)` } : { ok: true };
-    out.cron = hb.components?.automations === "fail" ? { ok: false, detail: "το cron των αυτοματισμών δεν τρέχει" } : { ok: true };
+    for (const [name, label] of [["database", "database"], ["automations", "cron"], ["sentinel", "sentinel"]]) out[label] = componentResult(name, hb.components[name], hb);
+    // Every other component the PMS reports is watched too (OTA queue, alerts, backups, social …).
+    for (const [name, status] of Object.entries(hb.components)) if (!["database", "automations", "sentinel"].includes(name)) out[`component:${name}`] = componentResult(name, status, hb);
     // Progress: a counter that stopped growing = a stalled worker, even if every status still says ok.
     for (const [k, label] of [["sentinelRuns", "sentinel_progress"], ["automationsRuns", "cron_progress"]]) {
-      const v = Number(hb.progress?.[k] ?? 0), p = state.progress[k];
+      const v = Number(hb.progress[k]), p = state.progress[k];
       if (!p || v > p.value) state.progress[k] = { value: v, since: t };
       const stale = t - state.progress[k].since > cfg.progressStaleS * 1000;
-      out[label] = stale ? { ok: false, detail: `ο μετρητής ${k} = ${v} δεν αυξάνεται εδώ και ${Math.round((t - state.progress[k].since) / MIN)}′` } : { ok: true };
+      out[label] = stale ? { ok: false, severity: "critical", detail: `ο μετρητής ${k} = ${v} δεν αυξάνεται εδώ και ${Math.round((t - state.progress[k].since) / MIN)}′` } : { ok: true };
     }
     return out;
   }
@@ -90,20 +124,32 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
   async function cycle() {
     const t = now();
     const results = {};
-    if (cfg.pmsHealthUrl) results.pms = await health(cfg.pmsHealthUrl);
-    if (cfg.bookingHealthUrl) results.booking = await health(cfg.bookingHealthUrl);
-    if (cfg.heartbeatUrl) Object.assign(results, await heartbeat(t));
+    // Each check is isolated: an unexpected error is that check's failure, never the end of the cycle.
+    const guard = async (fn, name) => { try { return await fn(); } catch (e) { return { [name]: { ok: false, severity: "critical", detail: `σφάλμα ελέγχου: ${String(e?.message ?? e).slice(0, 120)}` } }; } };
+    if (cfg.pmsHealthUrl) Object.assign(results, await guard(async () => ({ pms: await health(cfg.pmsHealthUrl) }), "pms"));
+    if (cfg.bookingHealthUrl) Object.assign(results, await guard(async () => ({ booking: await health(cfg.bookingHealthUrl) }), "booking"));
+    if (cfg.heartbeatUrl) Object.assign(results, await guard(() => heartbeat(t), "heartbeat"));
+    if (cfg.stateFile) results.state_storage = storageError ? { ok: false, severity: "warning", detail: `η κατάσταση του watchdog δεν αποθηκεύεται (${storageError}) — μετά από επανεκκίνηση χάνεται` } : { ok: true };
     for (const [name, r] of Object.entries(results)) {
       const c = (state.checks[name] ??= { fails: 0, oks: 0, open: false, openedAt: null, lastAlertAt: null });
       if (r.ok) {
         c.fails = 0; c.oks++;
         if (c.open && c.oks >= 2) { c.open = false; state.outbox.push({ kind: "resolved", check: name, at: t, text: `✅ ${cfg.label}: «${name}» αποκαταστάθηκε (διάρκεια ${Math.round((t - c.openedAt) / MIN)}′)` }); }
       } else {
+        // Severity decides how soon and how often: critical after FAIL_THRESHOLD checks, reminded every REMIND_MIN;
+        // a warning after 3 × FAIL_THRESHOLD checks, reminded every 6 × REMIND_MIN. A warning that becomes critical is
+        // escalated at once.
+        const sev = r.severity === "warning" ? "warning" : "critical";
+        const icon = sev === "warning" ? "🟠" : "🔴";
         c.oks = 0; c.fails++; c.detail = r.detail;
-        if (!c.open && c.fails >= cfg.failThreshold) { c.open = true; c.openedAt = t; c.lastAlertAt = t; state.outbox.push({ kind: "open", check: name, at: t, text: `🔴 ${cfg.label}: «${name}» — ${r.detail} (${c.fails} συνεχόμενοι έλεγχοι)` }); }
-        else if (c.open && t - c.lastAlertAt >= cfg.remindMin * MIN) { c.lastAlertAt = t; state.outbox.push({ kind: "reminder", check: name, at: t, text: `🔴 ${cfg.label}: «${name}» εξακολουθεί — ${r.detail} (από ${Math.round((t - c.openedAt) / MIN)}′)` }); }
+        const threshold = sev === "warning" ? cfg.failThreshold * 3 : cfg.failThreshold, remind = (sev === "warning" ? 6 : 1) * cfg.remindMin * MIN;
+        if (!c.open && c.fails >= threshold) { c.open = true; c.severity = sev; c.openedAt = t; c.lastAlertAt = t; state.outbox.push({ kind: "open", severity: sev, check: name, at: t, text: `${icon} ${cfg.label}: «${name}» — ${r.detail} (${c.fails} συνεχόμενοι έλεγχοι)` }); }
+        else if (c.open && c.severity === "warning" && sev === "critical" && c.fails >= cfg.failThreshold) { c.severity = "critical"; c.lastAlertAt = t; state.outbox.push({ kind: "escalated", severity: sev, check: name, at: t, text: `🔴 ${cfg.label}: «${name}» έγινε κρίσιμο — ${r.detail}` }); }
+        else if (c.open && t - c.lastAlertAt >= remind) { c.lastAlertAt = t; state.outbox.push({ kind: "reminder", severity: c.severity, check: name, at: t, text: `${c.severity === "warning" ? "🟠" : "🔴"} ${cfg.label}: «${name}» εξακολουθεί — ${r.detail} (από ${Math.round((t - c.openedAt) / MIN)}′)` }); }
       }
     }
+    // Saved BEFORE delivering: an alert decided in this cycle survives a restart even if delivery never happened.
+    persist();
     const pending = [];
     for (const msg of state.outbox) if (!(await deliver(msg))) pending.push(msg);
     state.outbox = pending.slice(-50);

@@ -48,7 +48,7 @@ export async function deepHealth({ pool, owner, now = Date.now() }) {
     q(pool, `SELECT count(*)::int n FROM rooms WHERE owner_id=$1 AND active=1`, [owner]),
     q(pool, `SELECT max(finished_at) m FROM backup_runs WHERE owner_id=$1 AND kind='backup' AND status='ok'`, [owner]),
     q(pool, `SELECT 1 FROM provider_connections WHERE owner_id=$1 AND provider_key IN ('channex','channelManager') AND active=1`, [owner]),
-    q(pool, `SELECT (SELECT max(finished_at) FROM sentinel_runs WHERE owner_id=$1 AND finished_at IS NOT NULL) last,(SELECT status FROM sentinel_runs WHERE owner_id=$1 AND finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 1) last_status,(SELECT count(*)::int FROM sentinel_runs WHERE owner_id=$1) runs,(SELECT count(*)::int FROM sentinel_incidents WHERE owner_id=$1 AND status='open') open`, [owner]),
+    q(pool, `SELECT (SELECT max(finished_at) FROM sentinel_runs WHERE owner_id=$1 AND finished_at IS NOT NULL) AS last_finished,(SELECT status FROM sentinel_runs WHERE owner_id=$1 AND finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 1) AS last_status,(SELECT count(*)::int FROM sentinel_runs WHERE owner_id=$1) AS runs,(SELECT count(*)::int FROM sentinel_incidents WHERE owner_id=$1 AND status='open') AS open_incidents`, [owner]),
   ]);
   const facts = {
     dbMs, channelOn: Boolean(channel?.length),
@@ -56,7 +56,7 @@ export async function deepHealth({ pool, owner, now = Date.now() }) {
     channelSync: beats === null ? null : beats.find((b) => b.job === "channel-sync") ?? {},
     steps, outboxOldest: outbox === null ? null : outbox[0]?.m ? Number(outbox[0].m) : 0,
     alertIssues: alerts === null ? null : Number(alerts[0]?.n ?? 0), socialStuck: social === null ? null : Number(social[0]?.n ?? 0),
-    sentinel: sentinel === null ? null : { last: sentinel[0]?.last ? Number(sentinel[0].last) : 0, lastStatus: String(sentinel[0]?.last_status ?? ""), runs: Number(sentinel[0]?.runs ?? 0), open: Number(sentinel[0]?.open ?? 0) },
+    sentinel: sentinel === null ? null : { last: sentinel[0]?.last_finished ? Number(sentinel[0].last_finished) : 0, lastStatus: String(sentinel[0]?.last_status ?? ""), runs: Number(sentinel[0]?.runs ?? 0), open: Number(sentinel[0]?.open_incidents ?? 0) },
     activeRooms: rooms === null ? null : Number(rooms[0]?.n ?? 0), lastBackup: backup === null ? undefined : backup[0]?.m ? Number(backup[0].m) : 0,
   };
   return { at: now, ...evaluateHealth(facts, now) };
