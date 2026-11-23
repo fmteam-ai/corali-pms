@@ -11,6 +11,7 @@ const one = async (pool, sql, params) => (await pool.query(sql, params)).rows;
 import { heartbeatState } from "./job-control-core.mjs";
 import { alertDeliveryIssues } from "./alert-core.mjs";
 import { otaReconcile, queueOtaResync } from "./ota-reconcile-core.mjs";
+import { turnoverBoard } from "./turnover-core.mjs";
 
 export const AREAS = [
   { key: "channel", el: "Booking & Channel Manager", en: "Booking & Channel Manager" },
@@ -21,6 +22,7 @@ export const AREAS = [
   { key: "network", el: "Wi-Fi πελατών & κάρτες πρόσβασης", en: "Guest Wi-Fi & access cards" },
   { key: "integrations", el: "API & webhooks", en: "API & webhooks" },
   { key: "automations", el: "Αυτοματισμοί (cron)", en: "Automations (cron)" },
+  { key: "turnover", el: "Παράδοση δωματίων", en: "Room turnover" },
   { key: "backups", el: "Αντίγραφα ασφαλείας", en: "Backups" },
   { key: "release", el: "Έκδοση & έλεγχοι", en: "Release & checks" },
 ];
@@ -187,6 +189,18 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
   if (gm && !areas.automations) info("automations", `Όλα τα βήματα OK · τελευταία εκτέλεση ${hhmm(gm.last_run_at)}`);
   if (!gm) info("automations", "Δεν έχει καταγραφεί ακόμη εκτέλεση του cron");
 
+  // v193 room turnover: a room with a step that failed after check-out (Wi-Fi still active, TV not cleared, cleaning
+  // rejected, serious fault); critical when the next guest arrives today.
+  const turn = await turnoverBoard({ pool, owner, now, days: 3 }).catch(() => ({ turnovers: [] }));
+  const todayAthens = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now));
+  for (const x of turn.turnovers) {
+    if (x.status !== "failed") continue;
+    const failedSteps = Object.entries(x.steps).filter(([, v]) => v.state === "failed").map(([k, v]) => `${k}: ${v.detail}`).join(" · ");
+    add("turnover", { key: `turnover:${x.bookingId}`, level: x.nextArrival && x.nextArrival <= todayAthens ? "fail" : "warn", text: `Δωμάτιο ${x.code} μετά το check-out ${x.reference}${x.nextArrival ? ` (επόμενη άφιξη ${x.nextArrival})` : ""}: ${failedSteps.slice(0, 200)}`, link: "/pms/guest-experience?tab=turnover", at: Number(x.checkoutAt) });
+  }
+  const verified = turn.turnovers.filter((x) => x.status === "verified").length;
+  if (turn.turnovers.length) info("turnover", `${verified}/${turn.turnovers.length} παραδόσεις δωματίων επιβεβαιωμένες (3 ημέρες)`);
+
   // v189 backups: a recent, successful backup and a recent restore rehearsal.
   const bk = backups.find((b) => b.kind === "backup"), rh = backups.find((b) => b.kind === "rehearsal");
   if (!bk) add("backups", { key: "backup:none", level: "warn", text: "Δεν έχει καταγραφεί αντίγραφο ασφαλείας της βάσης (cron run-db-backup.mjs)" });
@@ -264,7 +278,7 @@ export async function runReliabilityAlerts({ pool, owner, now = Date.now(), emai
   // v190: EVERY critical problem becomes an alert (none dropped), most important areas first. The PMS notification
   // list gets at most 10 new entries per run plus one summary; every alert still gets its deliveries, which the
   // alert outbox sends in order, 30 per minute.
-  const PRIORITY = ["payments", "channel", "automations", "backups", "release", "mydata", "messaging", "network", "devices", "integrations"];
+  const PRIORITY = ["payments", "channel", "automations", "turnover", "backups", "release", "mydata", "messaging", "network", "devices", "integrations"];
   const rank = (k) => { const i = PRIORITY.indexOf(k); return i < 0 ? PRIORITY.length : i; };
   failing.sort((a, b) => rank(a.area.key) - rank(b.area.key));
   let told = 0, silent = 0;

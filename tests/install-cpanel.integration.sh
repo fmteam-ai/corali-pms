@@ -46,11 +46,11 @@ http.createServer((request, response) => {
     const required = ["DATABASE_URL", "SESSION_SECRET", "PMS_ORIGIN", "BOOKING_ORIGIN", "PMS_OWNER_ID", "PMS_DOCUMENT_KEY", "APP_ROLE"];
     if (required.some((key) => !process.env[key])) {
       response.writeHead(503, { "content-type": "application/json" });
-      response.end(JSON.stringify({ ok: false, service: "corali-pms", version: "v192", reason: "runtime_configuration_invalid" }));
+      response.end(JSON.stringify({ ok: false, service: "corali-pms", version: "v193", reason: "runtime_configuration_invalid" }));
       return;
     }
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ ok: true, service: "corali-pms", version: "v192" }));
+    response.end(JSON.stringify({ ok: true, service: "corali-pms", version: "v193" }));
     return;
   }
   response.writeHead(404);
@@ -60,7 +60,7 @@ EOF
 cat >"$release/scripts/init-postgres.mjs" <<'EOF'
 console.log("Simulated idempotent PostgreSQL migration: OK");
 EOF
-# v192: no database in this test — the post-install check runs on its file part only (the database part is
+# v193: no database in this test — the post-install check runs on its file part only (the database part is
 # verified by the release QA, flow F15).
 mv "$release/scripts/post-install-check.mjs" "$release/scripts/post-install-check.real.mjs"
 cat >"$release/scripts/post-install-check.mjs" <<'EOF'
@@ -113,11 +113,11 @@ bash "$release/INSTALL-CPANEL.sh" --yes --skip-db-backup \
   --pms-root "$pms" --booking-root "$booking" \
   --pms-url "https://pms.invalid" --booking-url "https://booking.invalid"
 
-grep -qx 'v192' "$pms/DEPLOY_VERSION.txt"
-grep -qx 'v192' "$booking/DEPLOY_VERSION.txt"
+grep -qx 'v193' "$pms/DEPLOY_VERSION.txt"
+grep -qx 'v193' "$booking/DEPLOY_VERSION.txt"
 grep -q '^PMS_DOCUMENT_KEY=integration-test-key-that-is-never-production$' "$pms/runtime.env"
 grep -q '^PMS_DOCUMENT_KEY=integration-test-key-that-is-never-production$' "$booking/runtime.env"
-manifest="$(find "$backups" -maxdepth 1 -name 'corali-deployment-v192-*.manifest' -print -quit)"
+manifest="$(find "$backups" -maxdepth 1 -name 'corali-deployment-v193-*.manifest' -print -quit)"
 [[ -n "$manifest" && -f "$manifest" ]]
 
 printf 'rollback-preservation-marker\n' >"$pms/rollback-marker"

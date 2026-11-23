@@ -2835,3 +2835,31 @@ CREATE TABLE IF NOT EXISTS rehearsal_guard (
   nonce TEXT PRIMARY KEY,
   created_at BIGINT NOT NULL
 );
+
+-- v193 Verified Room Turnover: the documented final confirmation per check-out (steps with their evidence).
+CREATE TABLE IF NOT EXISTS room_turnovers (
+  owner_id TEXT NOT NULL,
+  booking_id BIGINT NOT NULL,
+  room_id BIGINT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  steps_json TEXT NOT NULL DEFAULT '{}',
+  equipment_at BIGINT,
+  equipment_by TEXT,
+  equipment_note TEXT NOT NULL DEFAULT '',
+  verified_at BIGINT,
+  verified_by TEXT,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  PRIMARY KEY (owner_id, booking_id)
+);
+-- v193 Root cause analytics: what was done about a finding (maintenance task created, or dismissed with a reason).
+CREATE TABLE IF NOT EXISTS root_cause_actions (
+  owner_id TEXT NOT NULL,
+  finding_key TEXT NOT NULL,
+  status TEXT NOT NULL,
+  maintenance_id BIGINT,
+  note TEXT NOT NULL DEFAULT '',
+  created_by BIGINT,
+  updated_at BIGINT NOT NULL,
+  PRIMARY KEY (owner_id, finding_key)
+);

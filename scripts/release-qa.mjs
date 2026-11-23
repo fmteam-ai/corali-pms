@@ -457,6 +457,40 @@ try {
     }
   });
 
+  await flow("F19", "Εμπειρία πελάτη: Comfort Score δωματίου με πελάτη, επιβεβαιωμένη παράδοση μετά το check-out, επαναλαμβανόμενη αιτία → εργασία συντήρησης", async () => {
+    const { comfortBoard } = await import(path.join(pmsDir, "scripts/comfort-core.mjs"));
+    const { turnoverBoard, confirmEquipment, verifyTurnover } = await import(path.join(pmsDir, "scripts/turnover-core.mjs"));
+    const { rootCauses, actOnFinding } = await import(path.join(pmsDir, "scripts/root-cause-core.mjs"));
+    const t0 = Date.now(), H = 3_600_000, D = 86_400_000;
+    const rid = Number((await q(`INSERT INTO rooms(owner_id,code,room_type,capacity,active,base_rate_cents,operational_status) VALUES($1,'QA9','qa-x',2,1,10000,'clean') RETURNING id`, [owner])).rows[0].id);
+    const bk = async (ref, status, extra = {}) => Number((await q(`INSERT INTO bookings(owner_id,reference,guest_name,check_in,check_out,status,room_id,total_cents,balance_cents,created_at,checked_out_at) VALUES($1,$2,'QA Guest',$3,$4,$5,$6,10000,0,$7,$8) RETURNING id`, [owner, ref, extra.ci ?? addDays(today, -2), extra.co ?? addDays(today, 2), status, rid, t0, extra.out ?? null])).rows[0].id);
+    // Comfort: guest in the room, hot room, an A/C problem open for 3 hours.
+    const stay = await bk("QA-STAY", "checked_in");
+    await q(`INSERT INTO room_climate(owner_id,room_id,device_id,temp,humidity,read_at,updated_at) VALUES($1,$2,'qa',29.4,60,$3,$3)`, [owner, rid, t0 - 5 * 60_000]);
+    await q(`INSERT INTO tv_requests(owner_id,room_id,booking_id,kind,status,created_at,details_json) VALUES($1,$2,$3,'problem','open',$4,'{"problem":"ac"}')`, [owner, rid, stay, t0 - 3 * H]);
+    const c = (await comfortBoard({ pool: db, owner })).rooms.find((r) => r.roomId === rid);
+    must(c && c.level === "act" && c.signals.some((x) => x.key === "temp") && c.signals.some((x) => x.label === "Τεχνικό πρόβλημα"), `comfort: ${JSON.stringify(c)}`);
+    // Turnover: checked out 2 hours ago, Wi-Fi still active → not verifiable; then the evidence → verified.
+    await q(`UPDATE bookings SET status='checked_out',checked_out_at=$2 WHERE id=$1`, [stay, t0 - 2 * H]);
+    await q(`INSERT INTO guest_wifi(owner_id,booking_id,room_id,psk_name,status,created_at) VALUES($1,$2,$3,'qa','active',$4)`, [owner, stay, rid, t0 - D]);
+    let v = await verifyTurnover({ pool: db, owner, bookingId: stay, by: "QA" });
+    must(!v.ok && v.blocking.length >= 2, `επιβεβαιώθηκε χωρίς στοιχεία: ${JSON.stringify(v)}`);
+    await q(`INSERT INTO housekeeping_tasks(owner_id,room_id,task_type,status,completed_at,inspection_status,inspected_at) VALUES($1,$2,'departure_clean','ready',$3,'approved',$4)`, [owner, rid, t0 - H, t0 - 50 * 60_000]);
+    await q(`UPDATE guest_wifi SET status='removed',removed_at=$2 WHERE booking_id=$1`, [stay, t0 - H]);
+    await confirmEquipment({ pool: db, owner, bookingId: stay, roomId: rid, by: "QA", note: "OK" });
+    v = await verifyTurnover({ pool: db, owner, bookingId: stay, by: "QA" });
+    const tb = (await turnoverBoard({ pool: db, owner })).turnovers.find((x) => x.bookingId === stay);
+    must(v.ok && tb.status === "verified" && tb.steps.wifi.state === "done", `παράδοση: ${JSON.stringify(v)} ${tb?.status}`);
+    // Root cause: A/C reported in 3 different stays of the same room → finding → one maintenance task.
+    for (const [i, d] of [[1, 40], [2, 25]]) { const b = await bk(`QA-OLD${i}`, "checked_out", { ci: addDays(today, -d), co: addDays(today, -d + 2), out: t0 - d * D }); await q(`INSERT INTO tv_requests(owner_id,room_id,booking_id,kind,status,created_at,handled_at,details_json) VALUES($1,$2,$3,'problem','done',$4,$4,'{"problem":"ac"}')`, [owner, rid, b, t0 - d * D]); }
+    const f = (await rootCauses({ pool: db, owner })).findings.find((x) => x.key === `room:${rid}:ac`);
+    must(f && /QA9: «Κλιματιστικό» 3 φορές σε 3 διαφορετικές διαμονές/.test(f.title), `αιτίες: ${JSON.stringify(f)}`);
+    const a = await actOnFinding({ pool: db, owner, key: f.key, action: "maintenance", userId: null });
+    const again = await actOnFinding({ pool: db, owner, key: f.key, action: "maintenance", userId: null });
+    must(a.ok && a.maintenanceId && again.already, `εργασία: ${JSON.stringify(a)} ${JSON.stringify(again)}`);
+    return `δωμάτιο QA9 με πελάτη: δείκτης ${c.score} (${c.signals.map((x) => x.label).join(", ")}) · παράδοση: χωρίς στοιχεία δεν επιβεβαιώνεται (${v.ok ? "" : ""}${tb.status}) · αιτία «${f.title}» → εργασία συντήρησης #${a.maintenanceId} (μία φορά)`;
+  });
+
   await flow("F11", "Αυτόματα tests του κώδικα (unit / integration)", async () => {
     const files = readdirSync(path.join(project, "tests")).filter((f) => f.endsWith(".test.ts")).map((f) => path.join("tests", f));
     const r = spawnSync(process.execPath, ["--experimental-strip-types", "--test", "--test-reporter=tap", ...files], { cwd: project, encoding: "utf8", timeout: 600_000, maxBuffer: 64 * 1024 * 1024 });
