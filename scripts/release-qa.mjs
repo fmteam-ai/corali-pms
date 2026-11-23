@@ -9,7 +9,8 @@
 //
 // PostgreSQL: QA_DATABASE_URL (an empty database), or the local PostgreSQL binaries (a temporary cluster).
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createHash, randomBytes } from "node:crypto";
+import http from "node:http";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, chownSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
@@ -383,6 +384,72 @@ try {
     return `άλλο όνομα της παραγωγής → άρνηση (η παραγωγή ανέγγιχτη, ${bookingsBefore} κρατήσεις) · ξένη βάση (invoices) → άρνηση · αποτυχία μετά την επαναφορά → η βάση δοκιμής άδειασε (μόνο ο δείκτης «${left[0]}»)`;
   });
 
+  await flow("F18", "Channel sync πακέτου απέναντι σε ψεύτικο Channex: μόνο όσα στάλθηκαν γίνονται «sent», πέρα από 500 ημέρες OUT_OF_RANGE, warnings → αποτυχία, μερική ανάγνωση ≠ συμφωνία", async () => {
+    // A local Channex stand-in: records every availability POST; answers the read-back with only part of the dates.
+    const posts = [];
+    let warn = false;
+    const srv = http.createServer((req, res) => {
+      let body = ""; req.on("data", (d) => { body += d; }); req.on("end", () => {
+        const u = new URL(req.url, "http://x"), json = (o) => { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify(o)); };
+        if (u.pathname.endsWith("/booking_revisions/feed")) return json({ data: [], meta: {} });
+        if (u.pathname.endsWith("/availability") && req.method === "POST") { posts.push(JSON.parse(body).values); return json({ data: [{ id: "t1", type: "task" }], meta: { message: "Success", ...(warn ? { warnings: [{ date: "x", warning: "QA: value not applied" }] } : {}) } }); }
+        if (u.pathname.endsWith("/availability")) return json({ data: { "ext-qa-101": { [addDays(today, 2)]: 1 } } });
+        if (u.pathname.endsWith("/channels")) return json({ data: [{ id: "c1", attributes: { title: "Booking.com (QA)", is_active: true } }] });
+        json({ data: [] });
+      });
+    });
+    await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+    const base = `http://127.0.0.1:${srv.address().port}`;
+    try {
+      const key = createHash("sha256").update(documentKey).digest(), iv = randomBytes(12), c = createCipheriv("aes-256-gcm", key, iv);
+      const data = Buffer.concat([c.update(JSON.stringify({ apiKey: "qa-key" }), "utf8"), c.final()]);
+      const sealed = ["v1", iv.toString("base64url"), c.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
+      await q(`INSERT INTO provider_connections(owner_id,provider_key,active,settings_json,secrets_encrypted,updated_by,updated_at) VALUES($1,'channelManager',1,$2,$3,'qa',$4) ON CONFLICT(owner_id,provider_key) DO UPDATE SET active=1,settings_json=$2,secrets_encrypted=$3`, [owner, JSON.stringify({ propertyCode: "qa-prop", environment: "staging" }), sealed, Date.now()]);
+      await q(`DELETE FROM channel_sync_outbox WHERE owner_id=$1`, [owner]);
+      // No hourly drift push in this run (one was «just made»), so only the rows below are in play.
+      await q(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,status,created_at,updated_at) VALUES($1,$2,$2,'drift','sent',$3,$3)`, [owner, today, Date.now()]);
+      const ins = async (f, t) => Number((await q(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,created_at,updated_at) VALUES($1,$2,$3,'qa',$4,$4) RETURNING id`, [owner, f, t, Date.now()])).rows[0].id);
+      const ids = { far: await ins(addDays(today, 600), addDays(today, 601)) };
+      const sync = (extra = {}) => spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/run-channel-sync.mjs"], { cwd: pmsDir, encoding: "utf8", timeout: 120_000, env: { ...process.env, CHANNEX_BASE_URL: base, ...extra } });
+      const st = async (id) => (await q(`SELECT status,date_to,last_error FROM channel_sync_outbox WHERE id=$1`, [id])).rows[0];
+      // 1) Only a far-future row (the v191 fault): nothing is sent and nothing is marked sent.
+      let r = sync();
+      must(r.status === 0, `sync: ${(r.stderr || r.stdout).slice(-300)}`);
+      must(posts.length === 0, `έγινε αποστολή (${posts.length})`);
+      const far = await st(ids.far);
+      must(far.status === "out_of_range", `πέρα από 500 ημέρες: ${far.status}`);
+      // 2) Normal, past and straddling rows.
+      ids.normal = await ins(addDays(today, 3), addDays(today, 4));
+      ids.past = await ins(addDays(today, -10), addDays(today, -5));
+      ids.cross = await ins(addDays(today, 499), addDays(today, 502));
+      r = sync();
+      must(r.status === 0, `sync 2: ${(r.stderr || r.stdout).slice(-300)}`);
+      const [n, p, x] = [await st(ids.normal), await st(ids.past), await st(ids.cross)];
+      must(n.status === "sent" && p.status === "skipped" && x.status === "sent" && x.date_to === addDays(today, 500), `normal ${n.status} · past ${p.status} · cross ${x.status} ${x.date_to}`);
+      const rest = (await q(`SELECT status FROM channel_sync_outbox WHERE owner_id=$1 AND date_from=$2 AND date_to=$3`, [owner, addDays(today, 501), addDays(today, 502)])).rows;
+      must(rest.length === 1 && rest[0].status === "out_of_range", `υπόλοιπο πέρα από το όριο: ${JSON.stringify(rest)}`);
+      const sentDates = posts.flat().filter((v) => v.room_type_id === "ext-qa-101");
+      must(sentDates.length > 0 && sentDates.every((v) => v.date_from >= today && v.date_to <= addDays(today, 500)), "στάλθηκαν ημερομηνίες εκτός ορίων");
+      // 3) Channex answers 200 with warnings: not sent.
+      warn = true;
+      ids.warned = await ins(addDays(today, 6), addDays(today, 6));
+      sync();
+      const w = await st(ids.warned);
+      must(w.status === "failed" && /CHANNEX_WARNINGS/.test(w.last_error), `warnings: ${w.status} ${w.last_error}`);
+      warn = false;
+      // 4) Read-back that returns only part of the dates: never «full agreement».
+      await q(`DELETE FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed')`, [owner]);
+      sync({ CHANNEL_READBACK_NOW: "1" });
+      const rb = (await q(`SELECT status,totals_json FROM reconciliation_runs WHERE owner_id=$1 AND kind='ota_readback' ORDER BY id DESC LIMIT 1`, [owner])).rows[0];
+      const t = JSON.parse(rb?.totals_json ?? "{}");
+      must(rb && t.NOT_RETURNED > 0 && t.responseComplete === false && t.fullyReconciled === false && Array.isArray(t.channels) && t.channels[0]?.title === "Booking.com (QA)", `ανάγνωση: ${rb?.status} ${rb?.totals_json}`);
+      return `μόνο μακρινή ημερομηνία → καμία αποστολή, out_of_range · κανονική → sent · παρελθόν → skipped · διάστημα στο όριο → sent έως +500 και το υπόλοιπο out_of_range · warnings → failed · ανάγνωση: ${t.MATCHED} ίδιες, ${t.NOT_RETURNED} δεν επιστράφηκαν → όχι συμφωνία · κανάλι «${t.channels[0].title}» CHANNEL_NOT_VERIFIED`;
+    } finally {
+      srv.close();
+      await q(`UPDATE provider_connections SET active=0 WHERE owner_id=$1 AND provider_key='channelManager'`, [owner]);
+    }
+  });
+
   await flow("F11", "Αυτόματα tests του κώδικα (unit / integration)", async () => {
     const files = readdirSync(path.join(project, "tests")).filter((f) => f.endsWith(".test.ts")).map((f) => path.join("tests", f));
     const r = spawnSync(process.execPath, ["--experimental-strip-types", "--test", "--test-reporter=tap", ...files], { cwd: project, encoding: "utf8", timeout: 600_000, maxBuffer: 64 * 1024 * 1024 });
@@ -405,11 +472,20 @@ const sandbox = existsSync(sandboxFile) ? JSON.parse(readFileSync(sandboxFile, "
 const sha = createHash("sha256").update(readFileSync(archive)).digest("hex");
 const commit = (() => { try { return execFileSync("git", ["-C", project, "rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim(); } catch { return "—"; } })();
 const failed = results.filter((r) => r.status === "FAIL").length + sandbox.filter((r) => r.status === "FAIL").length;
-const report = { version, verdict: failed ? "FAIL" : "PASS", at: new Date().toISOString(), durationMs: Date.now() - started, package: { file: path.basename(archive), sha256: sha }, commit, node: process.version, database: env.database ?? "—", flows: results, sandbox };
+// v192 acceptance criterion: internal QA PASS *and* every external provider check PASS in its sandbox. A package can be
+// built and inspected without it, but it is NOT ACCEPTED, and the installer refuses it unless the operator explicitly
+// accepts uncertified providers (recorded).
+const sandboxNotPassed = sandbox.filter((r) => r.status !== "PASS");
+const acceptance = failed ? { status: "NOT_ACCEPTED", reasons: ["εσωτερικές ροές QA με FAIL"] }
+  : !sandbox.length ? { status: "NOT_ACCEPTED", reasons: ["δεν εκτελέστηκαν έλεγχοι παρόχων"] }
+  : sandboxNotPassed.length ? { status: "NOT_ACCEPTED", reasons: sandboxNotPassed.map((r) => `${r.name}: ${r.status}`) }
+  : { status: "ACCEPTED", reasons: [] };
+const report = { version, verdict: failed ? "FAIL" : "PASS", acceptance, at: new Date().toISOString(), durationMs: Date.now() - started, package: { file: path.basename(archive), sha256: sha }, commit, node: process.version, database: env.database ?? "—", flows: results, sandbox };
 const esc = (s) => String(s).replace(/\|/g, "\\|").replace(/\n/g, " ");
 const md = [
   `# Hotel Corali PMS ${version} — έκθεση ελέγχου ποιότητας`, "",
   `**Αποτέλεσμα: ${report.verdict}** · ${results.filter((r) => r.status === "PASS").length}/${results.length} ροές PASS · ${new Date(report.at).toLocaleString("el-GR", { timeZone: "Europe/Athens" })}`, "",
+  `**Αποδοχή έκδοσης: ${acceptance.status === "ACCEPTED" ? "✅ ACCEPTED" : "⛔ NOT ACCEPTED"}**${acceptance.reasons.length ? ` — ${acceptance.reasons.join(" · ")}` : ""} (απαιτεί PASS και στους εξωτερικούς παρόχους σε sandbox)`, "",
   `- Πακέτο: \`${report.package.file}\` · SHA-256 \`${sha}\``, `- Κώδικας: commit \`${commit}\` · Node ${process.version} · ${report.database}`,
   `- Αναπαραγωγή: \`node scripts/release-qa.mjs ${report.package.file} ${version}\` (νέα βάση PostgreSQL, οι εφαρμογές του πακέτου σε λειτουργία, πραγματικά αιτήματα HTTP και το cron του πακέτου).`, "",
   "| # | Κρίσιμη ροή | Αποτέλεσμα | Λεπτομέρειες | ms |", "|---|---|---|---|---|",

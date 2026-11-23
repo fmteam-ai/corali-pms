@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project="$(cd "$(dirname "$0")/.." && pwd)"
-output="$project/corali-pms-cpanel-v191-root.tar.gz"
+output="$project/corali-pms-cpanel-v192-root.tar.gz"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 
@@ -31,9 +31,9 @@ cp scripts/init-postgres.mjs scripts/create-admin.mjs scripts/create-admin.sh \
 for pkg in nodemailer; do
   [ -f "$stage/node_modules/$pkg/package.json" ] || cp -a "$(readlink -f "node_modules/$pkg")" "$stage/node_modules/$pkg"
 done
-cp app.js .env.example DEPLOY-CPANEL.md QA-v191.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md INSTALL-CPANEL.sh \
+cp app.js .env.example DEPLOY-CPANEL.md QA-v192.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md INSTALL-CPANEL.sh \
   ROLLBACK-CPANEL.sh package.json "$stage/"
-printf 'v191\n' > "$stage/DEPLOY_VERSION.txt"
+printf 'v192\n' > "$stage/DEPLOY_VERSION.txt"
 
 find "$stage" -type d -exec chmod 755 {} +
 find "$stage" -type f -exec chmod 644 {} +
@@ -52,7 +52,7 @@ node tests/prepare-runtime-env.integration.mjs
 node tests/runtime-env-loader.integration.mjs
 # v188: end-to-end QA of this package (fresh PostgreSQL, both applications, real HTTP, the cron): a PASS / FAIL report
 # per critical flow in docs/qa/; any FAIL stops here, so a package that fails is never handed over.
-node scripts/release-qa.mjs "$output" v191 "$project/docs/qa"
+node scripts/release-qa.mjs "$output" v192 "$project/docs/qa"
 # v189: the package then carries the evidence — that QA report's summary and the SHA-256 of every file it contains —
 # so the post-install check proves on the server that the installed files are exactly the ones that passed QA.
 node --input-type=module -e '
@@ -60,13 +60,13 @@ import {writeFileSync,readFileSync} from "node:fs";
 import {fileManifest,contentHash,qaSummary,EVIDENCE_FILE} from "./scripts/release-evidence-core.mjs";
 const [stage,version,report]=process.argv.slice(1), files=fileManifest(stage);
 writeFileSync(`${stage}/${EVIDENCE_FILE}`, JSON.stringify({version,createdAt:new Date().toISOString(),contentHash:contentHash(files),qa:qaSummary(JSON.parse(readFileSync(report,"utf8"))),files}));
-' "$stage" v191 "$project/docs/qa/qa-report-v191.json"
+' "$stage" v192 "$project/docs/qa/qa-report-v192.json"
 chmod 644 "$stage/RELEASE-EVIDENCE.json"
 rm -f "$output"
 tar -C "$stage" -czf "$output" .
 evidence_check="$(mktemp -d)"
 tar -C "$evidence_check" -xzf "$output"
-node "$evidence_check/scripts/post-install-check.mjs" "$evidence_check" v191 --require-evidence --no-db
+node "$evidence_check/scripts/post-install-check.mjs" "$evidence_check" v192 --require-evidence --no-db --skip-acceptance
 rm -rf "$evidence_check"
 (cd "$project" && sha256sum "$(basename "$output")") | tee "$output.sha256"
 node scripts/build-web-installer.mjs

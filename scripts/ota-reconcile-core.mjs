@@ -84,8 +84,8 @@ export function parseRemoteAvailability(body, typeByExternal) {
 /**
  * v191: every room type × date the PMS sells is classified against what the channel manager returned —
  * MATCHED, MISMATCHED, NOT_RETURNED (expected but missing from the answer) or NOT_CHECKED (a push is queued for that
- * date, so the answer may be out of date). complete is true only when nothing was NOT_RETURNED; a partial answer is
- * never reported as full agreement.
+ * date, so the answer may be out of date). responseComplete: nothing NOT_RETURNED; fullyReconciled: also nothing
+ * MISMATCHED or NOT_CHECKED — only that is reported as full agreement.
  */
 export function compareRemote(current, remote, open = []) {
   const queued = (d) => open.some((o) => o.date_from <= d && o.date_to >= d);
@@ -97,7 +97,11 @@ export function compareRemote(current, remote, open = []) {
     if (!(k in remote)) { counts.NOT_RETURNED++; missing.push({ roomType: r.room_type, date: r.date, pms, ota: null }); continue; }
     if (pms !== remote[k]) { counts.MISMATCHED++; mism.push({ roomType: r.room_type, date: r.date, pms, ota: remote[k] }); } else counts.MATCHED++;
   }
-  return { counts, mismatches: groupMismatches(mism), notReturned: groupMismatches(missing), complete: counts.NOT_RETURNED === 0 };
+  // v192: two different facts. responseComplete — Channex returned a value for every room type × date expected;
+  // fullyReconciled — and every one of them was checked and equal (no MISMATCHED, NOT_RETURNED or NOT_CHECKED).
+  const responseComplete = counts.NOT_RETURNED === 0;
+  const fullyReconciled = responseComplete && counts.MISMATCHED === 0 && counts.NOT_CHECKED === 0 && counts.MATCHED > 0;
+  return { counts, mismatches: groupMismatches(mism), notReturned: groupMismatches(missing), responseComplete, fullyReconciled };
 }
 
 /**
@@ -111,4 +115,10 @@ export function missingCoverage({ mappings, values, from, to }) {
   const out = [];
   for (const m of mappings) for (let d = from; d <= to; d = addDays(d, 1)) if (!covered.has(`${m.room_type}|${d}`)) out.push({ roomType: m.room_type, date: d });
   return out;
+}
+
+/** v192: the channels Channex reports for the property (title, active), read defensively; [] when unknown. */
+export function parseChannels(body) {
+  const d = Array.isArray(body?.data) ? body.data : [];
+  return d.map((x) => { const a = x?.attributes ?? x ?? {}; return { id: String(x?.id ?? a.id ?? ""), title: String(a.title ?? a.channel ?? a.name ?? "κανάλι"), active: a.is_active === undefined ? null : Boolean(a.is_active) }; }).slice(0, 30);
 }

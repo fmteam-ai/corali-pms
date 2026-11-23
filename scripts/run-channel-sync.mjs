@@ -12,9 +12,9 @@ import pg from "pg";
 import { databaseSsl } from "./database-config.mjs";
 import { ROOM_READY_SQL } from "./room-ready-core.mjs";
 import { cronFinish, cronOverlap, cronStart } from "./job-control-core.mjs";
-import { compareRemote, missingCoverage, parseRemoteAvailability, queueOtaResync } from "./ota-reconcile-core.mjs";
+import { compareRemote, missingCoverage, parseChannels, parseRemoteAvailability, queueOtaResync } from "./ota-reconcile-core.mjs";
 import { saveReconciliation } from "./stripe-reconcile-core.mjs";
-import { AVAILABILITY_SQL, CHANNEX_HOSTS, availabilityRanges, computeRestrictions, feedHasMore, normalizeRevision, planRevision, restrictionKey, restrictionRanges, sellable, typeNightlyCents, otaRate } from "./channel-core.mjs";
+import { AVAILABILITY_SQL, CHANNEX_HOSTS, PUSH_HORIZON_DAYS, planOutbox, availabilityRanges, computeRestrictions, feedHasMore, normalizeRevision, planRevision, restrictionKey, restrictionRanges, sellable, typeNightlyCents, otaRate } from "./channel-core.mjs";
 
 if (!process.env.DATABASE_URL || !process.env.PMS_DOCUMENT_KEY) throw Error("DATABASE_URL and PMS_DOCUMENT_KEY are required");
 const owner = process.env.PMS_OWNER_ID ?? "hotel-corali";
@@ -175,16 +175,21 @@ try {
     }
     if (!feedHasMore(feed.meta, items.length, acked > 0)) break;
   }
-  // 2) Push availability for queued ranges, including OTA bookings just imported (clamped to today .. +500 days;
-  //    Channex rejects past dates).
-  const due = (await pool.query(`SELECT id,date_from,date_to,attempts FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed') AND next_attempt_at<=$2 ORDER BY id LIMIT 200`, [owner, Date.now()])).rows;
-  if (due.length && mappings.length) {
-    const earliest = due.map((d) => d.date_from).sort()[0];
-    const from = earliest < today ? today : earliest;
-    const to = [...due.map((d) => d.date_to)].sort().at(-1);
-    const end = to > addDays(today, 500) ? addDays(today, 500) : to;
+  // 2) Push availability for queued ranges, including OTA bookings just imported. v192: every queue row is classified
+  //    first (planOutbox): SENT candidates, OUT_OF_RANGE (beyond today+500, retried when they enter the window),
+  //    SKIPPED (entirely past). Only rows whose dates this push really covered are marked sent.
+  const due = (await pool.query(`SELECT id,date_from,date_to,attempts FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed','out_of_range') AND next_attempt_at<=$2 ORDER BY id LIMIT 200`, [owner, Date.now()])).rows;
+  const plan = planOutbox(due, today);
+  const dayMs = (d) => Date.parse(`${d}T00:00:00Z`);
+  if (due.length) {
+    if (plan.skipped.length) await pool.query(`UPDATE channel_sync_outbox SET status='skipped',last_error='Μόνο παρελθοντικές ημερομηνίες — δεν στέλνονται',updated_at=$1 WHERE id=ANY($2::bigint[])`, [Date.now(), plan.skipped]);
+    for (const o of plan.outOfRange) await pool.query(`UPDATE channel_sync_outbox SET status='out_of_range',last_error=$2,next_attempt_at=$3,updated_at=$4 WHERE id=$1`, [o.id, `Πέρα από το όριο των ${PUSH_HORIZON_DAYS} ημερών — θα σταλεί από ${o.retryOn}`, dayMs(o.retryOn), Date.now()]);
+  }
+  const sendIds = plan.send;
+  if (sendIds.length && mappings.length) {
+    const from = plan.from, end = plan.to;
     try {
-      if (end >= from) {
+      {
         const rows = await availability(from, end);
         const values = mappings.flatMap((m) => availabilityRanges(rows.filter((r) => r.room_type === m.room_type).map((r) => ({ date: r.date, available: sellable(r.free) }))).map((range) => ({ property_id: propertyId, room_type_id: m.external_room_type_id, ...range })));
         // v191: a queued range is marked «sent» only if this push covers every mapped room type for every date of it.
@@ -205,9 +210,14 @@ try {
         );
         await pool.query(`DELETE FROM channel_availability_state WHERE owner_id=$1 AND date<$2`, [owner, today]);
       }
-      await pool.query(`UPDATE channel_sync_outbox SET status='sent',updated_at=$1 WHERE id=ANY($2::bigint[])`, [Date.now(), due.map((d) => d.id)]);
+      // The part of a row beyond the horizon is not covered by this push: it stays queued as OUT_OF_RANGE.
+      for (const x of plan.split) {
+        await pool.query(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,status,last_error,next_attempt_at,created_at,updated_at) SELECT owner_id,$2,$3,reason,'out_of_range',$4,$5,$6,$6 FROM channel_sync_outbox WHERE id=$1`, [x.id, x.restFrom, x.restTo, `Πέρα από το όριο των ${PUSH_HORIZON_DAYS} ημερών — θα σταλεί από ${x.retryOn}`, dayMs(x.retryOn), Date.now()]);
+        await pool.query(`UPDATE channel_sync_outbox SET date_to=$2 WHERE id=$1`, [x.id, x.keepTo]);
+      }
+      await pool.query(`UPDATE channel_sync_outbox SET status='sent',last_error=NULL,updated_at=$1 WHERE id=ANY($2::bigint[])`, [Date.now(), sendIds]);
     } catch (error) {
-      for (const d of due) await pool.query(`UPDATE channel_sync_outbox SET status='failed',attempts=attempts+1,last_error=$1,next_attempt_at=$2,updated_at=$3 WHERE id=$4`, [String(error).slice(0, 500), Date.now() + Math.min(60, 2 ** Number(d.attempts)) * 60_000, Date.now(), d.id]);
+      for (const d of due.filter((x) => sendIds.includes(Number(x.id)))) await pool.query(`UPDATE channel_sync_outbox SET status='failed',attempts=attempts+1,last_error=$1,next_attempt_at=$2,updated_at=$3 WHERE id=$4`, [String(error).slice(0, 500), Date.now() + Math.min(60, 2 ** Number(d.attempts)) * 60_000, Date.now(), d.id]);
     }
   }
 
@@ -267,6 +277,8 @@ try {
       if (!remote) throw Error("Άγνωστη μορφή απάντησης του Channex — δεν συγκρίθηκε");
       const [current, open] = await Promise.all([availability(rbFrom, rbTo), pool.query(`SELECT date_from,date_to FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed','processing')`, [owner]).then((r) => r.rows)]);
       const cmp = compareRemote(current, remote, open);
+      // Which OTAs Channex distributes to (shown as CHANNEL_NOT_VERIFIED: their own acceptance is not read here).
+      const channels = await api(host, key, `/channels?filter[property_id]=${encodeURIComponent(propertyId)}`).then(parseChannels, () => []);
       const diff = [...cmp.mismatches, ...cmp.notReturned];
       if (diff.length) await queueOtaResync({ pool, owner, mismatches: diff });
       await pool.query(`UPDATE channel_availability_state SET remote_available=x.n,remote_read_at=$3 FROM jsonb_to_recordset($2::jsonb) AS x(k text,n int) WHERE owner_id=$1 AND room_type||'|'||date=x.k`, [owner, JSON.stringify(Object.entries(remote).map(([k, n]) => ({ k, n }))), ranAt]);
@@ -274,14 +286,14 @@ try {
       await saveReconciliation(pool, owner, "ota_readback", { ranAt, issues: [
         ...cmp.mismatches.map((m) => ({ kind: "MISMATCHED", level: "warn", reference: m.roomType, amountCents: 0, detail: `${span(m)}: Channex ${m.ota}, PMS ${m.pms} — στάλθηκε ξανά` })),
         ...cmp.notReturned.map((m) => ({ kind: "NOT_RETURNED", level: "warn", reference: m.roomType, amountCents: 0, detail: `${span(m)}: το Channex δεν επέστρεψε τιμή — δεν ελέγχθηκε, στάλθηκε ξανά (PMS ${m.pms})` })),
-      ], totals: { ...cmp.counts, complete: cmp.complete } });
+      ], totals: { ...cmp.counts, responseComplete: cmp.responseComplete, fullyReconciled: cmp.fullyReconciled, channels } });
     } catch (e) {
       await saveReconciliation(pool, owner, "ota_readback", { ranAt, error: String(e instanceof Error ? e.message : e) }).catch(() => {});
     }
   }
 
   await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$2,NULL) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$2,last_error=NULL`, [owner, Date.now()]);
-  console.log(`Channel sync: ${due.length} availability range(s), ${restrictionDays} restriction day(s), ${rateDays} rate day(s), ${imported} OTA revision(s) imported.`);
+  console.log(`Channel sync: ${sendIds.length} availability range(s) sent, ${plan.outOfRange.length} beyond the horizon, ${plan.skipped.length} past, ${restrictionDays} restriction day(s), ${rateDays} rate day(s), ${imported} OTA revision(s) imported.`);
 } catch (error) {
   runStatus = "failed"; runError = String(error);
   await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_error) VALUES($1,$2,$3) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_error=$3`, [owner, Date.now(), String(error).slice(0, 500)]).catch(() => {});

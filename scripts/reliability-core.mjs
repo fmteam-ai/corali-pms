@@ -95,7 +95,12 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
     try { t = JSON.parse(String(rb.totals_json ?? "{}")); } catch { t = {}; }
     const n = (k) => Number(t[k] ?? 0);
     const summary = `ίδιες ${n("MATCHED")} · διαφορετικές ${n("MISMATCHED")} · δεν επιστράφηκαν ${n("NOT_RETURNED")} · δεν ελέγχθηκαν (σε αναμονή αποστολής) ${n("NOT_CHECKED")}`;
-    if (rb.status !== "error") info("channel", t.complete && !issues.length ? `Ανάγνωση από το Channex ${hhmm(rb.ran_at)}: πλήρης συμφωνία (${summary})` : `Ανάγνωση από το Channex ${hhmm(rb.ran_at)}: ${summary}`);
+    // v192: «πλήρης συμφωνία» only when fully reconciled (every value returned, checked and equal); a complete answer
+    // with differences or dates still waiting is said as such.
+    if (rb.status !== "error") info("channel", `Ανάγνωση από το Channex ${hhmm(rb.ran_at)}: ${t.fullyReconciled ? "πλήρης συμφωνία" : t.responseComplete ? "πλήρης απάντηση, όχι πλήρης συμφωνία" : "ελλιπής απάντηση"} (${summary})`);
+    // v192: Channex holding the right values does not prove each OTA applied them.
+    const chans = Array.isArray(t.channels) ? t.channels : [];
+    info("channel", `Κανάλια: ${chans.length ? chans.map((ch) => `${ch.title}${ch.active === false ? " (ανενεργό)" : ""} — CHANNEL_NOT_VERIFIED`).join(" · ") : "CHANNEL_NOT_VERIFIED"} (το Channex έχει τις τιμές· η αποδοχή τους από κάθε OTA δεν επιβεβαιώνεται από το PMS)`);
   }
   const syncBeat = beats.find((b) => b.job === "channel-sync");
   if (channelOn && syncBeat) {
@@ -211,7 +216,9 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
     // v191: external providers not certified in sandbox for this package are said so, never implied as verified.
     const sb = Array.isArray(qa.sandbox) ? qa.sandbox : [];
     const notRun = sb.filter((x) => x.status !== "PASS");
-    if (notRun.length) add("release", { key: "release:sandbox", level: "warn", text: `Εξωτερικοί πάροχοι χωρίς πιστοποίηση σε sandbox για την ${rel.version}: ${notRun.map((x) => `${x.name} (${x.status})`).join(" · ").slice(0, 300)}` });
+    // v192: acceptance requires the providers too; an installed version that is not accepted is a critical item.
+    const accepted = qa.acceptance?.status === "ACCEPTED" && !notRun.length;
+    if (!accepted) add("release", { key: "release:not-accepted", level: "fail", text: `Η ${rel.version} ΔΕΝ έχει γίνει αποδεκτή: εξωτερικοί πάροχοι χωρίς πιστοποίηση σε sandbox — ${(notRun.length ? notRun.map((x) => `${x.name} (${x.status})`) : qa.acceptance?.reasons ?? ["χωρίς απόφαση αποδοχής"]).join(" · ").slice(0, 300)}` });
     if (qa.verdict) info("release", `${rel.version} · QA ${qa.passed}/${qa.total} ${qa.verdict} (${String(qa.at ?? "").slice(0, 10)}, commit ${qa.commit ?? "—"})${qa.files ? ` · ${qa.files} αρχεία επαληθεύτηκαν` : ""}`);
     info("release", `Έλεγχος εγκατάστασης ${hhmm(rel.ran_at)}: ${checks.map((c) => `${c.status === "ok" ? "✓" : c.status === "warn" ? "!" : "✗"} ${c.name}`).join(" · ")}`);
   }

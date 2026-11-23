@@ -13,3 +13,5 @@ export declare function restrictionKey(v: Omit<ChannexRestriction, "date">): str
 export declare function restrictionRanges(days: ChannexRestriction[]): (Omit<ChannexRestriction, "date"> & { date_from: string; date_to: string })[];
 export declare function typeNightlyCents(rules: Record<string, unknown>[], date: string, roomType: string, baseCents: number): number;
 export declare function otaRate(cents: number, markupPercent: unknown): string | null;
+export declare const PUSH_HORIZON_DAYS: number;
+export declare function planOutbox(rows: { id: number | string; date_from: string; date_to: string }[], today: string, horizonDays?: number): { send: number[]; skipped: number[]; outOfRange: { id: number; retryOn: string }[]; split: { id: number; keepTo: string; restFrom: string; restTo: string; retryOn: string }[]; from: string | null; to: string | null; end: string };

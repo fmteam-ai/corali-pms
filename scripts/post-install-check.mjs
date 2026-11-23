@@ -13,6 +13,7 @@ import { explainSql } from "./conflict-targets-core.mjs";
 
 const [dirArg, version] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const requireEvidence = process.argv.includes("--require-evidence"), noDb = process.argv.includes("--no-db");
+const acceptUncertified = process.argv.includes("--accept-uncertified-providers"), skipAcceptance = process.argv.includes("--skip-acceptance");
 if (!dirArg || !version) throw Error("Usage: post-install-check.mjs DIR VERSION [--require-evidence] [--no-db]");
 const dir = path.resolve(dirArg);
 const checks = [];
@@ -27,6 +28,12 @@ else {
   if (ev.version !== version) check("Αποδεικτικό QA πακέτου", "fail", `για ${ev.version}, όχι ${version}`);
   else if (ev.qa?.verdict !== "PASS") check("Αποδεικτικό QA πακέτου", "fail", `QA ${ev.qa?.verdict ?? "—"}`);
   else check("Αποδεικτικό QA πακέτου", "ok", `QA ${ev.qa.passed}/${ev.qa.total} PASS (${String(ev.qa.at).slice(0, 10)}, commit ${ev.qa.commit})`);
+  // v192 acceptance: internal QA PASS is not enough — the external providers must have passed their sandbox checks.
+  if (!skipAcceptance) {
+    const acc = ev.qa?.acceptance ?? { status: "NOT_ACCEPTED", reasons: ["το αποδεικτικό δεν έχει απόφαση αποδοχής"] };
+    if (acc.status === "ACCEPTED") check("Αποδοχή έκδοσης (πάροχοι σε sandbox)", "ok", "όλοι οι έλεγχοι παρόχων PASS");
+    else check("Αποδοχή έκδοσης (πάροχοι σε sandbox)", acceptUncertified ? "warn" : "fail", `${acceptUncertified ? "ΕΓΚΑΤΑΣΤΑΘΗΚΕ ΜΕ ΡΗΤΗ ΑΠΟΔΟΧΗ ΤΟΥ ΧΕΙΡΙΣΤΗ — " : "ΔΕΝ ΕΓΙΝΕ ΑΠΟΔΕΚΤΗ (εγκατάσταση μόνο με --accept-uncertified-providers) — "}${(acc.reasons ?? []).join(" · ").slice(0, 300)}`);
+  }
   const v = verifyManifest(dir, ev.files ?? {});
   check("Αρχεία ίδια με το ελεγμένο πακέτο", v.ok ? "ok" : "fail", v.ok ? `${v.total} αρχεία` : `${v.changed.length} διαφορετικά, ${v.missing.length} λείπουν: ${[...v.changed, ...v.missing].slice(0, 5).join(", ")}`);
 }

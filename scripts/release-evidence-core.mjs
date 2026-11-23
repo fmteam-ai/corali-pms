@@ -48,5 +48,6 @@ export function qaSummary(report) {
     passed: report.flows.filter((f) => f.status === "PASS").length, total: report.flows.length,
     flows: report.flows.map((f) => ({ id: f.id, name: f.name, status: f.status })),
     sandbox: (report.sandbox ?? []).map((s) => ({ name: s.name, status: s.status })),
+    acceptance: report.acceptance ?? null,
   };
 }

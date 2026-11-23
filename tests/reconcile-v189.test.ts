@@ -7,6 +7,8 @@ import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { athensToday, compareRemote, groupMismatches, missingCoverage, otaReconcile, parseRemoteAvailability, queueOtaResync } from "../scripts/ota-reconcile-core.mjs";
 import { sendOutcome, failedStatus } from "../scripts/delivery-policy-core.mjs";
+import { planOutbox } from "../scripts/channel-core.mjs";
+import { spawnSync } from "node:child_process";
 import { saveReconciliation, stripeReconcile } from "../scripts/stripe-reconcile-core.mjs";
 import { REHEARSAL_MARKER, backupTime, evaluateRehearsal, newestBackup, sameDatabase, tablesWithData, targetDecision } from "../scripts/restore-rehearsal-core.mjs";
 import { contentHash, fileManifest, verifyManifest } from "../scripts/release-evidence-core.mjs";
@@ -122,13 +124,17 @@ test("v190 OTA read-back parsing and comparison", () => {
   const c = compareRemote(current, { "double|2026-08-01": 2, "double|2026-08-02": 1, "double|2026-08-03": 4 }, [{ date_from: "2026-08-03", date_to: "2026-08-03" }]);
   assert.deepEqual(c.mismatches, [{ roomType: "double", from: "2026-08-02", to: "2026-08-02", pms: 0, ota: 1 }]);
   assert.deepEqual(c.counts, { MATCHED: 1, MISMATCHED: 1, NOT_RETURNED: 0, NOT_CHECKED: 1 });
-  assert.equal(c.complete, true);
+  assert.equal(c.responseComplete, true);
+  assert.equal(c.fullyReconciled, false, "v192: a complete answer with a difference and a queued date is not full agreement");
+  const all = compareRemote(current, { "double|2026-08-01": 2, "double|2026-08-02": 0, "double|2026-08-03": 1 }, []);
+  assert.deepEqual([all.responseComplete, all.fullyReconciled], [true, true]);
   // v191: a recognisable but partial answer is never full agreement.
   const partial = compareRemote(current, { "double|2026-08-01": 2 }, []);
   assert.deepEqual(partial.counts, { MATCHED: 1, MISMATCHED: 0, NOT_RETURNED: 2, NOT_CHECKED: 0 });
-  assert.equal(partial.complete, false);
+  assert.deepEqual([partial.responseComplete, partial.fullyReconciled], [false, false]);
   assert.deepEqual(partial.notReturned.map((m) => `${m.from}..${m.to}`), ["2026-08-02..2026-08-02", "2026-08-03..2026-08-03"]);
-  assert.equal(compareRemote(current, {}, []).complete, false, "an empty answer checks nothing");
+  assert.equal(compareRemote(current, {}, []).fullyReconciled, false, "an empty answer checks nothing");
+  assert.equal(compareRemote([], {}, []).fullyReconciled, false, "nothing compared is not agreement");
 });
 
 test("v190 send outcome: a timeout may have delivered (no automatic retry); a refusal did not", () => {
@@ -159,4 +165,45 @@ test("v191 push coverage: a queued range counts as sent only if every room type 
   const full = [{ room_type_id: "rt-1", date_from: "2026-08-01", date_to: "2026-08-03" }, { room_type_id: "rt-2", date_from: "2026-08-01", date_to: "2026-08-01" }, { room_type_id: "rt-2", date_from: "2026-08-02", date_to: "2026-08-03" }];
   assert.deepEqual(missingCoverage({ mappings, values: full, from: "2026-08-01", to: "2026-08-03" }), []);
   assert.deepEqual(missingCoverage({ mappings, values: full.slice(0, 2), from: "2026-08-01", to: "2026-08-03" }), [{ roomType: "single", date: "2026-08-02" }, { roomType: "single", date: "2026-08-03" }]);
+});
+
+test("v192 queue rows: SENT only for dates inside today..+500; OUT_OF_RANGE beyond, SKIPPED in the past, split across", () => {
+  const today = "2026-07-15", end = addDays(today, 500);
+  const p = planOutbox([
+    { id: 1, date_from: "2026-08-01", date_to: "2026-08-03" },
+    { id: 2, date_from: "2026-07-01", date_to: "2026-07-10" },
+    { id: 3, date_from: addDays(today, 600), date_to: addDays(today, 602) },
+    { id: 4, date_from: addDays(today, 499), date_to: addDays(today, 503) },
+    { id: 5, date_from: "2026-07-10", date_to: "2026-07-16" },
+  ], today);
+  assert.deepEqual(p.send, [1, 4, 5]);
+  assert.deepEqual(p.skipped, [2]);
+  assert.deepEqual(p.outOfRange, [{ id: 3, retryOn: addDays(today, 100) }]);
+  assert.deepEqual(p.split, [{ id: 4, keepTo: end, restFrom: addDays(today, 501), restTo: addDays(today, 503), retryOn: addDays(today, 1) }]);
+  assert.deepEqual([p.from, p.to], [today, end]);
+  // The v191 fault: a queue with ONLY far-future dates must send nothing and mark nothing sent.
+  const far = planOutbox([{ id: 9, date_from: addDays(today, 700), date_to: addDays(today, 701) }], today);
+  assert.deepEqual([far.send, far.from, far.to], [[], null, null]);
+  assert.equal(far.outOfRange.length, 1);
+  assert.deepEqual(planOutbox([{ id: 8, date_from: "2026-01-01", date_to: "2026-01-02" }], today).send, [], "past only: nothing to send");
+});
+
+test("v192 post-install check: a package whose providers were not certified is refused unless explicitly accepted", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "accept-"));
+  try {
+    mkdirSync(path.join(dir, "scripts"));
+    writeFileSync(path.join(dir, "app.js"), "x");
+    const files = fileManifest(dir);
+    const evidence = (acceptance: unknown) => writeFileSync(path.join(dir, "RELEASE-EVIDENCE.json"), JSON.stringify({ version: "vT", contentHash: contentHash(files), files, qa: { verdict: "PASS", passed: 17, total: 17, at: "2026-11-23", commit: "x", acceptance } }));
+    const run = (...flags: string[]) => spawnSync(process.execPath, ["scripts/post-install-check.mjs", dir, "vT", "--no-db", ...flags], { encoding: "utf8" });
+    evidence({ status: "NOT_ACCEPTED", reasons: ["Stripe test: NOT RUN"] });
+    const refused = run();
+    assert.equal(refused.status, 1);
+    assert.match(refused.stdout, /FAIL Αποδοχή έκδοσης.*ΔΕΝ ΕΓΙΝΕ ΑΠΟΔΕΚΤΗ.*Stripe test: NOT RUN/);
+    const accepted = run("--accept-uncertified-providers");
+    assert.equal(accepted.status, 0);
+    assert.match(accepted.stdout, /WARN Αποδοχή έκδοσης.*ΡΗΤΗ ΑΠΟΔΟΧΗ ΤΟΥ ΧΕΙΡΙΣΤΗ/);
+    evidence({ status: "ACCEPTED", reasons: [] });
+    assert.match(run().stdout, /OK {3}Αποδοχή έκδοσης/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

@@ -190,3 +190,32 @@ export function otaRate(cents, markupPercent) {
   const v = Math.round(cents * (1 + m / 100));
   return v > 0 ? (v / 100).toFixed(2) : null;
 }
+
+const plusDays = (d, n) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+export const PUSH_HORIZON_DAYS = 500;
+
+/**
+ * v192: what each queued availability change becomes in this run, decided per queue row before anything is sent —
+ *  SENT candidates (`send`): rows with at least one date in today .. today+500 (Channex takes no past dates and at
+ *    most 500 days ahead); `split` = the part of such a row beyond the horizon, kept as a new OUT_OF_RANGE row;
+ *  OUT_OF_RANGE (`outOfRange`): rows entirely beyond the horizon, retried on the day their first date enters it;
+ *  SKIPPED (`skipped`): rows entirely in the past (nothing to send).
+ * `from` / `to` is the push range (null when nothing is sendable). Only `send` rows may be marked sent, and only
+ * after a push that covered every room type × date of from .. to.
+ */
+export function planOutbox(rows, today, horizonDays = PUSH_HORIZON_DAYS) {
+  const end = plusDays(today, horizonDays);
+  const send = [], skipped = [], outOfRange = [], split = [];
+  for (const r of rows) {
+    if (r.date_to < today) skipped.push(Number(r.id));
+    else if (r.date_from > end) outOfRange.push({ id: Number(r.id), retryOn: plusDays(r.date_from, -horizonDays) });
+    else {
+      send.push(Number(r.id));
+      if (r.date_to > end) split.push({ id: Number(r.id), keepTo: end, restFrom: plusDays(end, 1), restTo: r.date_to, retryOn: plusDays(plusDays(end, 1), -horizonDays) });
+    }
+  }
+  const sendRows = rows.filter((r) => send.includes(Number(r.id)));
+  if (!sendRows.length) return { send, skipped, outOfRange, split, from: null, to: null, end };
+  const earliest = sendRows.map((r) => r.date_from).sort()[0], latest = sendRows.map((r) => r.date_to).sort().at(-1);
+  return { send, skipped, outOfRange, split, from: earliest < today ? today : earliest, to: latest > end ? end : latest, end };
+}

@@ -5,14 +5,14 @@ const CORALI_INSTALL_TOKEN_HASH = '__INSTALL_TOKEN_HASH__';
 const CORALI_FONT_REGULAR = '__FONT_REGULAR_BASE64__';
 const CORALI_FONT_BOLD = '__FONT_BOLD_BASE64__';
 const CORALI_HOME = '/home/corali';
-const CORALI_ARCHIVE = 'corali-pms-cpanel-v191-root.tar.gz';
-const CORALI_CHECKSUM = 'corali-pms-cpanel-v191-root.tar.gz.sha256';
+const CORALI_ARCHIVE = 'corali-pms-cpanel-v192-root.tar.gz';
+const CORALI_CHECKSUM = 'corali-pms-cpanel-v192-root.tar.gz.sha256';
 const CORALI_PMS_ROOT = '/home/corali/apps/corali-pms';
 const CORALI_BOOKING_ROOT = '/home/corali/apps/corali-booking';
 const CORALI_APP_USER = 'corali';
 const CORALI_PMS_URL = 'https://pms.hotelcorali.gr';
 const CORALI_BOOKING_URL = 'https://booking.hotelcorali.gr';
-const CORALI_INSTALLER_RELEASE = 'v191';
+const CORALI_INSTALLER_RELEASE = 'v192';
 
 $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
     || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
@@ -49,6 +49,7 @@ function i18n(string $key): string
             'backup_install' => 'Backup και εγκατάσταση',
             'backup_install_help' => 'Θα ενημερωθούν μαζί PMS και Booking, με backup βάσης και αυτόματο rollback αν αποτύχει κάποιο βήμα.',
             'start' => 'Έναρξη εγκατάστασης', 'retry' => 'Νέα ασφαλής προσπάθεια',
+            'accept_uncertified' => 'Αποδέχομαι την εγκατάσταση παρότι οι πάροχοι (Stripe, Viva, Channex, WhatsApp) ΔΕΝ πιστοποιήθηκαν σε sandbox για αυτή την έκδοση (δείτε την αναφορά QA).',
             'previous_failed' => 'Η προηγούμενη προσπάθεια απέτυχε με κωδικό %s. Ελέγξτε το log πριν από νέα προσπάθεια.',
             'admin_access' => 'Πρόσβαση διαχειριστή PMS',
             'admin_help' => 'Στην πρώτη εγκατάσταση ορίστε τον κύριο λογαριασμό. Σε αναβάθμιση κρατήστε τον υπάρχοντα χωρίς αλλαγές· η φόρμα χρειάζεται μόνο αν ξεχάσατε τον κωδικό ή χάσατε το 2FA.',
@@ -75,6 +76,7 @@ function i18n(string $key): string
             'backup_install' => 'Backup and installation',
             'backup_install_help' => 'PMS and Booking will be updated together, with a database backup and automatic rollback if a step fails.',
             'start' => 'Start installation', 'retry' => 'Retry safely',
+            'accept_uncertified' => 'I accept installing although the providers (Stripe, Viva, Channex, WhatsApp) were NOT certified in sandbox for this release (see the QA report).',
             'previous_failed' => 'The previous attempt failed with code %s. Review the log before trying again.',
             'admin_access' => 'PMS administrator access',
             'admin_help' => 'On the first installation create the owner account. On an upgrade keep the existing one as it is; the form is only needed if you forgot the password or lost 2FA.',
@@ -463,7 +465,7 @@ function requireCsrf(): void
     }
 }
 
-function startInstallation(array $checks): void
+function startInstallation(array $checks, bool $acceptUncertified = false): void
 {
     if (!allChecksPass($checks)) {
         throw new RuntimeException(bilingual('Ο προέλεγχος δεν ολοκληρώθηκε επιτυχώς.', 'The preflight check did not pass.'));
@@ -494,7 +496,7 @@ function startInstallation(array $checks): void
     }
 
     $suffix = gmdate('Ymd\THis\Z') . '-' . bin2hex(random_bytes(3));
-    $release = $releaseRoot . '/corali-v191-web-' . $suffix;
+    $release = $releaseRoot . '/corali-v192-web-' . $suffix;
     $archive = CORALI_HOME . '/' . CORALI_ARCHIVE;
     $log = $stateDir . '/install.log';
     $status = $stateDir . '/exit.status';
@@ -506,7 +508,8 @@ function startInstallation(array $checks): void
         . ' --user ' . escapeshellarg(CORALI_APP_USER)
         . ' --pms-url ' . escapeshellarg(CORALI_PMS_URL)
         . ' --booking-url ' . escapeshellarg(CORALI_BOOKING_URL)
-        . ' --backup-dir ' . escapeshellarg($backupRoot);
+        . ' --backup-dir ' . escapeshellarg($backupRoot)
+        . ($acceptUncertified ? ' --accept-uncertified-providers' : '');
 
     $runtimePath = implode(':', array_unique([
         dirname($nodePath),
@@ -711,7 +714,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $postAction = $_POST['action'] ?? '';
     try {
         if ($postAction === 'start') {
-            startInstallation(preflight($isHttps));
+            startInstallation(preflight($isHttps), ($_POST['accept_uncertified'] ?? '') === '1');
             header('Location: ' . ($_SERVER['PHP_SELF'] ?? '/'), true, 303);
             exit;
         }
@@ -802,7 +805,7 @@ $safeCsrf = htmlspecialchars($csrf, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     <div class="step"><div class="num">2</div><div><h2><?= htmlspecialchars(i18n('backup_install'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h2><p><?= htmlspecialchars(i18n('backup_install_help'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p></div></div>
     <?php if ($installStatus['phase'] === 'ready' || $installStatus['phase'] === 'failed'): ?>
       <?php if ($installStatus['phase'] === 'failed'): ?><div class="notice bad"><?= htmlspecialchars(sprintf(i18n('previous_failed'), (string) ((int) $installStatus['code'])), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div><?php endif; ?>
-      <form method="post" class="actions"><input type="hidden" name="csrf" value="<?= $safeCsrf ?>"><input type="hidden" name="language" value="<?= htmlspecialchars($language, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"><input type="hidden" name="action" value="start"><button class="btn" type="submit" <?= $ready ? '' : 'disabled' ?>><?= htmlspecialchars($installStatus['phase'] === 'failed' ? i18n('retry') : i18n('start'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></button></form>
+      <form method="post" class="actions"><input type="hidden" name="csrf" value="<?= $safeCsrf ?>"><input type="hidden" name="language" value="<?= htmlspecialchars($language, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"><input type="hidden" name="action" value="start"><label class="field full"><input type="checkbox" name="accept_uncertified" value="1"> <?= htmlspecialchars(i18n('accept_uncertified'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></label><button class="btn" type="submit" <?= $ready ? '' : 'disabled' ?>><?= htmlspecialchars($installStatus['phase'] === 'failed' ? i18n('retry') : i18n('start'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></button></form>
     <?php endif; ?>
     <div id="progressPanel" <?= in_array($installStatus['phase'], ['running','complete','failed'], true) ? '' : 'hidden' ?>>
       <div class="progress"><div id="bar" class="bar"></div></div><div id="phase" class="phase"></div>

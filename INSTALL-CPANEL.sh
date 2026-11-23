@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="v191"
+VERSION="v192"
 release_dir="$(cd "$(dirname "$0")" && pwd)"
 pms_root="/home/corali/apps/corali-pms"
 booking_root="/home/corali/apps/corali-booking"
@@ -11,10 +11,11 @@ booking_url="https://booking.hotelcorali.gr"
 backup_dir=""
 assume_yes=0
 skip_db_backup=0
+accept_uncertified=0
 
 usage() {
   cat <<'EOF'
-Hotel Corali v191 — automatic cPanel installer
+Hotel Corali v192 — automatic cPanel installer
 
 Usage:
   bash INSTALL-CPANEL.sh [options]
@@ -28,6 +29,7 @@ Options:
   --backup-dir PATH     Backup directory (default /home/USER/backups)
   --yes                 Non-interactive confirmation
   --skip-db-backup      Skip pg_dump only when an external DB backup already exists
+  --accept-uncertified-providers  Install although the package's external providers were not certified in sandbox
   --help                Show this help
 EOF
 }
@@ -42,6 +44,7 @@ while [[ $# -gt 0 ]]; do
     --backup-dir) backup_dir="${2:-}"; shift 2 ;;
     --yes) assume_yes=1; shift ;;
     --skip-db-backup) skip_db_backup=1; shift ;;
+    --accept-uncertified-providers) accept_uncertified=1; shift ;;
     --help|-h) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -53,7 +56,7 @@ require_absolute "PMS root" "$pms_root"
 require_absolute "Booking root" "$booking_root"
 if [[ -n "$backup_dir" ]]; then require_absolute "Backup directory" "$backup_dir"; fi
 [[ "$pms_root" != "$booking_root" ]] || fail "PMS and booking roots must be different"
-[[ -f "$release_dir/DEPLOY_VERSION.txt" ]] || fail "Run the installer from the extracted v191 directory"
+[[ -f "$release_dir/DEPLOY_VERSION.txt" ]] || fail "Run the installer from the extracted v192 directory"
 [[ "$(tr -d '\r\n' < "$release_dir/DEPLOY_VERSION.txt")" == "$VERSION" ]] || fail "This installer requires $VERSION"
 [[ "$release_dir" != "$pms_root" && "$release_dir" != "$booking_root" ]] || fail "Extract the release outside the active application directories"
 
@@ -114,7 +117,7 @@ backup_dir="${backup_dir:-/home/$app_user/backups}"
 mkdir -p "$backup_dir"
 chmod 700 "$backup_dir"
 
-lock_dir="$apps_dir/.corali-v191-install.lock"
+lock_dir="$apps_dir/.corali-v192-install.lock"
 mkdir "$lock_dir" 2>/dev/null || fail "Another installation is running or a stale lock exists: $lock_dir"
 pms_stage="$apps_dir/.corali-pms-$VERSION-stage-$timestamp"
 booking_stage="$apps_dir/.corali-booking-$VERSION-stage-$timestamp"
@@ -181,11 +184,15 @@ fi
 
 echo "[4/9] Applying additive, idempotent database migrations..."
 node --env-file="$pms_stage/runtime.env" "$pms_stage/scripts/init-postgres.mjs"
-# v191: the installed files are the ones of the package that passed QA, every ON CONFLICT of the code is planned on
+# v192: the installed files are the ones of the package that passed QA, every ON CONFLICT of the code is planned on
 # this production database, every table exists. Any failure stops here (automatic rollback, nothing switched yet).
 echo "      Post-install check..."
-node --env-file="$pms_stage/runtime.env" "$pms_stage/scripts/post-install-check.mjs" "$pms_stage" "$VERSION"
-node "$booking_stage/scripts/post-install-check.mjs" "$booking_stage" "$VERSION" --no-db
+# v192: a package whose external providers were not certified in sandbox is NOT ACCEPTED; it installs only with the
+# operator's explicit --accept-uncertified-providers (recorded with the release check).
+accept_flag=()
+[[ "${accept_uncertified:-0}" == 1 ]] && accept_flag=(--accept-uncertified-providers)
+node --env-file="$pms_stage/runtime.env" "$pms_stage/scripts/post-install-check.mjs" "$pms_stage" "$VERSION" ${accept_flag[@]+"${accept_flag[@]}"}
+node "$booking_stage/scripts/post-install-check.mjs" "$booking_stage" "$VERSION" --no-db ${accept_flag[@]+"${accept_flag[@]}"}
 
 echo "[5/9] Running isolated runtime health tests..."
 bash "$pms_stage/scripts/smoke-runtime.sh" "$pms_stage" "$VERSION"
