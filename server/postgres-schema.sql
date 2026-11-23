@@ -2962,3 +2962,14 @@ CREATE TABLE IF NOT EXISTS device_compat_evidence (
  at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_device_compat_evidence_unit ON device_compat_evidence(owner_id,unit_id,at);
+
+-- v199 Device Compatibility Registry: evidence per FUNCTION (power / setpoint / mode / fan / room_temperature) with how
+-- it was verified (PROBE · MANUALLY_ATTESTED · AUTOMATIC_READBACK_VERIFIED); evidence expires; a firmware / hardware
+-- change forces revalidation (older evidence stays in the history); the hotel's test plan per module.
+ALTER TABLE device_compat_evidence ADD COLUMN IF NOT EXISTS function TEXT NOT NULL DEFAULT '';
+ALTER TABLE device_compat_evidence ADD COLUMN IF NOT EXISTS verification TEXT NOT NULL DEFAULT '';
+ALTER TABLE device_compat_units ADD COLUMN IF NOT EXISTS revalidate_after BIGINT;
+ALTER TABLE device_compat_units ADD COLUMN IF NOT EXISTS revalidate_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE device_compat_models ADD COLUMN IF NOT EXISTS target_level TEXT NOT NULL DEFAULT '';
+ALTER TABLE device_compat_models ADD COLUMN IF NOT EXISTS installed BIGINT NOT NULL DEFAULT 1;
+ALTER TABLE device_compat_models ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT '';
