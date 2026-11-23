@@ -216,6 +216,9 @@ test("v204 P1 watchdog: 65 failing subsystems with no working channel — nothin
   await wd.cycle();
   assert.equal(st.alerts.length, 1);
   assert.equal((st.alerts[0] as unknown as { items: unknown[] }).items.length, 65);
+  const { TEXT_MAX } = await import("../tools/watchdog/watchdog.mjs");
+  assert.ok(st.alerts[0].text.length <= TEXT_MAX, `the text fits Telegram / ntfy (${st.alerts[0].text.length})`);
+  assert.match(st.alerts[0].text, /… και \d+ ακόμη/, "what does not fit is counted, and kept in items");
   // The queue itself above its limit: merged into a digest, every item kept.
   const many = Array.from({ length: 150 }, (_, i) => ({ kind: i % 3 ? "reminder" : "open", severity: i % 2 ? "critical" : "warning", check: `c${i}`, at: i, text: `m${i}` }));
   const c = compactOutbox(many, "QA");
@@ -223,6 +226,11 @@ test("v204 P1 watchdog: 65 failing subsystems with no working channel — nothin
   const kept = c.flatMap((m) => (m.kind === "digest" ? m.items ?? [] : [m]));
   assert.equal(kept.length, 150, "no message lost");
   assert.ok(c.filter((m) => m.kind !== "digest").every((m) => !(m.kind === "reminder" && c.some((x) => x.kind === "digest" && x.items?.some((y) => y.kind === "open" && y.severity === "critical")))), "critical «open» kept individually before reminders");
+  // Earlier digests are merged into one (never a pile of digests), still keeping every item.
+  const again = compactOutbox([...c, ...Array.from({ length: 30 }, (_, i) => ({ kind: "reminder", severity: "warning", check: `n${i}`, at: 200 + i, text: `n${i}` }))], "QA");
+  assert.equal(again.filter((m) => m.kind === "digest").length, 1);
+  assert.equal(again.flatMap((m) => (m.kind === "digest" ? m.items ?? [] : [m])).length, 180);
+  assert.ok(again.every((m) => m.text.length <= TEXT_MAX));
   // A growing queue is reported before the merge limit.
   st.receiverDown = true;
   for (let i = 1; i <= QUEUE_WARN; i++) comps[`late${i}`] = "warn";

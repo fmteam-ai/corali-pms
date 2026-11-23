@@ -49,7 +49,7 @@ export async function channelLifecycle(ownerId: string) {
   const states = await integrationStates({ pool: db(), owner: ownerId, providers: ["channelManager"], health: { channelManager: channelSyncHealthy(st) } });
   const checks = (await db().query(`SELECT check_key,ok,detail,checked_at FROM integration_checks WHERE owner_id=$1 AND provider_key='channelManager' ORDER BY checked_at DESC LIMIT 50`, [ownerId])).rows;
   const s = states.channelManager;
-  return { state: s.state as string, stateEl: STATE_EL[s.state as keyof typeof STATE_EL], activatedAt: s.activatedAt, activatedBy: s.activatedBy, readiness: activationReadiness("channelManager", checks, Date.now(), await configChangedAt(db(), ownerId, "channelManager")), prerequisites: PREREQUISITES.channelManager };
+  return { state: s.state as string, stateEl: STATE_EL[s.state as keyof typeof STATE_EL], credentials: s.credentials, activatedAt: s.activatedAt, activatedBy: s.activatedBy, readiness: activationReadiness("channelManager", checks, Date.now(), await configChangedAt(db(), ownerId, "channelManager")), prerequisites: PREREQUISITES.channelManager };
 }
 
 /**

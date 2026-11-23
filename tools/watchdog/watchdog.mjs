@@ -56,18 +56,36 @@ export function parseHeartbeat(text) {
 }
 
 export const BATCH_MAX = 5, QUEUE_WARN = 50, QUEUE_MAX = 100;
-const priorityOf = (m) => (m.kind === "digest" ? 0 : (m.kind === "open" || m.kind === "escalated" || m.kind === "batch") && m.severity === "critical" ? 1 : m.kind === "open" || m.kind === "batch" ? 2 : m.kind === "resolved" ? 3 : 4);
-/** Bounded WITHOUT loss: above QUEUE_MAX, the lowest-priority, oldest messages are merged into one digest. */
+/** Telegram accepts at most 4096 characters, ntfy 4096 bytes as a message: a longer text is never accepted. */
+export const TEXT_MAX = 3500;
+/** A message text from lines, within TEXT_MAX: the head, the lines that fit, then «… και N ακόμη». */
+export function listText(head, lines) {
+  let text = head, shown = 0;
+  for (const l of lines) {
+    const next = `${text}\n• ${l}`;
+    if (next.length > TEXT_MAX - 60) break;
+    text = next; shown++;
+  }
+  return shown < lines.length ? `${text}\n… και ${lines.length - shown} ακόμη (όλες στο state.json του watchdog)` : text;
+}
+const priorityOf = (m) => ((m.kind === "open" || m.kind === "escalated" || m.kind === "batch") && m.severity === "critical" ? 1 : m.kind === "open" || m.kind === "batch" || m.kind === "escalated" ? 2 : m.kind === "resolved" ? 3 : 4);
+const itemsOf = (m) => (m.kind === "batch" || m.kind === "digest" ? m.items ?? [] : [{ kind: m.kind, severity: m.severity, check: m.check, at: m.at, text: m.text }]);
+/**
+ * Bounded WITHOUT loss: at most QUEUE_MAX messages. Above it (or when more than one digest exists), the
+ * lowest-priority, oldest messages and every earlier digest are merged into ONE digest that keeps all their items.
+ * Critical «open» / «escalated» messages are the last to be merged.
+ */
 export function compactOutbox(outbox, label = "") {
-  if (outbox.length <= QUEUE_MAX) return outbox;
-  const order = outbox.map((m, i) => ({ m, i })).sort((a, b) => priorityOf(a.m) - priorityOf(b.m) || a.i - b.i);
+  const digests = outbox.filter((m) => m.kind === "digest"), rest = outbox.filter((m) => m.kind !== "digest");
+  if (rest.length + digests.length <= QUEUE_MAX && digests.length <= 1) return outbox;
+  const order = rest.map((m, i) => ({ m, i })).sort((a, b) => priorityOf(a.m) - priorityOf(b.m) || a.i - b.i);
   const keep = new Set(order.slice(0, QUEUE_MAX - 1).map((x) => x.i));
-  const merged = outbox.filter((_, i) => !keep.has(i));
-  const prev = merged.filter((m) => m.kind === "digest");
-  const items = [...prev.flatMap((d) => d.items ?? []), ...merged.filter((m) => m.kind !== "digest").flatMap((m) => (m.kind === "batch" ? m.items ?? [] : [{ kind: m.kind, severity: m.severity, check: m.check, at: m.at, text: m.text }]))];
+  const merged = [...digests, ...rest.filter((_, i) => !keep.has(i))];
+  const items = merged.flatMap(itemsOf);
+  if (!items.length) return rest;
   const digest = { kind: "digest", severity: items.some((x) => x.severity === "critical") ? "critical" : "warning", check: "*", at: Math.max(...items.map((x) => Number(x.at) || 0)), items,
-    text: `📋 ${label}: ${items.length} ειδοποιήσεις συγκεντρώθηκαν (η ουρά ξεπέρασε τις ${QUEUE_MAX})\n${items.slice(-40).map((x) => `• ${x.text}`).join("\n")}${items.length > 40 ? `\n… και ${items.length - 40} ακόμη (στο state.json)` : ""}` };
-  return [...outbox.filter((_, i) => keep.has(i)), digest];
+    text: listText(`📋 ${label}: ${items.length} ειδοποιήσεις συγκεντρώθηκαν (η ουρά ξεπέρασε τις ${QUEUE_MAX})`, items.slice().reverse().map((x) => x.text)) };
+  return [...rest.filter((_, i) => keep.has(i)), digest];
 }
 
 export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = (l) => console.log(l) } = {}) {
@@ -194,7 +212,7 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     if (fresh.length > BATCH_MAX) {
       const crit = fresh.some((m) => m.severity === "critical");
       state.outbox.push({ kind: "batch", severity: crit ? "critical" : "warning", check: "*", at: t, items: fresh.map(({ kind, severity, check, at, text }) => ({ kind, severity, check, at, text })),
-        text: `${crit ? "🔴" : "🟠"} ${cfg.label}: ${fresh.length} ειδοποιήσεις ταυτόχρονα\n${fresh.map((m) => `• ${m.text}`).join("\n")}` });
+        text: listText(`${crit ? "🔴" : "🟠"} ${cfg.label}: ${fresh.length} ειδοποιήσεις ταυτόχρονα`, fresh.slice().sort((a, b) => priorityOf(a) - priorityOf(b)).map((m) => m.text)) });
     } else state.outbox.push(...fresh);
     // Saved BEFORE delivering: an alert decided in this cycle survives a restart even if delivery never happened.
     persist();

@@ -10,3 +10,5 @@ export declare const BATCH_MAX: number;
 export declare const QUEUE_WARN: number;
 export declare const QUEUE_MAX: number;
 export declare function compactOutbox(outbox: WatchdogMessage[], label?: string): WatchdogMessage[];
+export declare const TEXT_MAX: number;
+export declare function listText(head: string, lines: string[]): string;
