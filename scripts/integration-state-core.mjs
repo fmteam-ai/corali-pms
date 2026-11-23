@@ -57,14 +57,16 @@ export const ALERTING_STATES = new Set(["ACTIVE", "DEGRADED", "UNVERIFIED"]);
  * documented exception; none today.
  */
 export const REQUIRED_CREDENTIALS = {
+  // ONE table for «saving as active» (app/api/pms/provider-connections) and for the integration state: what the save
+  // form already required, plus what the workers actually read.
   channelManager: { secrets: ["apiKey"], settings: ["propertyCode"] },
-  viva: { secrets: ["clientId", "clientSecret"], settings: [] },
+  viva: { secrets: ["clientId", "clientSecret"], settings: ["environment"] },
   stripe: { secrets: ["secretKey", "webhookSecret"], settings: [] },
-  whatsapp: { secrets: ["accessToken"], settings: ["phoneNumberId"] },
+  whatsapp: { secrets: ["accessToken", "verifyToken", "appSecret"], settings: ["phoneNumberId", "businessAccountId"] },
   mydata: { secrets: ["username", "subscriptionKey"], settings: ["issuerVat"] },
-  meta: { secrets: ["pageAccessToken"], settings: ["pageId"] },
-  tuya: { secrets: ["accessId", "accessSecret"], settings: [] },
-  omada: { secrets: ["clientId", "clientSecret"], settings: ["interfaceUrl", "omadacId"] },
+  meta: { secrets: ["appSecret", "pageAccessToken"], settings: ["pageId"] },
+  tuya: { secrets: ["accessId", "accessSecret"], settings: ["dataCenter"] },
+  omada: { secrets: ["clientId", "clientSecret"], settings: ["interfaceUrl", "omadacId", "profile", "ssid"] },
 };
 export const CREDENTIAL_FREE = new Set();
 

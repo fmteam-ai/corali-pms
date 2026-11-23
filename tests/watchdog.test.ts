@@ -333,3 +333,34 @@ test("v204 review 2 watchdog: a long detail is clipped; a message refused by a c
   assert.ok(calls <= 3, `delivery stopped by the time budget (${calls} calls)`);
   assert.equal(w3.state().outbox.length, 10 - calls, "the rest wait, in order");
 });
+
+test("v204 review 3 watchdog: a broken channel (401 / chat not found) never gives up an alert; critical first; complete text in the log", async () => {
+  let clock = Date.parse("2026-11-24T10:00:00Z");
+  const lines: string[] = [];
+  const order: string[] = [];
+  let telegramStatus = 401;
+  const fetchImpl = (async (url: string, init?: { body?: string }) => {
+    if (url.endsWith("/api/health")) return new Response(JSON.stringify({ ok: false, reason: "Ω".repeat(3000) }), { status: 503 });
+    if (url.includes("api.telegram.org")) {
+      order.push(JSON.parse(String(init?.body)).text.slice(0, 20));
+      if (telegramStatus === 401) return new Response(JSON.stringify({ ok: false, error_code: 401, description: "Unauthorized" }), { status: 401 });
+      if (telegramStatus === 400) return new Response(JSON.stringify({ ok: false, error_code: 400, description: "Bad Request: chat not found" }), { status: 400 });
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+    return new Response("?", { status: 404 });
+  }) as unknown as typeof fetch;
+  const wd = createWatchdog(cfgFor({ heartbeatUrl: "", webhookUrl: "", telegram: { token: "T", chat: "C" } }), { fetchImpl, now: () => clock, sleep: async () => {}, log: (l: string) => lines.push(l) });
+  for (let i = 0; i < 8; i++) { await wd.cycle(); clock += 60_000; }
+  assert.equal(wd.state().outbox.filter((m) => m.kind === "open" && m.check === "pms").length, 1, "401: still queued after 8 cycles");
+  telegramStatus = 400;
+  for (let i = 0; i < 5; i++) { await wd.cycle(); clock += 60_000; }
+  assert.equal(wd.state().outbox.filter((m) => m.kind === "open" && m.check === "pms").length, 1, "«chat not found»: still queued");
+  // The full 3000-character detail is in the log line of the alert.
+  assert.ok(lines.some((l) => l.includes('"event":"alert"') && l.includes("Ω".repeat(3000))), "complete text logged");
+  // Channel fixed: the critical «open» goes before older reminders.
+  (wd.state().outbox as { kind: string; check: string; text: string; severity?: string }[]).unshift({ kind: "reminder", severity: "warning", check: "old", text: "REMINDER-old" });
+  telegramStatus = 200; order.length = 0;
+  await wd.cycle();
+  assert.ok(order.indexOf(order.find((t) => t.includes("«pms»"))!) < order.findIndex((t) => t.startsWith("REMINDER")), `critical first: ${order.join(" | ")}`);
+  assert.equal(wd.state().outbox.length, 0);
+});

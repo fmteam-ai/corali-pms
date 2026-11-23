@@ -414,6 +414,49 @@ test("v204 review 2: grace from the START of the current failure; an open incide
   assert.deepEqual(f.map((x) => x.key).sort(), ["integration:channelManager:revalidate", "integration:channelManager:unverified"]);
   // (9) credentials as the workers need them.
   const { REQUIRED_CREDENTIALS } = await import("../scripts/integration-state-core.mjs");
-  assert.deepEqual(REQUIRED_CREDENTIALS.omada.settings, ["interfaceUrl", "omadacId"]);
-  assert.deepEqual(REQUIRED_CREDENTIALS.viva.settings, []);
+  // One table with the save form (review 3): Omada needs omadacId (and the form's profile / ssid); Viva needs no
+  // merchantId (not used) but the environment the form requires; myDATA what the queue sends.
+  assert.deepEqual(REQUIRED_CREDENTIALS.omada.settings, ["interfaceUrl", "omadacId", "profile", "ssid"]);
+  assert.deepEqual(REQUIRED_CREDENTIALS.viva.settings, ["environment"]);
+  assert.deepEqual(REQUIRED_CREDENTIALS.mydata.secrets, ["username", "subscriptionKey"]);
+  const route = readFileSync("app/api/pms/provider-connections/route.ts", "utf8");
+  assert.match(route, /\.\.\.REQUIRED_CREDENTIALS/, "the save form uses the same table");
+});
+
+test("v204 review 3: stale failure start ignored; a «low» from TESTING does not skip the grace; switching off closes silently; one incident when the whole cron stops; OTA ranges grouped", async () => {
+  const { channelIncident, buildIncidents } = await import("../scripts/alert-intel-core.mjs");
+  const b = { connection: "DEGRADED", credentials: "OK", live: 0, oldestAt: null, lastRunAt: t0 - MIN, lastError: "HTTP_503" };
+  // A failing_since older than the last success (left from an earlier failure / a rollback) is not the start.
+  assert.equal(channelIncident({ ...b, lastOkAt: t0 - 3 * MIN, failingSince: t0 - 3 * DAY }, t0), null, "inside the grace of the CURRENT failure");
+  // Legacy rows: no failing_since, last success 8 h ago → still critical (the start is bounded by the last success).
+  assert.equal(channelIncident({ ...b, lastOkAt: t0 - 8 * HOUR, failingSince: null }, t0)!.priority, "critical");
+  const { db, pool } = await fresh();
+  try {
+    // TESTING with a backlog stores a LOW alert (no deliveries)…
+    await connection(db, 1, false);
+    await db.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at) VALUES($1,$2,$2)`, [o, t0 - MIN]);
+    await db.query(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,status,created_at,updated_at) VALUES($1,'2026-12-24','2026-12-26','qa','pending',$2,$2)`, [o, t0 - HOUR]);
+    await runReliabilityAlerts({ pool, owner: o, now: t0, emails: ADMIN });
+    assert.equal(await n(db, `SELECT count(*)::int AS n FROM alerts WHERE alert_key='rel:sync:ota' AND priority='low' AND resolved_at IS NULL`), 1);
+    // … activated; the first failed run (inside the grace, empty queue) → no «worsened» push / e-mail.
+    await db.query(`INSERT INTO integration_activation(owner_id,provider_key,activated_at,activated_by) VALUES($1,'channelManager',$2,'qa')`, [o, t0 + MIN]);
+    await db.query(`UPDATE channel_sync_outbox SET status='sent'`);
+    await db.query(`UPDATE channel_sync_state SET last_run_at=$2,last_error='HTTP_401',failing_since=$2 WHERE owner_id=$1`, [o, t0 + 2 * MIN]);
+    await runReliabilityAlerts({ pool, owner: o, now: t0 + 3 * MIN, emails: ADMIN });
+    assert.equal(await n(db, `SELECT count(*)::int AS n FROM alert_outbox`), 0, "nothing sent inside the grace");
+    // Failing past the grace → one high incident, delivered; then the connection is switched back to testing:
+    // the alert closes WITHOUT a «recovered» notice (nothing was fixed).
+    await runReliabilityAlerts({ pool, owner: o, now: t0 + 15 * MIN, emails: ADMIN });
+    assert.equal(await n(db, `SELECT count(*)::int AS n FROM alerts WHERE alert_key='rel:sync:ota' AND priority='high' AND resolved_at IS NULL`), 1);
+    await deliverAlerts({ pool, owner: o, send, now: t0 + 16 * MIN });
+    await db.query(`UPDATE integration_activation SET deactivated_at=$1`, [t0 + 17 * MIN]);
+    await runReliabilityAlerts({ pool, owner: o, now: t0 + 18 * MIN, emails: ADMIN });
+    assert.equal(await n(db, `SELECT count(*)::int AS n FROM alerts WHERE alert_key='rel:sync:ota' AND resolved_at IS NULL`), 0);
+    assert.equal(await n(db, `SELECT count(*)::int AS n FROM alert_outbox WHERE purpose='recovery'`), 0, "no false «recovered»");
+  } finally { await db.close(); }
+  // The whole cron stopped → the automations incident only (the OTA «not running» is its symptom).
+  const rel = { integrations: { channelManager: "ACTIVE" }, channelStats: { connection: "ACTIVE", credentials: "OK", live: 2, oldestAt: t0 - HOUR, lastRunAt: t0 - 2 * HOUR, lastOkAt: t0 - 2 * HOUR },
+    areas: [{ key: "automations", el: "Cron", items: [{ key: "cron:stopped", level: "fail", text: "Το cron έχει σταματήσει" }] }, { key: "channel", el: "Channel", items: Array.from({ length: 12 }, (_, i) => ({ key: `ota:double:2026-12-${String(i + 1).padStart(2, "0")}`, level: "fail", text: `range ${i}` })) }] };
+  const inc = buildIncidents(rel, t0).map((i) => i.key).sort();
+  assert.deepEqual(inc, ["cron:stopped", "ota:*"], "one incident per cause; 12 OTA ranges = one incident");
 });

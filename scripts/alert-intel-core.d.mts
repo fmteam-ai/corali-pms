@@ -5,7 +5,7 @@ export declare const PRIORITY_LABEL: Record<Priority, string>;
 export declare const PRIORITY_EL: Record<Priority, string>;
 export declare const NOTIFY_POLICY: Record<Priority, { push: boolean; email: boolean; escalateAfterMs: number | null; remindEveryMs: number | null }>;
 export declare function policyText(p: string): string;
-export type Incident = { key: string; area: string; service: string; priority: Priority; count: number; oldestAt: number | null; problem: string; summary: string; rootCause: string | null; causes: string[]; action: string; connection?: string; examples?: { key: string; text: string }[] };
+export type Incident = { key: string; area: string; service: string; priority: Priority; count: number; oldestAt: number | null; problem: string; summary: string; rootCause: string | null; causes: string[]; action: string; connection?: string; cause?: string; examples?: { key: string; text: string }[] };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export declare function channelIncident(stats: any, now: number): Incident | null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

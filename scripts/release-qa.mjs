@@ -347,7 +347,7 @@ try {
       await q(`DELETE FROM channel_sync_outbox WHERE id=$1`, [id]);
       await q(`DELETE FROM provider_connections WHERE owner_id=$1 AND provider_key='channelManager'`, [owner]);
       await q(`DELETE FROM integration_activation WHERE owner_id=$1 AND provider_key='channelManager'`, [owner]);
-      if (prevState) await q(`UPDATE channel_sync_state SET last_run_at=$2,last_ok_at=$3,last_error=$4 WHERE owner_id=$1`, [owner, prevState.last_run_at, prevState.last_ok_at, prevState.last_error]);
+      if (prevState) await q(`UPDATE channel_sync_state SET last_run_at=$2,last_ok_at=$3,last_error=$4,failing_since=NULL WHERE owner_id=$1`, [owner, prevState.last_run_at, prevState.last_ok_at, prevState.last_error]);
       else await q(`DELETE FROM channel_sync_state WHERE owner_id=$1`, [owner]);
       await q(`UPDATE alerts SET resolved_at=$2 WHERE owner_id=$1 AND area='channel' AND resolved_at IS NULL`, [owner, Date.now()]);
       await q(`UPDATE alert_outbox SET status='cancelled' WHERE owner_id=$1 AND status='pending' AND alert_id IN (SELECT id FROM alerts WHERE owner_id=$1 AND area='channel')`, [owner]);
@@ -540,6 +540,17 @@ try {
       const ss = (await q(`SELECT last_run_at,last_ok_at,last_error FROM channel_sync_state WHERE owner_id=$1`, [owner])).rows[0];
       must(ss && Number(ss.last_run_at) > Number(ss.last_ok_at ?? 0) && /availability push: .*CHANNEX_WARNINGS/.test(ss.last_error ?? ""), `κατάσταση συγχρονισμού μετά από αποτυχημένη αποστολή: ${JSON.stringify(ss)}`);
       warn = false;
+      // v204: the failure start is recorded; the next run has nothing due (the failed change waits for its retry) —
+      // it is NOT a success: the failure and its start are kept. After the change is sent, a run succeeds and clears it.
+      const fs1 = (await q(`SELECT failing_since FROM channel_sync_state WHERE owner_id=$1`, [owner])).rows[0]?.failing_since;
+      must(fs1 != null, "failing_since δεν καταγράφηκε");
+      await sync();
+      const ss2 = (await q(`SELECT last_run_at,last_ok_at,last_error,failing_since FROM channel_sync_state WHERE owner_id=$1`, [owner])).rows[0];
+      must(Number(ss2.last_run_at) > Number(ss2.last_ok_at ?? 0) && /περιμένουν επανάληψη/.test(ss2.last_error ?? "") && String(ss2.failing_since) === String(fs1), `εκτέλεση χωρίς αποστολή μετά από αποτυχία: ${JSON.stringify(ss2)}`);
+      await q(`UPDATE channel_sync_outbox SET next_attempt_at=0 WHERE owner_id=$1 AND status='failed'`, [owner]);
+      await sync();
+      const ss3 = (await q(`SELECT last_run_at,last_ok_at,last_error,failing_since FROM channel_sync_state WHERE owner_id=$1`, [owner])).rows[0];
+      must(String(ss3.last_ok_at) === String(ss3.last_run_at) && !ss3.last_error && ss3.failing_since == null, `επιτυχία μετά την επανάληψη: ${JSON.stringify(ss3)}`);
       // 4) Read-back that returns only part of the dates: never «full agreement».
       await q(`DELETE FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed')`, [owner]);
       await sync({ CHANNEL_READBACK_NOW: "1" });
@@ -619,14 +630,14 @@ try {
     // A person fixes it; recovery is verified only after clean checks over time (simulated by moving last_seen back).
     // v204: fixed = the change was sent AND the sync's latest run succeeded (the failing sync itself is the incident).
     await q(`UPDATE channel_sync_outbox SET status='sent' WHERE id=$1`, [fault]);
-    await q(`UPDATE channel_sync_state SET last_run_at=$2,last_ok_at=$2,last_error=NULL WHERE owner_id=$1`, [owner, Date.now()]);
+    await q(`UPDATE channel_sync_state SET last_run_at=$2,last_ok_at=$2,last_error=NULL,failing_since=NULL WHERE owner_id=$1`, [owner, Date.now()]);
     await q(`UPDATE sentinel_incidents SET last_seen_at=last_seen_at-$2 WHERE id=$1`, [inc.id, 15 * 60_000]);
     r = runSentinelCron(); r = runSentinelCron();
     const after = (await q(`SELECT status,recovery_verified_at FROM sentinel_incidents WHERE id=$1`, [inc.id])).rows[0];
     must(after.status === "resolved" && after.recovery_verified_at, `αποκατάσταση: ${JSON.stringify(after)}`);
     await q(`UPDATE provider_connections SET active=0 WHERE owner_id=$1 AND provider_key='channelManager'`, [owner]);
     await q(`DELETE FROM integration_activation WHERE owner_id=$1 AND provider_key='channelManager'`, [owner]);
-    if (prevSync) await q(`UPDATE channel_sync_state SET last_run_at=$2,last_ok_at=$3,last_error=$4 WHERE owner_id=$1`, [owner, prevSync.last_run_at, prevSync.last_ok_at, prevSync.last_error]);
+    if (prevSync) await q(`UPDATE channel_sync_state SET last_run_at=$2,last_ok_at=$3,last_error=$4,failing_since=NULL WHERE owner_id=$1`, [owner, prevSync.last_run_at, prevSync.last_ok_at, prevSync.last_error]);
     else await q(`DELETE FROM channel_sync_state WHERE owner_id=$1`, [owner]);
     // Endpoints: deep health is internal (no session → refused); the heartbeat is signed and minimal.
     const deep = await fetch(`${pms.url}/api/health/deep`);

@@ -71,7 +71,7 @@ export function channelIncident(s, now) {
       action: "Συνδέσεις → Channel Manager: αποθηκεύστε ξανά API key και property id, «Έλεγχος σύνδεσης Channex», μετά «Συγχρονισμός τώρα»." };
   }
   if (!s.lastRunAt || now - Number(s.lastRunAt) > 30 * MIN) {
-    return { ...base, priority: "critical", problem: "Ο συγχρονισμός με τον Channel Manager δεν εκτελείται — οι μεταβολές διαθεσιμότητας και οι κρατήσεις OTA δεν συγχρονίζονται." + soon,
+    return { ...base, cause: "not_running", priority: "critical", problem: "Ο συγχρονισμός με τον Channel Manager δεν εκτελείται — οι μεταβολές διαθεσιμότητας και οι κρατήσεις OTA δεν συγχρονίζονται." + soon,
       rootCause: `Επιβεβαιωμένο: ${evidence} Ο συγχρονισμός (scripts/run-channel-sync.mjs) δεν τρέχει.`,
       causes: ["Λείπει το cron του run-channel-sync.mjs στο cPanel", "Το cron αποτυγχάνει πριν ξεκινήσει (δείτε /home/corali/logs/corali-channels.log)"],
       action: "Ελέγξτε στο cPanel → Cron Jobs ότι υπάρχει το scripts/run-channel-sync.mjs (κάθε λεπτό) και το log του. Μετά: Κέντρο αξιοπιστίας → «Συγχρονισμός τώρα»." };
@@ -82,8 +82,10 @@ export function channelIncident(s, now) {
   // reported — never the «sync succeeds» diagnosis.
   const runFailed = !s.lastOkAt || Number(s.lastOkAt) < Number(s.lastRunAt) || Boolean(String(s.lastError ?? "").trim());
   if (runFailed) {
-    // Unknown start (rows written before v204) → the last success bounds it; never succeeded → the failed run.
-    const since = Number(s.failingSince ?? s.lastOkAt ?? s.lastRunAt);
+    // failingSince counts only if it is after the last success (a stale value is ignored); unknown → the last success
+    // bounds it; never succeeded → the failed run.
+    const fs = s.failingSince == null ? null : Number(s.failingSince);
+    const since = fs != null && fs >= Number(s.lastOkAt ?? 0) ? fs : Number(s.lastOkAt ?? s.lastRunAt);
     const failingFor = now - since;
     const failing = { ...base, priority: failingFor > 6 * HOUR ? "critical" : "high", problem: "Ο συγχρονισμός εκτελείται αλλά η τελευταία εκτέλεση απέτυχε — οι αλλαγές δεν φτάνουν στον Channel Manager." + soon,
       rootCause: `Επιβεβαιωμένο: ${evidence} Αποτυγχάνει συνεχώς εδώ και ${days(failingFor)}.`,
@@ -117,7 +119,8 @@ export function buildIncidents(reliability, now) {
       if (a.key === "channel" && /^(outbox:|sync:|integration:channelManager:credentials|cron:channel-sync)/.test(key)) continue;
       // v204: a channel manager that is not activated never alerts (TESTING / NOT_CONFIGURED / DISABLED).
       if (a.key === "channel" && reliability?.integrations && !["ACTIVE", "DEGRADED", "UNVERIFIED"].includes(reliability.integrations.channelManager) && !key.startsWith("noroom:")) continue;
-      const m = /^([a-z_]+):\d+$/i.exec(key);
+      // Many items of one kind = one incident: «<kind>:<number>» and the per-range / per-room families.
+      const m = /^([a-z_]+):\d+$/i.exec(key) ?? /^(ota|ota-unsent|turnover-soon|noroom|recon):/.exec(key);
       const gk = m ? `${m[1]}:*` : key;
       const g = groups.get(gk) ?? { key: gk, items: [] };
       g.items.push(i);
@@ -131,7 +134,10 @@ export function buildIncidents(reliability, now) {
         rootCause: null, causes: [], action: "Δείτε το Κέντρο αξιοπιστίας — κάθε εκκρεμότητα έχει την ενέργεια αποκατάστασης.", examples: g.items.slice(0, 5).map((i) => ({ key: i.key, text: i.text })) });
     }
   }
-  return out.sort((x, y) => priorityRank(y.priority) - priorityRank(x.priority));
+  // v204 correlation: when the whole cron has stopped (automations), «the OTA sync does not run» is its symptom,
+  // not a second incident (one push / e-mail for one cause).
+  const cronDown = out.some((i) => i.area === "automations" && /^cron:(stopped|hung)$/.test(i.key));
+  return out.filter((i) => !(cronDown && i.key === "sync:ota" && i.cause === "not_running")).sort((x, y) => priorityRank(y.priority) - priorityRank(x.priority));
 }
 
 /** The message (subject + text) of one delivery, in the incident format. purpose: alert · escalation · reminder:* · worsened · recovery. */

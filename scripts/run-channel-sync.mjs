@@ -141,6 +141,20 @@ let runId = null, runStatus = "ok", runError = "";
 // v204: a failed availability push inside an otherwise completed run makes the run FAILED (not «ok» with the error
 // wiped): last_run_at moves, last_ok_at does not, last_error keeps the reason.
 let pushError = null;
+/** Writes the sync state; falls back to the pre-v204 columns if the schema update has not run yet (no failing_since). */
+const writeState = (sql, legacySql, params) => pool.query(sql, params).catch((e) => (e?.code === "42703" ? pool.query(legacySql, params) : Promise.reject(e)));
+/**
+ * A failed run. failing_since = when the CURRENT failure started: kept only if it is after the last success (a value
+ * left from an older failure is discarded); unknown (rows from before v204, or a previous run already failed) → the
+ * last success bounds it, else that earlier failed run; a fresh failure after a success → now.
+ */
+const writeFailure = (error) => writeState(
+  `INSERT INTO channel_sync_state(owner_id,last_run_at,last_error,failing_since) VALUES($1,$2,$3,$2) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_error=$3,
+     failing_since=CASE WHEN channel_sync_state.failing_since IS NOT NULL AND channel_sync_state.failing_since>=COALESCE(channel_sync_state.last_ok_at,0) THEN channel_sync_state.failing_since
+       WHEN channel_sync_state.last_run_at IS NOT NULL AND (channel_sync_state.last_ok_at IS NULL OR channel_sync_state.last_ok_at<channel_sync_state.last_run_at OR COALESCE(channel_sync_state.last_error,'')<>'') THEN COALESCE(channel_sync_state.last_ok_at,channel_sync_state.last_run_at)
+       ELSE $2 END`,
+  `INSERT INTO channel_sync_state(owner_id,last_run_at,last_error) VALUES($1,$2,$3) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_error=$3`,
+  [owner, Date.now(), error]);
 const startedAt = Date.now();
 try {
   if (!(await lock.query("SELECT pg_try_advisory_lock(hashtext('corali-channel-sync')) AS ok")).rows[0].ok) { await cronOverlap(pool, owner, "channel-sync").catch(() => {}); console.log("Channel sync already running."); process.exit(0); }
@@ -296,15 +310,22 @@ try {
     }
   }
 
+  // v204: a run that sent nothing is NOT proof that sending works — while earlier failed changes wait for their
+  // retry, the failure continues (otherwise a broken push would look «recovered» between retries).
+  if (!pushError) {
+    const waiting = (await pool.query(`SELECT count(*)::int AS n,max(last_error) AS err FROM channel_sync_outbox WHERE owner_id=$1 AND status='failed'`, [owner])).rows[0];
+    if (Number(waiting?.n ?? 0) > 0) pushError = `${waiting.n} μεταβολές περιμένουν επανάληψη μετά από αποτυχία: ${String(waiting.err ?? "").slice(0, 300)}`;
+  }
   if (pushError) {
     runStatus = "failed"; runError = pushError;
-    await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_error,failing_since) VALUES($1,$2,$3,$2) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_error=$3,failing_since=COALESCE(channel_sync_state.failing_since,$2)`, [owner, Date.now(), pushError]);
-  } else await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error,failing_since) VALUES($1,$2,$2,NULL,NULL) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$2,last_error=NULL,failing_since=NULL`, [owner, Date.now()]);
+    await writeFailure(pushError);
+  } else await writeState(
+    `INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error,failing_since) VALUES($1,$2,$2,NULL,NULL) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$2,last_error=NULL,failing_since=NULL`,
+    `INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$2,NULL) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$2,last_error=NULL`, [owner, Date.now()]);;
   console.log(`Channel sync: ${sendIds.length} availability range(s) sent, ${plan.outOfRange.length} beyond the horizon, ${plan.skipped.length} past, ${restrictionDays} restriction day(s), ${rateDays} rate day(s), ${imported} OTA revision(s) imported.`);
 } catch (error) {
   runStatus = "failed"; runError = String(error);
-  // v204: failing_since = when the CURRENT failure started (kept across failed runs, cleared by a success).
-  await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_error,failing_since) VALUES($1,$2,$3,$2) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_error=$3,failing_since=COALESCE(channel_sync_state.failing_since,$2)`, [owner, Date.now(), String(error).slice(0, 500)]).catch(() => {});
+  await writeFailure(String(error).slice(0, 500)).catch(() => {});
   throw error;
 } finally {
   if (runId) await cronFinish(pool, owner, "channel-sync", runId, { status: runStatus, error: runError, startedAt }).catch(() => {});

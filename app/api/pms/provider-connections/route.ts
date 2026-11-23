@@ -1,3 +1,4 @@
+import { REQUIRED_CREDENTIALS } from "../../../../scripts/integration-state-core.mjs";
 import { audited } from "@/lib/audit";
 import Stripe from "stripe";
 import nodemailer from "nodemailer";
@@ -60,6 +61,8 @@ async function handlePUT(request:Request) {
         // v169: Tuya and IMAP were missing here, so saving them as «active» crashed (SAVE_FAILED) instead of saving.
         tuya:{secrets:["accessId","accessSecret"],settings:["dataCenter"]},imap:{secrets:[],settings:[]},
         omada:{secrets:["clientId","clientSecret"],settings:["interfaceUrl","omadacId","profile","ssid"]},
+        // v204: the integration lifecycle's table is the authority for the providers it covers (one source).
+        ...REQUIRED_CREDENTIALS,
       };
       const needed=required[input.providerKey] ?? {secrets:[],settings:[]};
       if (input.active && (needed.secrets.some(key => !secrets[key])||needed.settings.some(key => !input.settings[key]))) throw new Error("CREDENTIALS_REQUIRED");
