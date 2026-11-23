@@ -13,27 +13,27 @@
       "WhatsApp Cloud API: test phone number reachable: NOT RUN"
     ]
   },
-  "at": "2026-11-23T19:07:47.041Z",
-  "durationMs": 130819,
+  "at": "2026-11-23T19:32:29.562Z",
+  "durationMs": 149200,
   "package": {
     "file": "corali-pms-cpanel-v202-root.tar.gz",
-    "sha256": "a8c19c15e1a15252efc08ddb13e927a1880401a04fe7e4c5a2f536019f59e1bb",
+    "sha256": "6cd7173ba294bd52c52799f01da0221e20341dc1ad0cc5b3258621bedee4f16e",
     "tested": {
       "file": "corali-pms-cpanel-v202-root.tar.gz",
-      "sha256": "a8c19c15e1a15252efc08ddb13e927a1880401a04fe7e4c5a2f536019f59e1bb"
+      "sha256": "6cd7173ba294bd52c52799f01da0221e20341dc1ad0cc5b3258621bedee4f16e"
     },
     "final": {
       "file": "corali-pms-cpanel-v202-root.tar.gz",
-      "sha256": "9197a4af6e1e371d40a44f6ab9a33a041acc07f9ca7ef9ddab8635e333761273",
-      "contentHash": "111a0e481846ab17fa471394455f6648c5ed728b8bc68e6456cac003bce78c22",
-      "files": 6134,
+      "sha256": "f0b9edd9f388716f49bcb8a08d2a131edd21076f07b5f3c22ef8453638434b55",
+      "contentHash": "eb46008381c15a7bf80f10e6719767ca7e4558bb8aa35a7d1d63a8b21bfde49a",
+      "files": 6139,
       "addedAfterQa": [
         "RELEASE-EVIDENCE.json"
       ],
-      "finalizedAt": "2026-11-23T19:07:54.105Z"
+      "finalizedAt": "2026-11-23T19:32:36.999Z"
     }
   },
-  "commit": "0c1e369",
+  "commit": "1ff4086",
   "node": "v22.23.5",
   "database": "PostgreSQL 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1) (temporary cluster)",
   "flows": [
@@ -41,9 +41,9 @@
       "id": "F01",
       "name": "Βάση δεδομένων: εγκατάσταση σχήματος και επανάληψη μεταναστεύσεων (idempotent)",
       "status": "PASS",
-      "detail": "180 πίνακες, δύο εφαρμογές του σχήματος χωρίς σφάλμα · PostgreSQL 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1) (temporary cluster)",
+      "detail": "182 πίνακες, δύο εφαρμογές του σχήματος χωρίς σφάλμα · PostgreSQL 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1) (temporary cluster)",
       "evidence": null,
-      "ms": 4220
+      "ms": 3779
     },
     {
       "id": "F02",
@@ -51,7 +51,7 @@
       "status": "PASS",
       "detail": "PMS και Booking v202: υγιείς",
       "evidence": null,
-      "ms": 1502
+      "ms": 1574
     },
     {
       "id": "F03",
@@ -59,7 +59,7 @@
       "status": "PASS",
       "detail": "σήμερα: 101 (έτοιμο), 104 (έτοιμο σε 30′) · αύριο: +102 · 103 εκτός λειτουργίας ποτέ",
       "evidence": null,
-      "ms": 59
+      "ms": 68
     },
     {
       "id": "F04",
@@ -67,7 +67,7 @@
       "status": "PASS",
       "detail": "σήμερα 101:1 102:0 103:0 104:1 · αύριο 102:1 103:0",
       "evidence": null,
-      "ms": 249
+      "ms": 134
     },
     {
       "id": "F05",
@@ -75,7 +75,7 @@
       "status": "PASS",
       "detail": "€19.00 στο folio μία φορά · επανάληψη = duplicate · λάθος κλειδί 401 · ακύρωση → 0",
       "evidence": null,
-      "ms": 147
+      "ms": 131
     },
     {
       "id": "F06",
@@ -83,7 +83,7 @@
       "status": "PASS",
       "detail": "2 παραδόσεις → 1 κράτηση, 1 συναλλαγή, 1 πληρωμή €300 στο folio · λάθος υπογραφή απορρίφθηκε",
       "evidence": null,
-      "ms": 64
+      "ms": 62
     },
     {
       "id": "F07",
@@ -91,7 +91,7 @@
       "status": "PASS",
       "detail": "σύνολα: πάροχοι €300.00 = folio online €300.00 · ορφανή πληρωμή €42 εντοπίστηκε",
       "evidence": null,
-      "ms": 15
+      "ms": 18
     },
     {
       "id": "F08",
@@ -99,19 +99,19 @@
       "status": "PASS",
       "detail": "δωμάτιο μη έτοιμο → αποτυχία + 1 ειδοποίηση → έγκριση → επιτυχία · αποτυχημένο email → αυτόματη επανάληψη",
       "evidence": null,
-      "ms": 32
+      "ms": 31
     },
     {
       "id": "F09",
       "name": "Cron πακέτου: ολοκληρώνεται, υπενθύμιση υπολοίπου 1 μέρα πριν την αναχώρηση, καταγραφή κάθε βήματος · χωρίς SMTP η υπενθύμιση ΔΕΝ μετριέται ως παραδομένη",
       "status": "PASS",
-      "detail": "υπενθύμιση υπολοίπου: failed (SMTP_NOT_CONFIGURED — χωρίς SMTP στη δοκιμή) · 11 βήματα cron καταγράφηκαν · heartbeat: έναρξη + ολοκλήρωση σε 71 ms, 11 βήματα OK",
+      "detail": "υπενθύμιση υπολοίπου: failed (SMTP_NOT_CONFIGURED — χωρίς SMTP στη δοκιμή) · 12 βήματα cron καταγράφηκαν · heartbeat: έναρξη + ολοκλήρωση σε 76 ms, 12 βήματα OK",
       "evidence": {
         "JOB_EXECUTION": "PASS",
         "FAILURE_HANDLING": "PASS",
         "DELIVERY": "NOT_TESTED"
       },
-      "ms": 186
+      "ms": 195
     },
     {
       "id": "F10",
@@ -119,15 +119,15 @@
       "status": "PASS",
       "detail": "χωρίς κλειδί 403 · λάθος κλειδί 403 · σωστό κλειδί 200/401 · open_all: άνοιγμα μετά από 30′ + άμεση ειδοποίηση · protect_admin: πελάτες ανοιχτά, διαχείριση 403 · ανάκτηση με scripts/edge-lock.mjs off (καταγράφηκε)",
       "evidence": null,
-      "ms": 60242
+      "ms": 60435
     },
     {
       "id": "F12",
-      "name": "Κέντρο αξιοπιστίας: εντοπίζει μεταβολή διαθεσιμότητας που δεν συγχρονίστηκε και την ξαναστέλνει",
+      "name": "Κέντρο αξιοπιστίας + Alert Intelligence: ανενεργός Channel Manager → μία πληροφορία, κανένα email· ενεργοποιημένος → ένα κρίσιμο συμβάν, επανάληψη αποστολής",
       "status": "PASS",
-      "detail": "εντοπίστηκε («Μεταβολή διαθεσιμότητας 2026-12-03 → 2026-12-05 (qa) δεν έχει συγχρονι…») και μπήκε ξανά σε συγχρονισμό · 11 περιοχές ελέγχθηκαν",
+      "detail": "μη ρυθμισμένος: μία πληροφορία, 0 email, η εγγραφή διατηρήθηκε · ενεργοποιημένος με αποτυχία: ένα κρίσιμο συμβάν sync:ota, 1 email · «Μεταβολή διαθεσιμότητας 2026-12-03 → 2026-12-05 (qa) δεν έχε…» μπήκε ξανά σε συγχρονισμό",
       "evidence": null,
-      "ms": 149
+      "ms": 643
     },
     {
       "id": "F13",
@@ -139,23 +139,23 @@
         "FAILURE_HANDLING": "PASS",
         "DELIVERY": "NOT_TESTED"
       },
-      "ms": 243
+      "ms": 224
     },
     {
       "id": "F14",
       "name": "Αντίγραφο ασφαλείας: κρυπτογραφημένο backup, δοκιμαστική επαναφορά σε ξεχωριστή βάση, μέτρηση εγγραφών, αλλοιωμένο αρχείο απορρίπτεται",
       "status": "PASS",
-      "detail": "backup corali-db-2026-11-23-19-06-43.dump.enc · επαναφορά σε corali_rehearsal: bookings 4, rooms 4, folio_entries 3, payment_transactions 1, pms_staff_users 0, fiscal_documents 0, guest_checkins 0 = ζωντανή βάση · 10 έλεγχοι OK · βάση δοκιμής άδειασε · αλλοιωμένο αρχείο → failed",
+      "detail": "backup corali-db-2026-11-23-19-31-07.dump.enc · επαναφορά σε corali_rehearsal: bookings 4, rooms 4, folio_entries 3, payment_transactions 1, pms_staff_users 0, fiscal_documents 0, guest_checkins 0 = ζωντανή βάση · 10 έλεγχοι OK · βάση δοκιμής άδειασε · αλλοιωμένο αρχείο → failed",
       "evidence": null,
-      "ms": 1860
+      "ms": 1596
     },
     {
       "id": "F15",
       "name": "Έλεγχος μετά την εγκατάσταση: κάθε ON CONFLICT στη βάση, πίνακες σχήματος, αποτυχία όταν λείπει μοναδικό index",
       "status": "PASS",
-      "detail": "! Αποδεικτικό QA πακέτου: το πακέτο δεν έχει RELEASE-EVIDENCE.json · ✓ ON CONFLICT στη βάση παραγωγής: 70 εντολές με κατάλληλο μοναδικό index · ✓ Πίνακες σχήματος: 180 πίνακες · χωρίς το index → η εγκατάσταση σταματά",
+      "detail": "! Αποδεικτικό QA πακέτου: το πακέτο δεν έχει RELEASE-EVIDENCE.json · ✓ ON CONFLICT στη βάση παραγωγής: 71 εντολές με κατάλληλο μοναδικό index · ✓ Πίνακες σχήματος: 182 πίνακες · χωρίς το index → η εγκατάσταση σταματά",
       "evidence": null,
-      "ms": 208
+      "ms": 211
     },
     {
       "id": "F16",
@@ -163,7 +163,7 @@
       "status": "PASS",
       "detail": "124 ημέρες×τύποι · qa-101 2026-12-13: στάλθηκε 3, PMS 0 → μπήκε σε αποστολή",
       "evidence": null,
-      "ms": 141
+      "ms": 168
     },
     {
       "id": "F17",
@@ -171,7 +171,7 @@
       "status": "PASS",
       "detail": "άλλο όνομα της παραγωγής → άρνηση (η παραγωγή ανέγγιχτη, 4 κρατήσεις) · ξένη βάση (invoices) → άρνηση · αποτυχία μετά την επαναφορά → η βάση δοκιμής άδειασε (μόνο ο δείκτης «corali_rehearsal_target»)",
       "evidence": null,
-      "ms": 1852
+      "ms": 1982
     },
     {
       "id": "F18",
@@ -179,7 +179,7 @@
       "status": "PASS",
       "detail": "μόνο μακρινή ημερομηνία → καμία αποστολή, out_of_range · κανονική → sent · παρελθόν → skipped · διάστημα στο όριο → sent έως +500 και το υπόλοιπο out_of_range · warnings → failed · ανάγνωση: 1 ίδιες, 243 δεν επιστράφηκαν → όχι συμφωνία · κανάλι «Booking.com (QA)» CHANNEL_NOT_VERIFIED",
       "evidence": null,
-      "ms": 888
+      "ms": 922
     },
     {
       "id": "F19",
@@ -187,28 +187,28 @@
       "status": "PASS",
       "detail": "δωμάτιο QA9 με πελάτη: δείκτης 35 (Τεχνικό πρόβλημα, Θερμοκρασία δωματίου) · παράδοση: χωρίς στοιχεία απορρίφθηκε, με τα στοιχεία → verified · νέα σοβαρή βλάβη → επιβεβαιωμένο αλλά «τώρα δεν είναι έτοιμο» · αιτία «Δωμάτιο QA9: «Κλιματιστικό» 3 φορές σε 3 διαφορετικές διαμονές» → εργασία συντήρησης #2 (μία φορά)",
       "evidence": null,
-      "ms": 72
+      "ms": 83
     },
     {
       "id": "F20",
       "name": "Corali Sentinel (μόνο ανάγνωση) + Fly.io watchdog: συμβάν με αποδεικτικά και αναφορά, επιβεβαιωμένη αποκατάσταση, υπογεγραμμένο heartbeat, ειδοποίηση σε διακοπή",
       "status": "PASS",
-      "detail": "συμβάν outbox:20 (critical) με αποδεικτικά και αναφορά → αποκατάσταση επιβεβαιώθηκε · δεδομένα παραγωγής αμετάβλητα · heartbeat υπογεγραμμένο και επαληθευμένο από τον watchdog · διακοπή → 2 ειδοποίηση(εις) σε ανεξάρτητο παραλήπτη",
+      "detail": "συμβάν sync:ota (critical, εγγραφή #20) με αποδεικτικά και αναφορά → αποκατάσταση επιβεβαιώθηκε · δεδομένα παραγωγής αμετάβλητα · heartbeat υπογεγραμμένο και επαληθευμένο από τον watchdog · διακοπή → 2 ειδοποίηση(εις) σε ανεξάρτητο παραλήπτη",
       "evidence": {
         "SENTINEL_READ_ONLY": "PASS",
         "INCIDENT_REPORT": "PASS",
         "RECOVERY_VERIFIED": "PASS",
         "WATCHDOG_ALERT": "PASS"
       },
-      "ms": 732
+      "ms": 775
     },
     {
       "id": "F11",
       "name": "Αυτόματα tests του κώδικα (unit / integration)",
       "status": "PASS",
-      "detail": "501/501 PASS",
+      "detail": "510/510 PASS",
       "evidence": null,
-      "ms": 57537
+      "ms": 75614
     }
   ],
   "sandbox": [
