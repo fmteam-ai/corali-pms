@@ -12,8 +12,8 @@ Corali AC Probe v2 — διάγνωση κλιματιστικών στο δίκ
   2. Tuya (Inventor Control / Smart Life): ακούει τις εκπομπές (UDP 6666/6667/7000) — device id, IP, έκδοση πρωτοκόλλου.
   3. BroadLink (AUX / AC Freedom): το τυπικό μήνυμα ανακάλυψης — τύπος, IP, MAC, «κλειδωμένο» ή όχι.
   4. Θύρες: μόνο σύνδεση TCP και αμέσως κλείσιμο (χωρίς δεδομένα) στις 6668 (Tuya local), 80 (HTTP του module).
-  5. Κατάταξη ανά συσκευή: LOCAL_API (ελέγξιμο τοπικά), LOCAL_API_NEEDS_KEY (Tuya: χρειάζεται local key),
-     LOCAL_LOCKED (BroadLink κλειδωμένο → μόνο cloud), CLOUD_ONLY_OR_UNKNOWN (δεν απαντά τοπικά).
+  5. Κατάταξη ανά συσκευή (τι αποδείχθηκε, όχι τι υποθέτουμε): AUTHENTICATED, DISCOVERED_UNVERIFIED, AUTH_FAILED,
+     NETWORK_ERROR (ακαθόριστο), LOCAL_LOCKED (BroadLink κλειδωμένο → μόνο cloud), CLOUD_ONLY_OR_UNKNOWN.
   6. Προαιρετικά, ανάγνωση θερμοκρασίας χώρου / setpoint ΜΟΝΟ όπου το module το επιτρέπει:
        Tuya με local key (--tuya-id/--tuya-ip/--tuya-key) → status() μόνο ανάγνωση.
        BroadLink: μόνο έλεγχος αν δέχεται τοπική σύνδεση (auth) με --broadlink-auth — η ανάγνωση κατάστασης AUX
@@ -30,7 +30,7 @@ import subprocess
 import sys
 import time
 
-REPORT_VERSION = 2
+REPORT_VERSION = 3
 
 # Προθέματα MAC (OUI) κατασκευαστών Wi-Fi modules κλιματιστικών / IoT. Ενδεικτικά: ο κατασκευαστής του MODULE, όχι
 # απαραίτητα του κλιματιστικού. Ό,τι δεν είναι στη λίστα δεν καταγράφεται (προστασία στοιχείων πελατών).
@@ -127,12 +127,22 @@ def tcp_open(ip, port, timeout=1.5):
         return False
 
 
+def is_network_error(e):
+    """A timeout / unreachable host is a network problem — it says nothing about whether the module allows LAN control."""
+    name = type(e).__name__.lower()
+    return isinstance(e, (OSError, TimeoutError)) or "timeout" in name or "network" in name or "connection" in name
+
+
 def broadlink_auth(dev):
-    """Only checks that the module accepts a local session (auth). No state read, no command."""
+    """Only checks that the module accepts a local session (auth). No state read, no command.
+    Result: AUTHENTICATED | AUTH_FAILED (the module answered and refused) | NETWORK_ERROR (no answer — undecided)."""
     try:
-        return {"ok": bool(dev.auth()), "detail": "το module δέχεται τοπική σύνδεση"}
+        ok = bool(dev.auth())
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "detail": f"τοπική σύνδεση απορρίφθηκε: {str(e)[:120]}"}
+        if is_network_error(e):
+            return {"result": "NETWORK_ERROR", "detail": f"χωρίς απάντηση στην τοπική σύνδεση ({type(e).__name__}) — πρόβλημα δικτύου, όχι απόδειξη κλειδώματος· ξανατρέξτε"}
+        return {"result": "AUTH_FAILED", "detail": f"το module απέρριψε την τοπική σύνδεση ({type(e).__name__}: {str(e)[:100]})"}
+    return {"result": "AUTHENTICATED", "detail": "το module δέχτηκε τοπική σύνδεση (auth)"} if ok else {"result": "AUTH_FAILED", "detail": "το module δεν δέχτηκε την τοπική σύνδεση"}
 
 
 # Common Tuya A/C data points. They differ between models — reported as candidates, confirmed later by observation.
@@ -149,34 +159,46 @@ def read_tuya(dev_id, ip, key, version):
         d.set_socketTimeout(5)
         status = d.status()  # read only
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": f"ανάγνωση απέτυχε: {e}"}
+        return {"ok": False, "result": "NETWORK_ERROR" if is_network_error(e) else "AUTH_FAILED", "error": f"ανάγνωση απέτυχε: {type(e).__name__}"}
     if not isinstance(status, dict) or "dps" not in status:
-        return {"ok": False, "error": f"απάντηση χωρίς DPs: {json.dumps(status)[:300]}"}
+        # tinytuya reports errors in the answer: 901/902/905 = no connection / timeout / no response (network);
+        # 914 «check device key or version» and other codes = the device answered but the key/version is not accepted.
+        code = str(status.get("Err", "")) if isinstance(status, dict) else ""
+        result = "NETWORK_ERROR" if code in ("901", "902", "905") else "AUTH_FAILED"
+        return {"ok": False, "result": result, "error": f"κωδικός {code or '—'}: {str(status.get('Error', '') if isinstance(status, dict) else status)[:120]}"}
     dps = {str(k): v for k, v in status["dps"].items()}
     guess = {}
     for k, name in TUYA_DP_HINTS.items():
         if k in dps:
             guess[name] = dps[k]
-    return {"ok": True, "device_id": dev_id, "ip": ip, "version": str(version), "dps": dps, "candidates": guess,
+    return {"ok": True, "result": "AUTHENTICATED", "device_id": dev_id, "ip": ip, "version": str(version), "dps": dps, "candidates": guess,
             "note": "Οι αριθμοί DP διαφέρουν ανά μοντέλο — οι «candidates» επιβεβαιώνονται συγκρίνοντας με την οθόνη / το τηλεχειριστήριο."}
 
 
 def classify(dev):
-    """LOCAL_API | LOCAL_API_NEEDS_KEY | LOCAL_LOCKED | CLOUD_ONLY_OR_UNKNOWN, with the reason."""
+    """What is PROVEN about local (LAN) access — discovery alone proves nothing about control:
+      AUTHENTICATED          a local session succeeded (BroadLink auth, or a Tuya status read with the local key);
+      DISCOVERED_UNVERIFIED  the module answered discovery / has the port open, no local session tried (or no key);
+      AUTH_FAILED            the module answered and refused the local session (key / lock / protocol);
+      NETWORK_ERROR          no answer to the local session (timeout, unreachable) — undecided, run again;
+      LOCAL_LOCKED           BroadLink reports itself locked for local use → cloud only (AC Freedom);
+      CLOUD_ONLY_OR_UNKNOWN  does not answer any local protocol we know."""
     if dev.get("broadlink"):
         if dev["broadlink"]["locked"]:
-            return "LOCAL_LOCKED", "BroadLink: το module είναι κλειδωμένο για τοπική χρήση — έλεγχος μόνο μέσω cloud (AC Freedom)"
+            return "LOCAL_LOCKED", "BroadLink: το module δηλώνει κλειδωμένο για τοπική χρήση — έλεγχος μόνο μέσω cloud (AC Freedom)"
         auth = dev.get("broadlink_auth")
-        if auth and not auth["ok"]:
-            return "LOCAL_LOCKED", f"BroadLink: {auth['detail']}"
-        return "LOCAL_API", "BroadLink: απαντά στην τοπική ανακάλυψη" + (" και δέχεται τοπική σύνδεση" if auth else "")
+        if auth:
+            return auth["result"], f"BroadLink: {auth['detail']}"
+        return "DISCOVERED_UNVERIFIED", "BroadLink: απαντά στην ανακάλυψη — ΔΕΝ έχει επιβεβαιωθεί τοπική σύνδεση (τρέξτε με --broadlink-auth)"
+    read = dev.get("tuya_read")
+    if read:
+        if read["ok"]:
+            return "AUTHENTICATED", f"Tuya v{read['version']}: η κατάσταση διαβάστηκε τοπικά με το local key"
+        return read["result"], f"Tuya: {read['error']}" + (" — ελέγξτε local key / έκδοση πρωτοκόλλου" if read["result"] == "AUTH_FAILED" else " — πρόβλημα δικτύου, ξανατρέξτε")
     if dev.get("tuya"):
-        v = dev["tuya"]["version"]
-        if dev.get("tuya_read", {}).get("ok"):
-            return "LOCAL_API", f"Tuya v{v}: η κατάσταση διαβάστηκε τοπικά"
-        return "LOCAL_API_NEEDS_KEY", f"Tuya v{v}: τοπικό API διαθέσιμο, χρειάζεται το local key της μονάδας"
+        return "DISCOVERED_UNVERIFIED", f"Tuya v{dev['tuya']['version']}: εκπέμπει στο δίκτυο — η τοπική πρόσβαση θέλει το local key (δεν δοκιμάστηκε)"
     if dev.get("ports", {}).get("6668"):
-        return "LOCAL_API_NEEDS_KEY", "ανοιχτή θύρα 6668 (Tuya local) χωρίς εκπομπή — πιθανώς Tuya, χρειάζεται local key"
+        return "DISCOVERED_UNVERIFIED", "ανοιχτή θύρα 6668 (Tuya local) χωρίς εκπομπή — πιθανώς Tuya, δεν επιβεβαιώθηκε"
     return "CLOUD_ONLY_OR_UNKNOWN", "δεν απαντά σε τοπικό πρωτόκολλο που γνωρίζουμε — πιθανώς μόνο cloud"
 
 
@@ -193,6 +215,13 @@ def build_report(a, neighbors, neigh_error, tuya, bl, now=None):
         d["broadlink"] = {k: b[k] for k in ("devtype", "model", "manufacturer", "locked")}
         if a.broadlink_auth and not b["locked"]:
             d["broadlink_auth"] = broadlink_auth(b["_dev"])
+    # An explicitly requested Tuya target is checked whether or not discovery saw it (broadcasts can be blocked by the
+    # access point's client isolation or a different VLAN).
+    if a.tuya_ip:
+        t = devices.setdefault(a.tuya_ip, {"ip": a.tuya_ip})
+        t["requested"] = True
+        if not t.get("tuya"):
+            t["seen_by_discovery"] = False
     macs = {n["ip"]: n["mac"] for n in neighbors}
     for ip, d in devices.items():
         d.setdefault("mac", macs.get(ip))
@@ -241,6 +270,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.tuya_key is None and os.environ.get("CORALI_TUYA_KEY"):
         a.tuya_key = os.environ["CORALI_TUYA_KEY"]
+    if any([a.tuya_id, a.tuya_ip]) and not all([a.tuya_id, a.tuya_ip, a.tuya_key]):
+        ap.error("για ανάγνωση Tuya χρειάζονται μαζί --tuya-id, --tuya-ip και local key (--tuya-key ή CORALI_TUYA_KEY)")
     neighbors, neigh_error = read_neighbors(a.neigh_file)
     tuya, bl = scan_tuya(a.seconds), scan_broadlink(min(a.seconds, 10))
     report = build_report(a, neighbors, neigh_error, tuya, bl)

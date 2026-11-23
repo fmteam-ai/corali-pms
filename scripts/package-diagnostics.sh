@@ -20,7 +20,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$here/stubs" python3 "$here/../ac_probe.py
   --tuya-id bf1234567890abcdef --tuya-ip 192.168.10.21 --tuya-key SECRETKEY123 --broadlink-auth --out "$out" >/dev/null
 ! grep -q SECRETKEY123 "$out" || { echo "FAIL: key in report"; exit 1; }
 ! grep -q '3a:11:22' "$out" || { echo "FAIL: non-IoT device listed"; exit 1; }
-grep -q '"LOCAL_LOCKED"' "$out" && grep -q '"LOCAL_API"' "$out" && echo "SELF-TEST PASS"
+grep -q '"LOCAL_LOCKED"' "$out" && grep -q '"AUTHENTICATED"' "$out" && grep -q '"NETWORK_ERROR"' "$out" && echo "SELF-TEST PASS"
 SH
 chmod 755 "$root/ac-probe/tests/self-test.sh" "$root/ac-probe/ac_probe.py"
 bash "$root/ac-probe/tests/self-test.sh"

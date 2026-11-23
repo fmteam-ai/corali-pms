@@ -155,13 +155,28 @@ test("v196 P2: repair follow-up with unreadable evidence is DATA_UNAVAILABLE, no
 
 test("v196 outcome verification: measured recovery vs absence of complaints", async () => {
   const resolvedAt = Date.parse("2026-07-10T10:00:00Z"), now = resolvedAt + 5 * 86_400_000, range = { min: 22, max: 26 };
-  const r = (temp: number, h: number, occupied = true) => ({ temp, occupied, acOn: true, readAt: resolvedAt + h * H });
+  const r = (temp: number, h: number, occupied = true, acOn: boolean | null = true) => ({ temp, occupied, acOn, readAt: resolvedAt + h * H });
+  const hourly = (temps: number[], acOn: boolean | null = true) => temps.map((t, i) => r(t, i + 1, true, acOn));
   assert.equal(measuredOutcome({ category: "wifi", resolvedAt, range, now }).state, "NOT_MEASURABLE");
   assert.equal(measuredOutcome({ category: "ac", resolvedAt, range, now, readings: [r(24, 1), r(24, 2)] }).state, "NO_MEASUREMENTS");
-  assert.equal(measuredOutcome({ category: "ac", resolvedAt, range, now, readings: [r(24, 1), r(25, 2), r(26.5, 3), r(23, 4)] }).state, "MEASURED_RECOVERED");
-  const hot = measuredOutcome({ category: "ac", resolvedAt, range, now, readings: [r(29.5, 1), r(30, 2), r(24, 3)] });
+  // v197: 6 independent readings over ≥ 6 hours with the A/C confirmed on.
+  const ok = measuredOutcome({ category: "ac", resolvedAt, range, now, readings: hourly([24, 25, 26.5, 23, 24, 25, 24]) });
+  assert.deepEqual([ok.state, ok.readings, ok.spanHours], ["MEASURED_RECOVERED", 7, 6]);
+  const hot = measuredOutcome({ category: "ac", resolvedAt, range, now, readings: hourly([29.5, 30, 24, 29, 30, 31, 29]) });
   assert.equal(hot.state, "MEASURED_NOT_RECOVERED");
-  assert.match(hot.detail, /1\/3 μετρήσεις εντός 20–28 °C/);
+  assert.match(hot.detail, /1\/7 ανεξάρτητες μετρήσεις/);
+  // The reported case: near-simultaneous readings are ONE independent reading — no proof.
+  const burst = Array.from({ length: 12 }, (_, i) => ({ temp: 24, occupied: true, acOn: true, readAt: resolvedAt + H + i * 60_000 }));
+  assert.equal(measuredOutcome({ category: "ac", resolvedAt, range, now, readings: burst }).state, "NO_MEASUREMENTS");
+  assert.equal(measuredOutcome({ category: "ac", resolvedAt, range, now, readings: burst }).readings, 1);
+  // 6 readings but within 3 hours: not a stay's worth of observation.
+  assert.equal(measuredOutcome({ category: "ac", resolvedAt, range, now, readings: [0, 0.5, 1, 1.5, 2, 2.5, 3].map((h) => r(24, 1 + h)) }).state, "NO_MEASUREMENTS");
+  // A/C state unknown (no relay): never decides, in either direction.
+  const unk = measuredOutcome({ category: "ac", resolvedAt, range, now, readings: hourly([24, 24, 24, 24, 24, 24, 24], null) });
+  assert.deepEqual([unk.state, unk.readings, unk.unknownAcReadings], ["INCONCLUSIVE_AC_UNKNOWN", 0, 7]);
+  assert.equal(measuredOutcome({ category: "ac", resolvedAt, range, now, readings: hourly([31, 31, 31, 31, 31, 31, 31], null) }).state, "INCONCLUSIVE_AC_UNKNOWN");
+  assert.equal(measuredOutcome({ category: "ac", resolvedAt, range, now, readings: hourly([31, 31, 31, 31, 31, 31, 31], false) }).state, "NO_MEASUREMENTS", "A/C off: ignored");
+  assert.equal(resolutionState({ resolvedAt, eventsAfter: 0, staysAfter: 0, measured: unk }).state, "MONITORING");
   // Unoccupied rooms, readings before the repair, or in the future are not evidence.
   assert.equal(measuredOutcome({ category: "ac", resolvedAt, range, now, readings: [r(24, 1, false), r(24, -2), r(24, 200)] }).state, "NO_MEASUREMENTS");
   // The resolution state: measurement outranks «no complaints».
@@ -179,7 +194,7 @@ test("v196 outcome verification: measured recovery vs absence of complaints", as
     await query(`INSERT INTO maintenance_notices(id,owner_id,room_id,severity,description,reported_at,status,resolved_at,resolution_notes) VALUES(30,$1,5,'major','[Ανάλυση αιτιών] κλιματιστικό',$2,'resolved',$3,'καθαρισμός στοιχείου')`, [o, t0 - 3 * 86_400_000, t0 - 2 * 86_400_000]);
     await query(`INSERT INTO resolution_cases(owner_id,finding_key,room_id,category,title,maintenance_id,opened_at) VALUES($1,'room:5:ac',5,'ac','Κλιματιστικό 112',30,$2)`, [o, t0 - 3 * 86_400_000]);
     await query(`INSERT INTO comfort_policies(owner_id,settings_json,updated_by,updated_at) VALUES($1,$2,'x',1)`, [o, JSON.stringify({ rooms: { 5: { min: 22, max: 26 } } })]);
-    for (const [temp, h] of [[24, 1], [25, 3], [23.5, 5], [26, 7]]) await query(`INSERT INTO climate_readings(owner_id,room_id,temp,occupied,ac_on,read_at) VALUES($1,5,$2,1,1,$3)`, [o, temp, t0 - 2 * 86_400_000 + h * H]);
+    for (const [temp, h] of [[24, 1], [25, 2], [23.5, 3], [26, 4], [24, 5], [24.5, 6], [25, 7]]) await query(`INSERT INTO climate_readings(owner_id,room_id,temp,occupied,ac_on,read_at) VALUES($1,5,$2,1,1,$3)`, [o, temp, t0 - 2 * 86_400_000 + h * H]);
     const c = (await resolutionCases({ pool, owner: o, now: t0 }))[0];
     assert.equal(c.measured.state, "MEASURED_RECOVERED");
     assert.equal(c.state, "MEASURED_RECOVERY", "measured, but still awaiting the technician");
@@ -231,4 +246,24 @@ test("v196 end-to-end: check-out → cleaning → inspection → next arrival, w
     assert.match(t.steps.cleaning.detail, /νέα εργασία #11/);
     assert.equal(t.regressed, true);
   } finally { await db.close(); }
+});
+
+test("v197 P2: task order follows real time (created_at), never the id — the reported case: valid #11, newer pending #10", () => {
+  const out = Date.parse("2026-07-15T08:00:00Z"), now = out + 8 * H;
+  const valid11 = { id: 11, bookingId: 11, status: "ready", inspection: "approved", createdAt: out, completedAt: out + H, inspectedAt: out + 2 * H };
+  const ev = (...tasks: Row[]) => evaluateTurnover(base(out, tasks), now).steps.cleaning;
+  const pending10 = { id: 10, bookingId: 11, status: "todo", inspection: "pending", createdAt: out + 3 * H };
+  const c = ev(valid11, pending10);
+  assert.equal(c.state, "pending", "#10 was opened after #11's approval: the room is reopened");
+  assert.match(c.detail, /νέα εργασία #10 μετά την έγκριση της #11/);
+  assert.deepEqual(c.history!.map((h: { taskId: number }) => h.taskId), [11, 10], "history in time order");
+  // Same ids, but #10 opened BEFORE the approval with broken data: a remark, the valid clean stands.
+  const dup10 = { id: 10, bookingId: 11, status: "ready", inspection: "approved", createdAt: out + 30 * MIN, completedAt: null, inspectedAt: out + 2 * H };
+  assert.deepEqual([ev(valid11, dup10).state, ev(valid11, dup10).taskId], ["done", 11]);
+  // Two valid cleans with inverted ids: the one approved last is the evidence.
+  const later9 = { id: 9, bookingId: 11, status: "ready", inspection: "approved", createdAt: out + 3 * H, completedAt: out + 4 * H, inspectedAt: out + 5 * H };
+  assert.equal(ev(valid11, later9).taskId, 9);
+  // No created_at (pre-v196 rows): placed by its other real times — started after the approval → reopened.
+  assert.equal(ev(valid11, { id: 10, bookingId: 11, status: "in_progress", inspection: "pending", createdAt: null, startedAt: out + 3 * H }).state, "pending");
+  assert.equal(ev(valid11, { id: 12, bookingId: 11, status: "ready", inspection: "approved", createdAt: null, completedAt: null, startedAt: out + 20 * MIN, inspectedAt: out + 90 * MIN }).state, "done", "provably earlier: a remark");
 });

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project="$(cd "$(dirname "$0")/.." && pwd)"
-output="$project/corali-pms-cpanel-v196-root.tar.gz"
+output="$project/corali-pms-cpanel-v197-root.tar.gz"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 
@@ -31,9 +31,9 @@ cp scripts/init-postgres.mjs scripts/create-admin.mjs scripts/create-admin.sh \
 for pkg in nodemailer; do
   [ -f "$stage/node_modules/$pkg/package.json" ] || cp -a "$(readlink -f "node_modules/$pkg")" "$stage/node_modules/$pkg"
 done
-cp app.js .env.example DEPLOY-CPANEL.md QA-v196.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md INSTALL-CPANEL.sh \
+cp app.js .env.example DEPLOY-CPANEL.md QA-v197.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md INSTALL-CPANEL.sh \
   ROLLBACK-CPANEL.sh package.json "$stage/"
-printf 'v196\n' > "$stage/DEPLOY_VERSION.txt"
+printf 'v197\n' > "$stage/DEPLOY_VERSION.txt"
 
 find "$stage" -type d -exec chmod 755 {} +
 find "$stage" -type f -exec chmod 644 {} +
@@ -52,7 +52,7 @@ node tests/prepare-runtime-env.integration.mjs
 node tests/runtime-env-loader.integration.mjs
 # v188: end-to-end QA of this package (fresh PostgreSQL, both applications, real HTTP, the cron): a PASS / FAIL report
 # per critical flow in docs/qa/; any FAIL stops here, so a package that fails is never handed over.
-node scripts/release-qa.mjs "$output" v196 "$project/docs/qa"
+node scripts/release-qa.mjs "$output" v197 "$project/docs/qa"
 # v189: the package then carries the evidence — that QA report's summary and the SHA-256 of every file it contains —
 # so the post-install check proves on the server that the installed files are exactly the ones that passed QA.
 node --input-type=module -e '
@@ -60,20 +60,20 @@ import {writeFileSync,readFileSync} from "node:fs";
 import {fileManifest,contentHash,qaSummary,EVIDENCE_FILE} from "./scripts/release-evidence-core.mjs";
 const [stage,version,report]=process.argv.slice(1), files=fileManifest(stage);
 writeFileSync(`${stage}/${EVIDENCE_FILE}`, JSON.stringify({version,createdAt:new Date().toISOString(),contentHash:contentHash(files),qa:qaSummary(JSON.parse(readFileSync(report,"utf8"))),files}));
-' "$stage" v196 "$project/docs/qa/qa-report-v196.json"
+' "$stage" v197 "$project/docs/qa/qa-report-v197.json"
 chmod 644 "$stage/RELEASE-EVIDENCE.json"
 rm -f "$output"
 tar -C "$stage" -czf "$output" .
 evidence_check="$(mktemp -d)"
 tar -C "$evidence_check" -xzf "$output"
-node "$evidence_check/scripts/post-install-check.mjs" "$evidence_check" v196 --require-evidence --no-db --skip-acceptance
+node "$evidence_check/scripts/post-install-check.mjs" "$evidence_check" v197 --require-evidence --no-db --skip-acceptance
 rm -rf "$evidence_check"
 (cd "$project" && sha256sum "$(basename "$output")") | tee "$output.sha256"
-# v196: the QA evidence with its logs (per flow, applications, full TAP of the tests, reproduction steps) as its own
+# v197: the QA evidence with its logs (per flow, applications, full TAP of the tests, reproduction steps) as its own
 # archive, and the diagnostics package (AC Probe) — neither is part of the installation package.
-tar -C "$project/docs/qa" -czf "$project/corali-qa-evidence-v196.tar.gz" QA-REPORT-v196.md qa-report-v196.json qa-logs-v196
-(cd "$project" && sha256sum corali-qa-evidence-v196.tar.gz) | tee "$project/corali-qa-evidence-v196.tar.gz.sha256"
-bash scripts/package-diagnostics.sh v196
+tar -C "$project/docs/qa" -czf "$project/corali-qa-evidence-v197.tar.gz" QA-REPORT-v197.md qa-report-v197.json qa-logs-v197
+(cd "$project" && sha256sum corali-qa-evidence-v197.tar.gz) | tee "$project/corali-qa-evidence-v197.tar.gz.sha256"
+bash scripts/package-diagnostics.sh v197
 node scripts/build-web-installer.mjs
 node tests/web-installer-static.mjs
 echo "$output"

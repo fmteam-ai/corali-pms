@@ -226,22 +226,39 @@ export function resolutionState({ resolvedAt, eventsAfter, staysAfter, confirmed
 }
 
 /**
- * v196 measured outcome of an A/C repair: the room's temperature readings taken AFTER the repair while the room was
- * occupied (and the A/C on, where a relay tells). Recovered = at least `need` such readings, and at least 80% inside the
- * hotel's comfort range widened by its hard margin. Readings in the future or invalid are ignored. Other categories
- * have no measurement (NOT_MEASURABLE) — their outcome rests on reports and the technician.
+ * v196/v197 measured outcome of an A/C repair — the room's temperature readings taken AFTER the repair while the room
+ * was occupied. Rules (MEASURE_RULES), so a handful of near-simultaneous readings can never prove a repair:
+ *   • independent readings: at most one per 30 minutes counts (the first of each 30-minute slot);
+ *   • at least 6 independent readings spanning at least 6 hours (observed during a stay, not a single moment);
+ *   • the A/C state matters: only readings with the A/C CONFIRMED on (acOn === true, from a relay or the unit) can show
+ *     that the repair works. Readings with the A/C state unknown are counted apart and never decide — enough of them
+ *     only gives INCONCLUSIVE_AC_UNKNOWN; readings with the A/C off are ignored;
+ *   • recovered = ≥ 80 % of the confirmed readings inside the hotel's comfort range widened by its hard margin.
+ * Readings before the repair, in the future or not numbers are ignored. Other categories: NOT_MEASURABLE.
  */
-export function measuredOutcome({ category, resolvedAt, readings = [], range, hardMargin = 2, now = Date.now(), need = 3 }) {
+export const MEASURE_RULES = { slotMinutes: 30, minReadings: 6, minSpanHours: 6, insideShare: 0.8 };
+export function measuredOutcome({ category, resolvedAt, readings = [], range, hardMargin = 2, now = Date.now(), rules = MEASURE_RULES }) {
   if (category !== "ac") return { state: "NOT_MEASURABLE", detail: "δεν υπάρχει μέτρηση για αυτή την κατηγορία" };
   if (!resolvedAt) return { state: "NO_MEASUREMENTS", detail: "η επισκευή δεν έχει ολοκληρωθεί" };
-  const lo = range.min - hardMargin, hi = range.max + hardMargin;
-  const valid = readings.filter((r) => Number.isFinite(Number(r.temp)) && r.temp !== null && Number(r.readAt) > resolvedAt && Number(r.readAt) <= now + 2 * 60_000 && r.occupied && r.acOn !== false);
-  if (valid.length < need) return { state: "NO_MEASUREMENTS", detail: `${valid.length}/${need} μετρήσεις με κατειλημμένο δωμάτιο μετά την επισκευή — δεν αρκούν για κρίση`, readings: valid.length };
-  const inside = valid.filter((r) => Number(r.temp) >= lo && Number(r.temp) <= hi).length;
-  const share = inside / valid.length;
-  const worst = valid.reduce((w, r) => (Math.abs(Number(r.temp) - (range.min + range.max) / 2) > Math.abs(Number(w.temp) - (range.min + range.max) / 2) ? r : w), valid[0]);
-  const detail = `${inside}/${valid.length} μετρήσεις εντός ${lo}–${hi} °C (χειρότερη ${Number(worst.temp)} °C)`;
-  return share >= 0.8 ? { state: "MEASURED_RECOVERED", detail, readings: valid.length } : { state: "MEASURED_NOT_RECOVERED", detail, readings: valid.length };
+  const lo = range.min - hardMargin, hi = range.max + hardMargin, slot = rules.slotMinutes * 60_000;
+  const usable = readings.filter((r) => r.temp !== null && r.temp !== undefined && r.temp !== "" && Number.isFinite(Number(r.temp)) && Number.isFinite(Number(r.readAt)) && Number(r.readAt) > resolvedAt && Number(r.readAt) <= now + 2 * 60_000 && r.occupied)
+    .sort((x, y) => Number(x.readAt) - Number(y.readAt));
+  const independent = (list) => { const seen = new Set(), out = []; for (const r of list) { const k = Math.floor((Number(r.readAt) - resolvedAt) / slot); if (!seen.has(k)) { seen.add(k); out.push(r); } } return out; };
+  const confirmed = independent(usable.filter((r) => r.acOn === true)), unknown = independent(usable.filter((r) => r.acOn === null || r.acOn === undefined));
+  const span = (list) => (list.length ? (Number(list.at(-1).readAt) - Number(list[0].readAt)) / 3_600_000 : 0);
+  const enough = (list) => list.length >= rules.minReadings && span(list) >= rules.minSpanHours;
+  const stats = (list) => { const inside = list.filter((r) => Number(r.temp) >= lo && Number(r.temp) <= hi).length; return { inside, share: list.length ? inside / list.length : 0 }; };
+  const base = { readings: confirmed.length, unknownAcReadings: unknown.length, spanHours: Math.round(span(confirmed) * 10) / 10 };
+  if (enough(confirmed)) {
+    const { inside, share } = stats(confirmed);
+    const detail = `${inside}/${confirmed.length} ανεξάρτητες μετρήσεις με το κλιματιστικό επιβεβαιωμένα σε λειτουργία, σε ${base.spanHours} ώρες, εντός ${lo}–${hi} °C`;
+    return { ...base, state: share >= rules.insideShare ? "MEASURED_RECOVERED" : "MEASURED_NOT_RECOVERED", detail };
+  }
+  const need = `χρειάζονται ≥ ${rules.minReadings} ανεξάρτητες μετρήσεις (ανά ${rules.slotMinutes}′) σε ≥ ${rules.minSpanHours} ώρες με το κλιματιστικό επιβεβαιωμένα σε λειτουργία`;
+  if (enough(unknown) || enough([...confirmed, ...unknown].sort((x, y) => Number(x.readAt) - Number(y.readAt)))) {
+    return { ...base, state: "INCONCLUSIVE_AC_UNKNOWN", detail: `${unknown.length} μετρήσεις χωρίς γνωστή κατάσταση κλιματιστικού (${stats(unknown).inside} εντός ορίων) — δεν κρίνουν την επισκευή· ${need}` };
+  }
+  return { ...base, state: "NO_MEASUREMENTS", detail: `${confirmed.length} επιβεβαιωμένες μετρήσεις σε ${base.spanHours} ώρες — ${need}` };
 }
 
 /** Every resolution case with its state — independent of whether its finding is still detected. */

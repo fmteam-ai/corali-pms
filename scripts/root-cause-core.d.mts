@@ -1,7 +1,8 @@
 type Pool = { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
 export type Finding = { key: string; kind: string; severity: "high" | "medium" | "low"; roomId?: number; code?: string; category?: string; title: string; evidence: string[]; suggestion: string; sample: number; action?: { status: string; maintenanceId: number | null; at: number; note?: string; resolution?: { state: ResolutionStateName; detail: string }; caseId?: number } | null };
 export type ResolutionStateName = "OPEN_TASK" | "RECURRED" | "MONITORING" | "NO_RECURRENCE_OBSERVED" | "EFFECTIVE_CONFIRMED" | "DATA_UNAVAILABLE" | "MEASURED_NOT_RECOVERED" | "MEASURED_RECOVERY";
-export type MeasuredOutcome = { state: "NOT_MEASURABLE" | "NO_MEASUREMENTS" | "MEASURED_RECOVERED" | "MEASURED_NOT_RECOVERED" | "DATA_UNAVAILABLE"; detail: string; readings?: number };
+export type MeasuredOutcome = { state: "NOT_MEASURABLE" | "NO_MEASUREMENTS" | "INCONCLUSIVE_AC_UNKNOWN" | "MEASURED_RECOVERED" | "MEASURED_NOT_RECOVERED" | "DATA_UNAVAILABLE"; detail: string; readings?: number; unknownAcReadings?: number; spanHours?: number };
+export declare const MEASURE_RULES: { slotMinutes: number; minReadings: number; minSpanHours: number; insideShare: number };
 type DataUnavailable = { area: string; source: string; code: "DATA_UNAVAILABLE"; cause: string; at: number };
 export type ResolutionCase = { id: number; findingKey: string; roomId: number; code: string; category: string; title: string; maintenanceId: number; openedAt: number; resolvedAt: number | null; confirmedAt: number | null; confirmedBy: string | null; note: string; measured: MeasuredOutcome; state: ResolutionStateName; detail: string };
 export declare const PROBLEM_LABELS: Record<string, string>;
@@ -17,6 +18,6 @@ export declare function rootCauses(x: { pool: Pool; owner: string; now?: number;
 export declare function actOnFinding(x: { pool: Pool; owner: string; key: string; action: "maintenance" | "dismiss"; userId?: number | null; reason?: string; now?: number }): Promise<{ ok: boolean; already?: boolean; maintenanceId?: number; error?: string }>;
 export declare function meaningfulReason(text: string): boolean;
 export declare function resolutionState(x: { resolvedAt: number | null; eventsAfter: number; staysAfter: number; confirmedAt?: number | null; stays?: number; measured?: MeasuredOutcome | null; evidenceUnavailable?: boolean }): { state: ResolutionStateName; detail: string };
-export declare function measuredOutcome(x: { category: string; resolvedAt: number | null; readings?: { temp: number | null; occupied: boolean; acOn: boolean | null; readAt: number }[]; range: { min: number; max: number }; hardMargin?: number; now?: number; need?: number }): MeasuredOutcome;
+export declare function measuredOutcome(x: { category: string; resolvedAt: number | null; readings?: { temp: number | null; occupied: boolean; acOn: boolean | null; readAt: number }[]; range: { min: number; max: number }; hardMargin?: number; now?: number; rules?: typeof MEASURE_RULES }): MeasuredOutcome;
 export declare function resolutionCases(x: { pool: Pool; owner: string; now?: number; onUnavailable?: (u: DataUnavailable) => void }): Promise<ResolutionCase[]>;
 export declare function confirmRepair(x: { pool: Pool; owner: string; caseId: number; by: string; note: string; now?: number }): Promise<{ ok: boolean; error?: string }>;

@@ -17,7 +17,7 @@ const STATE: Record<string, { icon: string; cls: string }> = { done: { icon: "�
 const RISK: Record<string, { el: string; en: string; cls: string }> = {
   on_time: { el: "εγκαίρως", en: "on time", cls: "ok" }, tight: { el: "οριακά", en: "tight", cls: "warn" }, late: { el: "ΚΑΘΥΣΤΕΡΗΣΗ", en: "LATE", cls: "fail" }, unknown: { el: "χωρίς άφιξη", en: "no arrival", cls: "inactive" },
 };
-const MEASURED: Record<string, string> = { NOT_MEASURABLE: "χωρίς μέτρηση για την κατηγορία", NO_MEASUREMENTS: "ανεπαρκείς μετρήσεις", MEASURED_RECOVERED: "μετρημένη αποκατάσταση", MEASURED_NOT_RECOVERED: "οι μετρήσεις δείχνουν ότι παραμένει", DATA_UNAVAILABLE: "μετρήσεις μη διαθέσιμες" };
+const MEASURED: Record<string, string> = { NOT_MEASURABLE: "χωρίς μέτρηση για την κατηγορία", NO_MEASUREMENTS: "ανεπαρκείς μετρήσεις", INCONCLUSIVE_AC_UNKNOWN: "μετρήσεις χωρίς γνωστή κατάσταση κλιματιστικού — δεν κρίνουν", MEASURED_RECOVERED: "μετρημένη αποκατάσταση", MEASURED_NOT_RECOVERED: "οι μετρήσεις δείχνουν ότι παραμένει", DATA_UNAVAILABLE: "μετρήσεις μη διαθέσιμες" };
 const CURRENT: Record<string, { el: string; en: string; cls: string }> = {
   ready: { el: "Τώρα: έτοιμο", en: "Now: ready", cls: "ok" }, ready_with_remarks: { el: "Τώρα: έτοιμο με παρατηρήσεις", en: "Now: ready with remarks", cls: "warn" }, not_ready: { el: "Τώρα: ΔΕΝ είναι έτοιμο", en: "Now: NOT ready", cls: "fail" }, occupied: { el: "Τώρα: με πελάτη", en: "Now: occupied", cls: "inactive" },
 };

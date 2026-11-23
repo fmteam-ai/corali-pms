@@ -35,12 +35,16 @@ export function evaluateTurnover(f, now = Date.now()) {
     (t.bookingId !== null && t.bookingId !== undefined && Number(t.bookingId) === Number(f.bookingId)) ||
     ((t.bookingId === null || t.bookingId === undefined) && [t.completedAt, t.startedAt].some((x) => x && Number(x) >= at - 5 * 60_000 && Number(x) < until))
   ));
-  // v196: every candidate task is judged on its own evidence, in creation order (id), and one rule decides:
+  // v196/v197: every candidate task is judged on its own evidence, and one rule decides — by REAL TIME, never by id
+  // (ids do not follow time after imports, restores or unusual write sequences):
   //  • valid evidence = status «ready», finished after this check-out, inspected (approved) after finishing — and both
-  //    times real (finite), not in the future (tolerance CLOCK_SKEW_MS) and BEFORE the next guest checked in;
-  //  • a task opened AFTER that approval (re-clean, repair) reopens the room: it needs its own approval;
-  //  • a later task that was not opened after the approval (a duplicate / inconsistent record) does not hide the valid
-  //    one — it is listed in the history as a remark.
+  //    times real (finite), not in the future (tolerance CLOCK_SKEW_MS) and BEFORE the next guest checked in; when
+  //    several are valid, the one approved last is the evidence;
+  //  • any other task OPENED (created_at) at or after that approval reopens the room: it needs its own approval;
+  //  • a task with no known opening time (rows older than v196) is placed by its other times and, failing those, by id
+  //    — and, unknown, is treated as reopened work when it is not provably earlier (the safe side);
+  //  • a task opened before the approval (a duplicate / inconsistent record) never hides the valid one — it is a remark
+  //    in the history.
   const ts = (v) => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : NaN);
   const judge = (t) => {
     const done = ts(t.completedAt), inspected = ts(t.inspectedAt);
@@ -56,16 +60,25 @@ export function evaluateTurnover(f, now = Date.now()) {
       : inspected >= until ? "εγκρίθηκε αφού είχε ήδη μπει ο επόμενος πελάτης" : null;
     return problem ? { ok: false, state: "failed", why: `ασυνεπή στοιχεία — ${problem}`, inconsistent: true } : { ok: true, state: "done", inspected };
   };
-  const ordered = [...mine].sort((a, b) => Number(a.id) - Number(b.id)).map((t) => ({ t, j: judge(t) }));
-  const valid = [...ordered].reverse().find((x) => x.j.ok) ?? null;
-  // Tasks after the valid one: opened after its approval (or with no opening time) = reopened work, which decides.
-  const later = valid ? ordered.filter((x) => Number(x.t.id) > Number(valid.t.id)) : ordered;
-  const reopened = valid ? later.filter((x) => { const opened = ts(x.t.createdAt); return opened === null || Number.isNaN(opened) || opened >= valid.j.inspected; }) : later;
-  const history = ordered.map((x) => ({ taskId: Number(x.t.id), state: x.j.state, detail: x.j.why ?? "έγκυρο τεκμήριο" }));
+  const real = (v) => { const x = ts(v); return x === null || Number.isNaN(x) ? null : x; };
+  // When the task appeared: its opening time, else the earliest of its other real times (null = unknown).
+  const openedAt = (t) => real(t.createdAt) ?? ([t.startedAt, t.completedAt, t.inspectedAt].map(real).filter((x) => x !== null).sort((x, y) => x - y)[0] ?? null);
+  const chrono = (a, b) => { const x = openedAt(a.t), y = openedAt(b.t); return x !== null && y !== null && x !== y ? x - y : Number(a.t.id) - Number(b.t.id); };
+  const ordered = mine.map((t) => ({ t, j: judge(t) })).sort(chrono);
+  const valid = ordered.filter((x) => x.j.ok).sort((a, b) => a.j.inspected - b.j.inspected || chrono(a, b)).at(-1) ?? null;
+  const others = valid ? ordered.filter((x) => x !== valid) : ordered;
+  const isReopening = (x) => {
+    const c = real(x.t.createdAt);
+    if (c !== null) return c >= valid.j.inspected;
+    const o = openedAt(x.t);
+    return o !== null ? o >= valid.j.inspected : Number(x.t.id) > Number(valid.t.id);
+  };
+  const reopened = valid ? others.filter(isReopening) : others;
+  const history = ordered.map((x) => ({ taskId: Number(x.t.id), state: x.j.state, detail: x.j.why ?? "έγκυρο τεκμήριο", openedAt: openedAt(x.t) }));
   const decider = reopened.length ? reopened[reopened.length - 1] : valid;
   if (!decider) out.cleaning = { state: "pending", detail: "δεν υπάρχει καθαρισμός για αυτή την αναχώρηση", history };
   else if (decider === valid) {
-    const ignored = later.filter((x) => !reopened.includes(x));
+    const ignored = others.filter((x) => !x.j.ok && chrono(x, valid) > 0);
     out.cleaning = { state: "done", detail: `εργασία #${valid.t.id} ολοκληρώθηκε και εγκρίθηκε στην επιθεώρηση${ignored.length ? ` · ${ignored.length} νεότερη(ες) εγγραφή(ές) με ασυνεπή στοιχεία στο ιστορικό` : ""}`, at: valid.j.inspected, taskId: Number(valid.t.id), history };
   } else {
     const prefix = valid ? `νέα εργασία #${decider.t.id} μετά την έγκριση της #${valid.t.id} — χρειάζεται νέα έγκριση: ` : `εργασία #${decider.t.id}: `;
