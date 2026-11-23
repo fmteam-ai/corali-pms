@@ -15,12 +15,14 @@ const STEP: Record<string, { el: string; en: string }> = {
 };
 const STATE: Record<string, { icon: string; cls: string }> = { done: { icon: "✓", cls: "ok" }, pending: { icon: "…", cls: "warn" }, failed: { icon: "✕", cls: "fail" }, na: { icon: "–", cls: "inactive" } };
 const CURRENT: Record<string, { el: string; en: string; cls: string }> = {
-  ready: { el: "Τώρα: έτοιμο", en: "Now: ready", cls: "ok" }, not_ready: { el: "Τώρα: ΔΕΝ είναι έτοιμο", en: "Now: NOT ready", cls: "fail" }, occupied: { el: "Τώρα: με πελάτη", en: "Now: occupied", cls: "inactive" },
+  ready: { el: "Τώρα: έτοιμο", en: "Now: ready", cls: "ok" }, ready_with_remarks: { el: "Τώρα: έτοιμο με παρατηρήσεις", en: "Now: ready with remarks", cls: "warn" }, not_ready: { el: "Τώρα: ΔΕΝ είναι έτοιμο", en: "Now: NOT ready", cls: "fail" }, occupied: { el: "Τώρα: με πελάτη", en: "Now: occupied", cls: "inactive" },
 };
 const RESOLUTION: Record<string, { el: string; en: string; cls: string }> = {
-  open_task: { el: "Η εργασία είναι ανοιχτή", en: "Task open", cls: "warn" }, monitoring: { el: "Παρακολούθηση μετά την επισκευή", en: "Monitoring after the fix", cls: "warn" },
-  effective: { el: "Η επισκευή έλυσε το πρόβλημα", en: "The fix worked", cls: "ok" }, recurred: { el: "Το πρόβλημα επανεμφανίστηκε", en: "The problem came back", cls: "fail" },
+  OPEN_TASK: { el: "Η εργασία είναι ανοιχτή", en: "Task open", cls: "warn" }, MONITORING: { el: "Παρακολούθηση μετά την επισκευή", en: "Monitoring after the repair", cls: "warn" },
+  NO_RECURRENCE_OBSERVED: { el: "Καμία επανάληψη μέχρι τώρα (όχι απόδειξη)", en: "No recurrence observed (not proof)", cls: "warn" },
+  EFFECTIVE_CONFIRMED: { el: "Επιβεβαιώθηκε από τεχνικό", en: "Confirmed by a technician", cls: "ok" }, RECURRED: { el: "Το πρόβλημα επανεμφανίστηκε", en: "The problem came back", cls: "fail" },
 };
+const SENSOR: Record<string, string> = { ok: "έγκυρος", low_battery: "χαμηλή μπαταρία", missing: "χωρίς αισθητήρα", no_reading: "χωρίς μέτρηση", future: "μελλοντική ώρα", stale: "παλιά μέτρηση", invalid: "μη έγκυρη τιμή" };
 const TSTATUS: Record<string, { el: string; en: string; cls: string }> = {
   verified: { el: "Επιβεβαιώθηκε", en: "Verified", cls: "ok" }, ready: { el: "Έτοιμο για επιβεβαίωση", en: "Ready to verify", cls: "ok" },
   pending: { el: "Σε εξέλιξη", en: "In progress", cls: "warn" }, failed: { el: "Πρόβλημα", en: "Problem", cls: "fail" },
@@ -41,6 +43,8 @@ export function ExperienceView({ lang, initial, initialTab, canAct }: { lang: Pm
     try {
       const r = await fetch("/api/pms/guest-experience", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await r.json().catch(() => ({}));
+      if (!r.ok && d.error === "NOTE_REQUIRED") { setMsg(el ? "Γράψτε τι δοκιμάστηκε (τουλάχιστον 10 χαρακτήρες)." : "Describe the test (at least 10 characters)."); return; }
+      if (!r.ok && d.error === "FORBIDDEN") { setMsg(el ? "Χρειάζεται δικαίωμα ολοκλήρωσης συντήρησης." : "Needs the maintenance permission."); return; }
       if (!r.ok) { setMsg(d.error === "REASON_REQUIRED" ? (el ? "Χρειάζεται ουσιαστική αιτιολογία (τουλάχιστον 10 χαρακτήρες με λέξεις)." : "A real reason is needed (at least 10 characters with words).") : (el ? "Δεν ολοκληρώθηκε." : "Not done.")); return; }
       setData(d);
       if (d.info && d.info.ok === false && d.info.blocking) { setMsg(`${el ? "Δεν επιβεβαιώνεται ακόμη" : "Cannot verify yet"}: ${d.info.blocking.join(" · ")}`); return; }
@@ -91,6 +95,7 @@ export function ExperienceView({ lang, initial, initialTab, canAct }: { lang: Pm
               <header><span className="rcDot" aria-hidden>{r.score}</span><h2>{el ? "Δωμάτιο" : "Room"} {r.code}</h2></header>
               <p className="rcSummary">{LEVEL[r.level][lang]} · {r.guest} · {el ? "αναχώρηση" : "departs"} {r.checkOut} · {el ? "όριο" : "range"} {r.range.min}–{r.range.max}°C</p>
               {r.signals.length > 0 && <ul className="rcItems">{r.signals.map((s) => <li key={s.key} className={`rcItem lv-${s.penalty >= 15 ? "fail" : "warn"}`}><span className="rcDot" aria-hidden>−{s.penalty}</span><span><b>{s.label}</b>: {s.detail}</span></li>)}</ul>}
+              <small className="muted">{el ? "Αισθητήρας" : "Sensor"}: {SENSOR[r.sensor.state] ?? r.sensor.state} · {el ? "θερμοκρασία δωματίου" : "room temperature"} {r.roomTemp === null ? "—" : `${r.roomTemp.toFixed(1)}°C`} · setpoint {r.setpoint === null ? (el ? "δεν αναφέρεται" : "not reported") : `${r.setpoint}°C`}</small>
               {r.unknown.length > 0 && <small className="muted">{el ? "Άγνωστο" : "Unknown"}: {r.unknown.map((u) => `${u.label} (${u.detail})`).join(" · ")}</small>}
               <Link href={`/pms/reservations?q=${encodeURIComponent(r.reference)}`} className="linkButton">{r.reference} →</Link>
             </article>
@@ -108,7 +113,7 @@ export function ExperienceView({ lang, initial, initialTab, canAct }: { lang: Pm
               <p className="rcSummary">{TSTATUS[x.status][lang]} · {x.reference} · check-out {when(x.checkoutAt)}{x.nextArrival ? ` · ${el ? "επόμενη άφιξη" : "next arrival"} ${x.nextArrival}` : ""}</p>
               <ul className="rcItems">{Object.entries(x.steps).map(([k, s]) => <li key={k} className={`rcItem lv-${STATE[s.state].cls}`}><span className="rcDot" aria-hidden>{STATE[s.state].icon}</span><span><b>{STEP[k]?.[lang] ?? k}</b>: {s.detail}</span></li>)}</ul>
               {x.status === "verified" && <small className="muted">VERIFIED_AT {when(x.verifiedAt)} · {x.verifiedBy}</small>}
-              <p className={`rcItem lv-${CURRENT[x.current.state].cls}`}><span className="rcDot" aria-hidden>{x.current.state === "ready" ? "✓" : x.current.state === "occupied" ? "–" : "✕"}</span><span><b>{CURRENT[x.current.state][lang]}</b> — {x.current.detail}{x.regressed ? (el ? " (μετά την επιβεβαίωση)" : " (after the confirmation)") : ""}</span></p>
+              <p className={`rcItem lv-${CURRENT[x.current.state].cls}`}><span className="rcDot" aria-hidden>{x.current.state === "ready" ? "✓" : x.current.state === "occupied" ? "–" : "✕"}</span><span><b>{CURRENT[x.current.state][lang]}</b> — {x.current.detail}{x.regressed ? (el ? " (μετά την επιβεβαίωση)" : " (after the confirmation)") : ""}{x.current.arrivalAt ? ` · ${el ? "επόμενη άφιξη" : "next arrival"} ${x.current.nextReference ?? ""} ${when(x.current.arrivalAt)}${x.current.urgency === "overdue" ? (el ? " — ΗΔΗ αναμένεται" : " — already due") : x.current.urgency === "urgent" ? (el ? " — ΕΠΕΙΓΕΙ" : " — URGENT") : ""}` : ""}</span></p>
               {canAct && x.status !== "verified" && x.steps.equipment?.state === "pending" && <button type="button" className="secondaryButton" disabled={busy} onClick={() => { const note = window.prompt(el ? "Σημείωση ελέγχου εξοπλισμού (προαιρετικά):" : "Equipment check note (optional):") ?? null; if (note !== null) void post({ action: "equipment", bookingId: x.bookingId, roomId: x.roomId, note }, el ? "Ο έλεγχος εξοπλισμού καταγράφηκε." : "Equipment check recorded."); }}>✓ {el ? "Έλεγχος εξοπλισμού OK" : "Equipment OK"}</button>}
               {canAct && x.status !== "verified" && <button type="button" className="primaryAction" disabled={busy || x.status !== "ready"} onClick={() => void post({ action: "verify", bookingId: x.bookingId }, el ? "Η παράδοση του δωματίου επιβεβαιώθηκε και καταγράφηκε." : "Room turnover verified and recorded.")}>{el ? "Οριστική επιβεβαίωση" : "Final confirmation"}</button>}
             </article>
@@ -119,13 +124,25 @@ export function ExperienceView({ lang, initial, initialTab, canAct }: { lang: Pm
       {tab === "causes" && (
         <>
           <p className="muted">{el ? `Επαναλαμβανόμενες αιτίες των τελευταίων ${rc.days} ημερών (${rc.events} καταγραφές προβλημάτων, ${rc.ratings} αξιολογήσεις). Οι διαφορές στις βαθμολογίες είναι συσχέτιση, όχι απόδειξη αιτίας· ευρήματα με πολύ μικρό δείγμα δεν εμφανίζονται.` : `Recurring causes of the last ${rc.days} days (${rc.events} recorded problems, ${rc.ratings} ratings). Rating differences are an association, not proof of cause; findings with too small a sample are not shown.`}</p>
+          {rc.cases.length > 0 && (
+            <article className="card rcAlerts">
+              <h2>{el ? "Παρακολούθηση επισκευών" : "Repair follow-up"}</h2>
+              <ul className="rcItems">{rc.cases.map((k) => (
+                <li key={k.id} className={`rcItem lv-${RESOLUTION[k.state].cls}`}>
+                  <span className="rcDot" aria-hidden>{k.state === "EFFECTIVE_CONFIRMED" ? "✓" : k.state === "RECURRED" ? "✕" : "…"}</span>
+                  <span><b>{RESOLUTION[k.state][lang]}</b> — {k.title} · {el ? "εργασία" : "task"} #{k.maintenanceId}<br /><small className="muted">{k.detail}{k.confirmedBy ? ` · ${el ? "τεχνικός" : "technician"} ${k.confirmedBy}: ${k.note}` : ""}</small></span>
+                  {canAct && k.resolvedAt && !k.confirmedAt && k.state !== "RECURRED" && <button type="button" className="secondaryButton" disabled={busy} onClick={() => { const note = window.prompt(el ? "Τι δοκιμάστηκε και ποιο ήταν το αποτέλεσμα; (π.χ. «ψύξη 30′, 18°C στην έξοδο»)" : "What was tested and the result?") ?? ""; if (note.trim()) void post({ action: "confirm_repair", caseId: k.id, note }, el ? "Η επισκευή επιβεβαιώθηκε από τεχνικό." : "Repair confirmed."); }}>{el ? "Επιβεβαίωση τεχνικού" : "Technician confirmation"}</button>}
+                </li>
+              ))}</ul>
+            </article>
+          )}
           {rc.findings.length === 0 && <p className="card">{el ? "Δεν βρέθηκε επαναλαμβανόμενη αιτία." : "No recurring cause found."}</p>}
           <div className="rcGrid">{rc.findings.map((f) => (
             <article key={f.key} className={`card rcArea st-${f.action?.resolution ? RESOLUTION[f.action.resolution.state].cls : f.action ? "ok" : f.severity === "high" ? "fail" : "warn"}`}>
               <header><span className="rcDot" aria-hidden>{f.sample}</span><h2>{f.title}</h2></header>
               <ul className="rcItems">{f.evidence.map((e, i) => <li key={i} className="rcItem"><span className="rcDot" aria-hidden>i</span><span>{e}</span></li>)}</ul>
               <p className="rcSummary">{f.suggestion}</p>
-              {f.action?.resolution && <p className={`rcItem lv-${RESOLUTION[f.action.resolution.state].cls}`}><span className="rcDot" aria-hidden>{f.action.resolution.state === "effective" ? "✓" : f.action.resolution.state === "recurred" ? "✕" : "…"}</span><span><b>{RESOLUTION[f.action.resolution.state][lang]}</b> — {f.action.resolution.detail}</span></p>}
+              {f.action?.resolution && <p className={`rcItem lv-${RESOLUTION[f.action.resolution.state].cls}`}><span className="rcDot" aria-hidden>{f.action.resolution.state === "EFFECTIVE_CONFIRMED" ? "✓" : f.action.resolution.state === "RECURRED" ? "✕" : "…"}</span><span><b>{RESOLUTION[f.action.resolution.state][lang]}</b> — {f.action.resolution.detail}</span></p>}
               {f.action && <small className="muted">{f.action.status === "maintenance" ? (el ? `Εργασία συντήρησης #${f.action.maintenanceId}` : `Maintenance task #${f.action.maintenanceId}`) : `${el ? "Αγνοήθηκε" : "Dismissed"}: ${f.action.note ?? ""}`} · {when(f.action.at)}</small>}
               {canAct && !f.action && (
                 <span>

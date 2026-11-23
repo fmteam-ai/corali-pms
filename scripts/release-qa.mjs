@@ -493,6 +493,9 @@ try {
     const a = await actOnFinding({ pool: db, owner, key: f.key, action: "maintenance", userId: null });
     const again = await actOnFinding({ pool: db, owner, key: f.key, action: "maintenance", userId: null });
     must(a.ok && a.maintenanceId && again.already, `εργασία: ${JSON.stringify(a)} ${JSON.stringify(again)}`);
+    // v195: a lasting resolution case follows the repair, independent of the finding.
+    const rcase = (await rootCauses({ pool: db, owner })).cases.find((x) => x.maintenanceId === a.maintenanceId);
+    must(rcase && rcase.state === "OPEN_TASK", `περίπτωση επίλυσης: ${JSON.stringify(rcase)}`);
     await q(`UPDATE maintenance_notices SET status='resolved',resolved_at=$2,resolution_notes='QA' WHERE owner_id=$1 AND room_id=$3 AND description='QA: διαρροή νερού'`, [owner, Date.now(), rid]);
     return `δωμάτιο QA9 με πελάτη: δείκτης ${c.score} (${c.signals.map((x) => x.label).join(", ")}) · παράδοση: χωρίς στοιχεία απορρίφθηκε, με τα στοιχεία → ${tb.status} · νέα σοβαρή βλάβη → επιβεβαιωμένο αλλά «τώρα δεν είναι έτοιμο» · αιτία «${f.title}» → εργασία συντήρησης #${a.maintenanceId} (μία φορά)`;
   });

@@ -7,7 +7,9 @@
 //   access      — the guest's access cards were revoked or have expired.
 // A step that does not apply (no TV in the room, Wi-Fi not used) is «n/a». «Επιβεβαίωση» is possible only when every
 // applicable step is done; it stores the documented result (each step's evidence and time) and who confirmed it.
-const HOUR = 3_600_000;
+import { DEFAULT_CHECKIN_TIME, hotelMs } from "./room-ready-core.mjs";
+
+const HOUR = 3_600_000, HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const STEPS = [
   { key: "cleaning", el: "Καθαρισμός & επιθεώρηση" },
   { key: "equipment", el: "Έλεγχος εξοπλισμού" },
@@ -31,14 +33,27 @@ export function evaluateTurnover(f, now = Date.now()) {
     ((t.bookingId === null || t.bookingId === undefined) && [t.completedAt, t.startedAt].some((x) => x && Number(x) >= at - 5 * 60_000 && Number(x) < until))
   ));
   const hk = mine.sort((a, b) => Number(b.completedAt ?? b.startedAt ?? 0) - Number(a.completedAt ?? a.startedAt ?? 0))[0];
+  // v195: «done» only with consistent evidence — the task finished (status «ready» after approval), finished AFTER
+  // this check-out, and inspected (approved) after it was finished. Approved-but-inconsistent data is refused.
   if (!hk) out.cleaning = { state: "pending", detail: "δεν υπάρχει καθαρισμός για αυτή την αναχώρηση" };
-  else if (hk.inspection === "approved") out.cleaning = { state: "done", detail: `εργασία #${hk.id} εγκρίθηκε στην επιθεώρηση`, at: Number(hk.inspectedAt ?? hk.completedAt), taskId: Number(hk.id) };
+  else if (hk.inspection === "approved") {
+    const done = hk.completedAt !== null && hk.completedAt !== undefined && Number(hk.completedAt) > 0 ? Number(hk.completedAt) : null;
+    const inspected = hk.inspectedAt !== null && hk.inspectedAt !== undefined && Number(hk.inspectedAt) > 0 ? Number(hk.inspectedAt) : null;
+    const problem = hk.status !== "ready" ? `η εργασία δεν έχει ολοκληρωθεί (κατάσταση «${hk.status}»)`
+      : done === null ? "χωρίς χρόνο ολοκλήρωσης"
+      : done < at ? "ολοκληρώθηκε πριν από το check-out"
+      : inspected === null ? "χωρίς χρόνο επιθεώρησης"
+      : inspected < done ? "η επιθεώρηση καταγράφηκε πριν από την ολοκλήρωση" : null;
+    out.cleaning = problem
+      ? { state: "failed", detail: `εργασία #${hk.id}: ασυνεπή στοιχεία — ${problem}· χρειάζεται νέος καθαρισμός / επιθεώρηση`, taskId: Number(hk.id) }
+      : { state: "done", detail: `εργασία #${hk.id} ολοκληρώθηκε και εγκρίθηκε στην επιθεώρηση`, at: inspected, taskId: Number(hk.id) };
+  }
   else if (hk.inspection === "rejected") out.cleaning = { state: "failed", detail: `εργασία #${hk.id} απορρίφθηκε στην επιθεώρηση${hk.notes ? `: ${String(hk.notes).slice(0, 80)}` : ""}`, taskId: Number(hk.id) };
   else out.cleaning = { state: "pending", detail: hk.completedAt ? `εργασία #${hk.id} καθαρίστηκε — αναμένει επιθεώρηση` : `εργασία #${hk.id} σε εξέλιξη`, taskId: Number(hk.id) };
   // Equipment: a person's confirmation; a serious open fault blocks it.
-  const serious = (f.faults ?? []).filter((m) => m.severity !== "minor");
-  if (serious.length) out.equipment = { state: "failed", detail: `ανοιχτή σοβαρή βλάβη: ${String(serious[0].description).slice(0, 80)}` };
-  else if (f.equipment?.ok) out.equipment = { state: "done", detail: `επιβεβαίωσε ${f.equipment.by}${f.equipment.note ? ` — ${f.equipment.note}` : ""}`, at: Number(f.equipment.at) };
+  const serious = (f.faults ?? []).filter((m) => m.severity !== "minor"), minor = (f.faults ?? []).filter((m) => m.severity === "minor");
+  if (serious.length) out.equipment = { state: "failed", detail: `ανοιχτή ${serious[0].severity === "out_of_order" ? "βλάβη εκτός λειτουργίας" : "σοβαρή βλάβη"}: ${String(serious[0].description).slice(0, 80)}`, severity: serious[0].severity };
+  else if (f.equipment?.ok) out.equipment = { state: "done", detail: `επιβεβαίωσε ${f.equipment.by}${f.equipment.note ? ` — ${f.equipment.note}` : ""}${minor.length ? ` · ${minor.length} μικρή(ές) βλάβη(ες) ανοιχτή(ές): ${String(minor[0].description).slice(0, 60)}` : ""}`, at: Number(f.equipment.at), remarks: minor.length };
   else out.equipment = { state: "pending", detail: "χρειάζεται επιβεβαίωση από το προσωπικό" };
   // TV accounts.
   if (!f.hasTv) out.tv = { state: "na", detail: "χωρίς Corali TV στο δωμάτιο" };
@@ -68,10 +83,13 @@ export function evaluateTurnover(f, now = Date.now()) {
  * when, by whom, the evidence snapshot) and `current` (the room's readiness evaluated NOW: a serious fault opened or
  * an inspection rejected after the confirmation makes it not ready again; a next guest already in the room = occupied).
  */
-export async function turnoverBoard({ pool, owner, now = Date.now(), days = 3 }) {
+export async function turnoverBoard({ pool, owner, now = Date.now(), days = 3, bookingIds: only = null }) {
   const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
   const since = now - days * 86_400_000;
-  const outs = await q(`SELECT b.id booking_id,b.reference,b.guest_name,b.room_id,r.code,COALESCE(b.checked_out_at,0) checked_out_at FROM bookings b JOIN rooms r ON r.owner_id=b.owner_id AND r.id=b.room_id WHERE b.owner_id=$1 AND b.status='checked_out' AND b.checked_out_at>=$2 ORDER BY b.checked_out_at DESC LIMIT 100`, [owner, since]);
+  // v195: a specific check-out (the final confirmation) is fetched by its booking id, never searched in a recent list.
+  const outs = only
+    ? await q(`SELECT b.id booking_id,b.reference,b.guest_name,b.room_id,r.code,COALESCE(b.checked_out_at,0) checked_out_at FROM bookings b JOIN rooms r ON r.owner_id=b.owner_id AND r.id=b.room_id WHERE b.owner_id=$1 AND b.status='checked_out' AND b.id=ANY($2::bigint[])`, [owner, only.map(Number)])
+    : await q(`SELECT b.id booking_id,b.reference,b.guest_name,b.room_id,r.code,COALESCE(b.checked_out_at,0) checked_out_at FROM bookings b JOIN rooms r ON r.owner_id=b.owner_id AND r.id=b.room_id WHERE b.owner_id=$1 AND b.status='checked_out' AND b.checked_out_at>=$2 ORDER BY b.checked_out_at DESC LIMIT 100`, [owner, since]);
   if (!outs.length) return { at: now, turnovers: [] };
   const roomIds = [...new Set(outs.map((o) => Number(o.room_id)))], bookingIds = outs.map((o) => Number(o.booking_id));
   const [hk, faults, tvs, jobs, wifi, cards, saved, next, checkins, usedRows] = await Promise.all([
@@ -82,10 +100,11 @@ export async function turnoverBoard({ pool, owner, now = Date.now(), days = 3 })
     q(`SELECT booking_id,status,error,removed_at FROM guest_wifi WHERE owner_id=$1 AND booking_id=ANY($2::bigint[])`, [owner, bookingIds]).catch(() => []),
     q(`SELECT booking_id,status,valid_until FROM access_cards WHERE owner_id=$1 AND booking_id=ANY($2::bigint[])`, [owner, bookingIds]).catch(() => []),
     q(`SELECT * FROM room_turnovers WHERE owner_id=$1 AND booking_id=ANY($2::bigint[])`, [owner, bookingIds]),
-    q(`SELECT room_id,min(check_in) next_in FROM bookings WHERE owner_id=$1 AND status='confirmed' AND room_id=ANY($2::bigint[]) GROUP BY room_id`, [owner, roomIds]),
+    q(`SELECT DISTINCT ON (b.room_id) b.room_id,b.id,b.reference,b.check_in next_in,(SELECT g.arrival_time FROM guest_checkins g WHERE g.owner_id=b.owner_id AND g.booking_id=b.id ORDER BY g.id DESC LIMIT 1) arrival_time FROM bookings b WHERE b.owner_id=$1 AND b.status='confirmed' AND b.room_id=ANY($2::bigint[]) ORDER BY b.room_id,b.check_in`, [owner, roomIds]),
     q(`SELECT room_id,checked_in_at,status FROM bookings WHERE owner_id=$1 AND room_id=ANY($2::bigint[]) AND checked_in_at IS NOT NULL`, [owner, roomIds]),
     q(`SELECT booking_id,hk_task_id FROM room_turnovers WHERE owner_id=$1 AND hk_task_id IS NOT NULL`, [owner]),
   ]);
+  const checkInTime = await q(`SELECT settings_json FROM tv_settings WHERE owner_id=$1`, [owner]).then((r) => { try { const t = JSON.parse(String(r[0]?.settings_json ?? "{}")).checkInTime; return HHMM.test(String(t ?? "")) ? String(t) : DEFAULT_CHECKIN_TIME; } catch { return DEFAULT_CHECKIN_TIME; } }, () => DEFAULT_CHECKIN_TIME);
   const turnovers = outs.map((o) => {
     const bid = Number(o.booking_id), rid = Number(o.room_id), out = Number(o.checked_out_at);
     const rec = saved.find((x) => Number(x.booking_id) === bid);
@@ -108,12 +127,20 @@ export async function turnoverBoard({ pool, owner, now = Date.now(), days = 3 })
     const live = evaluateTurnover(facts, now);
     const verified = rec?.status === "verified";
     const problems = Object.entries(live.steps).filter(([, v]) => v.state === "failed").map(([k, v]) => `${k}: ${v.detail}`);
-    const current = occupied ? { state: "occupied", detail: "ο επόμενος πελάτης είναι ήδη στο δωμάτιο" }
-      : live.status === "ready" ? { state: "ready", detail: "όλα τα βήματα ισχύουν τώρα" }
+    // v195: readiness against the next arrival — when the next guest is expected (their pre-check-in time, else the
+    // hotel's check-in time) and how far that is; a minor open fault is a remark, a serious one makes it not ready.
+    const nx = next.find((n) => Number(n.room_id) === rid);
+    const arrivalAt = nx ? hotelMs(String(nx.next_in), HHMM.test(String(nx.arrival_time ?? "")) ? String(nx.arrival_time) : checkInTime) : null;
+    const minutesToArrival = arrivalAt === null ? null : Math.round((arrivalAt - now) / 60_000);
+    const remarks = Number(live.steps.equipment?.remarks ?? 0);
+    const base = occupied ? { state: "occupied", detail: "ο επόμενος πελάτης είναι ήδη στο δωμάτιο" }
+      : live.status === "ready" ? (remarks ? { state: "ready_with_remarks", detail: `έτοιμο, με ${remarks} μικρή(ές) βλάβη(ες) ανοιχτή(ές)` } : { state: "ready", detail: "όλα τα βήματα ισχύουν τώρα" })
       : { state: "not_ready", detail: problems.length ? problems.join(" · ") : "εκκρεμούν βήματα" };
+    const urgency = base.state === "not_ready" && minutesToArrival !== null ? (minutesToArrival <= 0 ? "overdue" : minutesToArrival <= 180 ? "urgent" : "planned") : "none";
+    const current = { ...base, arrivalAt, minutesToArrival, nextReference: nx ? String(nx.reference) : null, urgency };
     return {
       bookingId: bid, roomId: rid, code: String(o.code), reference: String(o.reference), guest: String(o.guest_name ?? "").split(" ")[0], checkoutAt: out,
-      nextArrival: next.find((n) => Number(n.room_id) === rid)?.next_in ?? null,
+      nextArrival: nx?.next_in ?? null,
       status: verified ? "verified" : live.status, steps: live.steps,
       verifiedAt: verified ? Number(rec.verified_at) : null, verifiedBy: verified ? String(rec.verified_by) : null,
       verifiedSteps: verified ? JSON.parse(String(rec.steps_json)) : null,
@@ -144,7 +171,7 @@ export async function verifyTurnover({ pool, owner, bookingId, by, now = Date.no
   try {
     await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
     await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`turnover:${owner}:${bookingId}`]);
-    const board = await turnoverBoard({ pool: client, owner, now, days: 30 });
+    const board = await turnoverBoard({ pool: client, owner, now, bookingIds: [Number(bookingId)] });
     const t = board.turnovers.find((x) => x.bookingId === Number(bookingId));
     if (!t) { await client.query("ROLLBACK"); return { ok: false, status: "not_found", blocking: [] }; }
     if (t.status === "verified") { await client.query("ROLLBACK"); return { ok: true, status: "verified", steps: t.verifiedSteps, already: true }; }

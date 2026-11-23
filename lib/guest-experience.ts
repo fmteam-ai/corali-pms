@@ -3,7 +3,7 @@
 import { db } from "@/lib/db";
 import { comfortBoard, saveComfortPolicy } from "../scripts/comfort-core.mjs";
 import { confirmEquipment, turnoverBoard, verifyTurnover } from "../scripts/turnover-core.mjs";
-import { actOnFinding, rootCauses } from "../scripts/root-cause-core.mjs";
+import { actOnFinding, confirmRepair, rootCauses } from "../scripts/root-cause-core.mjs";
 
 export async function guestExperience(ownerId: string) {
   const [comfort, turnover, causes] = await Promise.all([
@@ -19,3 +19,4 @@ export const equipmentChecked = (ownerId: string, bookingId: number, roomId: num
 export const turnoverVerified = (ownerId: string, bookingId: number, by: string) => verifyTurnover({ pool: db(), owner: ownerId, bookingId, by });
 export const findingAction = (ownerId: string, key: string, action: "maintenance" | "dismiss", userId: number, reason: string) => actOnFinding({ pool: db(), owner: ownerId, key, action, userId, reason });
 export const comfortPolicySaved = (ownerId: string, settings: unknown, by: string) => saveComfortPolicy({ pool: db(), owner: ownerId, settings, by });
+export const repairConfirmed = (ownerId: string, caseId: number, by: string, note: string) => confirmRepair({ pool: db(), owner: ownerId, caseId, by, note });

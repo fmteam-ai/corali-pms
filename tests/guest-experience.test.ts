@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { comfortBoard, normalizePolicy, rangeFor, saveComfortPolicy, scoreRoom } from "../scripts/comfort-core.mjs";
 import { confirmEquipment, evaluateTurnover, turnoverBoard, verifyTurnover } from "../scripts/turnover-core.mjs";
-import { actOnFinding, categorize, findRootCauses, meaningfulReason, resolutionState, rootCauses } from "../scripts/root-cause-core.mjs";
+import { actOnFinding, categorize, confirmRepair, findRootCauses, meaningfulReason, resolutionCases, resolutionState, rootCauses } from "../scripts/root-cause-core.mjs";
 
 const o = "hotel-corali", MIN = 60_000, H = 3_600_000;
 type Row = Record<string, unknown>;
@@ -196,23 +196,87 @@ test("v194 root cause actions: two clicks → one task; a dismissal needs a real
     assert.equal((await actOnFinding({ pool, owner: o, key: "systemic:wifi", action: "dismiss", reason: "ok", now })).error, "REASON_REQUIRED");
     assert.equal(meaningfulReason("........................"), false);
     assert.equal(meaningfulReason("Αλλάχτηκε ήδη η μονάδα τον Ιούνιο"), true);
-    // Resolution: task open → fixed → stays without the problem → effective; recurrence → recurred.
+    // v195 resolution: a lasting case, followed on its own; no stronger claim than the evidence.
     let f = (await rootCauses({ pool, owner: o, now })).findings.find((x) => x.key === key)!;
-    assert.equal(f.action!.resolution!.state, "open_task");
-    const mid = f.action!.maintenanceId!;
-    await db.query(`UPDATE maintenance_notices SET status='resolved',resolved_at=$2,resolved_by=1,resolution_notes='αλλαγή φίλτρων',post_repair_state='clean' WHERE id=$1`, [mid, now - 20 * day]);
+    assert.equal(f.action!.resolution!.state, "OPEN_TASK");
+    const mid = f.action!.maintenanceId!, caseId = f.action!.caseId!;
+    assert.equal((await confirmRepair({ pool, owner: o, caseId, by: "Tech", note: "Δοκιμή ψύξης 30′ OK, νέα φίλτρα" })).error, "NOT_RESOLVED_OR_CONFIRMED", "no confirmation before the repair is done");
+    const fixedAt = now - 20 * day;
+    await db.query(`UPDATE maintenance_notices SET status='resolved',resolved_at=$2,resolved_by=1,resolution_notes='αλλαγή φίλτρων',post_repair_state='clean' WHERE id=$1`, [mid, fixedAt]);
     f = (await rootCauses({ pool, owner: o, now })).findings.find((x) => x.key === key)!;
-    assert.equal(f.action!.resolution!.state, "monitoring");
-    for (const id of [10, 11]) await db.query(`INSERT INTO bookings(id,owner_id,reference,guest_name,check_in,check_out,status,room_id,total_cents,balance_cents,created_at,checked_out_at) VALUES($2,$1,$3,'G','2026-07-01','2026-07-02','checked_out',5,1,0,1,$4)`, [o, id, `CR-${id}`, now - (15 - id) * day]);
-    f = (await rootCauses({ pool, owner: o, now })).findings.find((x) => x.key === key)!;
-    assert.equal(f.action!.resolution!.state, "effective");
+    assert.equal(f.action!.resolution!.state, "MONITORING");
+    // A stay that began BEFORE the repair does not count, even though it ended after it.
+    await db.query(`INSERT INTO bookings(id,owner_id,reference,guest_name,check_in,check_out,status,room_id,total_cents,balance_cents,created_at,checked_in_at,checked_out_at) VALUES(9,$1,'CR-9','G','2026-06-20','2026-06-28','checked_out',5,1,0,1,$2,$3)`, [o, fixedAt - 3 * day, fixedAt + 2 * day]);
+    for (const id of [10, 11]) await db.query(`INSERT INTO bookings(id,owner_id,reference,guest_name,check_in,check_out,status,room_id,total_cents,balance_cents,created_at,checked_in_at,checked_out_at) VALUES($2,$1,$3,'G','2026-07-01','2026-07-02','checked_out',5,1,0,1,$4,$5)`, [o, id, `CR-${id}`, fixedAt + (id - 7) * day, fixedAt + (id - 6) * day]);
+    let c = (await rootCauses({ pool, owner: o, now })).cases.find((x) => x.id === caseId)!;
+    assert.equal(c.state, "NO_RECURRENCE_OBSERVED", "no complaints after 2 stays is NOT proof of a fix");
+    assert.match(c.detail, /δεν αποδεικνύει τη διόρθωση/);
+    // The case stays even when the finding is no longer detected (the old reports leave the window).
+    await db.query(`DELETE FROM tv_requests`);
+    const r2 = await rootCauses({ pool, owner: o, now });
+    assert.equal(r2.findings.find((x) => x.key === key), undefined);
+    assert.equal(r2.cases.find((x) => x.id === caseId)!.state, "NO_RECURRENCE_OBSERVED");
+    // Technician confirmation → EFFECTIVE_CONFIRMED; a later report → RECURRED.
+    assert.equal((await confirmRepair({ pool, owner: o, caseId, by: "Tech", note: "ok" })).error, "NOTE_REQUIRED");
+    assert.equal((await confirmRepair({ pool, owner: o, caseId, by: "Tech", note: "Δοκιμή ψύξης 30′ OK, νέα φίλτρα" })).ok, true);
+    c = (await resolutionCases({ pool, owner: o, now })).find((x) => x.id === caseId)!;
+    assert.deepEqual([c.state, c.confirmedBy], ["EFFECTIVE_CONFIRMED", "Tech"]);
     await db.query(`INSERT INTO tv_requests(owner_id,room_id,booking_id,kind,status,created_at,details_json) VALUES($1,5,11,'problem','open',$2,'{"problem":"ac"}')`, [o, now - day]);
-    f = (await rootCauses({ pool, owner: o, now })).findings.find((x) => x.key === key)!;
-    assert.equal(f.action!.resolution!.state, "recurred");
-    assert.equal(f.severity, "high");
-    assert.deepEqual(resolutionState({ resolvedAt: null, eventsAfter: 0, staysAfter: 0 }).state, "open_task");
+    c = (await resolutionCases({ pool, owner: o, now })).find((x) => x.id === caseId)!;
+    assert.equal(c.state, "RECURRED");
+    assert.equal(resolutionState({ resolvedAt: null, eventsAfter: 0, staysAfter: 0 }).state, "OPEN_TASK");
     const saved = await saveComfortPolicy({ pool, owner: o, settings: { cooling: { min: 23, max: 25 } }, by: "Maria" });
     assert.deepEqual(saved.cooling, { min: 23, max: 25 });
     assert.deepEqual((await comfortBoard({ pool, owner: o })).policy.cooling, { min: 23, max: 25 });
   } finally { await db.close(); }
+});
+
+test("v195 cleaning evidence must be consistent: finished after the check-out, inspected after finishing", () => {
+  const out = Date.parse("2026-07-15T10:00:00Z"), now = out + 5 * H;
+  const ev = (t: Record<string, unknown>) => evaluateTurnover({ bookingId: 11, checkoutAt: out, hkTasks: [{ id: 1, bookingId: 11, ...t }], faults: [], equipment: null, hasTv: false, wifi: null, cards: [] }, now).steps.cleaning;
+  // The reported case: approved, no completion time, inspected before the check-out.
+  const bad = ev({ status: "ready", inspection: "approved", completedAt: null, inspectedAt: out - H });
+  assert.equal(bad.state, "failed");
+  assert.match(bad.detail, /ασυνεπή στοιχεία — χωρίς χρόνο ολοκλήρωσης/);
+  assert.match(ev({ status: "ready", inspection: "approved", completedAt: out - 10 * 60_000, inspectedAt: out + H }).detail, /πριν από το check-out/);
+  assert.match(ev({ status: "ready", inspection: "approved", completedAt: out + H, inspectedAt: out + 30 * 60_000 }).detail, /επιθεώρηση καταγράφηκε πριν από την ολοκλήρωση/);
+  assert.match(ev({ status: "cleaned", inspection: "approved", completedAt: out + H, inspectedAt: out + 2 * H }).detail, /δεν έχει ολοκληρωθεί/);
+  assert.equal(ev({ status: "ready", inspection: "approved", completedAt: out + H, inspectedAt: out + 2 * H }).state, "done");
+});
+
+test("v195 verification fetches the booking itself (older than any dashboard window); readiness vs next arrival", async () => {
+  const { db, pool } = await fresh();
+  try {
+    const now = Date.now(), out = now - 45 * 86_400_000;
+    await db.query(`INSERT INTO rooms(id,owner_id,code,room_type,capacity,active,base_rate_cents,operational_status) VALUES(5,$1,'112','d',2,1,1,'clean')`, [o]);
+    await db.query(`INSERT INTO bookings(id,owner_id,reference,guest_name,check_in,check_out,status,room_id,total_cents,balance_cents,created_at,checked_out_at) VALUES(7,$1,'CR-OLD','Old','2026-01-01','2026-01-05','checked_out',5,1,0,1,$2)`, [o, out]);
+    await db.query(`INSERT INTO housekeeping_tasks(id,owner_id,room_id,task_type,status,booking_id,completed_at,inspection_status,inspected_at) VALUES(70,$1,5,'departure_clean','ready',7,$2,'approved',$3)`, [o, out + 3_600_000, out + 7_200_000]);
+    await confirmEquipment({ pool, owner: o, bookingId: 7, roomId: 5, by: "N", now });
+    assert.equal((await turnoverBoard({ pool, owner: o, now })).turnovers.length, 0, "not in the 3-day dashboard");
+    assert.equal((await verifyTurnover({ pool, owner: o, bookingId: 7, by: "M", now })).ok, true, "but verifiable by its id");
+    // Next arrival in 90 minutes (pre-check-in time) and a serious fault: not ready, urgent.
+    const arrive = new Date(now + 90 * 60_000), athens = (o2: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", ...o2 }).format(arrive);
+    const date = athens({ year: "numeric", month: "2-digit", day: "2-digit" }), time = athens({ hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    await db.query(`INSERT INTO bookings(id,owner_id,reference,guest_name,check_in,check_out,status,room_id,total_cents,balance_cents,created_at) VALUES(8,$1,'CR-NEXT','Next',$2,$2,'confirmed',5,1,0,1)`, [o, date]);
+    await db.query(`INSERT INTO guest_checkins(owner_id,booking_id,first_name,last_name,email,phone,arrival_time,document_number,status,created_at) VALUES($1,8,'N','X','n@x.gr','1',$2,'A1','submitted',1)`, [o, time]).catch(async () => { /* columns differ: fall back to hotel check-in time */ });
+    await db.query(`INSERT INTO maintenance_notices(owner_id,room_id,severity,description,reported_at) VALUES($1,5,'major','Δεν ανάβει το κλιματιστικό',$2)`, [o, now]);
+    const t = (await turnoverBoard({ pool, owner: o, now, bookingIds: [7] })).turnovers[0];
+    assert.equal(t.current.state, "not_ready");
+    assert.equal(t.current.nextReference, "CR-NEXT");
+    assert.ok(t.current.minutesToArrival !== null);
+    // A minor fault is a remark, not a reason to block the room.
+    await db.query(`UPDATE maintenance_notices SET severity='minor'`);
+    assert.equal((await turnoverBoard({ pool, owner: o, now, bookingIds: [7] })).turnovers[0].current.state, "ready_with_remarks");
+  } finally { await db.close(); }
+});
+
+test("v195 comfort sensor validity is separate from room temperature and setpoint", () => {
+  const now = Date.parse("2026-07-15T12:00:00Z");
+  const r = (climate: Record<string, unknown>) => scoreRoom({ roomId: 1, climate, requests: [], wifiUsed: false }, now);
+  assert.deepEqual([r({ temp: 85, humidity: 40, readAt: now - MIN }).sensor.state, r({ temp: 85, humidity: 40, readAt: now - MIN }).score], ["invalid", 100], "85°C is a broken sensor, not a hot room");
+  assert.equal(r({ temp: 24, humidity: 140, readAt: now - MIN }).sensor.state, "invalid");
+  const low = r({ temp: 24, humidity: 50, battery: 8, readAt: now - MIN });
+  assert.deepEqual([low.sensor.state, low.roomTemp], ["low_battery", 24]);
+  const sp = r({ temp: 24, humidity: 50, readAt: now - MIN, setpoint: 16 });
+  assert.deepEqual([sp.roomTemp, sp.setpoint, sp.signals.map((s) => s.key)], [24, 16, ["setpoint"]]);
 });

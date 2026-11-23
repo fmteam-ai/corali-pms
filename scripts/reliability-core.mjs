@@ -195,7 +195,11 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
   const todayAthens = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now));
   for (const x of turn.turnovers) {
     // v194 dynamic readiness: a room confirmed ready that is no longer ready now (new serious fault, reversed inspection).
-    if (x.regressed) { add("turnover", { key: `turnover-regressed:${x.bookingId}`, level: x.nextArrival && x.nextArrival <= todayAthens ? "fail" : "warn", text: `Δωμάτιο ${x.code}: επιβεβαιώθηκε έτοιμο ${hhmm(x.verifiedAt)} αλλά ΤΩΡΑ δεν είναι — ${x.current.detail.slice(0, 180)}${x.nextArrival ? ` (επόμενη άφιξη ${x.nextArrival})` : ""}`, link: "/pms/guest-experience?tab=turnover", at: now }); continue; }
+    // v195: the next arrival decides the urgency (pre-check-in time, else the hotel's check-in time).
+    const soon = ["urgent", "overdue"].includes(x.current.urgency);
+    const eta = x.current.minutesToArrival === null ? "" : x.current.minutesToArrival <= 0 ? " — ο πελάτης αναμένεται ΗΔΗ" : ` — άφιξη σε ${Math.floor(x.current.minutesToArrival / 60)}ώ ${x.current.minutesToArrival % 60}′`;
+    if (!x.regressed && x.status !== "verified" && x.current.state === "not_ready" && soon) { add("turnover", { key: `turnover-soon:${x.bookingId}`, level: "fail", text: `Δωμάτιο ${x.code} δεν είναι έτοιμο${eta} (${x.current.nextReference ?? "επόμενη κράτηση"}): ${x.current.detail.slice(0, 160)}`, link: "/pms/guest-experience?tab=turnover", at: now }); continue; }
+    if (x.regressed) { add("turnover", { key: `turnover-regressed:${x.bookingId}`, level: soon || (x.nextArrival && x.nextArrival <= todayAthens) ? "fail" : "warn", text: `Δωμάτιο ${x.code}: επιβεβαιώθηκε έτοιμο ${hhmm(x.verifiedAt)} αλλά ΤΩΡΑ δεν είναι — ${x.current.detail.slice(0, 180)}${eta}`, link: "/pms/guest-experience?tab=turnover", at: now }); continue; }
     if (x.status !== "failed") continue;
     const failedSteps = Object.entries(x.steps).filter(([, v]) => v.state === "failed").map(([k, v]) => `${k}: ${v.detail}`).join(" · ");
     add("turnover", { key: `turnover:${x.bookingId}`, level: x.nextArrival && x.nextArrival <= todayAthens ? "fail" : "warn", text: `Δωμάτιο ${x.code} μετά το check-out ${x.reference}${x.nextArrival ? ` (επόμενη άφιξη ${x.nextArrival})` : ""}: ${failedSteps.slice(0, 200)}`, link: "/pms/guest-experience?tab=turnover", at: Number(x.checkoutAt) });

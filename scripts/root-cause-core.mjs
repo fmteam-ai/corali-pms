@@ -125,25 +125,16 @@ export async function rootCauses({ pool, owner, now = Date.now(), days = 90 }) {
   ];
   const findings = findRootCauses({ events, ratings: ratings.map((r) => ({ bookingId: Number(r.booking_id), roomId: Number(r.room_id), code: String(r.code), rating: Number(r.rating) })), handling: handled.map((h) => ({ kind: String(h.kind), minutes: Number(h.minutes) })) });
   const actions = new Map(done.map((d) => [String(d.finding_key), d]));
-  // v194: for findings with a maintenance task, whether the fix worked (recurrences and clean stays after it).
-  const mIds = done.filter((d) => d.maintenance_id).map((d) => Number(d.maintenance_id));
-  const [fixes, staysAfter] = mIds.length ? await Promise.all([
-    q(`SELECT id,room_id,status,resolved_at FROM maintenance_notices WHERE owner_id=$1 AND id=ANY($2::bigint[])`, [owner, mIds]),
-    q(`SELECT room_id,checked_out_at FROM bookings WHERE owner_id=$1 AND status='checked_out' AND checked_out_at IS NOT NULL AND checked_out_at>=$2`, [owner, now - 365 * DAY]),
-  ]) : [[], []];
+  // v195: resolution is followed by its own lasting case (resolution_cases), not re-derived from the finding.
+  const cases = await resolutionCases({ pool, owner });
   const withAction = (f) => {
     const a = actions.get(f.key);
     if (!a) return { ...f, action: null };
     const action = { status: a.status, maintenanceId: a.maintenance_id ? Number(a.maintenance_id) : null, at: Number(a.updated_at), note: String(a.note ?? "") };
-    if (a.status !== "maintenance" || !action.maintenanceId) return { ...f, action };
-    const fix = fixes.find((x) => Number(x.id) === action.maintenanceId);
-    const resolvedAt = fix?.status === "resolved" && fix.resolved_at ? Number(fix.resolved_at) : null;
-    const eventsAfter = resolvedAt ? events.filter((e) => e.roomId === f.roomId && e.category === f.category && e.at > resolvedAt).length : 0;
-    const stays = resolvedAt ? staysAfter.filter((b) => Number(b.room_id) === f.roomId && Number(b.checked_out_at) > resolvedAt).length : 0;
-    const resolution = resolutionState({ resolvedAt, eventsAfter, staysAfter: stays });
-    return { ...f, severity: resolution.state === "recurred" ? "high" : f.severity, action: { ...action, resolution } };
+    const c = cases.find((x) => x.maintenanceId === action.maintenanceId);
+    return { ...f, severity: c?.state === "RECURRED" ? "high" : f.severity, action: c ? { ...action, resolution: { state: c.state, detail: c.detail }, caseId: c.id } : action };
   };
-  return { at: now, days, events: events.length, ratings: ratings.length, findings: findings.map(withAction) };
+  return { at: now, days, events: events.length, ratings: ratings.length, findings: findings.map(withAction), cases };
 }
 
 /** v194: a dismissal needs a real reason — at least 10 characters with letters, not just punctuation or repeats. */
@@ -194,6 +185,8 @@ export async function actOnFinding({ pool, owner, key, action, userId = null, re
     }
     const m = await client.query(`INSERT INTO maintenance_notices(owner_id,room_id,severity,description,reported_by,reported_at) VALUES($1,$2,'minor',$3,$4,$5) RETURNING id`, [owner, finding.roomId, `[Ανάλυση αιτιών] ${finding.title}. ${finding.suggestion}`.slice(0, 900), userId, now]);
     const id = Number(m.rows[0].id);
+    // v195: the lasting resolution case, followed on its own from here on.
+    await client.query(`INSERT INTO resolution_cases(owner_id,finding_key,room_id,category,title,maintenance_id,opened_at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(owner_id,maintenance_id) DO NOTHING`, [owner, key, finding.roomId, finding.category, finding.title, id, now]);
     await client.query(`INSERT INTO root_cause_actions(owner_id,finding_key,status,maintenance_id,created_by,updated_at) VALUES($1,$2,'maintenance',$3,$4,$5) ON CONFLICT(owner_id,finding_key) DO UPDATE SET status='maintenance',maintenance_id=$3,note='',created_by=$4,updated_at=$5`, [owner, key, id, userId, now]);
     await client.query("COMMIT");
     return { ok: true, maintenanceId: id };
@@ -204,15 +197,56 @@ export async function actOnFinding({ pool, owner, key, action, userId = null, re
 }
 
 /**
- * v194 resolution tracking: did the intervention fix it? For a room finding with a maintenance task:
- *   open_task  — the task is not resolved yet;
- *   recurred   — the same problem was reported in that room after the task was resolved (it did not fix it);
- *   effective  — at least `stays` stays in that room checked out after the fix without the problem;
- *   monitoring — fixed, not enough stays since to tell.
+ * v195 resolution states (no claim stronger than the evidence):
+ *   OPEN_TASK              — the maintenance task is not resolved yet;
+ *   RECURRED               — the same problem was reported in that room after the repair;
+ *   MONITORING             — repaired, fewer than `stays` stays that STARTED after the repair have ended;
+ *   NO_RECURRENCE_OBSERVED — ≥ `stays` such stays ended without the problem being reported (absence of complaints is
+ *                            not proof of a fix);
+ *   EFFECTIVE_CONFIRMED    — a technician confirmed the repair by a test, and nothing was reported since.
  */
-export function resolutionState({ resolvedAt, eventsAfter, staysAfter, stays = 2 }) {
-  if (!resolvedAt) return { state: "open_task", detail: "η εργασία συντήρησης δεν έχει ολοκληρωθεί" };
-  if (eventsAfter > 0) return { state: "recurred", detail: `το ίδιο πρόβλημα αναφέρθηκε ξανά ${eventsAfter} φορ${eventsAfter === 1 ? "ά" : "ές"} μετά την επισκευή — η παρέμβαση δεν το έλυσε` };
-  if (staysAfter >= stays) return { state: "effective", detail: `${staysAfter} διαμονές μετά την επισκευή χωρίς το πρόβλημα` };
-  return { state: "monitoring", detail: `επισκευάστηκε · ${staysAfter}/${stays} διαμονές χωρίς το πρόβλημα μέχρι τώρα` };
+export function resolutionState({ resolvedAt, eventsAfter, staysAfter, confirmedAt = null, stays = 2 }) {
+  if (!resolvedAt) return { state: "OPEN_TASK", detail: "η εργασία συντήρησης δεν έχει ολοκληρωθεί" };
+  if (eventsAfter > 0) return { state: "RECURRED", detail: `το ίδιο πρόβλημα αναφέρθηκε ξανά ${eventsAfter} φορ${eventsAfter === 1 ? "ά" : "ές"} μετά την επισκευή — η παρέμβαση δεν το έλυσε` };
+  if (confirmedAt) return { state: "EFFECTIVE_CONFIRMED", detail: `επιβεβαιώθηκε από τεχνικό · ${staysAfter} διαμονές από τότε χωρίς αναφορά` };
+  if (staysAfter >= stays) return { state: "NO_RECURRENCE_OBSERVED", detail: `${staysAfter} διαμονές που ξεκίνησαν μετά την επισκευή χωρίς αναφορά — δεν αποδεικνύει τη διόρθωση· χρειάζεται επιβεβαίωση τεχνικού` };
+  return { state: "MONITORING", detail: `επισκευάστηκε · ${staysAfter}/${stays} διαμονές μετά την επισκευή χωρίς αναφορά μέχρι τώρα` };
+}
+
+/** Every resolution case with its state — independent of whether its finding is still detected. */
+export async function resolutionCases({ pool, owner }) {
+  const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
+  const cases = await q(`SELECT c.*,r.code,m.status m_status,m.resolved_at FROM resolution_cases c JOIN rooms r ON r.owner_id=c.owner_id AND r.id=c.room_id LEFT JOIN maintenance_notices m ON m.owner_id=c.owner_id AND m.id=c.maintenance_id WHERE c.owner_id=$1 AND c.closed_at IS NULL ORDER BY c.opened_at DESC LIMIT 100`, [owner]).catch(() => []);
+  if (!cases.length) return [];
+  const roomIds = [...new Set(cases.map((c) => Number(c.room_id)))];
+  const since = Math.min(...cases.map((c) => Number(c.resolved_at ?? c.opened_at)));
+  const [reqs, faults, stays] = await Promise.all([
+    q(`SELECT room_id,details_json,created_at FROM tv_requests WHERE owner_id=$1 AND kind='problem' AND room_id=ANY($2::bigint[]) AND created_at>=$3`, [owner, roomIds, since]).catch(() => []),
+    q(`SELECT room_id,description,reported_at FROM maintenance_notices WHERE owner_id=$1 AND room_id=ANY($2::bigint[]) AND reported_at>=$3 AND description NOT LIKE '[Ανάλυση αιτιών]%'`, [owner, roomIds, since]).catch(() => []),
+    q(`SELECT room_id,checked_in_at FROM bookings WHERE owner_id=$1 AND room_id=ANY($2::bigint[]) AND status='checked_out' AND checked_in_at>=$3`, [owner, roomIds, since]),
+  ]);
+  const events = [
+    ...reqs.map((x) => { let d = {}; try { d = (typeof x.details_json === "object" ? x.details_json : JSON.parse(String(x.details_json ?? "{}"))) ?? {}; } catch { d = {}; } return { roomId: Number(x.room_id), category: PROBLEM_LABELS[d.problem] ? d.problem : "other", at: Number(x.created_at) }; }),
+    ...faults.map((x) => ({ roomId: Number(x.room_id), category: categorize(x.description), at: Number(x.reported_at) })),
+  ];
+  return cases.map((c) => {
+    const resolvedAt = c.m_status === "resolved" && c.resolved_at ? Number(c.resolved_at) : null;
+    const rid = Number(c.room_id);
+    const eventsAfter = resolvedAt ? events.filter((e) => e.roomId === rid && e.category === c.category && e.at > resolvedAt).length : 0;
+    // Only stays that STARTED after the repair (a stay begun before it says nothing about the repair).
+    const staysAfter = resolvedAt ? stays.filter((b) => Number(b.room_id) === rid && Number(b.checked_in_at) > resolvedAt).length : 0;
+    const res = resolutionState({ resolvedAt, eventsAfter, staysAfter, confirmedAt: c.technician_confirmed_at ? Number(c.technician_confirmed_at) : null });
+    return { id: Number(c.id), findingKey: String(c.finding_key), roomId: rid, code: String(c.code), category: String(c.category), title: String(c.title), maintenanceId: Number(c.maintenance_id), openedAt: Number(c.opened_at), resolvedAt, confirmedAt: c.technician_confirmed_at ? Number(c.technician_confirmed_at) : null, confirmedBy: c.technician_confirmed_by ? String(c.technician_confirmed_by) : null, note: String(c.technician_note ?? ""), ...res };
+  });
+}
+
+/** A technician confirms the repair by a test (only once the maintenance task is resolved; a real note is required). */
+export async function confirmRepair({ pool, owner, caseId, by, note, now = Date.now() }) {
+  if (!meaningfulReason(note)) return { ok: false, error: "NOTE_REQUIRED" };
+  const r = await pool.query(
+    `UPDATE resolution_cases c SET technician_confirmed_at=$3,technician_confirmed_by=$4,technician_note=$5 FROM maintenance_notices m
+      WHERE c.owner_id=$1 AND c.id=$2 AND m.owner_id=c.owner_id AND m.id=c.maintenance_id AND m.status='resolved' AND c.technician_confirmed_at IS NULL RETURNING c.id`,
+    [owner, caseId, now, String(by).slice(0, 80), String(note).trim().slice(0, 300)],
+  );
+  return r.rows.length ? { ok: true } : { ok: false, error: "NOT_RESOLVED_OR_CONFIRMED" };
 }

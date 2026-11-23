@@ -2876,3 +2876,22 @@ CREATE TABLE IF NOT EXISTS comfort_policies (
   updated_by TEXT NOT NULL DEFAULT '',
   updated_at BIGINT NOT NULL
 );
+
+-- v195 Resolution cases: a lasting record per repair created from a root-cause finding, followed on its own (it does
+-- not disappear when the finding drops out of the 90-day window); «effective» only with a technician's confirmation.
+CREATE TABLE IF NOT EXISTS resolution_cases (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  finding_key TEXT NOT NULL,
+  room_id BIGINT NOT NULL,
+  category TEXT NOT NULL,
+  title TEXT NOT NULL,
+  maintenance_id BIGINT NOT NULL,
+  opened_at BIGINT NOT NULL,
+  technician_confirmed_at BIGINT,
+  technician_confirmed_by TEXT,
+  technician_note TEXT NOT NULL DEFAULT '',
+  closed_at BIGINT,
+  UNIQUE (owner_id, maintenance_id)
+);
+CREATE INDEX IF NOT EXISTS idx_resolution_cases_owner ON resolution_cases(owner_id, opened_at DESC);

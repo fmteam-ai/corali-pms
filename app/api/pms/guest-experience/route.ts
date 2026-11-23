@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { audited } from "@/lib/audit";
 import { requireApiUser } from "@/lib/auth";
-import { comfortPolicySaved, equipmentChecked, findingAction, guestExperience, turnoverVerified } from "@/lib/guest-experience";
+import { comfortPolicySaved, equipmentChecked, findingAction, guestExperience, repairConfirmed, turnoverVerified } from "@/lib/guest-experience";
+import { can } from "@/lib/security/permissions";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 
 /** v193 PMS → Εμπειρία πελάτη: comfort of occupied rooms, turnover after check-out, root causes. */
@@ -15,6 +16,7 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("equipment"), bookingId: z.number().int().positive(), roomId: z.number().int().positive(), note: z.string().trim().max(300).default("") }),
   z.object({ action: z.literal("verify"), bookingId: z.number().int().positive() }),
   z.object({ action: z.literal("finding"), key: z.string().min(3).max(200), kind: z.enum(["maintenance", "dismiss"]), reason: z.string().trim().max(300).default("") }),
+  z.object({ action: z.literal("confirm_repair"), caseId: z.number().int().positive(), note: z.string().trim().max(300) }),
   z.object({ action: z.literal("policy"), settings: z.object({
     cooling: z.object({ min: z.number(), max: z.number() }), heating: z.object({ min: z.number(), max: z.number() }),
     heatingMonths: z.array(z.number().int().min(1).max(12)).max(12), hardMargin: z.number(), humidMax: z.number(), staleMinutes: z.number(),
@@ -31,6 +33,13 @@ async function handlePOST(request: Request) {
     let info: unknown = null;
     if (x.action === "equipment") await equipmentChecked(u.ownerId, x.bookingId, x.roomId, u.displayName || u.username, x.note);
     else if (x.action === "verify") info = await turnoverVerified(u.ownerId, x.bookingId, u.displayName || u.username);
+    else if (x.action === "confirm_repair") {
+      // v195: a repair is confirmed effective only by someone allowed to close maintenance work, with a real note.
+      if (!can(u.role, "maintenance.resolve", u.permissions)) return Response.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+      const r = await repairConfirmed(u.ownerId, x.caseId, u.displayName || u.username, x.note);
+      if (!r.ok) return Response.json({ ok: false, error: r.error }, { status: 400 });
+      info = r;
+    }
     else if (x.action === "policy") info = await comfortPolicySaved(u.ownerId, x.settings, u.displayName || u.username);
     else {
       // v194: the reason for a dismissal is checked on the server (not only in the page).

@@ -42,22 +42,27 @@ export function scoreRoom(f, now = Date.now(), policy = normalizePolicy(null)) {
   const add = (key, penalty, label, detail) => signals.push({ key, penalty, label, detail });
   const range = rangeFor(policy, f.roomId, now);
   const src = { room: "όριο δωματίου", heating: "περίοδος θέρμανσης", cooling: "περίοδος ψύξης" }[range.source];
-  // Temperature / humidity: only a valid reading, not from the future, not older than the policy allows.
+  // v195: three separate facts — the sensor's validity, the room temperature it measured, and the A/C setpoint.
+  // Only a VALID reading (present, physically plausible, not from the future, not older than the policy) is scored.
+  let sensor = { state: "missing", detail: "χωρίς αισθητήρα στο δωμάτιο" }, roomTemp = null, setpoint = null;
   if (f.climate) {
-    const readAt = reading(f.climate.readAt), temp = reading(f.climate.temp), humidity = reading(f.climate.humidity);
-    if (!readAt) unknown.push({ key: "climate", label: "Θερμοκρασία", detail: "ο αισθητήρας δεν έχει δώσει μέτρηση" });
-    else if (readAt > now + 5 * MIN) unknown.push({ key: "climate", label: "Θερμοκρασία", detail: "μέτρηση με μελλοντική ώρα — δεν λαμβάνεται υπόψη (ελέγξτε το ρολόι του αισθητήρα)" });
-    else if (now - readAt > policy.staleMinutes * MIN) unknown.push({ key: "climate", label: "Θερμοκρασία", detail: `τελευταία μέτρηση πριν ${ago(now, readAt)}` });
+    const readAt = reading(f.climate.readAt), temp = reading(f.climate.temp), humidity = reading(f.climate.humidity), battery = reading(f.climate.battery);
+    setpoint = reading(f.climate.setpoint);
+    if (!readAt) sensor = { state: "no_reading", detail: "ο αισθητήρας δεν έχει δώσει μέτρηση" };
+    else if (readAt > now + 5 * MIN) sensor = { state: "future", detail: "μέτρηση με μελλοντική ώρα — ελέγξτε το ρολόι του αισθητήρα" };
+    else if (now - readAt > policy.staleMinutes * MIN) sensor = { state: "stale", detail: `τελευταία μέτρηση πριν ${ago(now, readAt)}` };
+    else if (temp === null) sensor = { state: "invalid", detail: "η πρόσφατη μέτρηση δεν έχει έγκυρη θερμοκρασία" };
+    else if (temp < -10 || temp > 60 || (humidity !== null && (humidity < 0 || humidity > 100))) sensor = { state: "invalid", detail: `μη ρεαλιστική τιμή (${temp}°C${humidity !== null ? `, ${humidity}%` : ""}) — πιθανή βλάβη αισθητήρα` };
     else {
-      if (temp === null) unknown.push({ key: "temp", label: "Θερμοκρασία", detail: "η πρόσφατη μέτρηση δεν έχει έγκυρη θερμοκρασία" });
-      else if (temp < range.min - policy.hardMargin || temp > range.max + policy.hardMargin) add("temp", 30, "Θερμοκρασία δωματίου", `${temp.toFixed(1)}°C (εκτός ${range.min}–${range.max}°C κατά ${policy.hardMargin}°C+, ${src})`);
+      sensor = battery !== null && battery < 15 ? { state: "low_battery", detail: `έγκυρη μέτρηση · χαμηλή μπαταρία ${battery}%` } : { state: "ok", detail: `έγκυρη μέτρηση πριν ${ago(now, readAt)}` };
+      roomTemp = temp;
+      if (temp < range.min - policy.hardMargin || temp > range.max + policy.hardMargin) add("temp", 30, "Θερμοκρασία δωματίου", `${temp.toFixed(1)}°C (εκτός ${range.min}–${range.max}°C κατά ${policy.hardMargin}°C+, ${src})`);
       else if (temp < range.min || temp > range.max) add("temp", 15, "Θερμοκρασία δωματίου", `${temp.toFixed(1)}°C (εκτός ${range.min}–${range.max}°C, ${src})`);
       if (humidity !== null && humidity > policy.humidMax) add("humidity", 10, "Υγρασία", `${humidity}% (πάνω από ${policy.humidMax}%)`);
     }
-    // The A/C setpoint (when a native A/C integration reports it) is shown apart from the room temperature.
-    const setpoint = reading(f.climate.setpoint);
-    if (setpoint !== null && (setpoint < range.min - policy.hardMargin || setpoint > range.max + policy.hardMargin)) add("setpoint", 5, "Ρύθμιση κλιματιστικού", `επιλεγμένο ${setpoint}°C (θερμοκρασία δωματίου μετριέται χωριστά)`);
-  } else unknown.push({ key: "climate", label: "Θερμοκρασία", detail: "χωρίς αισθητήρα στο δωμάτιο" });
+    if (setpoint !== null && (setpoint < range.min - policy.hardMargin || setpoint > range.max + policy.hardMargin)) add("setpoint", 5, "Ρύθμιση κλιματιστικού", `επιλεγμένο ${setpoint}°C (η θερμοκρασία δωματίου μετριέται χωριστά)`);
+  }
+  if (!["ok", "low_battery"].includes(sensor.state)) unknown.push({ key: "climate", label: "Θερμοκρασία", detail: sensor.detail });
   // Open requests from the TV / app, by age; technical problems weigh more.
   for (const r of f.requests ?? []) {
     const age = now - Number(r.createdAt);
@@ -81,7 +86,7 @@ export function scoreRoom(f, now = Date.now(), policy = normalizePolicy(null)) {
   }
   const penalty = signals.reduce((s, x) => s + x.penalty, 0);
   const score = Math.max(0, 100 - penalty);
-  return { score, level: score >= 80 ? "ok" : score >= 50 ? "attention" : "act", signals: signals.sort((a, b) => b.penalty - a.penalty), unknown };
+  return { score, level: score >= 80 ? "ok" : score >= 50 ? "attention" : "act", signals: signals.sort((a, b) => b.penalty - a.penalty), unknown, sensor, roomTemp, setpoint };
 }
 
 /** Every occupied room now, worst first. */
@@ -90,7 +95,7 @@ export async function comfortBoard({ pool, owner, now = Date.now() }) {
   const policy = normalizePolicy((await q(`SELECT settings_json FROM comfort_policies WHERE owner_id=$1`).catch(() => []))[0]?.settings_json ?? null);
   const [rooms, climate, requests, orders, faults, tvs, wifi, wifiUsed] = await Promise.all([
     q(`SELECT r.id room_id,r.code,b.id booking_id,b.reference,b.guest_name,b.check_out FROM bookings b JOIN rooms r ON r.owner_id=b.owner_id AND r.id=b.room_id WHERE b.owner_id=$1 AND b.status='checked_in' ORDER BY r.code`),
-    q(`SELECT room_id,temp,humidity,read_at FROM room_climate WHERE owner_id=$1 AND device_id<>''`).catch(() => []),
+    q(`SELECT room_id,temp,humidity,battery,read_at FROM room_climate WHERE owner_id=$1 AND device_id<>''`).catch(() => []),
     q(`SELECT id,room_id,kind,created_at,details_json FROM tv_requests WHERE owner_id=$1 AND status='open' AND created_at>$2::bigint-3*86400000`, [owner, now]).catch(() => []),
     q(`SELECT o.id,o.booking_id,o.title_el,o.created_at FROM department_orders o WHERE o.owner_id=$1 AND o.status NOT IN ('done','cancelled') AND o.created_at>$2::bigint-2*86400000`, [owner, now]).catch(() => []),
     q(`SELECT id,room_id,severity,description,reported_at FROM maintenance_notices WHERE owner_id=$1 AND status='open'`).catch(() => []),
@@ -109,7 +114,7 @@ export async function comfortBoard({ pool, owner, now = Date.now() }) {
     const tv = tvs.find((x) => Number(x.room_id) === Number(r.room_id));
     const facts = {
       roomId: Number(r.room_id),
-      climate: c ? { temp: reading(c.temp), humidity: reading(c.humidity), readAt: reading(c.read_at) } : null,
+      climate: c ? { temp: reading(c.temp), humidity: reading(c.humidity), battery: reading(c.battery), readAt: reading(c.read_at) } : null,
       requests: reqs,
       orders: orders.filter((x) => Number(x.booking_id) === Number(r.booking_id)).map((x) => ({ id: Number(x.id), title: String(x.title_el), createdAt: Number(x.created_at) })),
       faults: faults.filter((x) => Number(x.room_id) === Number(r.room_id)).map((x) => ({ id: Number(x.id), severity: x.severity, description: String(x.description), reportedAt: Number(x.reported_at) })),
