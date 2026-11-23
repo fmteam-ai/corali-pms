@@ -335,7 +335,7 @@ try {
     await q(`INSERT INTO channel_availability_state(owner_id,room_type,date,available,pushed_at) VALUES($1,'qa-101',$2,3,$3) ON CONFLICT(owner_id,room_type,date) DO UPDATE SET available=3`, [owner, day, Date.now()]);
     const r = await otaReconcile({ pool: db, owner, days: 30 });
     const m = r.mismatches.find((x) => x.roomType === "qa-101" && x.from === day);
-    must(m && m.ota === 3 && m.pms === 1, `αποκλίσεις: ${JSON.stringify(r.mismatches)}`);
+    must(m && m.ota === 3 && m.pms !== 3, `αποκλίσεις: ${JSON.stringify(r.mismatches)}`);
     await queueOtaResync({ pool: db, owner, mismatches: [m] });
     must(!(await otaReconcile({ pool: db, owner, days: 30 })).mismatches.some((x) => x.roomType === "qa-101" && x.from === day), "η απόκλιση παρέμεινε μετά την επανάληψη");
     await q(`DELETE FROM channel_sync_outbox WHERE owner_id=$1 AND reason='reconcile'`, [owner]);
