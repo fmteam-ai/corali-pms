@@ -410,10 +410,17 @@ try {
       await q(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,status,created_at,updated_at) VALUES($1,$2,$2,'drift','sent',$3,$3)`, [owner, today, Date.now()]);
       const ins = async (f, t) => Number((await q(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,created_at,updated_at) VALUES($1,$2,$3,'qa',$4,$4) RETURNING id`, [owner, f, t, Date.now()])).rows[0].id);
       const ids = { far: await ins(addDays(today, 600), addDays(today, 601)) };
-      const sync = (extra = {}) => spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/run-channel-sync.mjs"], { cwd: pmsDir, encoding: "utf8", timeout: 120_000, env: { ...process.env, CHANNEX_BASE_URL: base, ...extra } });
+      // Asynchronous: the Channex stand-in lives in this process and must keep answering while the sync runs.
+      const sync = (extra = {}) => new Promise((resolve) => {
+        const ch = spawn(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/run-channel-sync.mjs"], { cwd: pmsDir, env: { ...process.env, CHANNEX_BASE_URL: base, ...extra } });
+        let out = "", err = "";
+        ch.stdout.on("data", (d) => { out += d; }); ch.stderr.on("data", (d) => { err += d; });
+        const t = setTimeout(() => ch.kill("SIGKILL"), 120_000);
+        ch.on("close", (status) => { clearTimeout(t); resolve({ status, stdout: out, stderr: err }); });
+      });
       const st = async (id) => (await q(`SELECT status,date_to,last_error FROM channel_sync_outbox WHERE id=$1`, [id])).rows[0];
       // 1) Only a far-future row (the v191 fault): nothing is sent and nothing is marked sent.
-      let r = sync();
+      let r = await sync();
       must(r.status === 0, `sync: ${(r.stderr || r.stdout).slice(-300)}`);
       must(posts.length === 0, `έγινε αποστολή (${posts.length})`);
       const far = await st(ids.far);
@@ -422,7 +429,7 @@ try {
       ids.normal = await ins(addDays(today, 3), addDays(today, 4));
       ids.past = await ins(addDays(today, -10), addDays(today, -5));
       ids.cross = await ins(addDays(today, 499), addDays(today, 502));
-      r = sync();
+      r = await sync();
       must(r.status === 0, `sync 2: ${(r.stderr || r.stdout).slice(-300)}`);
       const [n, p, x] = [await st(ids.normal), await st(ids.past), await st(ids.cross)];
       must(n.status === "sent" && p.status === "skipped" && x.status === "sent" && x.date_to === addDays(today, 500), `normal ${n.status} · past ${p.status} · cross ${x.status} ${x.date_to}`);
@@ -433,13 +440,13 @@ try {
       // 3) Channex answers 200 with warnings: not sent.
       warn = true;
       ids.warned = await ins(addDays(today, 6), addDays(today, 6));
-      sync();
+      await sync();
       const w = await st(ids.warned);
       must(w.status === "failed" && /CHANNEX_WARNINGS/.test(w.last_error), `warnings: ${w.status} ${w.last_error}`);
       warn = false;
       // 4) Read-back that returns only part of the dates: never «full agreement».
       await q(`DELETE FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed')`, [owner]);
-      sync({ CHANNEL_READBACK_NOW: "1" });
+      await sync({ CHANNEL_READBACK_NOW: "1" });
       const rb = (await q(`SELECT status,totals_json FROM reconciliation_runs WHERE owner_id=$1 AND kind='ota_readback' ORDER BY id DESC LIMIT 1`, [owner])).rows[0];
       const t = JSON.parse(rb?.totals_json ?? "{}");
       must(rb && t.NOT_RETURNED > 0 && t.responseComplete === false && t.fullyReconciled === false && Array.isArray(t.channels) && t.channels[0]?.title === "Booking.com (QA)", `ανάγνωση: ${rb?.status} ${rb?.totals_json}`);
