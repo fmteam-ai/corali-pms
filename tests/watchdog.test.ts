@@ -221,13 +221,13 @@ test("v204 P1 watchdog: 65 failing subsystems with no working channel — nothin
   assert.match(st.alerts[0].text, /… και \d+ ακόμη/, "what does not fit is counted, and kept in items");
   // The queue itself above its limit: merged into a digest, every item kept.
   const many = Array.from({ length: 150 }, (_, i) => ({ kind: i % 3 ? "reminder" : "open", severity: i % 2 ? "critical" : "warning", check: `c${i}`, at: i, text: `m${i}` }));
-  const c = compactOutbox(many, "QA");
+  const c = compactOutbox(many, "QA", ["webhook"]);
   assert.ok(c.length <= QUEUE_MAX);
   const kept = c.flatMap((m) => (m.kind === "digest" ? m.items ?? [] : [m]));
   assert.equal(kept.length, 150, "no message lost");
   assert.ok(c.filter((m) => m.kind !== "digest").every((m) => !(m.kind === "reminder" && c.some((x) => x.kind === "digest" && x.items?.some((y) => y.kind === "open" && y.severity === "critical")))), "critical «open» kept individually before reminders");
   // Earlier digests are merged into one (never a pile of digests), still keeping every item.
-  const again = compactOutbox([...c, ...Array.from({ length: 30 }, (_, i) => ({ kind: "reminder", severity: "warning", check: `n${i}`, at: 200 + i, text: `n${i}` }))], "QA");
+  const again = compactOutbox([...c, ...Array.from({ length: 30 }, (_, i) => ({ kind: "reminder", severity: "warning", check: `n${i}`, at: 200 + i, text: `n${i}` }))], "QA", ["webhook"]);
   assert.equal(again.filter((m) => m.kind === "digest").length, 1);
   assert.equal(again.flatMap((m) => (m.kind === "digest" ? m.items ?? [] : [m])).length, 180);
   assert.ok(again.every((m) => Buffer.byteLength(m.text) <= TEXT_MAX));
@@ -279,7 +279,7 @@ test("v204 review: no duplicate digests to a channel that already accepted, ntfy
   assert.ok(calls.filter((c) => c.target === "ntfy").every((c) => c.priority === "high"));
   // State stays bounded without loss: more than ITEMS_MAX items are counted per check.
   const huge = Array.from({ length: QUEUE_MAX + ITEMS_MAX + 500 }, (_, i) => ({ kind: "reminder", severity: "warning", check: `c${i % 20}`, at: i, text: `r${i}` }));
-  const compacted = compactOutbox(huge, "QA");
+  const compacted = compactOutbox(huge, "QA", ["webhook"]);
   const items = compacted.flatMap((m) => (m.kind === "digest" ? m.items ?? [] : [m]));
   assert.ok(items.length <= QUEUE_MAX + ITEMS_MAX);
   assert.equal(items.reduce((n, x) => n + (Number((x as { count?: number }).count) || 1), 0), huge.length, "every reminder still counted");
@@ -402,11 +402,11 @@ test("v204 review 4/5 watchdog: strict arrival order; a damaged state file does 
   assert.ok(logs.some((l) => l.includes("state_unreadable")));
 });
 
-test("v204 review 5 watchdog: compaction merges whole checks (no message overtakes an older one of its check); a refused message blocks newer ones of its check on that channel", async () => {
+test("v204 review 5/6 watchdog: per-channel compaction keeps order; a refused message holds its channel in order, at most 3 cycles", async () => {
   const { compactOutbox, QUEUE_MAX } = await import("../tools/watchdog/watchdog.mjs");
   // 120 messages: pms resolved early (low priority), pms open later (critical) and other checks' reminders.
   const box = [{ kind: "resolved", check: "pms", at: 1, text: "pms-resolved" }, ...Array.from({ length: 118 }, (_, i) => ({ kind: "reminder", severity: "warning", check: `r${i}`, at: 2 + i, text: `r${i}` })), { kind: "open", severity: "critical", check: "pms", at: 500, text: "pms-open" }];
-  const c = compactOutbox(box, "QA");
+  const c = compactOutbox(box, "QA", ["webhook"]);
   assert.ok(c.length <= QUEUE_MAX);
   const flat = c.flatMap((m) => (m.kind === "digest" ? (m.items ?? []).map((x) => x.text) : [m.text]));
   const pmsOrder = flat.filter((t) => t.startsWith("pms"));
@@ -425,6 +425,36 @@ test("v204 review 5 watchdog: compaction merges whole checks (no message overtak
   }) as unknown as typeof fetch;
   const wd = createWatchdog(cfgFor({ pmsHealthUrl: "", heartbeatUrl: "", webhookUrl: "", telegram: { token: "T", chat: "C" } }), { fetchImpl, now: () => clock, sleep: async () => {}, log: () => {} });
   (wd.state().outbox as { kind: string; check: string; text: string }[]).push({ kind: "open", check: "db", text: "db-open BAD" }, { kind: "resolved", check: "db", text: "db-resolved" }, { kind: "open", check: "tv", text: "tv-open" });
+  // Review 6: the channel reads its queue strictly in order — nothing overtakes the refused message …
   await wd.cycle();
-  assert.deepEqual(tg, ["tv-open"], "db-resolved waits behind the refused db-open; other checks go");
+  assert.deepEqual(tg, [], "held behind the refused message");
+  // … for at most 3 cycles: then it is given up for Telegram (logged, reported) and the rest follows IN ORDER.
+  await wd.cycle(); await wd.cycle();
+  assert.deepEqual(tg, ["db-resolved", "tv-open"]);
+});
+
+test("v204 review 6 watchdog: per-channel order through batches and compaction; Telegram never re-sent; damaged items repaired", async () => {
+  const { compactOutbox, doneFor, QUEUE_MAX } = await import("../tools/watchdog/watchdog.mjs");
+  // X-open (standalone) → batch containing X-resolved → 110 newer opens; Telegram took everything, ntfy is down.
+  const box = [
+    { kind: "open", severity: "critical", check: "X", at: 1, text: "X-open", delivered: ["telegram"] },
+    { kind: "batch", severity: "warning", check: "*", at: 2, text: "batch", delivered: ["telegram"], items: [{ kind: "resolved", check: "X", at: 2, text: "X-resolved" }] },
+    ...Array.from({ length: 110 }, (_, i) => ({ kind: "open", severity: "warning", check: `w${i}`, at: 3 + i, text: `w${i}`, delivered: ["telegram"] })),
+  ];
+  const c = compactOutbox(box, "QA", ["telegram", "ntfy"]);
+  assert.ok(c.length <= QUEUE_MAX);
+  const forNtfy = c.filter((m) => !doneFor(m, "ntfy")).flatMap((m) => (m.kind === "digest" || m.kind === "batch" ? (m.items ?? []).map((x) => x.text) : [m.text]));
+  assert.deepEqual(forNtfy.slice(0, 2), ["X-open", "X-resolved"], "order kept for ntfy");
+  assert.equal(forNtfy.length, 112, "nothing lost");
+  assert.ok(c.every((m) => doneFor(m, "telegram")), "nothing new for Telegram (it already has all of it)");
+  // Damaged items in a saved state file do not stop the cycle.
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "wd6-"));
+  writeFileSync(join(dir, "state.json"), JSON.stringify({ outbox: [{ kind: "batch", check: "*", text: "b", items: [null, { text: 5 }, { kind: "open", check: "a", text: "ok" }], refused: { webhook: "x" } }], progress: { sentinelRuns: 5 } }));
+  const clock = Date.parse("2026-11-24T10:00:00Z");
+  const wd = createWatchdog(cfgFor({ pmsHealthUrl: "", heartbeatUrl: "", stateFile: join(dir, "state.json") }), { fetchImpl: (async () => new Response("ok")) as unknown as typeof fetch, now: () => clock, sleep: async () => {}, log: () => {} });
+  await wd.cycle();
+  assert.equal(wd.state().outbox.length, 0, "delivered after repair");
 });

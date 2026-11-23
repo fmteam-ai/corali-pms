@@ -95,50 +95,29 @@ function collapseItems(items) {
   }
   return [...by.values()];
 }
+/** Has this channel finished with the message? (accepted, given up after refusals, or merged into its digest) */
+export const doneFor = (m, name) => Boolean(m?.delivered?.includes(name) || m?.gaveUp?.[name] || m?.merged?.includes(name));
+
 /**
- * Bounded WITHOUT loss: at most QUEUE_MAX messages. Above it, the lowest-priority, oldest messages are merged into
- * digests — ONE per set of channels that already accepted them (v204: a channel that accepted the merged messages
- * is never sent them again; digests of the same set are merged together). Critical «open» / «escalated» messages are
- * the last to be merged.
+ * v204 (review 6) — bounded WITHOUT loss and WITHOUT reordering, per channel: every channel reads the queue in
+ * arrival order. When more than QUEUE_MAX messages wait for one channel, ALL of them are merged, in order, into one
+ * digest for THAT channel only (the other channels are not sent it); since nothing else waits for that channel, the
+ * digest is its next message and newer ones follow it. A message is removed once every channel is done with it.
  */
-export function compactOutbox(outbox, label = "") {
-  // Signature = channels that accepted + channels that gave up (both are «done» for that channel).
-  const sig = (m) => `${[...(m.delivered ?? [])].sort().join(",")}|${Object.keys(m.gaveUp ?? {}).sort().join(",")}`;
-  const digests = outbox.filter((m) => m.kind === "digest"), rest = outbox.filter((m) => m.kind !== "digest");
-  const sigs = new Set(digests.map(sig));
-  if (rest.length + digests.length <= QUEUE_MAX && sigs.size === digests.length) return outbox;
-  // v204 (review 5): merged by WHOLE checks — all messages of a check go into the digest together (in order), so a
-  // kept message can never be delivered before an older message of its own check. Least urgent checks first;
-  // batches (check «*») are merged as single units.
-  const groupOf = (m, i) => (m.check && m.check !== "*" ? m.check : `#${i}`);
-  const groups = new Map();
-  rest.forEach((m, i) => { const g = groupOf(m, i); const e = groups.get(g) ?? { g, idx: [], rank: 9, first: i }; e.idx.push(i); e.rank = Math.min(e.rank, priorityOf(m)); groups.set(g, e); });
-  const slots = Math.max(1, QUEUE_MAX - Math.max(1, new Set([...digests, ...rest].map(sig)).size));
-  const keep = new Set();
-  if (rest.length + digests.length <= QUEUE_MAX) rest.forEach((_, i) => keep.add(i));
-  else {
-    let used = 0;
-    for (const e of [...groups.values()].sort((a, b) => a.rank - b.rank || b.first - a.first)) {
-      if (used + e.idx.length > slots) continue;
-      e.idx.forEach((i) => keep.add(i)); used += e.idx.length;
-    }
-  }
-  const merged = [...digests, ...rest.filter((_, i) => !keep.has(i))];
-  const bySig = new Map();
-  for (const m of merged) { const k = sig(m); (bySig.get(k) ?? bySig.set(k, []).get(k)).push(m); }
-  const out = rest.filter((_, i) => keep.has(i));
-  const digestsOut = [];
-  for (const [k, ms] of bySig) {
-    const items = collapseItems(ms.flatMap(itemsOf));
-    if (!items.length) continue;
+export function compactOutbox(outbox, label = "", targets = ["telegram", "ntfy", "webhook"]) {
+  let box = outbox;
+  for (const t of targets) {
+    const pending = box.filter((m) => !doneFor(m, t));
+    if (pending.length <= QUEUE_MAX) continue;
+    const items = collapseItems(pending.flatMap(itemsOf));
     const total = items.reduce((n, x) => n + (Number(x.count) || 1), 0);
-    const [dk, gk] = k.split("|");
-    const gaveUp = Object.fromEntries((gk ? gk.split(",") : []).map((c) => [c, "εγκαταλείφθηκε για το κανάλι πριν τη συγχώνευση"]));
-    digestsOut.push({ kind: "digest", severity: items.some((x) => x.severity === "critical") ? "critical" : "warning", check: "*", at: Math.max(...items.map((x) => Number(x.at) || 0)), items, delivered: dk ? dk.split(",") : [], gaveUp, errors: {},
-      text: listText(`📋 ${label}: ${total} ειδοποιήσεις συγκεντρώθηκαν (η ουρά ξεπέρασε τις ${QUEUE_MAX})`, items.map((x) => `${x.text}${Number(x.count) > 1 ? ` (×${x.count})` : ""}`)) });
+    for (const m of pending) m.merged = [...new Set([...(m.merged ?? []), t])];
+    // Text: critical first, then the newest — what matters most is never hidden behind «… και N ακόμη».
+    const shown = items.map((x, i) => ({ x, i })).sort((a, b) => (b.x.severity === "critical") - (a.x.severity === "critical") || b.i - a.i).map(({ x }) => `${x.text}${Number(x.count) > 1 ? ` (×${x.count})` : ""}`);
+    box = [...box, { kind: "digest", severity: items.some((x) => x.severity === "critical") ? "critical" : "warning", check: "*", at: Math.max(0, ...items.map((x) => Number(x.at) || 0)), items,
+      delivered: targets.filter((o) => o !== t), gaveUp: {}, errors: {}, text: listText(`📋 ${label}: ${total} ειδοποιήσεις συγκεντρώθηκαν (η ουρά του καναλιού ${t} ξεπέρασε τις ${QUEUE_MAX})`, shown) }];
   }
-  // Digests first: they hold the OLDER messages of their checks (no kept message belongs to a merged check).
-  return [...digestsOut, ...out];
+  return box.filter((m) => !targets.every((t) => doneFor(m, t)));
 }
 
 export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = (l) => console.log(l) } = {}) {
@@ -159,10 +138,12 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
   if (!obj(state.progress)) state.progress = {};
   state.outbox = state.outbox.filter((m) => obj(m) && typeof m.text === "string");
   for (const m of state.outbox) {
-    if (m.delivered !== undefined && !Array.isArray(m.delivered)) m.delivered = [];
+    for (const f of ["delivered", "merged"]) if (m[f] !== undefined && !Array.isArray(m[f])) m[f] = [];
     for (const f of ["errors", "refused", "gaveUp"]) if (m[f] !== undefined && !obj(m[f])) m[f] = {};
-    if (m.items !== undefined && !Array.isArray(m.items)) m.items = [];
+    if (m.refused) for (const [k, v] of Object.entries(m.refused)) if (!Number.isFinite(Number(v))) m.refused[k] = 0;
+    if (m.items !== undefined) m.items = Array.isArray(m.items) ? m.items.filter((x) => obj(x) && typeof x.text === "string") : [];
   }
+  for (const [k, v] of Object.entries(state.progress)) if (!obj(v)) delete state.progress[k];
   // Messages saved by an older version may be longer than the channels accept.
   for (const m of state.outbox) m.text = clipText(m.text);
   // Returns false when the state could not be saved — reported as the «state_storage» check, never silent.
@@ -237,54 +218,42 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     return { reason: `άγνωστος πάροχος ${name}`, messageSpecific: false };
   }
 
-  /**
-   * Delivers one message to every target that has not accepted it yet. v204: `down` = targets that already failed in
-   * THIS cycle — skipped for the remaining messages (a channel that times out cannot block the cycle for an hour);
-   * they are retried in the next cycle. Critical alerts go to ntfy with high priority whatever their kind.
-   */
-  const blocked = new Set();
-  async function deliver(msg, down = new Set(), deadline = Infinity) {
+  const targetNames = () => [cfg.telegram && "telegram", cfg.ntfyUrl && "ntfy", cfg.webhookUrl && "webhook"].filter(Boolean);
+  function sender(name, msg) {
     const urgent = msg.severity === "critical" && ["open", "escalated", "batch", "digest"].includes(msg.kind);
-    const targets = [];
-    if (cfg.telegram) targets.push(["telegram", () => fetchImpl(`https://api.telegram.org/bot${cfg.telegram.token}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: cfg.telegram.chat, text: msg.text }), signal: AbortSignal.timeout(cfg.timeoutMs) })]);
-    if (cfg.ntfyUrl) targets.push(["ntfy", () => fetchImpl(cfg.ntfyUrl, { method: "POST", headers: { Title: `${cfg.label} watchdog`, Priority: urgent ? "high" : "default" }, body: msg.text, signal: AbortSignal.timeout(cfg.timeoutMs) })]);
-    if (cfg.webhookUrl) targets.push(["webhook", () => fetchImpl(cfg.webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg), signal: AbortSignal.timeout(cfg.timeoutMs) })]);
-    msg.delivered ??= [];
-    msg.errors ??= {};
-    msg.refused ??= {};
-    msg.gaveUp ??= {};
-    for (const [name, send] of targets) {
-      if (msg.delivered.includes(name) || msg.gaveUp[name] || down.has(name)) continue;
-      // A newer message of a check must not overtake an older one this channel refused (order per check and channel).
-      if (msg.check && msg.check !== "*" && blocked.has(`${name}|${msg.check}`)) continue;
-      if (now() > deadline) continue; // out of time for this cycle: retried next cycle
-      let refusedNow = false;
+    if (name === "telegram") return () => fetchImpl(`https://api.telegram.org/bot${cfg.telegram.token}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: cfg.telegram.chat, text: msg.text }), signal: AbortSignal.timeout(cfg.timeoutMs) });
+    if (name === "ntfy") return () => fetchImpl(cfg.ntfyUrl, { method: "POST", headers: { Title: `${cfg.label} watchdog`, Priority: urgent ? "high" : "default" }, body: msg.text, signal: AbortSignal.timeout(cfg.timeoutMs) });
+    return () => fetchImpl(cfg.webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg), signal: AbortSignal.timeout(cfg.timeoutMs) });
+  }
+  /**
+   * v204 (review 6): one channel reads the queue STRICTLY in arrival order and stops at the first message it cannot
+   * deliver now — the order is kept per channel by construction (no message overtakes an older one, batches and
+   * digests included). Channel failure (network, 5xx, 401 / 403 / 404, 429…): stop, retry next cycle. Refusal of the
+   * message itself (413, «too long / can't parse»): stop too; after 3 cycles that message is given up for this
+   * channel (logged in full, reported as alert_undeliverable) and the channel continues with the next one.
+   */
+  async function deliverChannel(name, deadline) {
+    for (const msg of state.outbox) {
+      if (doneFor(msg, name)) continue;
+      if (now() > deadline) return;
+      msg.delivered ??= []; msg.errors ??= {}; msg.refused ??= {}; msg.gaveUp ??= {};
+      const send = sender(name, msg);
+      let verdict = null;
       for (let attempt = 0; attempt < 3; attempt++) {
-        let verdict;
         try { verdict = await accepted(name, await send()); } catch (e) { verdict = { reason: `σύνδεση: ${String(e?.message ?? e).slice(0, 120)}`, messageSpecific: false }; }
-        if (verdict === true) {
-          msg.delivered.push(name); delete msg.errors[name];
-          persist(); // v204: saved at once — a restart now cannot send it to this channel again
-          break;
-        }
-        msg.errors[name] = verdict.reason;
-        if (verdict.messageSpecific) { refusedNow = true; break; } // the same message would be refused again
+        if (verdict === true || verdict.messageSpecific) break;
         if (attempt < 2 && now() <= deadline) await sleep(200 * 2 ** attempt); else break;
       }
-      if (msg.delivered.includes(name)) continue;
-      if (refusedNow) {
-        if (msg.check && msg.check !== "*") blocked.add(`${name}|${msg.check}`);
-        // The channel works but refuses this message: other messages still go through it. After 3 cycles of refusal
-        // the message is given up FOR THIS CHANNEL — logged in full and reported (alert_undeliverable), never silent.
-        msg.refused[name] = (msg.refused[name] ?? 0) + 1;
-        if (msg.refused[name] >= 3) {
-          msg.gaveUp[name] = msg.errors[name];
-          state.undeliverable = { count: (state.undeliverable?.count ?? 0) + 1, at: now(), last: `${name}: ${msg.errors[name]}` };
-          log(JSON.stringify({ level: "error", event: "alert_undeliverable", target: name, reason: msg.errors[name], kind: msg.kind, check: msg.check, text: msg.text }));
-        }
-      } else down.add(name);
+      if (verdict === true) { msg.delivered.push(name); delete msg.errors[name]; persist(); continue; } // saved at once
+      msg.errors[name] = verdict.reason;
+      if (!verdict.messageSpecific) return; // the channel is down: the rest waits, in order
+      msg.refused[name] = (Number(msg.refused[name]) || 0) + 1;
+      if (msg.refused[name] < 3) return; // hold the line: newer messages must not overtake it
+      msg.gaveUp[name] = msg.errors[name];
+      state.undeliverable = { count: (state.undeliverable?.count ?? 0) + 1, at: now(), last: `${name}: ${msg.errors[name]}` };
+      log(JSON.stringify({ level: "error", event: "alert_undeliverable", target: name, reason: msg.errors[name], kind: msg.kind, check: msg.check, text: msg.text }));
+      persist();
     }
-    return targets.length > 0 && targets.every(([name]) => msg.delivered.includes(name) || msg.gaveUp[name]);
   }
 
   async function cycle() {
@@ -296,8 +265,9 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     if (cfg.bookingHealthUrl) Object.assign(results, await guard(async () => ({ booking: await health(cfg.bookingHealthUrl) }), "booking"));
     if (cfg.heartbeatUrl) Object.assign(results, await guard(() => heartbeat(t), "heartbeat"));
     // v204: a queue that grows (no channel accepts the alerts) is reported before it reaches the merge limit.
-    const queuedItems = state.outbox.reduce((n, m) => n + (m.kind === "batch" || m.kind === "digest" ? (m.items ?? []).reduce((k, x) => k + (Number(x.count) || 1), 0) : 1), 0);
-    if (queuedItems >= QUEUE_WARN) results.alert_queue = { ok: false, severity: "warning", detail: `${queuedItems} ειδοποιήσεις δεν έχουν παραδοθεί σε όλα τα κανάλια (${state.outbox.length} μηνύματα) — ελέγξτε ntfy / Telegram / webhook` };
+    const sizeOf = (m) => (m.kind === "batch" || m.kind === "digest" ? (m.items ?? []).reduce((k, x) => k + (Number(x?.count) || 1), 0) : 1);
+    const queuedItems = Math.max(0, ...targetNames().map((n) => state.outbox.filter((m) => !doneFor(m, n)).reduce((k, m) => k + sizeOf(m), 0)), targetNames().length ? 0 : state.outbox.length);
+    if (queuedItems >= QUEUE_WARN) results.alert_queue = { ok: false, severity: "warning", detail: `${queuedItems} ειδοποιήσεις δεν έχουν παραδοθεί σε όλα τα κανάλια (στο πιο καθυστερημένο κανάλι) — ελέγξτε ntfy / Telegram / webhook` };
     else if (state.outbox.length || state.checks.alert_queue) results.alert_queue = { ok: true };
     if (state.undeliverable && now() - state.undeliverable.at < 24 * 60 * MIN) results.alert_undeliverable = { ok: false, severity: "warning", detail: `${state.undeliverable.count} ειδοποίηση(εις) απορρίφθηκαν από κανάλι (${state.undeliverable.last}) — πλήρες κείμενο στο log (fly logs)` };
     else if (state.checks.alert_undeliverable) results.alert_undeliverable = { ok: true };
@@ -337,17 +307,12 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     // v204: delivery has a time budget per cycle (a slow channel cannot stretch one cycle to an hour); what is left
     // waits for the next cycle, in order.
     // Time budget from the cycle's start, but always at least 10 s for delivery (even when every check timed out).
-    const pending = [], down = new Set(), deadline = Math.max(t + cfg.intervalS * 1000 * 0.8, now() + 10_000);
-    // Strictly in arrival order (review 5: any reordering let a «resolved» / «escalated» overtake its own «open»).
-    const ordered = state.outbox;
-    for (const msg of ordered) {
-      if (now() > deadline) { pending.push(msg); continue; }
-      if (!(await deliver(msg, down, deadline))) pending.push(msg);
-    }
-    blocked.clear();
-    // v204: nothing is dropped. Above QUEUE_MAX the least important messages are MERGED into one digest (their items
-    // kept); critical «open» / «escalated» messages are kept individually first.
-    state.outbox = compactOutbox(pending, cfg.label);
+    const deadline = Math.max(t + cfg.intervalS * 1000 * 0.8, now() + 10_000);
+    const targets = targetNames();
+    for (const name of targets) await deliverChannel(name, deadline);
+    // Nothing is dropped: a message leaves the queue only when every channel is done with it; above QUEUE_MAX
+    // waiting for one channel, that channel's backlog is merged (in order) into one digest.
+    if (targets.length) state.outbox = compactOutbox(state.outbox, cfg.label, targets);
     if (cfg.deadmanUrl) { try { await fetchImpl(cfg.deadmanUrl, { signal: AbortSignal.timeout(cfg.timeoutMs) }); } catch { /* the dead-man service alerts on missing pings */ } }
     persist();
     const line = JSON.stringify({ event: "watchdog_cycle", at: new Date(t).toISOString(), results: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, v.ok ? "ok" : v.detail])), open: Object.entries(state.checks).filter(([, c]) => c.open).map(([k]) => k), undelivered: state.outbox.length });

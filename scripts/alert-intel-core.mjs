@@ -92,7 +92,7 @@ export function channelIncident(s, now) {
     const failingFor = now - since;
     const failing = { ...base, priority: failingFor > 6 * HOUR ? "critical" : "high", problem: "Ο συγχρονισμός εκτελείται αλλά η τελευταία εκτέλεση απέτυχε — οι αλλαγές δεν φτάνουν στον Channel Manager." + soon,
       rootCause: `Επιβεβαιωμένο: ${evidence} ${unknownStart ? "Από πότε αποτυγχάνει δεν είναι γνωστό (η ενημέρωση της βάσης δεν έχει εφαρμοστεί)." : `Αποτυγχάνει συνεχώς εδώ και ${days(failingFor)}.`}`,
-      causes: ["Λάθος / ληγμένο API key ή property ID στο Channex", "Το Channex δεν απαντά (5xx / χρονικό όριο) ή επιστρέφει warnings", "Μη αντιστοιχισμένος τύπος δωματίου ή rate plan"],
+      causes: ["Λάθος / ληγμένο API key ή property ID στο Channex", "Το Channex δεν απαντά (5xx / χρονικό όριο) ή επιστρέφει warnings", "Μη αντιστοιχισμένος τύπος δωματίου ή rate plan", "Μια συγκεκριμένη μεταβολή απορρίπτεται από το Channex (δείτε το σφάλμα της στο Κέντρο αξιοπιστίας)"],
       action: "Κάντε «Έλεγχος σύνδεσης Channex» στο PMS· διορθώστε ό,τι δείχνει το σφάλμα· μετά «Συγχρονισμός τώρα» και επιβεβαιώστε ότι η επόμενη εκτέλεση πετυχαίνει." };
     if (failingFor >= SYNC_FAIL_GRACE_MS || s.incidentOpen) return failing;
     if (live > 0 && oldest > 30 * MIN) return { ...failing, problem: "Μεταβολές διαθεσιμότητας σε αναμονή και η τελευταία εκτέλεση του συγχρονισμού απέτυχε." + soon };

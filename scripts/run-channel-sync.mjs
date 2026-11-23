@@ -238,6 +238,9 @@ try {
         await pool.query(`UPDATE channel_sync_outbox SET date_to=$2 WHERE id=$1`, [x.id, x.keepTo]);
       }
       await pool.query(`UPDATE channel_sync_outbox SET status='sent',last_error=NULL,updated_at=$1 WHERE id=ANY($2::bigint[])`, [Date.now(), sendIds]);
+      // v204 (review 6): the push works — changes that failed earlier are tried in the NEXT run instead of waiting
+      // for their backoff (up to 60′). The run still counts as failed until they are sent too (strict rule below).
+      if (sendIds.length) await pool.query(`UPDATE channel_sync_outbox SET next_attempt_at=0 WHERE owner_id=$1 AND status='failed'`, [owner]);
     } catch (error) {
       pushError = `availability push: ${String(error instanceof Error ? error.message : error).slice(0, 400)}`;
       for (const d of due.filter((x) => sendIds.includes(Number(x.id)))) await pool.query(`UPDATE channel_sync_outbox SET status='failed',attempts=attempts+${probeId ? "CASE WHEN id=" + probeId + " THEN 0 ELSE 1 END" : "1"},last_error=$1,next_attempt_at=$2,updated_at=$3 WHERE id=$4`, [String(error).slice(0, 500), Date.now() + Math.min(60, 2 ** Number(d.attempts)) * 60_000, Date.now(), d.id]);
@@ -337,7 +340,8 @@ try {
   console.log(`Channel sync: ${sendIds.length} availability range(s) sent, ${plan.outOfRange.length} beyond the horizon, ${plan.skipped.length} past, ${restrictionDays} restriction day(s), ${rateDays} rate day(s), ${imported} OTA revision(s) imported.`);
 } catch (error) {
   runStatus = "failed"; runError = String(error);
-  // Both reasons kept when the availability push had already failed in this run.
+  // Both reasons kept when the availability push had already failed in this run (state and cron log alike).
+  if (pushError) runError = `${runError} · ${pushError}`.slice(0, 500);
   await writeFailure(`${String(error)}${pushError ? ` · ${pushError}` : ""}`.slice(0, 500)).catch(() => {});
   throw error;
 } finally {

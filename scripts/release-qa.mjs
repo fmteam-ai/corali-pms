@@ -30,7 +30,7 @@ let testTap = "";
 const rnd = (n = 32, enc = "hex") => randomBytes(n).toString(enc);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const must = (cond, msg) => { if (!cond) throw Error(msg); };
-const athens = (ms = Date.now()) => Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date(ms)).map((p) => [p.type, p.value]));
+const athens = (ms = Date.now()) => Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(ms)).map((p) => [p.type, p.value]));
 // v204: every flow uses one «today» (the hotel's date). A run that crosses midnight in Athens would compare dates of
 // two different days (seen: F08 / F18 failed at 00:00 Athens). Starting within 45′ of midnight → wait until it passes.
 {
