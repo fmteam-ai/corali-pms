@@ -1,0 +1,28 @@
+export type JourneyStatus = "succeeded" | "failed" | "unconfirmed" | "pending" | "skipped";
+export type JourneyStep = "hk_ready" | "msg_instructions" | "climate_comfort" | "tv_welcome";
+export type JourneyBooking = { id: number; status: string; checkIn: string; checkOut: string; guestName: string; lang: string; roomId: number | null; email: string; phone: string };
+export type JourneyEval = { status: JourneyStatus; detail: string; next: number | null; alert?: "reception" | "housekeeping"; action?: { type: "retry_deliveries" | "ac_precondition" | "tv_send"; until?: number; wake?: boolean } };
+export type JourneyContext = {
+  booking: JourneyBooking; now: number; today: string; checkInMs: number;
+  room?: { code: string; state: string; eta: number | null } | null;
+  deliveries?: { event: string; channel: string; status: string; error: string; sentAt: number | null }[];
+  arrivalAutomationOn?: boolean;
+  climate?: { temp: number | null; readAt: number | null } | null;
+  ac?: { device: boolean; enabled: boolean; occupied: boolean } | null;
+  tv?: { lastSeenAt: number | null; seenAt: number | null } | null;
+  prev?: { status: string; detail: string; result: Record<string, unknown> } | null;
+};
+export declare const JOURNEY_STEPS: JourneyStep[];
+export declare const STEP_LABELS: Record<JourneyStep, { el: string; en: string }>;
+export declare const FINAL: string[];
+export declare const COMFORT: { min: number; max: number };
+export declare function stepsFor(b: JourneyBooking, today: string): JourneyStep[];
+export declare function evalHkReady(c: JourneyContext): JourneyEval;
+export declare function evalInstructions(c: JourneyContext): JourneyEval;
+export declare function evalClimate(c: JourneyContext): JourneyEval;
+export declare function evalTvWelcome(c: JourneyContext): JourneyEval;
+export declare const evaluators: Record<JourneyStep, (c: JourneyContext) => JourneyEval>;
+export declare function firstName(n: unknown): string;
+export declare function welcomeBody(name: string, lang: string): Record<string, string>;
+export declare function journeySummary(actions: { status: string }[]): JourneyStatus;
+export declare function automationAlert(row: { consecutive_failures: number; alerted_at: number | null }): boolean;

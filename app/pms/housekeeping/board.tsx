@@ -8,7 +8,7 @@ import { canApproveInspection, checklistFor, checklistLabels, checklistProgress 
 import { housekeepingColors, housekeepingState } from "@/lib/tape-chart";
 import { pmsT, type PmsKey, type PmsLang } from "@/lib/pms-i18n";
 
-type Task = { id: number; room_id: number; room_code: string; room_type: string; task_type: string; status: string; assigned_to: string | null; assigned_name: string | null; cleaned_by_staff_id: number | null; notes: string | null; inspection_notes: string | null; checklist_json: string ; inspector_id?: number | null; inspector_name?: string | null };
+type Task = { id: number; room_id: number; room_code: string; room_type: string; task_type: string; status: string; assigned_to: string | null; assigned_name: string | null; cleaned_by_staff_id: number | null; notes: string | null; inspection_notes: string | null; checklist_json: string ; inspector_id?: number | null; inspector_name?: string | null; expected_ready_at?: number | null };
 type Room = { id: number; code: string; operational_status: string; open_task_status: string | null; dnd_since?: number | string | null; clean_req?: number | string | null; open_notices?: number; top_notice?: { severity: string } | null };
 type Filter = "mine" | "all" | "review" | "ooo";
 type Pending = { taskId: number; action: "report_issue" | "reject" | "repair_done" } | null;
@@ -27,7 +27,7 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite,
   const [busy, setBusy] = useState<number | null>(null);
   const label = (prefix: string, key: string) => { const k = `${prefix}.${key}` as PmsKey; return t(k) === k ? key : t(k); };
 
-  async function act(task: Task, action: string, extra: { notes?: string; severity?: MaintenanceSeverity; photos?: string[] } = {}): Promise<boolean> {
+  async function act(task: Task, action: string, extra: { notes?: string; severity?: MaintenanceSeverity; photos?: string[]; expectedReadyAt?: number } = {}): Promise<boolean> {
     setBusy(task.id);
     try {
       const r = await fetch(`/api/pms/housekeeping/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, checklist: checks[task.id] ?? {}, ...extra }) });
@@ -75,6 +75,10 @@ export function HousekeepingBoard({ lang, initialTasks, rooms, userId, canWrite,
                 <div><h2>{t("hkb.room", { code: task.room_code })}{dndRooms.has(task.room_id) && <span className="dndBadge">🚫 {t("hk.dnd")}</span>}</h2><small>{task.room_type} · {label("hkb.type", task.task_type)}</small></div>
                 <span className={`hkStatus st-${task.status}`}>{label("hkb.st", task.status)}</span>
               </header>
+              {["todo", "in_progress", "cleaned", "repaired"].includes(task.status) && (
+                <p className="hkEta">⏱ {t("hkb.eta")}: <b>{task.expected_ready_at ? new Date(Number(task.expected_ready_at)).toLocaleTimeString(lang === "el" ? "el-GR" : "en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Athens" }) : t("hkb.etaUnknown")}</b>
+                  {canWrite && <input type="time" aria-label={t("hkb.eta")} onChange={(e) => { const v = e.target.value; if (!/^\d{2}:\d{2}$/.test(v)) return; const d = new Date(); const local = new Date(d.toLocaleString("en-US", { timeZone: "Europe/Athens" })); const target = new Date(d.getTime() + ((Number(v.slice(0, 2)) * 60 + Number(v.slice(3))) - (local.getHours() * 60 + local.getMinutes())) * 60_000); void act(task, "set_eta", { expectedReadyAt: target.getTime() }); }} />}</p>
+              )}
               <p className="hkAssigned">{t("hkb.assigned")}: {task.assigned_name ?? t("hkb.unassigned")} · {task.inspector_name ? t("hkb.approvedBy", { name: task.inspector_name }) : t("hkb.approvedByAdmin")}</p>
               {task.notes && <p className="hkIssue"><b>{t("hkb.notes")}:</b> {task.notes}</p>}
               {task.inspection_notes && task.status !== "ready" && <p className="hkIssue"><b>{t("hkb.inspectionNotes")}:</b> {task.inspection_notes}</p>}

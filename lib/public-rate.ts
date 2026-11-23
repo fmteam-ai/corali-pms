@@ -39,7 +39,7 @@ export async function publicAvailability(input:AvailabilityInput){
     db().query(`SELECT r.id,r.code,r.room_type,r.capacity,r.description,r.description_translations,r.base_rate_cents,r.amenities,r.images,(SELECT COALESCE(json_agg(json_build_object('icon',a.icon,'el',a.name_el,'en',a.name_en,'tr',a.name_translations_json) ORDER BY a.display_order,a.id),'[]'::json) FROM room_amenity_assignments x JOIN room_amenities a ON a.id=x.amenity_id AND a.owner_id=r.owner_id AND a.active=1 WHERE x.room_id=r.id) AS amenity_list,c.name_el,c.name_en,c.description_el,c.description_en,c.name_translations_json,c.description_translations_json
       FROM rooms r LEFT JOIN room_categories c ON c.id=r.category_id AND c.owner_id=r.owner_id
       WHERE r.owner_id=$1 AND r.active=1 AND r.operational_status<>'out_of_order' AND r.capacity >= $4
-      AND ${sellableForArrival("$2","$7")}
+      AND ${sellableForArrival("$2","$7","$5")}
       AND NOT EXISTS(SELECT 1 FROM bookings b WHERE b.owner_id=r.owner_id AND b.room_id=r.id AND b.id<>$6 AND b.status NOT IN ('cancelled','checked_out','no_show') AND b.check_in<$3 AND b.check_out>$2)
       AND NOT EXISTS(SELECT 1 FROM booking_sessions s WHERE s.owner_id=r.owner_id AND s.status='payment_pending' AND s.recovery_due_at>$5 AND s.check_in<$3 AND s.check_out>$2 AND s.room_allocations::jsonb @> jsonb_build_array(r.id))
       ORDER BY COALESCE(c.display_order,999),r.code`,[input.ownerId,input.checkIn,input.checkOut,Math.ceil((input.adults+input.children)/input.rooms),Date.now(),input.excludeBookingId??0,hotelToday()]),

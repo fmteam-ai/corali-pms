@@ -12,9 +12,12 @@ import { enqueueAvailability } from "@/lib/channel-sync";
 import { addDays, hotelToday } from "@/lib/tape-chart";
 import { assertTrustedOrigin } from "@/lib/security/origin";
 import { deferStaffPush } from "@/lib/staff-push";
+import { etaOnComplete, etaOnStart } from "../../../../../scripts/room-ready-core.mjs";
 
 const schema = z.object({
-  action: z.enum(["start", "complete", "approve", "reject", "report_issue", "repair_done"]),
+  action: z.enum(["start", "complete", "approve", "reject", "report_issue", "repair_done", "set_eta"]),
+  // v187: expected ready time (epoch ms) for «set_eta»; null clears it.
+  expectedReadyAt: z.number().int().positive().nullable().optional(),
   checklist: z.record(z.string(), z.boolean()).optional(),
   notes: z.string().trim().max(2000).optional(),
   severe: z.boolean().optional(),
@@ -22,7 +25,7 @@ const schema = z.object({
   photos: z.array(z.string().max(3_500_000)).max(6).optional(),
 });
 
-const errorStatus: Record<string, number> = { NOT_FOUND: 404, NOT_ASSIGNED: 403, INSPECTOR_ONLY: 403, FORBIDDEN: 403, CHECKLIST_INCOMPLETE: 409, SECOND_REVIEW_REQUIRED: 409, INVALID_TRANSITION: 409, DESCRIPTION_REQUIRED: 400, INVALID_PHOTO: 400 };
+const errorStatus: Record<string, number> = { INVALID_ETA: 400, NOT_FOUND: 404, NOT_ASSIGNED: 403, INSPECTOR_ONLY: 403, FORBIDDEN: 403, CHECKLIST_INCOMPLETE: 409, SECOND_REVIEW_REQUIRED: 409, INVALID_TRANSITION: 409, DESCRIPTION_REQUIRED: 400, INVALID_PHOTO: 400 };
 
 async function handlePATCH(q: Request, { params }: { params: Promise<{ id: string }> }) {
   // v185: approving needs «housekeeping.inspect» or being the room's second person (checked below), not «write».
@@ -48,6 +51,15 @@ async function handlePATCH(q: Request, { params }: { params: Promise<{ id: strin
         if (!can(u.role, "housekeeping.write", u.permissions)) throw Error("FORBIDDEN");
         if (u.role === "housekeeping" && r.assigned_to !== String(u.id)) throw Error("NOT_ASSIGNED");
       }
+      // v187: «Έτοιμο έως»: only the expected ready time changes (an open task; today's availability is sent again).
+      if (x.action === "set_eta") {
+        if (!["todo", "in_progress", "cleaned", "repaired"].includes(String(r.status))) throw Error("INVALID_TRANSITION");
+        const eta = x.expectedReadyAt ?? null;
+        if (eta !== null && (eta < Date.now() - 5 * 60_000 || eta > Date.now() + 2 * 86_400_000)) throw Error("INVALID_ETA");
+        const saved = await c.query(`UPDATE housekeeping_tasks SET expected_ready_at=$3 WHERE owner_id=$1 AND id=$2 RETURNING *`, [u.ownerId, id, eta]);
+        const today = hotelToday(); await enqueueAvailability(c, u.ownerId, today, today, "room_ready");
+        return saved.rows[0];
+      }
       if (!validHousekeepingTransition(r.status, x.action)) throw Error("INVALID_TRANSITION");
       if ((x.action === "report_issue" || x.action === "reject" || x.action === "repair_done") && !x.notes) throw Error("DESCRIPTION_REQUIRED");
       if (x.action === "complete" && !validChecklist(x.checklist, r.task_type)) throw Error("CHECKLIST_INCOMPLETE");
@@ -71,6 +83,12 @@ async function handlePATCH(q: Request, { params }: { params: Promise<{ id: strin
       if (x.action === "report_issue") {
         await createNotice(c, u.ownerId, { roomId: Number(r.room_id), taskId: id, severity, description: x.notes!, reportedBy: u.id, photos: x.photos });
         return updated.rows[0];
+      }
+      // v187: expected ready time — estimated when cleaning starts / ends, unknown again when sent back.
+      if (x.action === "start" || x.action === "complete" || x.action === "reject") {
+        const eta = x.action === "start" ? etaOnStart(String(r.task_type), now) : x.action === "complete" ? etaOnComplete(now) : null;
+        await c.query(x.action === "start" ? `UPDATE housekeeping_tasks SET expected_ready_at=GREATEST(COALESCE(expected_ready_at,0),$3) WHERE owner_id=$1 AND id=$2` : `UPDATE housekeeping_tasks SET expected_ready_at=$3 WHERE owner_id=$1 AND id=$2`, [u.ownerId, id, eta]);
+        const today = hotelToday(); await enqueueAvailability(c, u.ownerId, today, today, "room_ready");
       }
       const roomStatus = roomStatusAfter(r.status, x.action, false);
       if (roomStatus) await c.query(`UPDATE rooms SET operational_status=$1 WHERE owner_id=$2 AND id=$3`, [roomStatus, u.ownerId, r.room_id]);

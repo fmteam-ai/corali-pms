@@ -2612,3 +2612,72 @@ CREATE TABLE IF NOT EXISTS room_readiness_settings (
   block_checkin SMALLINT NOT NULL DEFAULT 1,
   updated_at BIGINT NOT NULL DEFAULT 0
 );
+
+-- v187: expected ready time of a housekeeping task (set by staff, or estimated when cleaning starts / ends). A room
+-- that is not ready yet is sold for an arrival today when every open task will be ready before the check-in time.
+ALTER TABLE housekeeping_tasks ADD COLUMN IF NOT EXISTS expected_ready_at BIGINT;
+
+-- v187: Guest Journey Orchestrator. For every stay the services work from the real state of the stay; each step
+-- (housekeeping readiness, climate comfort, arrival instructions, TV welcome) has one row with its result —
+-- succeeded, failed, unconfirmed, pending or skipped — attempts and the next check, and every change is kept in the
+-- history with what was done (a recovery action, a retry, a manual confirmation).
+CREATE TABLE IF NOT EXISTS journey_actions (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  booking_id BIGINT NOT NULL,
+  step TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  detail TEXT NOT NULL DEFAULT '',
+  result_json TEXT NOT NULL DEFAULT '{}',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_check_at BIGINT NOT NULL DEFAULT 0,
+  alerted_at BIGINT,
+  confirmed_at BIGINT,
+  confirmed_by BIGINT,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  UNIQUE (owner_id, booking_id, step)
+);
+CREATE INDEX IF NOT EXISTS idx_journey_actions_due ON journey_actions(owner_id, status, next_check_at);
+CREATE TABLE IF NOT EXISTS journey_events (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  action_id BIGINT NOT NULL,
+  booking_id BIGINT NOT NULL,
+  step TEXT NOT NULL,
+  status TEXT NOT NULL,
+  detail TEXT NOT NULL DEFAULT '',
+  actor TEXT NOT NULL DEFAULT 'system',
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_journey_events_booking ON journey_events(owner_id, booking_id, created_at);
+-- v187: every cron step's last result (history of failures kept 30 days), so a silent automation is seen.
+CREATE TABLE IF NOT EXISTS automation_status (
+  owner_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  last_run_at BIGINT NOT NULL,
+  last_ok_at BIGINT,
+  last_status TEXT NOT NULL DEFAULT 'ok',
+  last_error TEXT NOT NULL DEFAULT '',
+  last_ms INTEGER NOT NULL DEFAULT 0,
+  runs BIGINT NOT NULL DEFAULT 0,
+  failures BIGINT NOT NULL DEFAULT 0,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0,
+  alerted_at BIGINT,
+  PRIMARY KEY (owner_id, name)
+);
+CREATE TABLE IF NOT EXISTS automation_failures (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL,
+  error TEXT NOT NULL DEFAULT '',
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_automation_failures ON automation_failures(owner_id, created_at DESC);
+
+-- v187 FIX: «INSERT … ON CONFLICT (provider, provider_reference)» (Stripe booking fulfilment, balance payments, PMS
+-- Stripe charges, balance collection) needs a unique index PostgreSQL can infer; the partial one above is not inferred
+-- without its WHERE and every such insert failed (42P10). A full unique index on the same columns is equivalent
+-- (NULL references stay allowed, NULLs are distinct) and makes the inference work.
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_payment_provider_reference_all" ON "payment_transactions" ("provider", "provider_reference");

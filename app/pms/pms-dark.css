@@ -656,3 +656,8 @@
 .pms[data-theme="dark"] .advKind.kind-alert{background:hsl(0 40% 22%);color:hsl(0 80% 85%)}
 .pms[data-theme="dark"] .advMsg,.pms[data-theme="dark"] .advDraft{background:hsl(200 18% 13%);border-color:hsl(200 14% 26%)}
 .pms[data-theme="dark"] .advMeta{color:hsl(200 12% 70%)}
+.pms[data-theme="dark"] .jyChip,.pms[data-theme="dark"] .jyStatus{background:hsl(200 14% 22%);color:hsl(200 20% 85%)}
+.pms[data-theme="dark"] .st-succeeded.jyChip,.pms[data-theme="dark"] .jyStatus.st-succeeded{background:hsl(140 25% 20%);color:hsl(140 50% 80%)}
+.pms[data-theme="dark"] .st-failed.jyChip,.pms[data-theme="dark"] .jyStatus.st-failed{background:hsl(0 40% 22%);color:hsl(0 80% 85%)}
+.pms[data-theme="dark"] .st-unconfirmed.jyChip,.pms[data-theme="dark"] .jyStatus.st-unconfirmed{background:hsl(42 40% 22%);color:hsl(42 80% 80%)}
+.pms[data-theme="dark"] .jyAction{border-color:hsl(200 14% 26%)}

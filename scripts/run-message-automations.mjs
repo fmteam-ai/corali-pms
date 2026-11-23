@@ -15,6 +15,7 @@ import {runGuestWifi} from "./guest-wifi-worker.mjs";
 import {runSecurityCheck} from "./security-worker.mjs";
 import {runCampaigns} from "./campaign-worker.mjs";
 import {advisorDue,runSalesAdvisor} from "./sales-advisor-worker.mjs";
+import {recordAutomation,runJourney} from "./journey-worker.mjs";
 import {runMailInbox} from "./mail-inbox-worker.mjs";
 import {runWhatsAppInboxSetup} from "./whatsapp-inbox-worker.mjs";
 import {normalizeBrand,renderBrandedEmail,stayDate,withFallbacks} from "./email-brand-core.mjs";
@@ -63,7 +64,9 @@ async function run(){const r=await pool.query(`SELECT * FROM message_automation_
  }catch(e){const skipped=e instanceof Error&&e.message==="SKIPPED_NOT_ELIGIBLE";await pool.query(`UPDATE message_deliveries SET status=$1,last_error=$2,updated_at=$3 WHERE id=$4`,[skipped?"skipped":"failed",e instanceof Error?e.message.slice(0,250):"SEND_FAILED",Date.now(),delivery.id])}}
  console.log(`Automation scan complete: ${bookings.rowCount} bookings`)}
 // v173: a step that hangs (mail server, webhook) stops waiting after its limit, so the steps after it still run.
-const limit=(name,ms,p)=>Promise.race([p,new Promise((_,j)=>setTimeout(()=>j(Error(`${name}: TIMEOUT ${ms/1000}s`)),ms).unref())]);
+// v187: every step's result (ok / failed / timeout, duration) is recorded (PMS → Ταξίδι πελάτη → Αυτοματισμοί).
+const track=(name,p)=>{const t0=Date.now();return Promise.resolve(p).then(async v=>{await recordAutomation(pool,owner,name,"ok","",Date.now()-t0).catch(()=>{});return v},async e=>{const m=e instanceof Error?e.message:String(e);await recordAutomation(pool,owner,name,/TIMEOUT/.test(m)?"timeout":"failed",m,Date.now()-t0).catch(()=>{});throw e})};
+const limit=(name,ms,p)=>track(name,Promise.race([p,new Promise((_,j)=>setTimeout(()=>j(Error(`${name}: TIMEOUT ${ms/1000}s`)),ms).unref())]));
 try{
  // v173: room devices first — fast, and never held up by the e-mail / WhatsApp steps below.
  // Room A/C with presence sensors: every minute, so power returns within a minute when the guest comes back.
@@ -78,17 +81,19 @@ try{
  await limit("Room climate",60_000,runRoomClimate({pool,owner,unseal,seal})).then(r=>r&&console.log(`${new Date().toISOString()} Room climate: ${r.read}/${r.rooms} sensors read, ${r.alerts} alert(s)${r.error?`, error ${r.error}`:""}`)).catch(e=>console.error("Room climate failed",e instanceof Error?e.message:e))
  await limit("Guest messages",240_000,run()).catch(e=>{console.error("Guest message automations failed",e);process.exitCode=1});
  // Virtual access cards (PMS → Digital key): a failure here never stops the guest messages above.
- await runAccessCards({pool,owner,seal,email,origin:process.env.BOOKING_ORIGIN}).catch(e=>console.error("Access cards failed",e))
+ await track("Access cards",runAccessCards({pool,owner,seal,email,origin:process.env.BOOKING_ORIGIN})).catch(e=>console.error("Access cards failed",e))
  // Bulk messages to past guests (PMS → Bulk messages): a few per minute, consent and unsubscribes checked per message.
- await runCampaigns({pool,owner,secret,origin:process.env.BOOKING_ORIGIN,email,whatsappTemplate}).then(r=>r.campaigns&&console.log(`Campaigns: ${r.sent} sent, ${r.failed} failed`)).catch(e=>console.error("Campaigns failed",e))
+ await track("Campaigns",runCampaigns({pool,owner,secret,origin:process.env.BOOKING_ORIGIN,email,whatsappTemplate})).then(r=>r.campaigns&&console.log(`Campaigns: ${r.sent} sent, ${r.failed} failed`)).catch(e=>console.error("Campaigns failed",e))
  // v184: sales advisor once a day (09:20 hotel time): rules always, Claude when an Anthropic key is set.
  if(advisorDue())await limit("Sales advisor",170_000,(async()=>{const c=await credentials("anthropic").catch(()=>null);const apiKey=c?(!c.disabled&&c.secrets?.apiKey?String(c.secrets.apiKey):null):process.env.ANTHROPIC_API_KEY||null;return runSalesAdvisor({pool,owner,apiKey})})()).then(r=>console.log(`${new Date().toISOString()} Sales advisor: ${r.added} suggestion(s)${r.ai?" (AI)":""}${r.error?`, AI error ${r.error}`:""}`)).catch(e=>console.error("Sales advisor failed",e instanceof Error?e.message:e))
  // Open API webhooks (PMS → API): booking changes and folio charges / payments to the hotel's systems.
- await runApiWebhooks({pool,owner,unseal}).catch(e=>console.error("API webhooks failed",e))
+ await track("API webhooks",runApiWebhooks({pool,owner,unseal})).catch(e=>console.error("API webhooks failed",e))
  // Automatic pricing (PMS → Prices → Automatic pricing): hourly, inside the hotel's minimum / maximum.
- await runAutoPricing({pool,owner}).catch(e=>console.error("Auto pricing failed",e))
+ await track("Auto pricing",runAutoPricing({pool,owner})).catch(e=>console.error("Auto pricing failed",e))
  // New e-mails in the hotel's mailbox (PMS → Συνδέσεις → Εισερχόμενα email): a PMS notification with sound; read-only.
- await runMailInbox({pool,owner,credentials}).then(r=>r.stored&&console.log(`Mail inbox: ${r.stored} new`)).catch(e=>console.error("Mail inbox failed",e instanceof Error?e.message:e))
+ await track("Mail inbox",runMailInbox({pool,owner,credentials})).then(r=>r.stored&&console.log(`Mail inbox: ${r.stored} new`)).catch(e=>console.error("Mail inbox failed",e instanceof Error?e.message:e))
  // «Ενεργοποίηση εισερχομένων» WhatsApp requested from PMS → Συνδέσεις (done here, so the page never waits on Meta).
- await runWhatsAppInboxSetup({pool,owner,credentials,origin:process.env.BOOKING_ORIGIN}).then(r=>r.ran&&console.log(`WhatsApp inbox setup: ${r.result}`)).catch(e=>console.error("WhatsApp inbox setup failed",e))
+ await track("WhatsApp inbox setup",runWhatsAppInboxSetup({pool,owner,credentials,origin:process.env.BOOKING_ORIGIN})).then(r=>r.ran&&console.log(`WhatsApp inbox setup: ${r.result}`)).catch(e=>console.error("WhatsApp inbox setup failed",e))
+ // v187: Guest Journey Orchestrator every 2 minutes (readiness, instructions, comfort, TV welcome).
+ if(new Date().getMinutes()%2===0)await limit("Guest journey",60_000,runJourney({pool,owner})).then(r=>(r.actions.length||r.counts.failed)&&console.log(`${new Date().toISOString()} Guest journey: ${r.bookings} stays, ${r.actions.length} action(s), ${r.counts.failed} failed`)).catch(e=>console.error("Guest journey failed",e instanceof Error?e.message:e))
  await whatsappTokenReminder().catch(e=>console.error("WhatsApp token reminder failed",e))}finally{await warm;await pool.end()}

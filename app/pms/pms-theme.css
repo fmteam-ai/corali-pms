@@ -712,3 +712,24 @@ body:has(.pms){background:#f2f4f6}
 .pms .hkInspectors{display:grid;gap:10px;margin-top:16px}
 .pms .hkInspectAll{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
 .pms .hkInspectAll label{display:grid;gap:3px}
+.pms .hkEta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0;font-size:13px}
+.pms .hkEta input{width:auto;padding:2px 6px}
+
+/* v187: guest journey */
+.pms .jyPage{display:grid;gap:12px}
+.pms .jyList{display:grid;gap:8px;margin-top:10px}
+.pms .jyStay header{display:grid;gap:4px;cursor:pointer}
+.pms .jyStay.sum-failed{border-left:4px solid #d03b3b}
+.pms .jyStay.sum-unconfirmed{border-left:4px solid #eda100}
+.pms .jyStay.sum-succeeded{border-left:4px solid #1f8a4c}
+.pms .jyChips{display:flex;flex-wrap:wrap;gap:6px}
+.pms .jyChip,.pms .jyStatus{border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700;background:#eef2f5;color:#33475b}
+.pms .st-succeeded.jyChip,.pms .jyStatus.st-succeeded{background:#e3f4e8;color:#1f6b37}
+.pms .st-failed.jyChip,.pms .jyStatus.st-failed{background:#fde8e8;color:#8a1f1f}
+.pms .st-unconfirmed.jyChip,.pms .jyStatus.st-unconfirmed{background:#fff4d6;color:#7a5600}
+.pms .jyDetail{display:grid;gap:10px;margin-top:10px}
+.pms .jyAction{display:grid;gap:4px;padding:8px 10px;border:1px solid #e1e7ec;border-radius:10px}
+.pms .jyAction p{margin:0}
+.pms .jyAction .actions{display:flex;gap:6px;flex-wrap:wrap}
+.pms .jyHistory{list-style:none;padding:0;margin:6px 0;display:grid;gap:4px;font-size:13px}
+.pms tr.jyBad td{background:rgba(208,59,59,.06)}

@@ -69,7 +69,7 @@ export function normalizeRevision(revision, roomTypeByExternalId) {
  */
 export const AVAILABILITY_SQL = `SELECT d.day::date::text AS date, rt.room_type,
     (count(r.id) FILTER (WHERE r.operational_status<>'out_of_order'
-      AND ${sellableForArrival("d.day::date::text", "(now() AT TIME ZONE 'Europe/Athens')::date::text")}
+      AND ${sellableForArrival("d.day::date::text", "(now() AT TIME ZONE 'Europe/Athens')::date::text", "$4")}
       AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.owner_id=r.owner_id AND b.room_id=r.id AND b.status IN ('confirmed','checked_in') AND b.check_in<=d.day::date::text AND b.check_out>d.day::date::text)
       AND NOT EXISTS (SELECT 1 FROM booking_sessions s WHERE s.owner_id=r.owner_id AND s.status='payment_pending' AND s.recovery_due_at>$4 AND s.check_in<=d.day::date::text AND s.check_out>d.day::date::text AND s.room_allocations::jsonb @> jsonb_build_array(r.id)))
      - (SELECT count(*) FROM bookings u WHERE u.owner_id=$1 AND u.room_id IS NULL AND u.external_room_type=rt.room_type AND u.status IN ('confirmed','checked_in') AND u.check_in<=d.day::date::text AND u.check_out>d.day::date::text))::int AS free

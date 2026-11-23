@@ -16,7 +16,7 @@ test("every public availability query binds the exact PostgreSQL parameters",asy
    const expressions=match[2].split(/,(?![^()]*\))/).map(s=>s.trim());
    const args=expressions.map(expr=>{assert.ok(expr in values,`query ${index}: unknown ${expr}`);return values[expr]});
    // v186: the shared «room ready» rule is interpolated into the room query.
-   const sql=match[1].replace(/\$\{sellableForArrival\("(\$\d+)","(\$\d+)"\)\}/g,(_,a,b)=>sellableForArrival(a,b));
+   const sql=match[1].replace(/\$\{sellableForArrival\("(\$\d+)","(\$\d+)","(\$\d+)"\)\}/g,(_,a,b,c)=>sellableForArrival(a,b,c));
    assert.ok(!sql.includes("${"),`query ${index}: uninterpolated expression`);
    await database.query(sql,args);
   }
