@@ -8,7 +8,7 @@ type Guest = { bookingId: number; reference: string; guestName: string; checkIn:
 type State = { posts: Post[]; messages: Message[]; guests?: Record<string, Guest>; bookingUrl: string };
 const platformLabel: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", tiktok: "TikTok", whatsapp: "💬 WhatsApp", email: "✉ Email" };
 
-const statusLabel: Record<string, string> = { draft: "Πρόχειρο", pending_approval: "Αναμονή έγκρισης", approved: "Εγκρίθηκε · προγραμματισμένο", published: "Δημοσιεύτηκε", partially_published: "Μερική δημοσίευση", failed: "Αποτυχία", rejected: "Απορρίφθηκε" };
+const statusLabel: Record<string, string> = { draft: "Πρόχειρο", pending_approval: "Αναμονή έγκρισης", approved: "Εγκρίθηκε · προγραμματισμένο", published: "Δημοσιεύτηκε", partially_published: "Μερική δημοσίευση", failed: "Αποτυχία", rejected: "Απορρίφθηκε", processing: "Δημοσιεύεται τώρα", uncertain: "ΑΒΕΒΑΙΟ — ελέγξτε στο Facebook / Instagram" };
 const errors: Record<string, string> = { SECOND_APPROVER_REQUIRED: "Την έγκριση κάνει άλλο άτομο από τον συντάκτη.", INSTAGRAM_NEEDS_IMAGE: "Το Instagram απαιτεί εικόνα (URL).", INVALID_TRANSITION: "Η ενέργεια δεν επιτρέπεται σε αυτή την κατάσταση.", META_NOT_CONFIGURED: "Ρυθμίστε το Facebook/Instagram στις Συνδέσεις.", WHATSAPP_NOT_CONFIGURED: "Ρυθμίστε το WhatsApp στις Συνδέσεις.", SEND_FAILED: "Το Meta δεν δέχτηκε το μήνυμα (ίσως πέρασε το 24ωρο παράθυρο)." };
 const local = (ms: number) => new Date(ms - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 
@@ -105,6 +105,10 @@ export function SocialManager({ initial, userId, canPost, canReply }: { initial:
                   {p.status === "pending_approval" && p.created_by !== userId && <><button onClick={() => send({ action: "approve", id: p.id }, "Εγκρίθηκε.")}>Έγκριση</button><button className="danger" onClick={() => send({ action: "reject", id: p.id }, "Απορρίφθηκε.")}>Απόρριψη</button></>}
                   {p.status === "pending_approval" && p.created_by === userId && <button onClick={() => send({ action: "approve", id: p.id }, "Εγκρίθηκε.")}>Έγκριση (μόνο ιδιοκτήτης)</button>}
                   {p.status === "approved" && <button className="secondaryButton" onClick={() => send({ action: "withdraw", id: p.id }, "Αποσύρθηκε.")}>Απόσυρση</button>}
+                  {p.status === "uncertain" && Object.entries(results).filter(([, r]) => r.status === "uncertain").map(([c]) => <span key={c}>
+                    <button onClick={() => { const externalId = window.prompt(`Βρέθηκε η ανάρτηση στο ${c}; Id της ανάρτησης (προαιρετικό):`) ?? undefined; void send({ action: "resolve_uncertain", id: p.id, channel: c, outcome: "published", externalId }, "Σημειώθηκε ως δημοσιευμένη."); }}>{c}: δημοσιεύτηκε</button>
+                    <button className="secondaryButton" onClick={() => { if (window.confirm(`Επιβεβαιώνετε ότι η ανάρτηση ΔΕΝ υπάρχει στο ${c}; Θα σταλεί ξανά μόνο εκεί.`)) void send({ action: "resolve_uncertain", id: p.id, channel: c, outcome: "not_published" }, "Θα ξανασταλεί."); }}>{c}: δεν δημοσιεύτηκε</button>
+                  </span>)}
                 </>}</td>
               </tr>
             );

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { resolveUncertain } from "../../../../scripts/social-publish-core.mjs";
 import { audited } from "@/lib/audit";
 import { forbidden, requireApiUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -15,6 +16,8 @@ const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("edit"), id: z.number().int().positive(), ...post.shape }),
   z.object({ action: z.enum(["submit", "approve", "reject", "withdraw"]), id: z.number().int().positive() }),
   z.object({ action: z.literal("suggest"), messageId: z.number().int().positive() }),
+  // v201: a person resolves a platform the publisher could not confirm (checked on Facebook / Instagram).
+  z.object({ action: z.literal("resolve_uncertain"), id: z.number().int().positive(), channel: z.enum(["facebook", "instagram"]), outcome: z.enum(["published", "not_published"]), externalId: z.string().trim().max(100).optional() }),
   z.object({ action: z.literal("reply"), platform: z.enum(["facebook", "instagram", "tiktok", "whatsapp"]), senderId: z.string().min(1).max(100), text: z.string().trim().min(1).max(1000) }),
 ]);
 
@@ -31,7 +34,11 @@ async function handlePOST(request: Request) {
     assertTrustedOrigin(request);
     const x = input.parse(await request.json());
     const now = Date.now();
-    if (x.action === "suggest") {
+    if (x.action === "resolve_uncertain") {
+      if (!can(u.role, "integrations.write", u.permissions)) return forbidden(u, "integrations.write", "social.resolve");
+      const r = await resolveUncertain({ pool: db(), owner: u.ownerId, id: x.id, channel: x.channel, outcome: x.outcome, externalId: x.externalId || null, by: String(u.displayName || u.username), now });
+      if (!r.ok) return Response.json(r, { status: 409 });
+    } else if (x.action === "suggest") {
       // Re-draft with availability as of now (the draft is only shown to staff).
       if (!can(u.role, "reservations.write", u.permissions)) return forbidden(u, "reservations.write", "social.reply");
       const m = (await db().query(`SELECT id,platform,body FROM social_messages WHERE owner_id=$1 AND id=$2 AND direction='in'`, [u.ownerId, x.messageId])).rows[0];

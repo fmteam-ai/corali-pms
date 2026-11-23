@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { routeForRole, type ApplicationRole } from "@/lib/app-role";
 import { edgeState, markEdgeSeen, notifyEdgeOpen, recordSecurityEvent } from "@/lib/security-center";
+import { CORRELATION_HEADER } from "./scripts/telemetry-core.mjs";
 import { CLIENT_IP_HEADER, EDGE_HEADER, SMOKE_HEADER, edgeDecision, edgeExempt, edgeKeyMatches, pickClientIp, smokeBypass } from "./scripts/security-core.mjs";
 
 function configuredRole(): ApplicationRole {
@@ -34,9 +35,14 @@ export async function proxy(request: NextRequest) {
   // origin key is not passed on.
   const headers = new Headers(request.headers);
   headers.set(CLIENT_IP_HEADER, ip);
+  // v201 telemetry: one correlation id per request (kept when a trusted caller already sent a well-formed one), passed
+  // to the routes and returned to the client, so a log line, an incident and a support report can be matched.
+  const incoming = request.headers.get(CORRELATION_HEADER) ?? "";
+  const correlationId = /^[A-Za-z0-9-]{8,64}$/.test(incoming) ? incoming : crypto.randomUUID();
+  headers.set(CORRELATION_HEADER, correlationId);
   headers.delete(EDGE_HEADER);
   headers.delete(SMOKE_HEADER);
-  const next = () => NextResponse.next({ request: { headers } });
+  const next = () => { const r = NextResponse.next({ request: { headers } }); r.headers.set(CORRELATION_HEADER, correlationId); return r; };
 
   if (!roleRouted(path)) return next();
   const role = configuredRole();

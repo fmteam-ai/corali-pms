@@ -1,4 +1,4 @@
-# Hotel Corali PMS v200 — αυτόματη ασφαλής εγκατάσταση cPanel
+# Hotel Corali PMS v201 — αυτόματη ασφαλής εγκατάσταση cPanel
 
 ## Προτεινόμενη εγκατάσταση για τον συγκεκριμένο server
 
@@ -8,16 +8,16 @@
 
 Η διορθωμένη έκδοση περιλαμβάνει προσωρινό web installer τύπου WordPress. Ανεβάστε:
 
-- `corali-pms-cpanel-v200-root.tar.gz` και το `.sha256` στον `/home/corali/`
-- μόνο το `corali-web-installer-v200.php` ως `/home/corali/public_html/corali-installer.php`
+- `corali-pms-cpanel-v201-root.tar.gz` και το `.sha256` στον `/home/corali/`
+- μόνο το `corali-web-installer-v201.php` ως `/home/corali/public_html/corali-installer.php`
 
-Μην ανεβάσετε το `corali-web-installer-v200-access.txt`. Ανοίξτε το τοπικά και επισκεφθείτε την ιδιωτική διεύθυνση μίας χρήσης που περιέχει. Εναλλακτικά, ανοίξτε απευθείας τον installer και επικολλήστε τον προσωπικό κωδικό στη φόρμα. Επιλέξτε **Ελληνικά** ή **English** πριν την έναρξη. Ο web installer εντοπίζει το EA/CloudLinux Node.js του cPanel, εκτελεί προέλεγχο, checksum, backup PostgreSQL, migrations, δύο runtime tests, atomic swap και rollback. Μετά την εγκατάσταση προσφέρει ασφαλή δημιουργία/ανάκτηση του κύριου owner και επαναφορά 2FA χωρίς terminal. Αν οι παλιοί `/home/corali/releases` ή `/home/corali/backups` έχουν λάθος ιδιοκτησία, χρησιμοποιεί ιδιωτικούς εναλλακτικούς φακέλους μέσα στο εγγράψιμο `/home/corali/apps`. Μετά τον έλεγχο σύνδεσης πατήστε «Κλείδωμα και διαγραφή installer» και απενεργοποιήστε ξανά την PHP `exec`.
+Μην ανεβάσετε το `corali-web-installer-v201-access.txt`. Ανοίξτε το τοπικά και επισκεφθείτε την ιδιωτική διεύθυνση μίας χρήσης που περιέχει. Εναλλακτικά, ανοίξτε απευθείας τον installer και επικολλήστε τον προσωπικό κωδικό στη φόρμα. Επιλέξτε **Ελληνικά** ή **English** πριν την έναρξη. Ο web installer εντοπίζει το EA/CloudLinux Node.js του cPanel, εκτελεί προέλεγχο, checksum, backup PostgreSQL, migrations, δύο runtime tests, atomic swap και rollback. Μετά την εγκατάσταση προσφέρει ασφαλή δημιουργία/ανάκτηση του κύριου owner και επαναφορά 2FA χωρίς terminal. Αν οι παλιοί `/home/corali/releases` ή `/home/corali/backups` έχουν λάθος ιδιοκτησία, χρησιμοποιεί ιδιωτικούς εναλλακτικούς φακέλους μέσα στο εγγράψιμο `/home/corali/apps`. Μετά τον έλεγχο σύνδεσης πατήστε «Κλείδωμα και διαγραφή installer» και απενεργοποιήστε ξανά την PHP `exec`.
 
 Αν εμφανιστεί «Ο installer είναι κλειδωμένος», έχει οριστικοποιηθεί παλαιότερη εγκατάσταση. Κάθε νέο πακέτο αποκτά δικό του κλείδωμα με βάση το checksum του αρχείου. Ανεβάστε **μαζί** τον νέο installer, το νέο αρχείο πρόσβασης (μόνο τοπικά, ποτέ στον server), το νέο archive και το νέο checksum. Μην διαγράψετε το ιδιωτικό `locked` του παλιού installer για να παρακάμψετε το μήνυμα.
 
 Αν ο προέλεγχος δείξει ότι η PHP `exec` είναι απενεργοποιημένη ή ότι ο ενεργός φάκελος `/home/corali/apps` δεν είναι εγγράψιμος, δεν γίνεται καμία αλλαγή.
 
-Η v200 ενημερώνει μαζί τις δύο ενεργές εφαρμογές:
+Η v201 ενημερώνει μαζί τις δύο ενεργές εφαρμογές:
 
 - `/home/corali/apps/corali-pms`
 - `/home/corali/apps/corali-booking`
@@ -28,14 +28,14 @@
 
 Ανεβάστε τα παρακάτω στο `/home/corali/`:
 
-- `corali-pms-cpanel-v200-root.tar.gz`
-- `corali-pms-cpanel-v200-root.tar.gz.sha256`
+- `corali-pms-cpanel-v201-root.tar.gz`
+- `corali-pms-cpanel-v201-root.tar.gz.sha256`
 
 Στο Terminal:
 
 ```bash
 cd /home/corali
-sha256sum -c corali-pms-cpanel-v200-root.tar.gz.sha256
+sha256sum -c corali-pms-cpanel-v201-root.tar.gz.sha256
 ```
 
 Πρέπει να εμφανιστεί `OK`. Αν αποτύχει, μη συνεχίσετε.
@@ -43,9 +43,9 @@ sha256sum -c corali-pms-cpanel-v200-root.tar.gz.sha256
 ## 2. Καθαρή εξαγωγή
 
 ```bash
-mkdir -p /home/corali/releases/corali-v200
-tar -xzf /home/corali/corali-pms-cpanel-v200-root.tar.gz \
-  -C /home/corali/releases/corali-v200
+mkdir -p /home/corali/releases/corali-v201
+tar -xzf /home/corali/corali-pms-cpanel-v201-root.tar.gz \
+  -C /home/corali/releases/corali-v201
 ```
 
 Μην αντιγράψετε `runtime.env` στον release φάκελο. Ο installer το παίρνει αυτόματα από κάθε ενεργή εφαρμογή.
@@ -55,7 +55,7 @@ tar -xzf /home/corali/corali-pms-cpanel-v200-root.tar.gz \
 Ως `root`:
 
 ```bash
-cd /home/corali/releases/corali-v200
+cd /home/corali/releases/corali-v201
 bash INSTALL-CPANEL.sh
 ```
 
@@ -88,16 +88,16 @@ bash INSTALL-CPANEL.sh --yes
 
 ## 4. Τελικός έλεγχος
 
-Μετά το `INSTALLATION COMPLETE — v200`, ανοίξτε από browser:
+Μετά το `INSTALLATION COMPLETE — v201`, ανοίξτε από browser:
 
 ```text
 https://pms.hotelcorali.gr/api/health
 https://booking.hotelcorali.gr/api/health
 ```
 
-Και τα δύο πρέπει να επιστρέφουν `"ok":true` και `"version":"v200"`. Ο έλεγχος γίνεται από browser επειδή το ModSecurity/Cloudflare μπορεί να επιστρέψει 406 σε server-side `curl`.
+Και τα δύο πρέπει να επιστρέφουν `"ok":true` και `"version":"v201"`. Ο έλεγχος γίνεται από browser επειδή το ModSecurity/Cloudflare μπορεί να επιστρέψει 406 σε server-side `curl`.
 
-Ελέγξτε επίσης login/2FA/profile, σημειώσεις και ειδοποιήσεις, μία δοκιμαστική κράτηση, folio/check-in/out, room grid, housekeeping, `/book` στα Ελληνικά και Αγγλικά και πληρωμή μόνο σε Stripe test mode. Η v200 δεν προσφέρει Viva ως μέθοδο πληρωμής επισκέπτη.
+Ελέγξτε επίσης login/2FA/profile, σημειώσεις και ειδοποιήσεις, μία δοκιμαστική κράτηση, folio/check-in/out, room grid, housekeeping, `/book` στα Ελληνικά και Αγγλικά και πληρωμή μόνο σε Stripe test mode. Η v201 δεν προσφέρει Viva ως μέθοδο πληρωμής επισκέπτη.
 
 Η δρομολόγηση πρέπει να είναι:
 
@@ -111,7 +111,7 @@ https://booking.hotelcorali.gr/api/health
 
 ```bash
 bash /home/corali/apps/corali-pms/ROLLBACK-CPANEL.sh \
-  /home/corali/backups/corali-deployment-v200-TIMESTAMP.manifest
+  /home/corali/backups/corali-deployment-v201-TIMESTAMP.manifest
 ```
 
 Το rollback επαναφέρει και τις δύο εφαρμογές. Δεν επαναφέρει αυτόματα τη βάση, επειδή οι migrations είναι additive και η επαναφορά παλιού dump θα μπορούσε να διαγράψει νεότερες κρατήσεις.
@@ -274,7 +274,7 @@ cd /home/corali/apps/corali-pms && /opt/cpanel/ea-nodejs22/bin/node --env-file=r
 - **Συμφωνία πληρωμών με το Stripe:** καθημερινά στις 04:12 (και «Έλεγχος τώρα» στο PMS) διαβάζονται οι επιτυχείς πληρωμές του Stripe των 3 τελευταίων ημερών και συγκρίνονται με όσες κατέγραψε το PMS — μόνο ανάγνωση, τίποτα δεν αλλάζει στο Stripe.
 - **Έλεγχος μετά την εγκατάσταση:** ο installer επιβεβαιώνει ότι τα αρχεία είναι ακριβώς εκείνα του πακέτου που πέρασε το QA (`RELEASE-EVIDENCE.json`) και ότι κάθε `ON CONFLICT` του κώδικα λειτουργεί στη βάση παραγωγής, πριν ενεργοποιήσει τη νέα έκδοση.
 
-## Κλείδωμα Cloudflare — ανάκτηση πρόσβασης (v200)
+## Κλείδωμα Cloudflare — ανάκτηση πρόσβασης (v201)
 
 Στο PMS → Κέντρο ασφαλείας ορίζετε τι γίνεται όταν το Cloudflare σταματήσει να στέλνει το κλειδί για 30 λεπτά:
 
@@ -287,3 +287,26 @@ node --env-file=runtime.env scripts/edge-lock.mjs off
 ```
 
 Η αλλαγή καταγράφεται στο audit log και ως ειδοποίηση· οι εφαρμογές τη βλέπουν μέσα σε 30 δευτερόλεπτα.
+
+## Corali Sentinel και εξωτερικός watchdog (v201)
+
+1. **Cron του Sentinel** (κάθε 5 λεπτά), cPanel → Cron Jobs:
+
+```bash
+cd /home/corali/apps/corali-pms && /usr/bin/node --env-file=runtime.env scripts/run-sentinel.mjs
+```
+
+   Ο Sentinel διαβάζει μόνο (σύνδεση `default_transaction_read_only`) και γράφει μόνο τα δικά του συμβάντα. Δεν διορθώνει,
+   δεν επανεκκινεί, δεν στέλνει εντολές. Συμβάντα και αναφορές: PMS → Κρατήσεις → Corali Sentinel.
+
+2. **MONITORING_SECRET** (τουλάχιστον 32 χαρακτήρες) στο `runtime.env` και των δύο εφαρμογών, για το υπογεγραμμένο
+   `/api/monitoring/heartbeat`. Χωρίς αυτό απαντά 503.
+
+3. **Fly.io watchdog**: οδηγίες στο `corali-watchdog-v201.tar.gz` (README-GR.md). Ειδοποιεί μέσω Telegram / ntfy / webhook,
+   ανεξάρτητα από τον server του ξενοδοχείου.
+
+| Endpoint | Ποιος | Τι δείχνει |
+|---|---|---|
+| `/api/health` | δημόσιο (installer, watchdog) | εφαρμογή + PostgreSQL |
+| `/api/health/deep` | μόνο συνδεδεμένος διαχειριστής | κάθε κρίσιμη υπηρεσία και πόσο πρόσφατη είναι η δουλειά της |
+| `/api/monitoring/heartbeat` | watchdog (υπογεγραμμένο HMAC) | μόνο καταστάσεις και μετρητές προόδου, χωρίς δεδομένα |

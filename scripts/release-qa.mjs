@@ -99,11 +99,12 @@ function stage(role) {
   writeFileSync(path.join(dir, "runtime.env"), [
     "NODE_ENV=production", `DATABASE_URL=${dbUrl}`, "DATABASE_SSL=false", `SESSION_SECRET=${rnd()}`, `PMS_DOCUMENT_KEY=${documentKey}`, `APP_ROLE=${role}`,
     "PMS_ORIGIN=https://pms.qa.invalid", "BOOKING_ORIGIN=https://booking.qa.invalid", `PMS_OWNER_ID=${owner}`, `CRON_SECRET=${rnd()}`,
-    `STRIPE_SECRET_KEY=sk_test_${rnd(12)}`, `STRIPE_WEBHOOK_SECRET=${stripeSecret}`, "",
+    `STRIPE_SECRET_KEY=sk_test_${rnd(12)}`, `STRIPE_WEBHOOK_SECRET=${stripeSecret}`, `MONITORING_SECRET=${monitoringSecret}`, "",
   ].join("\n"), { mode: 0o600 });
   return dir;
 }
 const documentKey = rnd(32, "base64");
+const monitoringSecret = rnd(32);
 secrets.add(documentKey);
 const appLogs = [];
 async function startApp(dir) {
@@ -561,6 +562,53 @@ try {
     must(rcase && rcase.state === "OPEN_TASK", `περίπτωση επίλυσης: ${JSON.stringify(rcase)}`);
     await q(`UPDATE maintenance_notices SET status='resolved',resolved_at=$2,resolution_notes='QA' WHERE owner_id=$1 AND room_id=$3 AND description='QA: διαρροή νερού'`, [owner, Date.now(), rid]);
     return `δωμάτιο QA9 με πελάτη: δείκτης ${c.score} (${c.signals.map((x) => x.label).join(", ")}) · παράδοση: χωρίς στοιχεία απορρίφθηκε, με τα στοιχεία → ${tb.status} · νέα σοβαρή βλάβη → επιβεβαιωμένο αλλά «τώρα δεν είναι έτοιμο» · αιτία «${f.title}» → εργασία συντήρησης #${a.maintenanceId} (μία φορά)`;
+  });
+
+  await flow("F20", "Corali Sentinel (μόνο ανάγνωση) + Fly.io watchdog: συμβάν με αποδεικτικά και αναφορά, επιβεβαιωμένη αποκατάσταση, υπογεγραμμένο heartbeat, ειδοποίηση σε διακοπή", async () => {
+    const runSentinelCron = () => spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/run-sentinel.mjs"], { cwd: pmsDir, encoding: "utf8", timeout: 150_000 });
+    // A real fault: an availability change that failed to reach the OTAs 45′ ago.
+    const fault = Number((await q(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,status,attempts,last_error,created_at,updated_at) VALUES($1,$2,$3,'qa-sentinel','failed',4,'Channex 503 (QA sentinel)',$4,$4) RETURNING id`, [owner, addDays(today, 20), addDays(today, 21), Date.now() - 45 * 60_000])).rows[0].id);
+    const prodBefore = JSON.stringify((await q(`SELECT (SELECT count(*) FROM channel_sync_outbox) a,(SELECT count(*) FROM bookings) b,(SELECT count(*) FROM alerts) c,(SELECT max(updated_at) FROM channel_sync_outbox) d`)).rows);
+    let r = runSentinelCron();
+    must(r.status === 0, `run-sentinel.mjs: ${(r.stderr || r.stdout).slice(-300)}`);
+    const line = JSON.parse(r.stdout.trim().split("\n").pop());
+    must(line.event === "sentinel_run" && line.status === "ok" && line.correlationId, `sentinel: ${r.stdout.slice(-200)}`);
+    must(JSON.stringify((await q(`SELECT (SELECT count(*) FROM channel_sync_outbox) a,(SELECT count(*) FROM bookings) b,(SELECT count(*) FROM alerts) c,(SELECT max(updated_at) FROM channel_sync_outbox) d`)).rows) === prodBefore, "ο Sentinel άλλαξε δεδομένα παραγωγής");
+    const inc = (await q(`SELECT * FROM sentinel_incidents WHERE owner_id=$1 AND incident_key=$2`, [owner, `outbox:${fault}`])).rows[0];
+    must(inc && inc.severity === "critical" && inc.status === "open", `συμβάν: ${JSON.stringify(inc ?? null).slice(0, 200)}`);
+    const rep = JSON.parse(inc.report_json);
+    must(rep.confirmed.join(" ").includes("Channex 503 (QA sentinel)") && rep.probableCauses.length && rep.proposedFix.length && rep.validation.length, "η αναφορά δεν έχει αποδεικτικά / διόρθωση / επαλήθευση");
+    // A person fixes it; recovery is verified only after clean checks over time (simulated by moving last_seen back).
+    await q(`UPDATE channel_sync_outbox SET status='sent' WHERE id=$1`, [fault]);
+    await q(`UPDATE sentinel_incidents SET last_seen_at=last_seen_at-$2 WHERE id=$1`, [inc.id, 15 * 60_000]);
+    r = runSentinelCron(); r = runSentinelCron();
+    const after = (await q(`SELECT status,recovery_verified_at FROM sentinel_incidents WHERE id=$1`, [inc.id])).rows[0];
+    must(after.status === "resolved" && after.recovery_verified_at, `αποκατάσταση: ${JSON.stringify(after)}`);
+    // Endpoints: deep health is internal (no session → refused); the heartbeat is signed and minimal.
+    const deep = await fetch(`${pms.url}/api/health/deep`);
+    must([401, 403].includes(deep.status), `/api/health/deep χωρίς σύνδεση: HTTP ${deep.status}`);
+    const hb = await fetch(`${pms.url}/api/monitoring/heartbeat`);
+    const hbBody = await hb.text();
+    const { verifyHeartbeat } = await import(path.join(pmsDir, "scripts/health-core.mjs"));
+    must(hb.status === 200 && verifyHeartbeat(monitoringSecret, hb.headers.get("x-corali-signature"), hbBody, Date.now()), `heartbeat ${hb.status}: υπογραφή δεν επαληθεύεται`);
+    must(!/Channex|QA|guest|@/.test(hbBody), "το heartbeat περιέχει περισσότερα από καταστάσεις");
+    // The real watchdog against the packaged PMS: healthy → silent; PMS unreachable → one alert to an independent receiver.
+    const { createWatchdog } = await import(path.join(project, "tools/watchdog/watchdog.mjs"));
+    const received = [];
+    const receiver = http.createServer((req, res) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { received.push(JSON.parse(b)); res.end("ok"); }); });
+    const rport = await new Promise((ok) => receiver.listen(0, "127.0.0.1", () => ok(receiver.address().port)));
+    try {
+      const cfg = { pmsHealthUrl: `${pms.url}/api/health`, bookingHealthUrl: `${booking.url}/api/health`, heartbeatUrl: `${pms.url}/api/monitoring/heartbeat`, secret: monitoringSecret, intervalS: 60, failThreshold: 3, remindMin: 60, heartbeatMaxAgeS: 300, progressStaleS: 1200, timeoutMs: 5000, telegram: null, ntfyUrl: "", webhookUrl: `http://127.0.0.1:${rport}/alert`, deadmanUrl: "", stateFile: "", label: "QA" };
+      const healthy = createWatchdog(cfg, { log: () => {} });
+      const c1 = await healthy.cycle();
+      must(Object.values(c1.results).every((x) => x.ok), `watchdog σε υγιές PMS: ${JSON.stringify(c1.results)}`);
+      const deadPort = await freePort();
+      const down = createWatchdog({ ...cfg, pmsHealthUrl: `http://127.0.0.1:${deadPort}/api/health`, heartbeatUrl: `http://127.0.0.1:${deadPort}/api/monitoring/heartbeat`, bookingHealthUrl: "" }, { log: () => {}, sleep: async () => {} });
+      for (let i = 0; i < 3; i++) await down.cycle();
+      must(received.some((a) => a.kind === "open" && a.check === "pms"), `καμία ειδοποίηση σε διακοπή: ${JSON.stringify(received)}`);
+    } finally { receiver.close(); }
+    return { detail: `συμβάν outbox:${fault} (critical) με αποδεικτικά και αναφορά → αποκατάσταση επιβεβαιώθηκε · δεδομένα παραγωγής αμετάβλητα · heartbeat υπογεγραμμένο και επαληθευμένο από τον watchdog · διακοπή → ${received.length} ειδοποίηση(εις) σε ανεξάρτητο παραλήπτη`,
+      evidence: { SENTINEL_READ_ONLY: "PASS", INCIDENT_REPORT: "PASS", RECOVERY_VERIFIED: "PASS", WATCHDOG_ALERT: "PASS" } };
   });
 
   await flow("F11", "Αυτόματα tests του κώδικα (unit / integration)", async () => {

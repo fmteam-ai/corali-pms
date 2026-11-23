@@ -30,15 +30,20 @@ export declare function recordEvidence(x: { pool: Pool; owner: string; unitId: n
 export declare function revokeFunction(x: { pool: Pool; owner: string; unitId: number; function: string; detail: string; by: string; now?: number }): Promise<{ ok: boolean; error?: string }>;
 export declare const CLOCK_SKEW_MS: number;
 export declare const TEMP_RULES: { maxToleranceC: number; minC: number; maxC: number; methods: string[] };
-export type DeviceAdapter = { read: (refs: Record<string, unknown>) => Promise<{ deviceId: string; values: Record<string, unknown>; at: number }>; send: (refs: Record<string, unknown>, fn: string, value: unknown, commandId: string) => Promise<{ ok: boolean; commandId: string; at: number }> };
+export type DeviceAdapter = { read: (refs: Record<string, unknown>, signal?: AbortSignal) => Promise<{ deviceId: string; values: Record<string, unknown>; at: number }>; send: (refs: Record<string, unknown>, fn: string, value: unknown, commandId: string, signal?: AbortSignal) => Promise<{ ok: boolean; commandId: string; at: number }> };
+export type DeviceLimits = { callTimeoutMs: number; readRetries: number; readbackTimeoutMs: number; readbackPollMs: number; remoteChangeTimeoutMs: number };
+export declare const DEVICE_LIMITS: DeviceLimits;
+export declare const COMMAND_VALUE_RULES: Record<string, { min?: number; max?: number; step?: number; values?: unknown[] }>;
+export declare function commandValueError(fn: string, value: unknown): string | null;
+export declare function commandPreflight(state: UnitState, fn: string, value: unknown, current: unknown): string | null;
 export declare function registerAdapter(name: string, impl: DeviceAdapter): void;
 export declare function registeredAdapters(): string[];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export declare function signEvidence(key: string, owner: string, unitId: number, e: any): string;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export declare function signatureValid(key: string | null, owner: string, unitId: number, e: any): boolean;
-export declare function runAdapterCommandTest(x: { pool: Pool & { connect?: unknown }; owner: string; unitId: number; adapter: string; function: string; value: unknown; signingKey: string | null; now?: () => number; settle?: () => Promise<void> }): Promise<{ ok: boolean; error?: string; commandId?: string; recorded?: boolean }>;
-export declare function observeRemoteChange(x: { pool: Pool; owner: string; unitId: number; adapter: string; function: string; signingKey: string | null; waitForChange: () => Promise<void>; now?: () => number }): Promise<{ ok: boolean; error?: string }>;
+export declare function runAdapterCommandTest(x: { pool: Pool & { connect?: unknown }; owner: string; unitId: number; adapter: string; function: string; value: unknown; signingKey: string | null; now?: () => number; limits?: Partial<DeviceLimits>; signal?: AbortSignal }): Promise<{ ok: boolean; error?: string; commandId?: string; recorded?: boolean; sent: boolean | "uncertain" }>;
+export declare function observeRemoteChange(x: { pool: Pool; owner: string; unitId: number; adapter: string; function: string; signingKey: string | null; waitForChange: (signal: AbortSignal) => Promise<void>; now?: () => number; limits?: Partial<DeviceLimits>; signal?: AbortSignal }): Promise<{ ok: boolean; error?: string }>;
 export declare function markHardwareChange(x: { pool: Pool; owner: string; unitId: number; reason: string; now?: number }): Promise<{ ok: boolean; error?: string }>;
 export declare function assignUnit(x: { pool: Pool; owner: string; unitId: number; model: { acBrand: string; acModel: string; wifiModule: string; app?: string; firmware?: string; protocol?: string }; roomId?: number | null; label?: string; now?: number }): Promise<{ ok: boolean; error?: string; modelId?: number; revalidationRequired?: boolean }>;
 export declare function seedHotelModules(x: { pool: Pool; owner: string; now?: number }): Promise<{ ok: boolean; models: number }>;

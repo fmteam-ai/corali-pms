@@ -1,0 +1,23 @@
+# Corali watchdog on Fly.io — a single always-on background machine, no public services, no volume.
+# Replace the app name (unique on Fly.io). Secrets are set with `fly secrets set` (see README-GR.md), never here.
+app = "corali-watchdog-CHANGE-ME"
+primary_region = "fra"          # Frankfurt — close to Greece; any region outside the hotel's hosting works
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PMS_HEALTH_URL = "https://pms.hotelcorali.gr/api/health"
+  BOOKING_HEALTH_URL = "https://booking.hotelcorali.gr/api/health"
+  PMS_HEARTBEAT_URL = "https://pms.hotelcorali.gr/api/monitoring/heartbeat"
+  INTERVAL_S = "60"
+  FAIL_THRESHOLD = "3"
+  REMIND_MIN = "60"
+  PROGRESS_STALE_S = "1200"
+  WATCHDOG_LABEL = "Hotel Corali"
+
+# No [http_service]: the watchdog only makes outgoing requests — nothing to expose, nothing to attack.
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

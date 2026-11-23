@@ -112,17 +112,29 @@ test("v199 P2: evidence expires and a firmware / hardware change forces revalida
 });
 
 const KEY = "k".repeat(32);
-// A fake device behind a certified-adapter interface: the only way automatic evidence is produced.
-function fakeDevice(deviceId: string, state: Record<string, unknown>, opts: { obey?: boolean; echoId?: boolean } = {}) {
-  let t = now0 + 10_000;
-  return {
-    state,
+// A fake device behind a certified-adapter interface: the only way automatic evidence is produced. `sends` counts every
+// command that reached it; `lagReads` = reads before an obeyed command shows; `hangSend` / `hangRead` never answer.
+function fakeDevice(deviceId: string, state: Record<string, unknown>, opts: { obey?: boolean; echoId?: boolean; lagReads?: number; hangSend?: boolean; hangRead?: boolean } = {}) {
+  let t = now0 + 10_000, pending: [string, unknown] | null = null, lag = 0;
+  const dev = {
+    state, sends: 0,
     impl: {
-      read: async () => ({ deviceId, values: { ...state }, at: (t += 10) }),
-      send: async (_refs: unknown, fn: string, value: unknown, commandId: string) => { if (opts.obey !== false) state[fn] = value; return { ok: true, commandId: opts.echoId === false ? "other" : commandId, at: (t += 10) }; },
+      read: async () => {
+        if (opts.hangRead) return new Promise<never>(() => {});
+        if (pending && lag-- <= 0) { state[pending[0]] = pending[1]; pending = null; }
+        return { deviceId, values: { ...state }, at: (t += 10) };
+      },
+      send: async (_refs: unknown, fn: string, value: unknown, commandId: string) => {
+        dev.sends++;
+        if (opts.hangSend) return new Promise<never>(() => {});
+        if (opts.obey !== false) { pending = [fn, value]; lag = opts.lagReads ?? 0; }
+        return { ok: true, commandId: opts.echoId === false ? "other" : commandId, at: (t += 10) };
+      },
     },
   };
+  return dev;
 }
+const FAST = { callTimeoutMs: 60, readRetries: 1, readbackTimeoutMs: 5000, readbackPollMs: 1, remoteChangeTimeoutMs: 60 };
 
 test("v200 P2: automatic evidence only from a certified adapter — same physical unit, command id, new read, signed; Temperature Guard order", async () => {
   const { db, pool } = await fresh();
@@ -132,7 +144,7 @@ test("v200 P2: automatic evidence only from a certified adapter — same physica
     await recordEvidence({ pool, owner: o, unitId: id, level: "STATUS_READ", result: "PASS", method: "manual-mapping", function: "setpoint", detail: "DP 2 = 24 και η οθόνη έδειχνε 24", functions: { mapping: { dp: "2", value: 24, observed: 24 } }, by: "N", now: now0 });
     let n = now0 + 20_000;
     const clock = () => (n += 1000);
-    const run = (adapter: string, value = 22) => runAdapterCommandTest({ pool, owner: o, unitId: id, adapter, function: "setpoint", value, signingKey: KEY, now: clock });
+    const run = (adapter: string, value: unknown = 22, fn = "setpoint") => runAdapterCommandTest({ pool, owner: o, unitId: id, adapter, function: fn, value, signingKey: KEY, now: clock, limits: FAST });
     assert.equal((await run("not-registered")).error, "NO_CERTIFIED_ADAPTER", "no adapter, no automatic evidence");
     assert.equal((await runAdapterCommandTest({ pool, owner: o, unitId: id, adapter: "x", function: "setpoint", value: 22, signingKey: null, now: clock })).error, "SIGNING_KEY_REQUIRED");
     registerAdapter("fake-other-unit", fakeDevice("bfOTHER", { setpoint: 24 }).impl);
@@ -172,6 +184,70 @@ test("v200 P2: automatic evidence only from a certified adapter — same physica
     assert.equal((await recordEvidence({ pool, owner: o, unitId: id, level: "STATUS_READ", result: "PASS", method: "manual", function: "setpoint", detail: "άλλαξα το τηλεχειριστήριο σε 26", functions: { remoteChange: { before: { value: 24, at: 1 }, after: { value: 26, at: 2 } } }, by: "N", now: n })).error, "REMOTE_CHANGE_NEEDS_ADAPTER");
     const route = readFileSync("app/api/pms/device-registry/route.ts", "utf8");
     assert.doesNotMatch(route, /runAdapterCommandTest|observeRemoteChange|registerAdapter|verification|signature/);
+  } finally { await db.close(); }
+});
+
+test("v201 P1: nothing is sent before every check passes — function, value, permission, revocation, same unit, current state", async () => {
+  const { db, pool } = await fresh();
+  try {
+    await importProbeReport({ pool, owner: o, report: report(), by: "M", now: now0 });
+    const id = (await deviceRegistry({ pool, owner: o, includeRefs: true, now: now0 })).units.find((x) => x.refs!.ip === "192.168.10.21")!.id;
+    let n = now0 + 20_000;
+    const clock = () => (n += 1000);
+    const dev = fakeDevice("bf1234567890abcdef", { setpoint: 24, power: false, room_temperature: 27 });
+    registerAdapter("fake-preflight", dev.impl);
+    const run = (fn: string, value: unknown) => runAdapterCommandTest({ pool, owner: o, unitId: id, adapter: "fake-preflight", function: fn, value, signingKey: KEY, now: clock, limits: FAST });
+    // The reported case: a read-only function → refused, and the device received NOTHING.
+    const r = await run("room_temperature", 20);
+    assert.deepEqual([r.error, r.sent, dev.sends], ["NOT_A_COMMAND_FUNCTION", false, 0]);
+    for (const [fn, v, err] of [["setpoint", 35, "VALUE_OUT_OF_RANGE"], ["setpoint", 10, "VALUE_OUT_OF_RANGE"], ["setpoint", 22.3, "VALUE_NOT_ALLOWED"], ["setpoint", "22", "VALUE_NOT_ALLOWED"], ["power", "on", "VALUE_NOT_ALLOWED"], ["mode", "turbo-max", "VALUE_NOT_ALLOWED"]] as const)
+      assert.equal((await run(fn, v)).error, err, `${fn}=${v}`);
+    assert.equal((await run("setpoint", 22)).error, "FUNCTION_READ_NOT_CONFIRMED", "no confirmed read → no command");
+    assert.equal(dev.sends, 0);
+    await recordEvidence({ pool, owner: o, unitId: id, level: "STATUS_READ", result: "PASS", method: "manual-mapping", function: "setpoint", detail: "DP 2 = 24 και η οθόνη έδειχνε 24", functions: { mapping: { dp: "2", value: 24, observed: 24 } }, by: "N", now: now0 });
+    assert.equal((await run("setpoint", 24)).error, "NO_CHANGE_REQUESTED", "a command that changes nothing proves nothing");
+    assert.equal(dev.sends, 0);
+    // A revoked function is not tested again silently.
+    await db.query(`INSERT INTO device_compat_evidence(owner_id,unit_id,level,result,method,detail,functions_json,recorded_by,at,function,verification) VALUES($1,$2,'COMMAND_CONFIRMED','REVOKED','revocation','ανάκληση από τον διαχειριστή','{}','N',$3,'setpoint','MANUALLY_ATTESTED')`, [o, id, now0 + 1000]);
+    assert.equal((await run("setpoint", 22)).error, "FUNCTION_REVOKED");
+    assert.equal(dev.sends, 0, "zero commands reached the device in all of the above");
+    await db.query(`DELETE FROM device_compat_evidence WHERE result='REVOKED'`);
+    // Readback by polling: the unit applies the value only on the 3rd read → still a verified PASS.
+    const slow = fakeDevice("bf1234567890abcdef", { setpoint: 24 }, { lagReads: 2 });
+    registerAdapter("fake-slow", slow.impl);
+    const ok = await runAdapterCommandTest({ pool, owner: o, unitId: id, adapter: "fake-slow", function: "setpoint", value: 22, signingKey: KEY, now: clock, limits: FAST });
+    assert.deepEqual([ok.ok, ok.sent, slow.sends], [true, true, 1]);
+  } finally { await db.close(); }
+});
+
+test("v201 P2: device calls are bounded — a hung send is DEVICE_UNRESPONSIVE and INCONCLUSIVE (maybe executed), a hung read or remote wait times out", async () => {
+  const { db, pool } = await fresh();
+  try {
+    await importProbeReport({ pool, owner: o, report: report(), by: "M", now: now0 });
+    const id = (await deviceRegistry({ pool, owner: o, includeRefs: true, now: now0 })).units.find((x) => x.refs!.ip === "192.168.10.21")!.id;
+    await recordEvidence({ pool, owner: o, unitId: id, level: "STATUS_READ", result: "PASS", method: "manual-mapping", function: "setpoint", detail: "DP 2 = 24 και η οθόνη έδειχνε 24", functions: { mapping: { dp: "2", value: 24, observed: 24 } }, by: "N", now: now0 });
+    let n = now0 + 20_000;
+    const clock = () => (n += 1000);
+    const hung = fakeDevice("bf1234567890abcdef", { setpoint: 24 }, { hangSend: true });
+    registerAdapter("fake-hang-send", hung.impl);
+    const t0 = Date.now();
+    const r = await runAdapterCommandTest({ pool, owner: o, unitId: id, adapter: "fake-hang-send", function: "setpoint", value: 22, signingKey: KEY, now: clock, limits: FAST });
+    assert.deepEqual([r.ok, r.error, r.sent], [false, "DEVICE_UNRESPONSIVE", "uncertain"]);
+    assert.ok(Date.now() - t0 < 2000, "bounded, not hanging");
+    const rows = (await db.query<{ result: string }>(`SELECT result FROM device_compat_evidence WHERE unit_id=$1 AND level='COMMAND_CONFIRMED'`, [id])).rows;
+    assert.deepEqual(rows.map((x) => x.result), ["INCONCLUSIVE"], "recorded as unknown — never as not sent, never as PASS");
+    const u = (await deviceRegistry({ pool, owner: o, now: n, signingKey: KEY })).units.find((x) => x.id === id)!;
+    assert.equal(u.allowed.commands.setpoint, null);
+    registerAdapter("fake-hang-read", fakeDevice("bf1234567890abcdef", { setpoint: 24 }, { hangRead: true }).impl);
+    assert.equal((await runAdapterCommandTest({ pool, owner: o, unitId: id, adapter: "fake-hang-read", function: "setpoint", value: 22, signingKey: KEY, now: clock, limits: FAST })).error, "DEVICE_UNRESPONSIVE");
+    // The remote-change wait gets a signal and a bound.
+    let aborted = false;
+    const w = await observeRemoteChange({ pool, owner: o, unitId: id, adapter: "fake-slow-remote-none", function: "setpoint", signingKey: KEY, waitForChange: async () => {}, now: clock, limits: FAST });
+    assert.equal(w.error, "NO_CERTIFIED_ADAPTER");
+    registerAdapter("fake-remote", fakeDevice("bf1234567890abcdef", { setpoint: 24 }).impl);
+    const tw = await observeRemoteChange({ pool, owner: o, unitId: id, adapter: "fake-remote", function: "setpoint", signingKey: KEY, now: clock, limits: FAST, waitForChange: (sig) => new Promise<void>((_, rej) => sig.addEventListener("abort", () => { aborted = true; rej(new Error("aborted")); })) });
+    assert.equal(tw.error, "REMOTE_CHANGE_TIMEOUT");
+    assert.equal(aborted, true, "the waiting side is told to stop");
   } finally { await db.close(); }
 });
 

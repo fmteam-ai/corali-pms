@@ -329,8 +329,9 @@ export const revokeFunction = ({ pool, owner, unitId, function: fn, detail, by, 
 // ── v200 certified adapters ────────────────────────────────────────────────────────────────────────────────────
 // Automatic evidence is produced ONLY here, by talking to the device through a certified adapter — never from values a
 // caller supplies. An adapter is code of the PMS (registered at start-up, not reachable from the API):
-//   read(refs)                     → { deviceId, values: { [function]: value }, at }
-//   send(refs, fn, value, cmdId)   → { ok, commandId, at }
+//   read(refs, signal)                   → { deviceId, values: { [function]: value }, at }
+//   send(refs, fn, value, cmdId, signal) → { ok, commandId, at }
+// (signal: an AbortSignal — every call is bounded by DEVICE_LIMITS; a hung device is DEVICE_UNRESPONSIVE.)
 // The record is accepted only when the before / after reads come from the SAME physical unit (deviceId = the unit's
 // registered identity), the device's answer carries the command id that was sent, and the new read shows the value.
 // It is signed with the server key; a record whose signature does not verify never counts.
@@ -352,50 +353,144 @@ async function adapterContext({ pool, owner, unitId, adapter, signingKey }) {
   if (!identity) return { error: "UNIT_HAS_NO_IDENTITY" };
   return { impl, cur, refs, identity };
 }
-// The order of the steps is timed by the PMS clock (`at`); the device's own time is kept apart (`deviceAt`) — the two
-// clocks are never compared with each other.
-const readFrom = async (impl, refs, identity, fn, now) => {
-  const r = await impl.read(refs);
-  if (!r || r.deviceId !== identity) return { error: "DEVICE_IDENTITY_MISMATCH" };
-  return { value: r.values?.[fn], at: now(), deviceAt: Number(r.at) || null, deviceId: r.deviceId };
+/**
+ * v201 allowed command values (checked BEFORE anything is sent): the setpoint within the hotel's safe range in 0.5 °C
+ * steps, power true/false, mode and fan only from known names. Anything else never reaches the device.
+ */
+export const COMMAND_VALUE_RULES = {
+  setpoint: { min: 16, max: 30, step: 0.5 },
+  power: { values: [true, false] },
+  mode: { values: ["cool", "heat", "dry", "fan", "auto", "cold", "hot", "wet", "wind"] },
+  fan: { values: ["auto", "low", "mid", "middle", "high", "strong", "quiet"] },
 };
-const stateFor = (cur, now, owner, signingKey) => unitState(cur.evidence.map((e) => ({ ...e, signatureValid: signatureValid(signingKey, owner, e.unitId, e) })), { now, revalidateAfter: cur.unit.revalidate_after });
-
-/** A command test by the PMS itself: read → command (with id) → device answer → new read; signed. */
-export async function runAdapterCommandTest({ pool, owner, unitId, adapter, function: fn, value, signingKey, now = () => Date.now(), settle = async () => {} }) {
-  const ctx = await adapterContext({ pool, owner, unitId, adapter, signingKey });
-  if (ctx.error) return { ok: false, error: ctx.error };
-  const before = await readFrom(ctx.impl, ctx.refs, ctx.identity, fn, now);
-  if (before.error) return { ok: false, error: before.error };
-  const commandId = randomUUID(), request = { at: now(), commandId, value };
-  const sent = await ctx.impl.send(ctx.refs, fn, value, commandId);
-  if (!sent || sent.commandId !== commandId) return { ok: false, error: "COMMAND_ID_MISMATCH" };
-  const response = { ...sent, deviceAt: Number(sent.at) || null, at: now() };
-  await settle();
-  const after = await readFrom(ctx.impl, ctx.refs, ctx.identity, fn, now);
-  if (after.error) return { ok: false, error: after.error };
-  const e = { level: "COMMAND_CONFIRMED", result: "PASS", method: `adapter:${adapter}`, verification: "AUTOMATIC_READBACK_VERIFIED", function: fn, adapter, commandId,
-    detail: `δοκιμή ${fn} = ${value} από το PMS, εντολή ${commandId.slice(0, 8)}`, functions: { command: { value }, before, request, response: { ok: response.ok === true, commandId: response.commandId, at: response.at, deviceAt: response.deviceAt }, after } };
-  const at = now(), error = validateEvidence(e, stateFor(ctx.cur, at, owner, signingKey));
-  // A refused readback is itself evidence: stored as a signed FAIL, so the function is not allowed.
-  const stored = error && !["FUNCTION_READ_NOT_CONFIRMED", "PREVIOUS_LEVEL_NOT_PROVEN", "NOT_A_COMMAND_FUNCTION"].includes(error) ? { ...e, result: "FAIL", detail: `${e.detail} — ${error}` } : error ? null : e;
-  if (stored) await insertEvidence(pool, owner, unitId, stored, "pms-adapter", at, { signingKey });
-  return error ? { ok: false, error, recorded: Boolean(stored) } : { ok: true, commandId };
+export function commandValueError(fn, value) {
+  const r = COMMAND_VALUE_RULES[fn];
+  if (!r) return "NOT_A_COMMAND_FUNCTION";
+  if (r.values) return r.values.includes(value) ? null : "VALUE_NOT_ALLOWED";
+  if (typeof value !== "number" || !Number.isFinite(value)) return "VALUE_NOT_ALLOWED";
+  if (value < r.min || value > r.max) return "VALUE_OUT_OF_RANGE";
+  return Math.abs(value / r.step - Math.round(value / r.step)) < 1e-9 ? null : "VALUE_NOT_ALLOWED";
 }
 
-/** Step 2 of the Temperature Guard order: a person changes the value on the physical remote; the PMS detects it. */
-export async function observeRemoteChange({ pool, owner, unitId, adapter, function: fn, signingKey, waitForChange, now = () => Date.now() }) {
+/** v201 device timeouts: every adapter call is bounded; a read is retried a limited number of times. */
+export const DEVICE_LIMITS = { callTimeoutMs: 8000, readRetries: 2, readbackTimeoutMs: 20_000, readbackPollMs: 1000, remoteChangeTimeoutMs: 5 * 60_000 };
+class DeviceTimeout extends Error { constructor() { super("DEVICE_UNRESPONSIVE"); } }
+async function bounded(promiseFn, ms, signal) {
+  const ctl = new AbortController();
+  const onAbort = () => ctl.abort();
+  signal?.addEventListener?.("abort", onAbort, { once: true });
+  let timer;
+  try {
+    return await Promise.race([promiseFn(ctl.signal), new Promise((_, rej) => { timer = setTimeout(() => { rej(new DeviceTimeout()); ctl.abort(); }, ms); })]);
+  } finally { clearTimeout(timer); signal?.removeEventListener?.("abort", onAbort); }
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// The order of the steps is timed by the PMS clock (`at`); the device's own time is kept apart (`deviceAt`) — the two
+// clocks are never compared with each other.
+async function readFrom(impl, refs, identity, fn, now, limits, signal) {
+  let last = null;
+  for (let attempt = 0; attempt <= limits.readRetries; attempt++) {
+    try {
+      const r = await bounded((sig) => impl.read(refs, sig), limits.callTimeoutMs, signal);
+      if (!r || r.deviceId !== identity) return { error: "DEVICE_IDENTITY_MISMATCH" };
+      return { value: r.values?.[fn], at: now(), deviceAt: Number(r.at) || null, deviceId: r.deviceId };
+    } catch (e) { last = e; if (signal?.aborted) break; }
+  }
+  return { error: last instanceof DeviceTimeout ? "DEVICE_UNRESPONSIVE" : "DEVICE_READ_FAILED" };
+}
+const stateFor = (cur, now, owner, signingKey) => unitState(cur.evidence.map((e) => ({ ...e, signatureValid: signatureValid(signingKey, owner, e.unitId, e) })), { now, revalidateAfter: cur.unit.revalidate_after });
+
+/**
+ * v201 preflight — everything that can refuse a command is checked BEFORE adapter.send():
+ * the function is a command function, the value is allowed, the unit is at STATUS_READ with this function's read
+ * confirmed and not time-uncertain, the function has not been revoked, the device answers as the SAME physical unit,
+ * and its current value is known and differs from the requested one (a test that changes nothing proves nothing).
+ */
+export function commandPreflight(state, fn, value, current) {
+  if (!COMMAND_FUNCTIONS.includes(fn)) return "NOT_A_COMMAND_FUNCTION";
+  const ve = commandValueError(fn, value);
+  if (ve) return ve;
+  if (rank(state.level) < rank("STATUS_READ")) return "PREVIOUS_LEVEL_NOT_PROVEN";
+  if (state.timeUncertain) return "TIME_UNCERTAIN";
+  const f = state.functions[fn];
+  if (f.read.state !== "VERIFIED" || f.read.timeUncertain) return "FUNCTION_READ_NOT_CONFIRMED";
+  if (f.command.state === "REVOKED") return "FUNCTION_REVOKED";
+  if (current === undefined || current === null || current === "") return "CURRENT_STATE_UNKNOWN";
+  if (String(current) === String(value)) return "NO_CHANGE_REQUESTED";
+  return null;
+}
+
+/**
+ * A command test by the PMS itself: preflight → command (with id) → device answer → readback polling until the value
+ * shows (bounded) → signed record. Nothing is sent when the preflight refuses. A send that times out or loses its
+ * answer is INCONCLUSIVE (the device may have executed it) — recorded, never treated as not sent, never retried here.
+ */
+export async function runAdapterCommandTest({ pool, owner, unitId, adapter, function: fn, value, signingKey, now = () => Date.now(), limits = {}, signal = undefined }) {
+  const L = { ...DEVICE_LIMITS, ...limits };
+  if (!COMMAND_FUNCTIONS.includes(fn)) return { ok: false, error: "NOT_A_COMMAND_FUNCTION", sent: false };
+  const valueError = commandValueError(fn, value);
+  if (valueError) return { ok: false, error: valueError, sent: false };
+  const ctx = await adapterContext({ pool, owner, unitId, adapter, signingKey });
+  if (ctx.error) return { ok: false, error: ctx.error, sent: false };
+  const before = await readFrom(ctx.impl, ctx.refs, ctx.identity, fn, now, L, signal);
+  if (before.error) return { ok: false, error: before.error, sent: false };
+  const pre = commandPreflight(stateFor(ctx.cur, now(), owner, signingKey), fn, value, before.value);
+  if (pre) return { ok: false, error: pre, sent: false };
+  const commandId = randomUUID(), request = { at: now(), commandId, value };
+  const base = { level: "COMMAND_CONFIRMED", method: `adapter:${adapter}`, verification: "AUTOMATIC_READBACK_VERIFIED", function: fn, adapter, commandId };
+  const record = async (result, detail, functions) => { await insertEvidence(pool, owner, unitId, { ...base, result, detail, functions }, "pms-adapter", now(), { signingKey }); };
+  let sent;
+  try { sent = await bounded((sig) => ctx.impl.send(ctx.refs, fn, value, commandId, sig), L.callTimeoutMs, signal); }
+  catch (e) {
+    await record("INCONCLUSIVE", `εντολή ${fn} = ${value} (${commandId.slice(0, 8)}): χωρίς απάντηση — άγνωστο αν εκτελέστηκε`, { command: { value }, before, request, response: { error: e instanceof DeviceTimeout ? "DEVICE_UNRESPONSIVE" : "SEND_FAILED" } });
+    return { ok: false, error: e instanceof DeviceTimeout ? "DEVICE_UNRESPONSIVE" : "SEND_FAILED", sent: "uncertain", commandId };
+  }
+  if (!sent || sent.commandId !== commandId) {
+    await record("INCONCLUSIVE", `εντολή ${commandId.slice(0, 8)}: η απάντηση δεν φέρει το id της εντολής`, { command: { value }, before, request, response: { commandId: sent?.commandId ?? null } });
+    return { ok: false, error: "COMMAND_ID_MISMATCH", sent: "uncertain", commandId };
+  }
+  const response = { ok: sent.ok === true, commandId: sent.commandId, at: now(), deviceAt: Number(sent.at) || null };
+  // Readback: poll the SAME unit until the value shows, within the bound.
+  let after = null;
+  const until = now() + L.readbackTimeoutMs;
+  do {
+    after = await readFrom(ctx.impl, ctx.refs, ctx.identity, fn, now, L, signal);
+    if (after.error === "DEVICE_IDENTITY_MISMATCH") break;
+    if (!after.error && String(after.value) === String(value)) break;
+    if (now() >= until || signal?.aborted) break;
+    await sleep(L.readbackPollMs);
+  } while (true);
+  if (after.error) {
+    await record("INCONCLUSIVE", `εντολή ${commandId.slice(0, 8)}: η νέα ανάγνωση απέτυχε (${after.error})`, { command: { value }, before, request, response });
+    return { ok: false, error: after.error, sent: true, commandId };
+  }
+  const e = { ...base, result: "PASS", detail: `δοκιμή ${fn} = ${value} από το PMS, εντολή ${commandId.slice(0, 8)}`, functions: { command: { value }, before, request, response, after } };
+  const error = validateEvidence(e, stateFor(ctx.cur, now(), owner, signingKey));
+  // A refused readback (the device did not change) is itself evidence: a signed FAIL.
+  if (error) { await record("FAIL", `${e.detail} — ${error}`, e.functions); return { ok: false, error, sent: true, recorded: true, commandId }; }
+  await insertEvidence(pool, owner, unitId, e, "pms-adapter", now(), { signingKey });
+  return { ok: true, commandId, sent: true };
+}
+
+/**
+ * Step 2 of the Temperature Guard order: a person changes the value on the physical remote; the PMS detects it.
+ * Bounded: waitForChange gets an AbortSignal and at most remoteChangeTimeoutMs; then DEVICE_UNRESPONSIVE / TIMEOUT.
+ */
+export async function observeRemoteChange({ pool, owner, unitId, adapter, function: fn, signingKey, waitForChange, now = () => Date.now(), limits = {}, signal = undefined }) {
+  const L = { ...DEVICE_LIMITS, ...limits };
   const ctx = await adapterContext({ pool, owner, unitId, adapter, signingKey });
   if (ctx.error) return { ok: false, error: ctx.error };
-  const before = await readFrom(ctx.impl, ctx.refs, ctx.identity, fn, now);
+  const before = await readFrom(ctx.impl, ctx.refs, ctx.identity, fn, now, L, signal);
   if (before.error) return { ok: false, error: before.error };
-  await waitForChange();
-  const after = await readFrom(ctx.impl, ctx.refs, ctx.identity, fn, now);
+  try { await bounded((sig) => waitForChange(sig), L.remoteChangeTimeoutMs, signal); }
+  catch (e) { return { ok: false, error: e instanceof DeviceTimeout ? "REMOTE_CHANGE_TIMEOUT" : "REMOTE_CHANGE_CANCELLED" }; }
+  const after = await readFrom(ctx.impl, ctx.refs, ctx.identity, fn, now, L, signal);
   if (after.error) return { ok: false, error: after.error };
   const e = { level: "STATUS_READ", result: "PASS", method: `adapter:${adapter}`, verification: "AUTOMATIC_READBACK_VERIFIED", function: fn, adapter, detail: `αλλαγή από το τηλεχειριστήριο εντοπίστηκε: ${before.value} → ${after.value}`, functions: { remoteChange: { before, after } } };
-  const at = now(), error = validateEvidence(e, stateFor(ctx.cur, at, owner, signingKey));
+  const error = validateEvidence(e, stateFor(ctx.cur, now(), owner, signingKey));
   if (error) return { ok: false, error };
-  await insertEvidence(pool, owner, unitId, e, "pms-adapter", at, { signingKey });
+  await insertEvidence(pool, owner, unitId, e, "pms-adapter", now(), { signingKey });
   return { ok: true };
 }
 

@@ -2982,3 +2982,42 @@ ALTER TABLE device_compat_evidence ADD COLUMN IF NOT EXISTS command_id TEXT NOT 
 ALTER TABLE device_compat_evidence ADD COLUMN IF NOT EXISTS adapter TEXT NOT NULL DEFAULT '';
 ALTER TABLE device_compat_evidence ADD COLUMN IF NOT EXISTS signature TEXT NOT NULL DEFAULT '';
 CREATE UNIQUE INDEX IF NOT EXISTS uq_device_compat_evidence_fp ON device_compat_evidence(owner_id,fingerprint);
+
+-- v201 social publisher: an exclusive lease per post while it is being published (status 'processing'), so two
+-- overlapping cron runs never publish the same post twice; platforms with no reliable answer become 'uncertain'.
+ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS lease_owner TEXT;
+ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS lease_until BIGINT;
+
+-- v201 Corali Sentinel Foundation: read-only monitoring of production data; it writes ONLY its own tables.
+CREATE TABLE IF NOT EXISTS sentinel_incidents (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ incident_key TEXT NOT NULL,
+ area TEXT NOT NULL,
+ severity TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'open',
+ title TEXT NOT NULL,
+ first_seen_at BIGINT NOT NULL,
+ last_seen_at BIGINT NOT NULL,
+ occurrences BIGINT NOT NULL DEFAULT 1,
+ clean_checks BIGINT NOT NULL DEFAULT 0,
+ evidence_json TEXT NOT NULL DEFAULT '[]',
+ report_json TEXT NOT NULL DEFAULT '{}',
+ correlation_id TEXT NOT NULL DEFAULT '',
+ resolved_at BIGINT,
+ recovery_verified_at BIGINT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sentinel_incident_active ON sentinel_incidents(owner_id,incident_key) WHERE status IN ('open','recovering');
+CREATE INDEX IF NOT EXISTS idx_sentinel_incidents_owner ON sentinel_incidents(owner_id,status,last_seen_at DESC);
+CREATE TABLE IF NOT EXISTS sentinel_runs (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ correlation_id TEXT NOT NULL,
+ started_at BIGINT NOT NULL,
+ finished_at BIGINT,
+ status TEXT NOT NULL,
+ checks BIGINT NOT NULL DEFAULT 0,
+ open_incidents BIGINT NOT NULL DEFAULT 0,
+ error TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_sentinel_runs_owner ON sentinel_runs(owner_id,started_at DESC);
