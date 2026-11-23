@@ -458,3 +458,43 @@ test("v204 review 6 watchdog: per-channel order through batches and compaction; 
   await wd.cycle();
   assert.equal(wd.state().outbox.length, 0, "delivered after repair");
 });
+
+test("v204 review 7 watchdog: a hanging channel does not starve the others; damaged checks still alert; no channel; a channel added later; webhook size", async () => {
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  let clock = Date.parse("2026-11-24T10:00:00Z");
+  const got: Record<string, number> = { ntfy: 0, webhook: 0, telegram: 0 };
+  // Telegram «hangs»: each call consumes 10 s of clock and times out.
+  const fetchImpl = (async (url: string, init?: { body?: string }) => {
+    if (url.endsWith("/api/health")) return new Response(JSON.stringify({ ok: false, reason: "down" }), { status: 503 });
+    if (url.includes("api.telegram.org")) { got.telegram++; clock += 10_000; throw Object.assign(new Error("timeout"), { name: "TimeoutError" }); }
+    if (url.includes("ntfy.example")) { got.ntfy++; return new Response(JSON.stringify({ id: "n" }), { status: 200 }); }
+    if (url.includes("hook")) { got.webhook++; const b = JSON.parse(String(init?.body)); if (b.items) assert.ok(b.items.length <= 200); return new Response("ok"); }
+    return new Response("?", { status: 404 });
+  }) as unknown as typeof fetch;
+  const wd = createWatchdog(cfgFor({ heartbeatUrl: "", telegram: { token: "T", chat: "C" }, ntfyUrl: "https://ntfy.example/t", webhookUrl: "http://hook/alert" }), { fetchImpl, now: () => clock, sleep: async () => {}, log: () => {} });
+  for (let i = 0; i < 3; i++) { await wd.cycle(); clock += 60_000; }
+  assert.ok(got.ntfy >= 1 && got.webhook >= 1, `the working channels got the alert while Telegram hangs: ${JSON.stringify(got)}`);
+  // A damaged check (fails missing / not a number) still opens an incident.
+  const dir = mkdtempSync(join(tmpdir(), "wd7-"));
+  writeFileSync(join(dir, "state.json"), JSON.stringify({ checks: { pms: {}, booking: { fails: "x", open: "yes" } }, progress: { sentinelRuns: { value: "x", since: 1 } }, undeliverable: "bad", outbox: [] }));
+  const alerts: string[] = [];
+  const f2 = (async (url: string, init?: { body?: string }) => { if (url.includes("hook")) { alerts.push(JSON.parse(String(init?.body)).check); return new Response("ok"); } return new Response(JSON.stringify({ ok: false }), { status: 503 }); }) as unknown as typeof fetch;
+  const w2 = createWatchdog(cfgFor({ heartbeatUrl: "", bookingHealthUrl: "", stateFile: join(dir, "state.json") }), { fetchImpl: f2, now: () => clock, sleep: async () => {}, log: () => {} });
+  for (let i = 0; i < 3; i++) { await w2.cycle(); clock += 60_000; }
+  assert.ok(alerts.includes("pms"), "the repaired check opened");
+  // No channel configured: the queue does not grow (every alert is in the log).
+  const w3 = createWatchdog(cfgFor({ heartbeatUrl: "", webhookUrl: "" }), { fetchImpl: f2, now: () => clock, sleep: async () => {}, log: () => {} });
+  for (let i = 0; i < 6; i++) { await w3.cycle(); clock += 60_000; }
+  assert.equal(w3.state().outbox.length, 0);
+  // A channel added after a restart starts with new alerts only.
+  const d2 = mkdtempSync(join(tmpdir(), "wd7b-"));
+  writeFileSync(join(d2, "state.json"), JSON.stringify({ targets: ["webhook"], checks: {}, progress: {}, outbox: [{ kind: "reminder", check: "old", text: "old", delivered: [] }] }));
+  const sent: string[] = [];
+  const f3 = (async (url: string, init?: { body?: string }) => { if (url.includes("ntfy.example")) { sent.push(String(init?.body)); return new Response(JSON.stringify({ id: "n" }), { status: 200 }); } if (url.includes("hook")) return new Response("down", { status: 503 }); return new Response(JSON.stringify({ ok: true }), { status: 200 }); }) as unknown as typeof fetch;
+  const w4 = createWatchdog(cfgFor({ pmsHealthUrl: "", heartbeatUrl: "", ntfyUrl: "https://ntfy.example/t", stateFile: join(d2, "state.json") }), { fetchImpl: f3, now: () => clock, sleep: async () => {}, log: () => {} });
+  await w4.cycle();
+  assert.deepEqual(sent, [], "ntfy (new) does not get the old backlog");
+  assert.equal(w4.state().outbox.length, 1, "the webhook still owes it");
+});

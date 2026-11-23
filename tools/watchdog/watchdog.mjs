@@ -64,7 +64,7 @@ export const TEXT_MAX = 3500, ITEMS_MAX = 1000;
 const bytes = (t) => Buffer.byteLength(t, "utf8");
 /** A message text from lines, within TEXT_MAX bytes: the head, the lines that fit, then «… και N ακόμη». */
 export function listText(head, lines) {
-  let text = head, shown = 0;
+  let text = clipText(head).slice(0, 600), shown = 0;
   const tail = (n) => `\n… και ${n} ακόμη — όλες στο log του watchdog (fly logs)`;
   for (const l of lines) {
     const next = `${text}\n• ${l}`;
@@ -112,8 +112,8 @@ export function compactOutbox(outbox, label = "", targets = ["telegram", "ntfy",
     const items = collapseItems(pending.flatMap(itemsOf));
     const total = items.reduce((n, x) => n + (Number(x.count) || 1), 0);
     for (const m of pending) m.merged = [...new Set([...(m.merged ?? []), t])];
-    // Text: critical first, then the newest — what matters most is never hidden behind «… και N ακόμη».
-    const shown = items.map((x, i) => ({ x, i })).sort((a, b) => (b.x.severity === "critical") - (a.x.severity === "critical") || b.i - a.i).map(({ x }) => `${x.text}${Number(x.count) > 1 ? ` (×${x.count})` : ""}`);
+    // Text: newest first (the current state of each check — a later «resolved» is never hidden behind its «open»).
+    const shown = items.slice().reverse().map((x) => `${x.text}${Number(x.count) > 1 ? ` (×${x.count})` : ""}`);
     box = [...box, { kind: "digest", severity: items.some((x) => x.severity === "critical") ? "critical" : "warning", check: "*", at: Math.max(0, ...items.map((x) => Number(x.at) || 0)), items,
       delivered: targets.filter((o) => o !== t), gaveUp: {}, errors: {}, text: listText(`📋 ${label}: ${total} ειδοποιήσεις συγκεντρώθηκαν (η ουρά του καναλιού ${t} ξεπέρασε τις ${QUEUE_MAX})`, shown) }];
   }
@@ -143,7 +143,22 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     if (m.refused) for (const [k, v] of Object.entries(m.refused)) if (!Number.isFinite(Number(v))) m.refused[k] = 0;
     if (m.items !== undefined) m.items = Array.isArray(m.items) ? m.items.filter((x) => obj(x) && typeof x.text === "string") : [];
   }
-  for (const [k, v] of Object.entries(state.progress)) if (!obj(v)) delete state.progress[k];
+  for (const [k, v] of Object.entries(state.progress)) if (!obj(v) || !Number.isFinite(Number(v.value)) || !Number.isFinite(Number(v.since))) delete state.progress[k];
+  const num = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  for (const c of Object.values(state.checks)) {
+    c.fails = num(c.fails); c.oks = num(c.oks); c.open = c.open === true;
+    c.openedAt = c.openedAt == null ? null : num(c.openedAt, null); c.lastAlertAt = c.lastAlertAt == null ? null : num(c.lastAlertAt, null);
+    if (c.open && c.openedAt == null) c.openedAt = now();
+    if (c.open && c.lastAlertAt == null) c.lastAlertAt = now();
+    if (c.severity !== "warning" && c.severity !== "critical") delete c.severity;
+  }
+  if (state.undeliverable !== undefined && !(obj(state.undeliverable) && Number.isFinite(Number(state.undeliverable.at)))) delete state.undeliverable;
+  // A channel added since the last start begins with NEW alerts only (it never had the old ones; sending them now
+  // would arrive out of order, some inside digests built for other channels).
+  const configured = [cfg.telegram && "telegram", cfg.ntfyUrl && "ntfy", cfg.webhookUrl && "webhook"].filter(Boolean);
+  const known = Array.isArray(state.targets) ? state.targets : configured;
+  for (const t of configured.filter((x) => !known.includes(x))) for (const m of state.outbox) m.merged = [...new Set([...(m.merged ?? []), t])];
+  state.targets = configured;
   // Messages saved by an older version may be longer than the channels accept.
   for (const m of state.outbox) m.text = clipText(m.text);
   // Returns false when the state could not be saved — reported as the «state_storage» check, never silent.
@@ -208,7 +223,7 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     if (!r?.ok) {
       const body = name === "telegram" ? await r?.json?.().catch(() => null) : null;
       const desc = String(body?.description ?? "");
-      const specific = r?.status === 413 || (name === "telegram" && r?.status === 400 && /too long|can't parse|text is empty|entities/i.test(desc)) || (name === "webhook" && r?.status === 422);
+      const specific = r?.status === 413 || (name === "telegram" && r?.status === 400 && /too long|can't parse|text is empty|entities/i.test(desc)) || (name === "webhook" && [400, 413, 422].includes(r?.status));
       return { reason: `HTTP ${r?.status ?? "—"}${desc ? ` ${desc.slice(0, 100)}` : ""}`, messageSpecific: specific };
     }
     if (name === "webhook") return true;
@@ -219,11 +234,15 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
   }
 
   const targetNames = () => [cfg.telegram && "telegram", cfg.ntfyUrl && "ntfy", cfg.webhookUrl && "webhook"].filter(Boolean);
-  function sender(name, msg) {
+  function sender(name, msg, deadline = Infinity) {
+    const ms = () => Math.max(1000, Math.min(cfg.timeoutMs, deadline - now())); // a try never runs far past the budget
     const urgent = msg.severity === "critical" && ["open", "escalated", "batch", "digest"].includes(msg.kind);
-    if (name === "telegram") return () => fetchImpl(`https://api.telegram.org/bot${cfg.telegram.token}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: cfg.telegram.chat, text: msg.text }), signal: AbortSignal.timeout(cfg.timeoutMs) });
-    if (name === "ntfy") return () => fetchImpl(cfg.ntfyUrl, { method: "POST", headers: { Title: `${cfg.label} watchdog`, Priority: urgent ? "high" : "default" }, body: msg.text, signal: AbortSignal.timeout(cfg.timeoutMs) });
-    return () => fetchImpl(cfg.webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg), signal: AbortSignal.timeout(cfg.timeoutMs) });
+    if (name === "telegram") return () => fetchImpl(`https://api.telegram.org/bot${cfg.telegram.token}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: cfg.telegram.chat, text: msg.text }), signal: AbortSignal.timeout(ms()) });
+    if (name === "ntfy") return () => fetchImpl(cfg.ntfyUrl, { method: "POST", headers: { Title: `${cfg.label} watchdog`, Priority: urgent ? "high" : "default" }, body: msg.text, signal: AbortSignal.timeout(ms()) });
+    // Webhook: the message with at most 200 of its items (a digest can hold 1000; the rest are counted).
+    const items = Array.isArray(msg.items) ? msg.items : null;
+    const body = items && items.length > 200 ? { ...msg, items: items.slice(-200), itemsOmitted: items.length - 200 } : msg;
+    return () => fetchImpl(cfg.webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms()) });
   }
   /**
    * v204 (review 6): one channel reads the queue STRICTLY in arrival order and stops at the first message it cannot
@@ -237,7 +256,7 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
       if (doneFor(msg, name)) continue;
       if (now() > deadline) return;
       msg.delivered ??= []; msg.errors ??= {}; msg.refused ??= {}; msg.gaveUp ??= {};
-      const send = sender(name, msg);
+      const send = sender(name, msg, deadline);
       let verdict = null;
       for (let attempt = 0; attempt < 3; attempt++) {
         try { verdict = await accepted(name, await send()); } catch (e) { verdict = { reason: `σύνδεση: ${String(e?.message ?? e).slice(0, 120)}`, messageSpecific: false }; }
@@ -248,9 +267,11 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
       msg.errors[name] = verdict.reason;
       if (!verdict.messageSpecific) return; // the channel is down: the rest waits, in order
       msg.refused[name] = (Number(msg.refused[name]) || 0) + 1;
+      persist();
       if (msg.refused[name] < 3) return; // hold the line: newer messages must not overtake it
       msg.gaveUp[name] = msg.errors[name];
-      state.undeliverable = { count: (state.undeliverable?.count ?? 0) + 1, at: now(), last: `${name}: ${msg.errors[name]}` };
+      const recent = state.undeliverable && now() - Number(state.undeliverable.at) < 24 * 60 * MIN;
+      state.undeliverable = { count: (recent ? Number(state.undeliverable.count) || 0 : 0) + 1, at: now(), last: `${name}: ${msg.errors[name]}` };
       log(JSON.stringify({ level: "error", event: "alert_undeliverable", target: name, reason: msg.errors[name], kind: msg.kind, check: msg.check, text: msg.text }));
       persist();
     }
@@ -309,10 +330,14 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     // Time budget from the cycle's start, but always at least 10 s for delivery (even when every check timed out).
     const deadline = Math.max(t + cfg.intervalS * 1000 * 0.8, now() + 10_000);
     const targets = targetNames();
-    for (const name of targets) await deliverChannel(name, deadline);
+    // v204 (review 7): channels in PARALLEL, each with the whole budget — a hanging channel cannot starve the others.
+    await Promise.all(targets.map((name) => deliverChannel(name, deadline)));
     // Nothing is dropped: a message leaves the queue only when every channel is done with it; above QUEUE_MAX
     // waiting for one channel, that channel's backlog is merged (in order) into one digest.
     if (targets.length) state.outbox = compactOutbox(state.outbox, cfg.label, targets);
+    // No channel configured: every alert was already written to the log when decided — the log is its only delivery
+    // (reported once per start), so the queue does not grow without end.
+    else if (state.outbox.length) { log(JSON.stringify({ level: "warn", event: "no_alert_channel", dropped_to_log: state.outbox.length })); state.outbox = []; }
     if (cfg.deadmanUrl) { try { await fetchImpl(cfg.deadmanUrl, { signal: AbortSignal.timeout(cfg.timeoutMs) }); } catch { /* the dead-man service alerts on missing pings */ } }
     persist();
     const line = JSON.stringify({ event: "watchdog_cycle", at: new Date(t).toISOString(), results: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, v.ok ? "ok" : v.detail])), open: Object.entries(state.checks).filter(([, c]) => c.open).map(([k]) => k), undelivered: state.outbox.length });
