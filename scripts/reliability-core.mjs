@@ -113,7 +113,7 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
       add("channel", { key: `outbox:${o.id}`, level: syncDead ? "warn" : o.status === "failed" || Number(o.attempts) >= 3 || age > 30 * MIN ? "fail" : "warn", text: `Μεταβολή διαθεσιμότητας ${o.date_from}${o.date_to !== o.date_from ? ` → ${o.date_to}` : ""} (${o.reason || "—"}) δεν έχει συγχρονιστεί εδώ και ${ago(now, o.created_at)}${Number(o.attempts) ? ` · ${o.attempts} προσπάθειες` : ""}${o.err ? ` · ${o.err.slice(0, 120)}` : ""}`, action: { type: "retry_outbox", id: Number(o.id) }, at: Number(o.created_at) });
     }
     // v204: judged by the LATEST run (a failure after a recent success counts), after SYNC_FAIL_GRACE_MS of failing.
-    if (!syncDead && lastRunFailed(st) && now - (st?.failing_since != null && Number(st.failing_since) >= Number(st?.last_ok_at ?? 0) ? Number(st.failing_since) : st?.last_ok_at != null ? Number(st.last_ok_at) : st && !("failing_since" in st) ? 0 : Number(st?.last_run_at ?? now)) >= SYNC_FAIL_GRACE_MS) add("channel", { key: "sync:stale", level: "fail", text: `Η τελευταία εκτέλεση του συγχρονισμού απέτυχε · τελευταία επιτυχία ${st?.last_ok_at ? hhmm(st.last_ok_at) : "ποτέ"}${st?.last_error ? ` · ${String(st.last_error).slice(0, 120)}` : ""}`, action: { type: "sync_now" }, at: Number(st?.last_ok_at ?? st?.last_run_at ?? 0) });
+    if (!syncDead && lastRunFailed(st) && now - (st?.failing_since != null && Number(st.failing_since) >= Number(st?.last_ok_at ?? 0) ? Number(st.failing_since) : st?.last_ok_at != null ? Number(st.last_ok_at) : st && !("failing_since" in st) ? now - SYNC_FAIL_GRACE_MS : Number(st?.last_run_at ?? now)) >= SYNC_FAIL_GRACE_MS) add("channel", { key: "sync:stale", level: "fail", text: `Η τελευταία εκτέλεση του συγχρονισμού απέτυχε · τελευταία επιτυχία ${st?.last_ok_at ? hhmm(st.last_ok_at) : "ποτέ"}${st?.last_error ? ` · ${String(st.last_error).slice(0, 120)}` : ""}`, action: { type: "sync_now" }, at: Number(st?.last_ok_at ?? st?.last_run_at ?? now) });
   }
   for (const b of otaNoRoom) add("channel", { key: `noroom:${b.id}`, level: "warn", text: `Κράτηση OTA ${b.reference} (${b.guest_name}, άφιξη ${b.check_in}) χωρίς δωμάτιο — τύπος ${b.external_room_type}`, link: `/pms/reservations?q=${encodeURIComponent(b.reference)}` });
   // v189 OTA reconciliation: what the PMS sells now ≠ what was last sent, with nothing queued to fix it.
@@ -351,7 +351,8 @@ export async function runReliabilityAlerts({ pool, owner, now = Date.now(), emai
   // OTA booking without a room, which concerns the PMS itself. And a per-item alert absorbed into its group
   // («rel:ota:<range>» → «rel:ota:*») closes silently too: it was not fixed, it is now counted in the group.
   const activated = ["ACTIVE", "DEGRADED", "UNVERIFIED"].includes(r.integrations?.channelManager);
-  const groups = new Set(incidents.filter((i) => i.key.endsWith(":*")).map((i) => i.key.slice(0, -2)));
+  // (only the per-range OTA families are absorbed — the only groups that replaced individual non-numeric keys)
+  const groups = new Set(incidents.filter((i) => i.key === "ota:*" || i.key === "ota-unsent:*").map((i) => i.key.slice(0, -2)));
   const closesSilently = (a) => (!activated && a.area === "channel" && !String(a.alert_key).startsWith("rel:noroom:")) || groups.has(String(a.alert_key).replace(/^rel:/, "").split(":")[0]);
   const resolved = await resolveAlerts({ pool, owner, activeKeys: incidents.map((i) => `rel:${i.key}`), now, silent: closesSilently });
   const escalated = await escalateAlerts({ pool, owner, now, emails });

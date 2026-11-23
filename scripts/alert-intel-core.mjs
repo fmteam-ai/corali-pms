@@ -87,10 +87,11 @@ export function channelIncident(s, now) {
     // (failingSince === undefined: the schema update has not run — the start is unknown; never succeeded → the
     // grace is not applied, otherwise it would restart at every run.)
     const fs = s.failingSince == null ? null : Number(s.failingSince);
-    const since = fs != null && fs >= Number(s.lastOkAt ?? 0) ? fs : s.lastOkAt != null ? Number(s.lastOkAt) : s.failingSince === undefined ? 0 : Number(s.lastRunAt);
+    const unknownStart = !(fs != null && fs >= Number(s.lastOkAt ?? 0)) && s.lastOkAt == null && s.failingSince === undefined;
+    const since = fs != null && fs >= Number(s.lastOkAt ?? 0) ? fs : s.lastOkAt != null ? Number(s.lastOkAt) : unknownStart ? now - SYNC_FAIL_GRACE_MS : Number(s.lastRunAt);
     const failingFor = now - since;
     const failing = { ...base, priority: failingFor > 6 * HOUR ? "critical" : "high", problem: "Ο συγχρονισμός εκτελείται αλλά η τελευταία εκτέλεση απέτυχε — οι αλλαγές δεν φτάνουν στον Channel Manager." + soon,
-      rootCause: `Επιβεβαιωμένο: ${evidence} Αποτυγχάνει συνεχώς εδώ και ${days(failingFor)}.`,
+      rootCause: `Επιβεβαιωμένο: ${evidence} ${unknownStart ? "Από πότε αποτυγχάνει δεν είναι γνωστό (η ενημέρωση της βάσης δεν έχει εφαρμοστεί)." : `Αποτυγχάνει συνεχώς εδώ και ${days(failingFor)}.`}`,
       causes: ["Λάθος / ληγμένο API key ή property ID στο Channex", "Το Channex δεν απαντά (5xx / χρονικό όριο) ή επιστρέφει warnings", "Μη αντιστοιχισμένος τύπος δωματίου ή rate plan"],
       action: "Κάντε «Έλεγχος σύνδεσης Channex» στο PMS· διορθώστε ό,τι δείχνει το σφάλμα· μετά «Συγχρονισμός τώρα» και επιβεβαιώστε ότι η επόμενη εκτέλεση πετυχαίνει." };
     if (failingFor >= SYNC_FAIL_GRACE_MS || s.incidentOpen) return failing;

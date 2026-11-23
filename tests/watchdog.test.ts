@@ -334,7 +334,7 @@ test("v204 review 2 watchdog: a long detail is clipped; a message refused by a c
   assert.equal(w3.state().outbox.length, 10 - calls, "the rest wait, in order");
 });
 
-test("v204 review 3 watchdog: a broken channel (401 / chat not found) never gives up an alert; critical first; complete text in the log", async () => {
+test("v204 review 3 watchdog: a broken channel (401 / chat not found) never gives up an alert; strict arrival order; complete text in the log", async () => {
   let clock = Date.parse("2026-11-24T10:00:00Z");
   const lines: string[] = [];
   const order: string[] = [];
@@ -357,15 +357,15 @@ test("v204 review 3 watchdog: a broken channel (401 / chat not found) never give
   assert.equal(wd.state().outbox.filter((m) => m.kind === "open" && m.check === "pms").length, 1, "«chat not found»: still queued");
   // The full 3000-character detail is in the log line of the alert.
   assert.ok(lines.some((l) => l.includes('"event":"alert"') && l.includes("Ω".repeat(3000))), "complete text logged");
-  // Channel fixed: the critical «open» goes before older reminders.
+  // Channel fixed: delivered strictly in arrival order (review 5: no reordering).
   (wd.state().outbox as { kind: string; check: string; text: string; severity?: string }[]).unshift({ kind: "reminder", severity: "warning", check: "old", text: "REMINDER-old" });
   telegramStatus = 200; order.length = 0;
   await wd.cycle();
-  assert.ok(order.indexOf(order.find((t) => t.includes("«pms»"))!) < order.findIndex((t) => t.startsWith("REMINDER")), `critical first: ${order.join(" | ")}`);
+  assert.ok(order[0].startsWith("REMINDER") && order.some((t) => t.includes("«pms»")), `arrival order: ${order.join(" | ")}`);
   assert.equal(wd.state().outbox.length, 0);
 });
 
-test("v204 review 4 watchdog: messages of one check keep their order; a damaged state file does not stop the watchdog", async () => {
+test("v204 review 4/5 watchdog: strict arrival order; a damaged state file does not stop the watchdog", async () => {
   const { mkdtempSync, writeFileSync } = await import("node:fs");
   const { join } = await import("node:path");
   const { tmpdir } = await import("node:os");
@@ -383,10 +383,48 @@ test("v204 review 4 watchdog: messages of one check keep their order; a damaged 
     { kind: "resolved", check: "db", text: "db-resolved" },
     { kind: "open", severity: "critical", check: "pms", text: "pms-open-2" });
   await wd.cycle();
-  assert.deepEqual(order, ["pms-open-1", "pms-resolved", "pms-open-2", "db-reminder", "db-resolved"], "per check in order; the critical check first");
+  assert.deepEqual(order, ["pms-open-1", "db-reminder", "pms-resolved", "db-resolved", "pms-open-2"], "arrival order");
   const dir = mkdtempSync(join(tmpdir(), "wd3-"));
   writeFileSync(join(dir, "state.json"), JSON.stringify({ outbox: { broken: true }, checks: null }));
   const w2 = createWatchdog(cfgFor({ pmsHealthUrl: "", heartbeatUrl: "", stateFile: join(dir, "state.json") }), { fetchImpl, now: () => clock, sleep: async () => {}, log: () => {} });
   assert.deepEqual(w2.state().outbox, []);
   await w2.cycle();
+  // Deeper damage (review 5): non-object check, items / delivered of the wrong type — still runs.
+  writeFileSync(join(dir, "state.json"), JSON.stringify({ checks: { pms: 5 }, outbox: [{ kind: "batch", check: "*", text: "b", items: { x: 1 }, delivered: { y: 1 } }] }));
+  const w3 = createWatchdog(cfgFor({ heartbeatUrl: "", stateFile: join(dir, "state.json") }), { fetchImpl, now: () => clock, sleep: async () => {}, log: () => {} });
+  await w3.cycle();
+  // An unreadable file is kept aside, not silently overwritten.
+  writeFileSync(join(dir, "state.json"), "{not json");
+  const logs: string[] = [];
+  createWatchdog(cfgFor({ heartbeatUrl: "", stateFile: join(dir, "state.json") }), { fetchImpl, now: () => clock, sleep: async () => {}, log: (l: string) => logs.push(l) });
+  const { readdirSync } = await import("node:fs");
+  assert.ok(readdirSync(dir).some((f) => f.startsWith("state.json.corrupt-")));
+  assert.ok(logs.some((l) => l.includes("state_unreadable")));
+});
+
+test("v204 review 5 watchdog: compaction merges whole checks (no message overtakes an older one of its check); a refused message blocks newer ones of its check on that channel", async () => {
+  const { compactOutbox, QUEUE_MAX } = await import("../tools/watchdog/watchdog.mjs");
+  // 120 messages: pms resolved early (low priority), pms open later (critical) and other checks' reminders.
+  const box = [{ kind: "resolved", check: "pms", at: 1, text: "pms-resolved" }, ...Array.from({ length: 118 }, (_, i) => ({ kind: "reminder", severity: "warning", check: `r${i}`, at: 2 + i, text: `r${i}` })), { kind: "open", severity: "critical", check: "pms", at: 500, text: "pms-open" }];
+  const c = compactOutbox(box, "QA");
+  assert.ok(c.length <= QUEUE_MAX);
+  const flat = c.flatMap((m) => (m.kind === "digest" ? (m.items ?? []).map((x) => x.text) : [m.text]));
+  const pmsOrder = flat.filter((t) => t.startsWith("pms"));
+  assert.deepEqual(pmsOrder, ["pms-resolved", "pms-open"], "pms messages stay in order after compaction");
+  assert.equal(flat.length, 120, "nothing lost");
+  // Refused by content on Telegram → a newer message of the same check is not sent to Telegram before it.
+  const clock = Date.parse("2026-11-24T10:00:00Z");
+  const tg: string[] = [];
+  const fetchImpl = (async (url: string, init?: { body?: string }) => {
+    if (url.includes("api.telegram.org")) {
+      const text = JSON.parse(String(init?.body)).text as string;
+      if (text.includes("BAD")) return new Response(JSON.stringify({ ok: false, error_code: 400, description: "Bad Request: can't parse entities" }), { status: 400 });
+      tg.push(text); return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const wd = createWatchdog(cfgFor({ pmsHealthUrl: "", heartbeatUrl: "", webhookUrl: "", telegram: { token: "T", chat: "C" } }), { fetchImpl, now: () => clock, sleep: async () => {}, log: () => {} });
+  (wd.state().outbox as { kind: string; check: string; text: string }[]).push({ kind: "open", check: "db", text: "db-open BAD" }, { kind: "resolved", check: "db", text: "db-resolved" }, { kind: "open", check: "tv", text: "tv-open" });
+  await wd.cycle();
+  assert.deepEqual(tg, ["tv-open"], "db-resolved waits behind the refused db-open; other checks go");
 });

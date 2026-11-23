@@ -462,10 +462,12 @@ test("v204 review 3: stale failure start ignored; a «low» from TESTING does no
   assert.deepEqual(inc, ["cron:stopped", "ota:*", "sync:ota"], "12 OTA ranges = one incident; no correlation filter");
 });
 
-test("v204 review 4: switching off closes every channel alert silently; items absorbed into a group close silently; schema-fallback grace", async () => {
+test("v204 review 4/5: switching off closes every channel alert silently; items absorbed into the OTA group close silently; schema-fallback grace", async () => {
   const { channelIncident } = await import("../scripts/alert-intel-core.mjs");
-  // Schema update not run (failingSince undefined) and never succeeded → no endless grace.
-  assert.ok(channelIncident({ connection: "DEGRADED", credentials: "OK", live: 0, lastRunAt: t0 - MIN, lastOkAt: null, lastError: "HTTP_401", failingSince: undefined }, t0));
+  // Schema update not run (failingSince undefined) and never succeeded → no endless grace, and no invented duration.
+  const unk = channelIncident({ connection: "DEGRADED", credentials: "OK", live: 0, lastRunAt: t0 - MIN, lastOkAt: null, lastError: "HTTP_401", failingSince: undefined }, t0)!;
+  assert.equal(unk.priority, "high");
+  assert.match(unk.rootCause!, /δεν είναι γνωστό/);
   const { db, pool } = await fresh();
   try {
     await connection(db, 1, true);
@@ -478,5 +480,17 @@ test("v204 review 4: switching off closes every channel alert silently; items ab
     await runReliabilityAlerts({ pool, owner: o, now: t0, emails: ADMIN });
     assert.equal(await n(db, `SELECT count(*)::int AS n FROM alerts WHERE resolved_at IS NULL AND area='channel'`), 0);
     assert.equal(await n(db, `SELECT count(*)::int AS n FROM alert_outbox WHERE purpose='recovery'`), 0, "no false «recovered» on switch-off");
+    // Activated again with an OTA difference: an old per-range alert is absorbed into «ota:*» — closed silently.
+    await db.query(`UPDATE provider_connections SET active=1`);
+    await db.query(`UPDATE alerts SET resolved_at=NULL WHERE id=$1`, [id]);
+    await db.query(`INSERT INTO channel_room_mappings(owner_id,room_type,external_room_type_id,updated_at) VALUES($1,'double','rt',$2)`, [o, t0 - 40 * DAY]);
+    await db.query(`INSERT INTO rooms(id,owner_id,code,room_type,capacity,active,base_rate_cents,operational_status) VALUES(9,$1,'201','double',2,1,1,'clean')`, [o]);
+    await db.query(`INSERT INTO channel_availability_state(owner_id,room_type,date,available,pushed_at) VALUES($1,'double',to_char(now() AT TIME ZONE 'Europe/Athens','YYYY-MM-DD'),5,$2)`, [o, t0 - DAY]);
+    const res = await runReliabilityAlerts({ pool, owner: o, now: t0 + MIN, emails: ADMIN });
+    assert.ok(res.incidents.some((i) => i.key === "ota:*"), `the OTA difference must form the group: ${JSON.stringify(res.incidents)}`);
+    {
+      assert.equal(await n(db, `SELECT count(*)::int AS n FROM alerts WHERE id=$1 AND resolved_at IS NOT NULL`, [id]), 1);
+      assert.equal(await n(db, `SELECT count(*)::int AS n FROM alert_outbox WHERE purpose='recovery'`), 0, "absorbed into the group: no «recovered»");
+    }
   } finally { await db.close(); }
 });

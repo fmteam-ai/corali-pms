@@ -11,7 +11,7 @@
 // webhook) with retries; undelivered alerts are retried next cycle. DEADMAN_URL (e.g. healthchecks.io) is pinged
 // each cycle so the watchdog itself is watched too.
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { readFileSync, writeFileSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 
 const MIN = 60_000;
 export function configFromEnv(env = process.env) {
@@ -107,33 +107,62 @@ export function compactOutbox(outbox, label = "") {
   const digests = outbox.filter((m) => m.kind === "digest"), rest = outbox.filter((m) => m.kind !== "digest");
   const sigs = new Set(digests.map(sig));
   if (rest.length + digests.length <= QUEUE_MAX && sigs.size === digests.length) return outbox;
-  const room = Math.max(1, QUEUE_MAX - Math.max(1, new Set([...digests, ...rest].map(sig)).size));
-  const order = rest.map((m, i) => ({ m, i })).sort((a, b) => priorityOf(a.m) - priorityOf(b.m) || a.i - b.i);
-  const keep = new Set(rest.length + digests.length <= QUEUE_MAX ? rest.map((_, i) => i) : order.slice(0, room).map((x) => x.i));
-  const merged = [...digests, ...rest.filter((_, i) => !keep.has(i))];
+  // v204 (review 5): merged by WHOLE checks — all messages of a check go into the digest together (in order), so a
+  // kept message can never be delivered before an older message of its own check. Least urgent checks first;
+  // batches (check «*») are merged as single units.
+  const groupOf = (m, i) => (m.check && m.check !== "*" ? m.check : `#${i}`);
   const groups = new Map();
-  for (const m of merged) { const k = sig(m); (groups.get(k) ?? groups.set(k, []).get(k)).push(m); }
+  rest.forEach((m, i) => { const g = groupOf(m, i); const e = groups.get(g) ?? { g, idx: [], rank: 9, first: i }; e.idx.push(i); e.rank = Math.min(e.rank, priorityOf(m)); groups.set(g, e); });
+  const slots = Math.max(1, QUEUE_MAX - Math.max(1, new Set([...digests, ...rest].map(sig)).size));
+  const keep = new Set();
+  if (rest.length + digests.length <= QUEUE_MAX) rest.forEach((_, i) => keep.add(i));
+  else {
+    let used = 0;
+    for (const e of [...groups.values()].sort((a, b) => a.rank - b.rank || b.first - a.first)) {
+      if (used + e.idx.length > slots) continue;
+      e.idx.forEach((i) => keep.add(i)); used += e.idx.length;
+    }
+  }
+  const merged = [...digests, ...rest.filter((_, i) => !keep.has(i))];
+  const bySig = new Map();
+  for (const m of merged) { const k = sig(m); (bySig.get(k) ?? bySig.set(k, []).get(k)).push(m); }
   const out = rest.filter((_, i) => keep.has(i));
-  for (const [k, ms] of groups) {
+  const digestsOut = [];
+  for (const [k, ms] of bySig) {
     const items = collapseItems(ms.flatMap(itemsOf));
     if (!items.length) continue;
     const total = items.reduce((n, x) => n + (Number(x.count) || 1), 0);
     const [dk, gk] = k.split("|");
     const gaveUp = Object.fromEntries((gk ? gk.split(",") : []).map((c) => [c, "εγκαταλείφθηκε για το κανάλι πριν τη συγχώνευση"]));
-    out.push({ kind: "digest", severity: items.some((x) => x.severity === "critical") ? "critical" : "warning", check: "*", at: Math.max(...items.map((x) => Number(x.at) || 0)), items, delivered: dk ? dk.split(",") : [], gaveUp, errors: {},
-      text: listText(`📋 ${label}: ${total} ειδοποιήσεις συγκεντρώθηκαν (η ουρά ξεπέρασε τις ${QUEUE_MAX})`, items.slice().sort((a, b) => priorityOf(a) - priorityOf(b) || (Number(b.at) || 0) - (Number(a.at) || 0)).map((x) => `${x.text}${Number(x.count) > 1 ? ` (×${x.count})` : ""}`)) });
+    digestsOut.push({ kind: "digest", severity: items.some((x) => x.severity === "critical") ? "critical" : "warning", check: "*", at: Math.max(...items.map((x) => Number(x.at) || 0)), items, delivered: dk ? dk.split(",") : [], gaveUp, errors: {},
+      text: listText(`📋 ${label}: ${total} ειδοποιήσεις συγκεντρώθηκαν (η ουρά ξεπέρασε τις ${QUEUE_MAX})`, items.map((x) => `${x.text}${Number(x.count) > 1 ? ` (×${x.count})` : ""}`)) });
   }
-  return out;
+  // Digests first: they hold the OLDER messages of their checks (no kept message belongs to a merged check).
+  return [...digestsOut, ...out];
 }
 
 export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = (l) => console.log(l) } = {}) {
   let state = { checks: {}, outbox: [], progress: {} };
-  if (cfg.stateFile) { try { state = { ...state, ...JSON.parse(readFileSync(cfg.stateFile, "utf8")) }; } catch { /* first start */ } }
+  if (cfg.stateFile && existsSync(cfg.stateFile)) {
+    try { state = { ...state, ...JSON.parse(readFileSync(cfg.stateFile, "utf8")) }; }
+    catch (e) {
+      // Unreadable state: kept aside (not overwritten silently) and reported in the log.
+      try { renameSync(cfg.stateFile, `${cfg.stateFile}.corrupt-${Date.now()}`); } catch { /* ignore */ }
+      log(JSON.stringify({ level: "error", event: "state_unreadable", error: String(e?.message ?? e).slice(0, 120) }));
+    }
+  }
   // A damaged state file must not stop the watchdog: anything but the expected shapes is reset (and reported in the log).
   if (!Array.isArray(state.outbox)) { log(JSON.stringify({ level: "error", event: "state_outbox_invalid" })); state.outbox = []; }
-  if (!state.checks || typeof state.checks !== "object") state.checks = {};
-  if (!state.progress || typeof state.progress !== "object") state.progress = {};
-  state.outbox = state.outbox.filter((m) => m && typeof m === "object" && typeof m.text === "string");
+  const obj = (x) => x && typeof x === "object" && !Array.isArray(x);
+  if (!obj(state.checks)) state.checks = {};
+  for (const [k, c] of Object.entries(state.checks)) if (!obj(c)) delete state.checks[k];
+  if (!obj(state.progress)) state.progress = {};
+  state.outbox = state.outbox.filter((m) => obj(m) && typeof m.text === "string");
+  for (const m of state.outbox) {
+    if (m.delivered !== undefined && !Array.isArray(m.delivered)) m.delivered = [];
+    for (const f of ["errors", "refused", "gaveUp"]) if (m[f] !== undefined && !obj(m[f])) m[f] = {};
+    if (m.items !== undefined && !Array.isArray(m.items)) m.items = [];
+  }
   // Messages saved by an older version may be longer than the channels accept.
   for (const m of state.outbox) m.text = clipText(m.text);
   // Returns false when the state could not be saved — reported as the «state_storage» check, never silent.
@@ -213,6 +242,7 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
    * THIS cycle — skipped for the remaining messages (a channel that times out cannot block the cycle for an hour);
    * they are retried in the next cycle. Critical alerts go to ntfy with high priority whatever their kind.
    */
+  const blocked = new Set();
   async function deliver(msg, down = new Set(), deadline = Infinity) {
     const urgent = msg.severity === "critical" && ["open", "escalated", "batch", "digest"].includes(msg.kind);
     const targets = [];
@@ -225,6 +255,8 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     msg.gaveUp ??= {};
     for (const [name, send] of targets) {
       if (msg.delivered.includes(name) || msg.gaveUp[name] || down.has(name)) continue;
+      // A newer message of a check must not overtake an older one this channel refused (order per check and channel).
+      if (msg.check && msg.check !== "*" && blocked.has(`${name}|${msg.check}`)) continue;
       if (now() > deadline) continue; // out of time for this cycle: retried next cycle
       let refusedNow = false;
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -241,6 +273,7 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
       }
       if (msg.delivered.includes(name)) continue;
       if (refusedNow) {
+        if (msg.check && msg.check !== "*") blocked.add(`${name}|${msg.check}`);
         // The channel works but refuses this message: other messages still go through it. After 3 cycles of refusal
         // the message is given up FOR THIS CHANNEL — logged in full and reported (alert_undeliverable), never silent.
         msg.refused[name] = (msg.refused[name] ?? 0) + 1;
@@ -303,18 +336,15 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     persist();
     // v204: delivery has a time budget per cycle (a slow channel cannot stretch one cycle to an hour); what is left
     // waits for the next cycle, in order.
-    const pending = [], down = new Set(), deadline = t + Math.max(10_000, cfg.intervalS * 1000 * 0.8); // from the cycle's start
-    // Most important CHECKS first, but the messages of one check always in their own order (an «open» is never
-    // overtaken by its «resolved», a «warning» by its «escalated»): each check's group is ranked by its most urgent
-    // message and its first position; batches / digests are groups of their own.
-    const groupOf = (m, i) => (m.check && m.check !== "*" ? m.check : `#${i}`);
-    const rank = new Map(), first = new Map();
-    state.outbox.forEach((m, i) => { const g = groupOf(m, i); rank.set(g, Math.min(rank.get(g) ?? 9, priorityOf(m))); if (!first.has(g)) first.set(g, i); });
-    const ordered = state.outbox.map((m, i) => ({ m, i, g: groupOf(m, i) })).sort((a, b) => rank.get(a.g) - rank.get(b.g) || first.get(a.g) - first.get(b.g) || a.i - b.i).map((x) => x.m);
+    // Time budget from the cycle's start, but always at least 10 s for delivery (even when every check timed out).
+    const pending = [], down = new Set(), deadline = Math.max(t + cfg.intervalS * 1000 * 0.8, now() + 10_000);
+    // Strictly in arrival order (review 5: any reordering let a «resolved» / «escalated» overtake its own «open»).
+    const ordered = state.outbox;
     for (const msg of ordered) {
       if (now() > deadline) { pending.push(msg); continue; }
       if (!(await deliver(msg, down, deadline))) pending.push(msg);
     }
+    blocked.clear();
     // v204: nothing is dropped. Above QUEUE_MAX the least important messages are MERGED into one digest (their items
     // kept); critical «open» / «escalated» messages are kept individually first.
     state.outbox = compactOutbox(pending, cfg.label);

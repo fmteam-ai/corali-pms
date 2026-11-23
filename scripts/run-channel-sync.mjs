@@ -140,7 +140,7 @@ const lock = await pool.connect();
 let runId = null, runStatus = "ok", runError = "";
 // v204: a failed availability push inside an otherwise completed run makes the run FAILED (not «ok» with the error
 // wiped): last_run_at moves, last_ok_at does not, last_error keeps the reason.
-let pushError = null, pushedOk = false;
+let pushError = null;
 /** Writes the sync state; falls back to the pre-v204 columns if the schema update has not run yet (no failing_since). */
 const writeState = (sql, legacySql, params) => pool.query(sql, params).catch((e) => (e?.code === "42703" ? pool.query(legacySql, params) : Promise.reject(e)));
 /**
@@ -197,8 +197,9 @@ try {
   //    SKIPPED (entirely past). Only rows whose dates this push really covered are marked sent.
   // v204 health probe: when nothing is due but changes failed earlier, the OLDEST failed change is tried now — every
   // run then really tests the push (no «recovered» while it still fails, no hour-long wait after it is fixed).
-  await pool.query(`UPDATE channel_sync_outbox SET next_attempt_at=0 WHERE id=(SELECT id FROM channel_sync_outbox WHERE owner_id=$1 AND status='failed' ORDER BY next_attempt_at,id LIMIT 1)
-    AND NOT EXISTS (SELECT 1 FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed') AND next_attempt_at<=$2)`, [owner, Date.now()]);
+  // The probe does not count as an attempt (the backoff / «N προσπάθειες» keep their meaning).
+  const probeId = Number((await pool.query(`UPDATE channel_sync_outbox SET next_attempt_at=0 WHERE id=(SELECT id FROM channel_sync_outbox WHERE owner_id=$1 AND status='failed' ORDER BY next_attempt_at,id LIMIT 1)
+    AND NOT EXISTS (SELECT 1 FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed') AND next_attempt_at<=$2) RETURNING id`, [owner, Date.now()])).rows[0]?.id ?? 0);
   const due = (await pool.query(`SELECT id,date_from,date_to,attempts FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed','out_of_range') AND next_attempt_at<=$2 ORDER BY id LIMIT 200`, [owner, Date.now()])).rows;
   const plan = planOutbox(due, today);
   const dayMs = (d) => Date.parse(`${d}T00:00:00Z`);
@@ -237,10 +238,9 @@ try {
         await pool.query(`UPDATE channel_sync_outbox SET date_to=$2 WHERE id=$1`, [x.id, x.keepTo]);
       }
       await pool.query(`UPDATE channel_sync_outbox SET status='sent',last_error=NULL,updated_at=$1 WHERE id=ANY($2::bigint[])`, [Date.now(), sendIds]);
-      pushedOk = sendIds.length > 0;
     } catch (error) {
       pushError = `availability push: ${String(error instanceof Error ? error.message : error).slice(0, 400)}`;
-      for (const d of due.filter((x) => sendIds.includes(Number(x.id)))) await pool.query(`UPDATE channel_sync_outbox SET status='failed',attempts=attempts+1,last_error=$1,next_attempt_at=$2,updated_at=$3 WHERE id=$4`, [String(error).slice(0, 500), Date.now() + Math.min(60, 2 ** Number(d.attempts)) * 60_000, Date.now(), d.id]);
+      for (const d of due.filter((x) => sendIds.includes(Number(x.id)))) await pool.query(`UPDATE channel_sync_outbox SET status='failed',attempts=attempts+${probeId ? "CASE WHEN id=" + probeId + " THEN 0 ELSE 1 END" : "1"},last_error=$1,next_attempt_at=$2,updated_at=$3 WHERE id=$4`, [String(error).slice(0, 500), Date.now() + Math.min(60, 2 ** Number(d.attempts)) * 60_000, Date.now(), d.id]);
     }
   }
 
@@ -318,14 +318,14 @@ try {
 
   // v204: a run that sent nothing is NOT proof that sending works — while earlier failed changes wait for their
   // retry, the failure continues (otherwise a broken push would look «recovered» between retries).
+  // v204 (review 5): a run is a success only when NO change is left failed — a change that keeps being refused is
+  // a real, continuing problem (not «ok» whenever another change gets through). The probe above re-tests the oldest
+  // one every idle run, so the state follows reality minute by minute.
   if (!pushError) {
     const n = Number((await pool.query(`SELECT count(*)::int AS n FROM channel_sync_outbox WHERE owner_id=$1 AND status='failed'`, [owner])).rows[0]?.n ?? 0);
-    if (n > 0 && pushedOk) {
-      // The push works again: the remaining failed changes go in the next run (no backoff wait).
-      await pool.query(`UPDATE channel_sync_outbox SET next_attempt_at=0 WHERE owner_id=$1 AND status='failed'`, [owner]);
-    } else if (n > 0) {
+    if (n > 0) {
       const err = (await pool.query(`SELECT last_error FROM channel_sync_outbox WHERE owner_id=$1 AND status='failed' ORDER BY updated_at DESC LIMIT 1`, [owner])).rows[0]?.last_error;
-      pushError = `${n} μεταβολές περιμένουν επανάληψη μετά από αποτυχία: ${String(err ?? "").slice(0, 300)}`;
+      pushError = `${n} μεταβολές δεν έχουν σταλεί (απορρίφθηκαν / σε επανάληψη): ${String(err ?? "").slice(0, 300)}`;
     }
   }
   if (pushError) {
@@ -337,7 +337,8 @@ try {
   console.log(`Channel sync: ${sendIds.length} availability range(s) sent, ${plan.outOfRange.length} beyond the horizon, ${plan.skipped.length} past, ${restrictionDays} restriction day(s), ${rateDays} rate day(s), ${imported} OTA revision(s) imported.`);
 } catch (error) {
   runStatus = "failed"; runError = String(error);
-  await writeFailure(String(error).slice(0, 500)).catch(() => {});
+  // Both reasons kept when the availability push had already failed in this run.
+  await writeFailure(`${String(error)}${pushError ? ` · ${pushError}` : ""}`.slice(0, 500)).catch(() => {});
   throw error;
 } finally {
   if (runId) await cronFinish(pool, owner, "channel-sync", runId, { status: runStatus, error: runError, startedAt }).catch(() => {});
