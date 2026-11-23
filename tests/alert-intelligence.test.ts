@@ -168,7 +168,8 @@ test("v202 activation requires proven prerequisites (verified mapping + initial 
     assert.equal(r.error, "PREREQUISITES_NOT_MET", "a failed reconciliation blocks activation");
     await recordIntegrationCheck({ pool, owner: o, provider: "channelManager", check: "initial_reconciliation", ok: true, detail: "500 ημέρες χωρίς διαφορές", now: t0 + MIN });
     assert.equal((await activateIntegration({ pool, owner: o, provider: "channelManager", by: "Maria", now: t0 + 2 * MIN })).ok, true);
-    assert.equal(integrationState({ row: { active: 1, secrets_encrypted: "s" }, activation: { activated_at: t0 } }), "ACTIVE");
+    assert.equal(integrationState({ row: { active: 1, secrets_encrypted: "s" }, activation: { activated_at: t0 }, healthy: true }), "ACTIVE");
+    assert.equal(integrationState({ row: { active: 1, secrets_encrypted: "s" }, activation: { activated_at: t0 } }), "UNVERIFIED", "v203: unknown health is not ACTIVE");
     assert.equal(integrationState({ row: { active: 1, secrets_encrypted: "s" }, activation: { activated_at: t0 }, healthy: false }), "DEGRADED");
     assert.equal(integrationState({ row: { active: 0, secrets_encrypted: "s" }, activation: { activated_at: t0 } }), "DISABLED");
     assert.equal(integrationState({ row: null }), "NOT_CONFIGURED");
@@ -203,4 +204,65 @@ test("v202 deep health / watchdog heartbeat: an inactive Channel Manager's old q
     assert.equal(h.status, "ok", state);
   }
   assert.equal(evaluateHealth({ ...base, channelOn: true, channelState: "ACTIVE" }, now).components.otaQueue.status, "fail");
+});
+
+test("v203 P1: an activated connection whose health is unknown is UNVERIFIED — never ACTIVE; intentionally inactive ones stay silent", async () => {
+  const act = { activated_at: t0 };
+  const row = { active: 1, secrets_encrypted: "s" };
+  assert.equal(integrationState({ row, activation: act }), "UNVERIFIED", "healthy omitted");
+  assert.equal(integrationState({ row, activation: act, healthy: null }), "UNVERIFIED", "healthy null");
+  assert.equal(integrationState({ row, activation: act, healthy: true }), "ACTIVE");
+  assert.equal(integrationState({ row, activation: act, healthy: false }), "DEGRADED");
+  assert.equal(integrationState({ row: null, healthy: null }), "NOT_CONFIGURED");
+  assert.equal(integrationState({ row: { active: 0, secrets_encrypted: "s" }, activation: act, healthy: null }), "DISABLED");
+  // From the sync's own evidence.
+  const { channelSyncHealthy } = await import("../scripts/integration-state-core.mjs");
+  assert.equal(channelSyncHealthy(undefined, t0), null, "state unreadable → unknown");
+  assert.equal(channelSyncHealthy(null, t0), false, "never ran → not working");
+  assert.equal(channelSyncHealthy({ last_run_at: t0 - MIN, last_ok_at: t0 - MIN }, t0), true);
+  assert.equal(channelSyncHealthy({ last_run_at: t0 - HOUR, last_ok_at: t0 - HOUR }, t0), false);
+  assert.equal(channelSyncHealthy({ last_run_at: t0 - MIN, last_ok_at: t0 - 2 * HOUR, last_error: "HTTP 401" }, t0), false);
+  // On the real schema: activated, sync ran a minute ago without error → ACTIVE; no sync state at all → DEGRADED.
+  const { db, pool } = await fresh();
+  try {
+    await connection(db, 1, true);
+    assert.equal((await checkReliability({ pool, owner: o, now: t0 })).integrations?.channelManager, "DEGRADED", "activated but never synced is not «working»");
+    await db.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at) VALUES($1,$2,$2)`, [o, t0 - MIN]);
+    assert.equal((await checkReliability({ pool, owner: o, now: t0 })).integrations?.channelManager, "ACTIVE");
+  } finally { await db.close(); }
+});
+
+test("v203 P2: prerequisite checks dated in the future (or before the last configuration change) do not approve activation", async () => {
+  const both = (at: number) => [{ check_key: "room_rate_mapping", ok: 1, checked_at: at }, { check_key: "initial_reconciliation", ok: 1, checked_at: at }];
+  // The reported case: both Channex prerequisites one day after now → was ready = true.
+  const r = activationReadiness("channelManager", both(t0 + DAY), t0);
+  assert.equal(r.ready, false);
+  assert.ok(r.items.every((i) => i.future && /στο μέλλον/.test(i.detail)));
+  // Within the documented tolerance (5′) it is accepted; beyond it, not.
+  assert.equal(activationReadiness("channelManager", both(t0 + 4 * MIN), t0).ready, true);
+  assert.equal(activationReadiness("channelManager", both(t0 + 6 * MIN), t0).ready, false);
+  // A configuration change after the checks → new verification required.
+  const changed = activationReadiness("channelManager", both(t0 - HOUR), t0, t0 - 10 * MIN);
+  assert.equal(changed.ready, false);
+  assert.ok(changed.items.every((i) => i.stale && /νέα επαλήθευση/.test(i.detail)));
+  // The activation itself re-checks validity against the database (mapping changed after the checks → refused).
+  const { db, pool } = await fresh();
+  try {
+    await connection(db, 1, false);
+    await db.query(`UPDATE provider_connections SET updated_at=$1`, [t0 - DAY]); // the connection was saved yesterday
+    await db.query(`INSERT INTO integration_checks(owner_id,provider_key,check_key,ok,detail,checked_at) VALUES($1,'channelManager','room_rate_mapping',1,'ok',$2),($1,'channelManager','initial_reconciliation',1,'ok',$2)`, [o, t0 + DAY]);
+    assert.equal((await activateIntegration({ pool, owner: o, provider: "channelManager", by: "QA", now: t0 })).error, "PREREQUISITES_NOT_MET", "future-dated checks in the database");
+    await db.query(`DELETE FROM integration_checks`);
+    await db.query(`INSERT INTO integration_checks(owner_id,provider_key,check_key,ok,detail,checked_at) VALUES($1,'channelManager','room_rate_mapping',1,'ok',$2),($1,'channelManager','initial_reconciliation',1,'ok',$2)`, [o, t0 - HOUR]);
+    await db.query(`INSERT INTO channel_room_mappings(owner_id,room_type,external_room_type_id,updated_at) VALUES($1,'double','rt-2',$2)`, [o, t0 - 5 * MIN]);
+    assert.equal((await activateIntegration({ pool, owner: o, provider: "channelManager", by: "QA", now: t0 })).error, "PREREQUISITES_NOT_MET", "mapping changed after the checks");
+    await db.query(`INSERT INTO integration_checks(owner_id,provider_key,check_key,ok,detail,checked_at) VALUES($1,'channelManager','room_rate_mapping',1,'ok',$2),($1,'channelManager','initial_reconciliation',1,'ok',$2)`, [o, t0 - MIN]);
+    assert.equal((await activateIntegration({ pool, owner: o, provider: "channelManager", by: "QA", now: t0 })).ok, true, "re-verified after the change");
+    // A later configuration change keeps the alerts on but asks for a new verification in the Reliability Center.
+    await db.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at) VALUES($1,$2,$2)`, [o, t0 - MIN]);
+    await db.query(`UPDATE channel_room_mappings SET updated_at=$2 WHERE owner_id=$1`, [o, t0 + MIN]);
+    const rel = await checkReliability({ pool, owner: o, now: t0 + 2 * MIN });
+    assert.equal(rel.integrations?.channelManager, "ACTIVE");
+    assert.ok(rel.areas.find((a) => a.key === "channel")!.items.some((i) => i.key === "integration:channelManager:revalidate"));
+  } finally { await db.close(); }
 });

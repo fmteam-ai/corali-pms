@@ -35,7 +35,7 @@ export function ChannelSyncPanel({ initial, canWrite }: { initial: Status; canWr
         <div className={`channelLifecycle state-${status.lifecycle.state}`} role="status">
           <p><b>Κατάσταση σύνδεσης: {status.lifecycle.stateEl}</b> ({status.lifecycle.state}){status.lifecycle.activatedAt ? ` · ενεργοποιήθηκε ${new Date(status.lifecycle.activatedAt).toLocaleString("el-GR")} από ${status.lifecycle.activatedBy ?? "—"}` : ""}</p>
           {status.lifecycle.state === "NOT_CONFIGURED" && <p>Channel Manager not configured — OTA synchronization inactive. Οι μεταβολές διαθεσιμότητας κρατούνται στο ιστορικό· δεν στέλνονται ειδοποιήσεις.</p>}
-          {status.lifecycle.state !== "NOT_CONFIGURED" && status.lifecycle.state !== "ACTIVE" && status.lifecycle.state !== "DEGRADED" && (
+          {(status.lifecycle.state === "DISABLED" || status.lifecycle.state === "TESTING" || !status.lifecycle.activatedAt) && status.lifecycle.state !== "NOT_CONFIGURED" && (
             <>
               <p>Πριν την ενεργοποίηση πρέπει να αποδειχθούν (οι αποτυχίες συγχρονισμού ειδοποιούνται μόνο μετά):</p>
               <ul>{status.lifecycle.readiness.items.map((i) => <li key={i.key} className={i.ok ? "ok" : "bad"}><span aria-hidden>{i.ok ? "✅" : "❌"}</span>{i.el}{i.detail ? ` — ${i.detail.slice(0, 200)}` : ""}{i.checkedAt ? ` (${new Date(i.checkedAt).toLocaleString("el-GR")})` : ""}</li>)}</ul>
@@ -43,7 +43,8 @@ export function ChannelSyncPanel({ initial, canWrite }: { initial: Status; canWr
               {canWrite && <button type="button" className="primaryAction" disabled={!status.lifecycle.readiness.ready} onClick={() => post({ action: "activate" }, "Ο Channel Manager ενεργοποιήθηκε — οι αποτυχίες συγχρονισμού θα ειδοποιούνται.")}>Ενεργοποίηση</button>}
             </>
           )}
-          {canWrite && (status.lifecycle.state === "ACTIVE" || status.lifecycle.state === "DEGRADED") && <button type="button" className="secondaryButton" onClick={() => { if (confirm("Η σύνδεση επιστρέφει σε δοκιμή: οι αποτυχίες συγχρονισμού δεν θα ειδοποιούνται. Συνέχεια;")) void post({ action: "deactivate" }, "Η σύνδεση επέστρεψε σε δοκιμή."); }}>Επιστροφή σε δοκιμή</button>}
+          {status.lifecycle.state === "UNVERIFIED" && <p>Η σύνδεση είναι ενεργοποιημένη, αλλά η λειτουργία της δεν έχει επιβεβαιωθεί (δεν διαβάστηκε η κατάσταση του συγχρονισμού). Δεν θεωρείται «ενεργή και υγιής».</p>}
+          {canWrite && (status.lifecycle.state === "ACTIVE" || status.lifecycle.state === "DEGRADED" || status.lifecycle.state === "UNVERIFIED") && <button type="button" className="secondaryButton" onClick={() => { if (confirm("Η σύνδεση επιστρέφει σε δοκιμή: οι αποτυχίες συγχρονισμού δεν θα ειδοποιούνται. Συνέχεια;")) void post({ action: "deactivate" }, "Η σύνδεση επέστρεψε σε δοκιμή."); }}>Επιστροφή σε δοκιμή</button>}
         </div>
       )}
       {canWrite && (

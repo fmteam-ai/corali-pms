@@ -105,16 +105,38 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     return out;
   }
 
+  /**
+   * v203: delivered = the provider ACCEPTED the message at application level, not just «HTTP 2xx»:
+   *   Telegram → HTTP 2xx and JSON { ok: true } (the Bot API answers HTTP 200 with { ok: false } on some refusals);
+   *   ntfy     → HTTP 2xx and JSON with the message id;
+   *   webhook  → HTTP 2xx (our own receiver: its status is its answer).
+   * Anything else keeps the message in the queue (retried in the next cycle, also after a restart).
+   */
+  async function accepted(name, r) {
+    if (!r?.ok) return `HTTP ${r?.status ?? "—"}`;
+    if (name === "webhook") return true;
+    const body = await r.json().catch(() => null);
+    if (name === "telegram") return body?.ok === true ? true : `Telegram: ${String(body?.description ?? "ok≠true").slice(0, 120)}`;
+    if (name === "ntfy") return body && typeof body.id === "string" && body.id ? true : "ntfy: απάντηση χωρίς id μηνύματος";
+    return `άγνωστος πάροχος ${name}`;
+  }
+
   async function deliver(msg) {
     const targets = [];
     if (cfg.telegram) targets.push(["telegram", () => fetchImpl(`https://api.telegram.org/bot${cfg.telegram.token}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: cfg.telegram.chat, text: msg.text }), signal: AbortSignal.timeout(cfg.timeoutMs) })]);
     if (cfg.ntfyUrl) targets.push(["ntfy", () => fetchImpl(cfg.ntfyUrl, { method: "POST", headers: { Title: `${cfg.label} watchdog`, Priority: msg.kind === "open" ? "high" : "default" }, body: msg.text, signal: AbortSignal.timeout(cfg.timeoutMs) })]);
     if (cfg.webhookUrl) targets.push(["webhook", () => fetchImpl(cfg.webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg), signal: AbortSignal.timeout(cfg.timeoutMs) })]);
     msg.delivered ??= [];
+    msg.errors ??= {};
     for (const [name, send] of targets) {
       if (msg.delivered.includes(name)) continue;
       for (let attempt = 0; attempt < 3; attempt++) {
-        try { const r = await send(); if (r.ok) { msg.delivered.push(name); break; } } catch { /* retry */ }
+        try {
+          const r = await send();
+          const verdict = await accepted(name, r);
+          if (verdict === true) { msg.delivered.push(name); delete msg.errors[name]; break; }
+          msg.errors[name] = verdict;
+        } catch (e) { msg.errors[name] = `σύνδεση: ${String(e?.message ?? e).slice(0, 120)}`; }
         await sleep(200 * 2 ** attempt);
       }
     }

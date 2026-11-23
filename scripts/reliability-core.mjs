@@ -9,7 +9,7 @@ const hhmm = (t) => new Intl.DateTimeFormat("el-GR", { timeZone: "Europe/Athens"
 const worst = (items) => (items.some((i) => i.level === "fail") ? "fail" : items.some((i) => i.level === "warn") ? "warn" : "ok");
 const one = async (pool, sql, params) => (await pool.query(sql, params)).rows;
 import { heartbeatState } from "./job-control-core.mjs";
-import { integrationState, mayAlert } from "./integration-state-core.mjs";
+import { channelSyncHealthy, integrationState, mayAlert } from "./integration-state-core.mjs";
 import { alertDeliveryIssues } from "./alert-core.mjs";
 import { otaReconcile, queueOtaResync } from "./ota-reconcile-core.mjs";
 import { turnoverBoard } from "./turnover-core.mjs";
@@ -35,7 +35,7 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
   const [outbox, syncState, channex, otaNoRoom, deliveries, stuckDeliveries, campaignFails, sessions, balanceLinks, fiscal, tvs, climate, ac, bridge, wifi, cards, hooks, steps] = await Promise.all([
     one(pool, `SELECT id,date_from,date_to,reason,status,attempts,COALESCE(last_error,'') err,created_at FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed','processing') AND created_at<$2::bigint-10*60000 ORDER BY created_at LIMIT 50`, P),
     one(pool, `SELECT last_run_at,last_ok_at,COALESCE(last_error,'') last_error,last_webhook_at FROM channel_sync_state WHERE owner_id=$1`, [owner]),
-    one(pool, `SELECT p.provider_key,p.active,p.secrets_encrypted,a.activated_at,a.deactivated_at FROM provider_connections p LEFT JOIN integration_activation a ON a.owner_id=p.owner_id AND a.provider_key='channelManager' WHERE p.owner_id=$1 AND p.provider_key IN ('channex','channelManager') ORDER BY (p.provider_key='channelManager') DESC LIMIT 1`, [owner]),
+    one(pool, `SELECT p.provider_key,p.active,p.secrets_encrypted,p.updated_at,(SELECT max(m.updated_at) FROM channel_room_mappings m WHERE m.owner_id=p.owner_id) AS mapping_at,a.activated_at,a.deactivated_at FROM provider_connections p LEFT JOIN integration_activation a ON a.owner_id=p.owner_id AND a.provider_key='channelManager' WHERE p.owner_id=$1 AND p.provider_key IN ('channex','channelManager') ORDER BY (p.provider_key='channelManager') DESC LIMIT 1`, [owner]),
     one(pool, `SELECT id,reference,guest_name,check_in,external_room_type FROM bookings WHERE owner_id=$1 AND room_id IS NULL AND external_room_type IS NOT NULL AND status='confirmed' AND check_in<=(to_char(now() AT TIME ZONE 'Europe/Athens','YYYY-MM-DD')::date+14)::text ORDER BY check_in LIMIT 30`, [owner]),
     one(pool, `SELECT d.id,d.event_key,d.channel,COALESCE(d.last_error,'') err,d.attempts,d.updated_at,b.reference,b.guest_name FROM message_deliveries d JOIN bookings b ON b.owner_id=d.owner_id AND b.id=d.booking_id WHERE d.owner_id=$1 AND d.status='failed' AND d.updated_at>$2::bigint-7*86400000 ORDER BY d.updated_at DESC LIMIT 50`, P),
     one(pool, `SELECT d.id,d.event_key,d.channel,d.status,d.scheduled_at,d.updated_at,b.reference FROM message_deliveries d JOIN bookings b ON b.owner_id=d.owner_id AND b.id=d.booking_id WHERE d.owner_id=$1 AND ((d.status='pending' AND d.scheduled_at<$2::bigint-20*60000 AND d.scheduled_at>$2::bigint-3*86400000) OR (d.status='processing' AND d.updated_at<$2::bigint-15*60000) OR (d.status='uncertain' AND d.updated_at>$2::bigint-7*86400000)) ORDER BY d.scheduled_at LIMIT 50`, P),
@@ -80,8 +80,7 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
   const chRow = channex[0] ?? null;
   const chActivation = chRow?.activated_at ? { activated_at: chRow.activated_at, deactivated_at: chRow.deactivated_at } : null;
   const syncDead = !st?.last_run_at || now - Number(st.last_run_at) > 30 * MIN;
-  const syncFailing = Boolean(st?.last_error) && (!st?.last_ok_at || now - Number(st.last_ok_at) > 30 * MIN);
-  const chState = integrationState({ row: chRow, activation: chActivation, healthy: !(syncDead || syncFailing) });
+  const chState = integrationState({ row: chRow, activation: chActivation, healthy: channelSyncHealthy(st ?? null, now) });
   const channelOn = chState === "TESTING" || mayAlert(chState);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(new Date(now));
   const in14 = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(new Date(now + 14 * 24 * HOUR));
@@ -93,6 +92,11 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
     info("channel", chState === "DISABLED" ? "Channel Manager disabled — OTA synchronization inactive (Ο Channel Manager είναι απενεργοποιημένος)" : "Channel Manager not configured — OTA synchronization inactive (Ο Channel Manager δεν έχει ρυθμιστεί)");
     if (channelStats.live + channelStats.past) info("channel", `${channelStats.live + channelStats.past} μεταβολές διαθεσιμότητας διατηρούνται στο ιστορικό της ουράς — δεν είναι σφάλμα· θα καλυφθούν από την αρχική πλήρη σύγκριση κατά την ενεργοποίηση`);
   } else {
+    // v203: the configuration changed after the activation → the activation evidence no longer covers it. Alerts
+    // continue (the connection is live); a person repeats the verification.
+    const cfgAt = Math.max(Number(chRow?.updated_at ?? 0), Number(chRow?.mapping_at ?? 0));
+    if (chActivation && cfgAt > Number(chActivation.activated_at)) add("channel", { key: "integration:channelManager:revalidate", level: "warn", text: `Οι ρυθμίσεις του Channel Manager άλλαξαν μετά την ενεργοποίηση (${hhmm(cfgAt)}) — επαναλάβετε τον «Έλεγχο προϋποθέσεων ενεργοποίησης»`, link: "/pms/integrations" });
+    if (chState === "UNVERIFIED") add("channel", { key: "integration:channelManager:unverified", level: "warn", text: "Ο Channel Manager είναι ενεργοποιημένος, αλλά η λειτουργία του δεν μπορεί να επιβεβαιωθεί (η κατάσταση του συγχρονισμού δεν διαβάστηκε)", link: "/pms/integrations" });
     if (chState === "TESTING") add("channel", { key: "integration:channelManager", level: "warn", text: "Ο Channel Manager είναι σε δοκιμή — δεν έχει ενεργοποιηθεί. Ολοκληρώστε την επαλήθευση αντιστοίχισης και την αρχική πλήρη σύγκριση διαθεσιμότητας (Συνδέσεις → Channel Manager → Ενεργοποίηση)", link: "/pms/integrations" });
     if (channelStats.past) info("channel", `${channelStats.past} παλιές μεταβολές αφορούν μόνο ημερομηνίες που πέρασαν — δεν επηρεάζουν πωλήσεις`);
     if (syncDead && live.length) add("channel", { key: "sync:not_running", level: "fail", text: `Ο συγχρονισμός με τον channel manager δεν εκτελείται (${st?.last_run_at ? `τελευταία εκτέλεση ${hhmm(st.last_run_at)}` : "δεν έχει εκτελεστεί ποτέ"}) — ${channelStats.live} μεταβολές διαθεσιμότητας σε αναμονή. Ελέγξτε το cron του scripts/run-channel-sync.mjs στο cPanel`, action: { type: "sync_now" }, at: Number(st?.last_run_at ?? 0) });

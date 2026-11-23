@@ -10,7 +10,7 @@ import { reconcile } from "../scripts/reconcile-core.mjs";
 import { stripeCredentials } from "@/lib/provider-connections";
 import { cronWatchdog, recentAlerts } from "@/lib/alerts";
 
-export const RUNNING_VERSION = "v202";
+export const RUNNING_VERSION = "v203";
 
 export async function reliabilityState(ownerId: string) {
   void cronWatchdog(ownerId);

@@ -165,3 +165,36 @@ test("v202 P2 watchdog: state survives a restart — open incidents are not re-a
   await c.cycle();
   assert.equal((await c.cycle()).results.state_storage.ok, false);
 });
+
+test("v203 P2 watchdog: a provider that answers HTTP 200 but does not accept the message keeps it queued (Telegram ok:false, ntfy without id)", async () => {
+  let clock = Date.parse("2026-11-24T10:00:00Z");
+  const st = { body: hbBody({ database: "fail", sentinel: "ok", automations: "ok" }), now: () => clock, alerts: [] };
+  const answers: Record<string, () => Response> = {
+    telegram: () => new Response(JSON.stringify({ ok: false, error_code: 400, description: "Bad Request: chat not found" }), { status: 200 }),
+    ntfy: () => new Response("", { status: 200 }),
+  };
+  const calls: string[] = [];
+  const base = fakeFetch(st);
+  const fetchImpl = (async (url: string, init?: { body?: string }) => {
+    if (url.includes("api.telegram.org")) { calls.push("telegram"); return answers.telegram(); }
+    if (url.includes("ntfy.example")) { calls.push("ntfy"); return answers.ntfy(); }
+    return base(url, init as RequestInit);
+  }) as unknown as typeof fetch;
+  const wd = createWatchdog(cfgFor({ webhookUrl: "", telegram: { token: "T", chat: "C" }, ntfyUrl: "https://ntfy.example/topic" }), { fetchImpl, now: () => clock, sleep: async () => {}, log: () => {} });
+  for (let i = 0; i < 3; i++) { await wd.cycle(); clock += 60_000; }
+  let box = wd.state().outbox;
+  assert.equal(box.length, 1, "the «open» alert is NOT removed: neither provider accepted it");
+  assert.deepEqual(box[0].delivered, []);
+  assert.match(box[0].errors?.telegram ?? "", /chat not found/);
+  assert.match(box[0].errors?.ntfy ?? "", /χωρίς id/);
+  // Telegram accepts, ntfy still not → only ntfy is retried; then ntfy accepts → delivered, out of the queue.
+  answers.telegram = () => new Response(JSON.stringify({ ok: true, result: { message_id: 7 } }), { status: 200 });
+  await wd.cycle(); clock += 60_000;
+  box = wd.state().outbox;
+  assert.deepEqual(box[0].delivered, ["telegram"]);
+  const telegramCalls = calls.filter((c) => c === "telegram").length;
+  answers.ntfy = () => new Response(JSON.stringify({ id: "abc123", event: "message" }), { status: 200 });
+  await wd.cycle();
+  assert.equal(wd.state().outbox.length, 0, "delivered once both accepted");
+  assert.equal(calls.filter((c) => c === "telegram").length, telegramCalls, "Telegram not sent a second time");
+});

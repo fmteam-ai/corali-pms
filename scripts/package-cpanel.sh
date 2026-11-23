@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project="$(cd "$(dirname "$0")/.." && pwd)"
-output="$project/corali-pms-cpanel-v202-root.tar.gz"
+output="$project/corali-pms-cpanel-v203-root.tar.gz"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 
@@ -31,9 +31,9 @@ cp scripts/init-postgres.mjs scripts/create-admin.mjs scripts/create-admin.sh \
 for pkg in nodemailer; do
   [ -f "$stage/node_modules/$pkg/package.json" ] || cp -a "$(readlink -f "node_modules/$pkg")" "$stage/node_modules/$pkg"
 done
-cp app.js .env.example DEPLOY-CPANEL.md QA-v202.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md INSTALL-CPANEL.sh \
+cp app.js .env.example DEPLOY-CPANEL.md QA-v203.md REQUIREMENTS-STATUS.md ARCHITECTURE-AUDIT.md INSTALL-CPANEL.sh \
   ROLLBACK-CPANEL.sh package.json "$stage/"
-printf 'v202\n' > "$stage/DEPLOY_VERSION.txt"
+printf 'v203\n' > "$stage/DEPLOY_VERSION.txt"
 
 find "$stage" -type d -exec chmod 755 {} +
 find "$stage" -type f -exec chmod 644 {} +
@@ -52,7 +52,7 @@ node tests/prepare-runtime-env.integration.mjs
 node tests/runtime-env-loader.integration.mjs
 # v188: end-to-end QA of this package (fresh PostgreSQL, both applications, real HTTP, the cron): a PASS / FAIL report
 # per critical flow in docs/qa/; any FAIL stops here, so a package that fails is never handed over.
-node scripts/release-qa.mjs "$output" v202 "$project/docs/qa"
+node scripts/release-qa.mjs "$output" v203 "$project/docs/qa"
 # v189: the package then carries the evidence — that QA report's summary and the SHA-256 of every file it contains —
 # so the post-install check proves on the server that the installed files are exactly the ones that passed QA.
 node --input-type=module -e '
@@ -60,24 +60,24 @@ import {writeFileSync,readFileSync} from "node:fs";
 import {fileManifest,contentHash,qaSummary,EVIDENCE_FILE} from "./scripts/release-evidence-core.mjs";
 const [stage,version,report]=process.argv.slice(1), files=fileManifest(stage);
 writeFileSync(`${stage}/${EVIDENCE_FILE}`, JSON.stringify({version,createdAt:new Date().toISOString(),contentHash:contentHash(files),qa:qaSummary(JSON.parse(readFileSync(report,"utf8"))),files}));
-' "$stage" v202 "$project/docs/qa/qa-report-v202.json"
+' "$stage" v203 "$project/docs/qa/qa-report-v203.json"
 chmod 644 "$stage/RELEASE-EVIDENCE.json"
 rm -f "$output"
 tar -C "$stage" -czf "$output" .
 evidence_check="$(mktemp -d)"
 tar -C "$evidence_check" -xzf "$output"
-node "$evidence_check/scripts/post-install-check.mjs" "$evidence_check" v202 --require-evidence --no-db --skip-acceptance
+node "$evidence_check/scripts/post-install-check.mjs" "$evidence_check" v203 --require-evidence --no-db --skip-acceptance
 rm -rf "$evidence_check"
-# v202: the hash is computed once, from the final archive, and published in the QA report and the .sha256 file.
-node scripts/finalize-release.mjs finalize "$output" v202 "$project/docs/qa"
-# v202: the QA evidence with its logs (per flow, applications, full TAP of the tests, reproduction steps) as its own
+# v203: the hash is computed once, from the final archive, and published in the QA report and the .sha256 file.
+node scripts/finalize-release.mjs finalize "$output" v203 "$project/docs/qa"
+# v203: the QA evidence with its logs (per flow, applications, full TAP of the tests, reproduction steps) as its own
 # archive, and the diagnostics package (AC Probe) — neither is part of the installation package.
-tar -C "$project/docs/qa" -czf "$project/corali-qa-evidence-v202.tar.gz" QA-REPORT-v202.md qa-report-v202.json qa-logs-v202
-(cd "$project" && sha256sum corali-qa-evidence-v202.tar.gz) | tee "$project/corali-qa-evidence-v202.tar.gz.sha256"
-bash scripts/package-diagnostics.sh v202
-bash scripts/package-watchdog.sh v202
+tar -C "$project/docs/qa" -czf "$project/corali-qa-evidence-v203.tar.gz" QA-REPORT-v203.md qa-report-v203.json qa-logs-v203
+(cd "$project" && sha256sum corali-qa-evidence-v203.tar.gz) | tee "$project/corali-qa-evidence-v203.tar.gz.sha256"
+bash scripts/package-diagnostics.sh v203
+bash scripts/package-watchdog.sh v203
 node scripts/build-web-installer.mjs
 node tests/web-installer-static.mjs
-# v202: last step — the archive, its .sha256, the QA report and the installer name the same hash.
-node scripts/finalize-release.mjs check "$output" v202 "$project/docs/qa" "$project/corali-web-installer-v202.php"
+# v203: last step — the archive, its .sha256, the QA report and the installer name the same hash.
+node scripts/finalize-release.mjs check "$output" v203 "$project/docs/qa" "$project/corali-web-installer-v203.php"
 echo "$output"

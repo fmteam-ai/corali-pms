@@ -6,7 +6,7 @@ import { providerCredentials } from "@/lib/provider-connections";
 import { addDays, hotelToday } from "@/lib/tape-chart";
 import type { PoolClient } from "pg";
 import { AVAILABILITY_SQL, CHANNEX_HOSTS, PUSH_HORIZON_DAYS, sellable } from "../scripts/channel-core.mjs";
-import { PREREQUISITES, STATE_EL, activationReadiness, activateIntegration, deactivateIntegration, integrationStates, recordIntegrationCheck } from "../scripts/integration-state-core.mjs";
+import { PREREQUISITES, STATE_EL, activationReadiness, activateIntegration, channelSyncHealthy, configChangedAt, deactivateIntegration, integrationStates, recordIntegrationCheck } from "../scripts/integration-state-core.mjs";
 
 type Queryable = Pick<PoolClient, "query">;
 
@@ -44,10 +44,12 @@ export type CheckItem = { key: string; ok: boolean | null; detail: string };
  */
 /** v202 Integration lifecycle of the Channel Manager: state + the activation prerequisites and their evidence. */
 export async function channelLifecycle(ownerId: string) {
-  const states = await integrationStates({ pool: db(), owner: ownerId, providers: ["channelManager"] });
+  // v203: the state comes from the sync's own evidence — never «ACTIVE» without a confirmed healthy check.
+  const st = await db().query(`SELECT last_run_at,last_ok_at,last_error FROM channel_sync_state WHERE owner_id=$1`, [ownerId]).then((r) => r.rows[0] ?? null, () => undefined);
+  const states = await integrationStates({ pool: db(), owner: ownerId, providers: ["channelManager"], health: { channelManager: channelSyncHealthy(st) } });
   const checks = (await db().query(`SELECT check_key,ok,detail,checked_at FROM integration_checks WHERE owner_id=$1 AND provider_key='channelManager' ORDER BY checked_at DESC LIMIT 50`, [ownerId])).rows;
   const s = states.channelManager;
-  return { state: s.state as string, stateEl: STATE_EL[s.state as keyof typeof STATE_EL], activatedAt: s.activatedAt, activatedBy: s.activatedBy, readiness: activationReadiness("channelManager", checks), prerequisites: PREREQUISITES.channelManager };
+  return { state: s.state as string, stateEl: STATE_EL[s.state as keyof typeof STATE_EL], activatedAt: s.activatedAt, activatedBy: s.activatedBy, readiness: activationReadiness("channelManager", checks, Date.now(), await configChangedAt(db(), ownerId, "channelManager")), prerequisites: PREREQUISITES.channelManager };
 }
 
 /**

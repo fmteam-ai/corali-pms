@@ -72,7 +72,7 @@ PMS_HEALTH_URL=https://pms.hotelcorali.gr/api/health PMS_HEARTBEAT_URL=https://p
 MONITORING_SECRET=... NTFY_URL=https://ntfy.sh/... node watchdog.mjs
 ```
 
-## Αναβάθμιση από τον watchdog της v202 (χωρίς volume)
+## Αναβάθμιση από τον watchdog της v201 (χωρίς volume)
 
 Από τον φάκελο του νέου πακέτου, με το ίδιο όνομα εφαρμογής στο `fly.toml`:
 
@@ -81,11 +81,33 @@ fly volumes create watchdog_data --region fra --size 1
 fly deploy --ha=false
 ```
 
-Αν το `fly deploy` απαντήσει ότι το υπάρχον μηχάνημα δεν έχει volume, διαγράψτε το παλιό μηχάνημα (τα μυστικά μένουν)
-και ξανατρέξτε το deploy:
+Συνήθως το Fly αντικαθιστά μόνο του το παλιό μηχάνημα με νέο που έχει το volume (μήνυμα «Failed to clear lease … lease
+not found» για το παλιό = αναμενόμενο). Ελέγξτε με `fly machine list`: ένα μηχάνημα, στήλη VOLUME συμπληρωμένη. Μόνο αν
+μείνει μηχάνημα χωρίς volume, διαγράψτε το (τα μυστικά μένουν) και ξανατρέξτε το deploy:
 
 ```bash
 fly machine list
 fly machine destroy <id> --force
 fly deploy --ha=false
 ```
+
+## Αποδοχή μιας ειδοποίησης (v203)
+
+Μια ειδοποίηση φεύγει από την ουρά μόνο όταν ο πάροχος την **αποδεχθεί**: Telegram → HTTP 2xx **και** `{"ok":true}`,
+ntfy → HTTP 2xx **και** id μηνύματος, webhook → HTTP 2xx. Διαφορετικά μένει στην ουρά (και μετά από επανεκκίνηση) με το
+σφάλμα του παρόχου και ξαναστέλνεται μόνο σε όποιον δεν την αποδέχθηκε.
+
+## Πραγματική δοκιμή στο Fly.io (προτείνεται μία φορά)
+
+Τα τοπικά tests δεν αποδεικνύουν ότι η ειδοποίηση φτάνει στο κινητό. Δοκιμή χωρίς να πειράξετε το PMS: ένα λάθος
+κλειδί στο Fly κάνει το heartbeat «υπογραφή invalid» (κρίσιμο).
+
+1. `fly secrets set MONITORING_SECRET=lathos-kleidi-dokimis-0000000000000000000000 -a <app>` → μετά από ~3′ πρέπει να
+   έρθει στο κινητό **μία** ειδοποίηση 🔴 «heartbeat».
+2. Με το incident ανοιχτό: `fly machine restart <id> -a <app>` → μετά την επανεκκίνηση **δεν** πρέπει να ξανάρθει η ίδια
+   αρχική ειδοποίηση (η κατάσταση διαβάζεται από το `/data/state.json`). Στα logs: `"open":["heartbeat"]`.
+3. Βάλτε ξανά το σωστό κλειδί (όπως στην εγκατάσταση) → μετά από 2 επιτυχημένους ελέγχους έρχεται **μία** ειδοποίηση ✅
+   «αποκαταστάθηκε».
+
+Σημείωση για εντολές ελέγχου από τον server: το ModSecurity του hosting απορρίπτει με HTTP 406 αιτήματα με User-Agent
+`curl`. Χρησιμοποιήστε `curl -A node …` (ο watchdog στέλνει `node` και δεν επηρεάζεται).

@@ -26,7 +26,7 @@ export function evaluateHealth(f, now) {
   // v202 Integration lifecycle: a Channel Manager that is not configured / disabled / still in TESTING is not a
   // failure — its sync job and its queue are only judged once it has been activated.
   const chState = f.channelState ?? (f.channelOn ? "ACTIVE" : "NOT_CONFIGURED");
-  const chJudged = chState === "ACTIVE" || chState === "DEGRADED";
+  const chJudged = chState === "ACTIVE" || chState === "DEGRADED" || chState === "UNVERIFIED";
   c.channelSync = chJudged ? job(f.channelSync, "channel sync", 5 * MIN) : { status: "ok", state: chState };
   c.steps = f.steps === null ? { status: "unknown" } : (() => { const bad = f.steps.filter((s) => Number(s.consecutive_failures) >= 3); return { status: bad.length ? "fail" : f.steps.some((s) => !["ok", "skipped"].includes(s.last_status)) ? "warn" : "ok", failing: bad.map((s) => s.name) }; })();
   c.otaQueue = !chJudged ? { status: "ok", state: chState } : f.outboxOldest === null ? { status: "unknown" } : { status: f.outboxOldest && now - f.outboxOldest > 30 * MIN ? "fail" : f.outboxOldest && now - f.outboxOldest > 10 * MIN ? "warn" : "ok", oldestPendingAgoS: f.outboxOldest ? Math.round((now - f.outboxOldest) / 1000) : null };

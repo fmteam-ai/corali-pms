@@ -7,20 +7,23 @@
 //   DISABLED        saved, but switched off — nothing is expected of it
 //   TESTING         switched on, but the activation prerequisites have not all been proven yet — it may be tried,
 //                   problems are shown in the PMS, never pushed / e-mailed as failures
-//   ACTIVE          activated (prerequisites proven) and working
-//   DEGRADED        activated, but its checks fail — this, and only this, raises failure alerts
+//   ACTIVE          activated (prerequisites proven) and its own checks CONFIRM it works
+//   DEGRADED        activated, and its checks fail — raises failure alerts
+//   UNVERIFIED      v203: activated, but its health could not be confirmed (no / unreadable check) — never shown as
+//                   «working»; it is monitored like an active one (an activated service we cannot see is a problem)
 //
 // Activation is a recorded act: every prerequisite of the provider must have a PASSED check, recent enough, and the
 // person and time are kept (integration_activation). Deactivation keeps the history. Nothing here deletes data.
 const DAY = 24 * 60 * 60_000;
 
-export const INTEGRATION_STATES = ["NOT_CONFIGURED", "DISABLED", "TESTING", "ACTIVE", "DEGRADED"];
+export const INTEGRATION_STATES = ["NOT_CONFIGURED", "DISABLED", "TESTING", "ACTIVE", "DEGRADED", "UNVERIFIED"];
 export const STATE_EL = {
   NOT_CONFIGURED: "Δεν έχει ρυθμιστεί",
   DISABLED: "Απενεργοποιημένη",
   TESTING: "Σε δοκιμή (δεν έχει ενεργοποιηθεί)",
   ACTIVE: "Ενεργή",
   DEGRADED: "Ενεργή με πρόβλημα",
+  UNVERIFIED: "Ενεργοποιημένη — η λειτουργία της δεν έχει επιβεβαιωθεί",
 };
 
 /** Proven prerequisites before a provider counts as ACTIVE (checks recorded by its connection test). */
@@ -38,7 +41,9 @@ export const PREREQUISITES = {
   omada: [{ key: "voucher_roundtrip", el: "Δημιουργία και ανάκληση κωδικού Wi-Fi επιβεβαιωμένες" }],
 };
 export const PREREQUISITE_MAX_AGE_MS = 30 * DAY;
-export const ALERTING_STATES = new Set(["ACTIVE", "DEGRADED"]);
+/** v203: a check dated more than this after «now» is not evidence (clock skew tolerance, as in the device registry). */
+export const CHECK_CLOCK_SKEW_MS = 5 * 60_000;
+export const ALERTING_STATES = new Set(["ACTIVE", "DEGRADED", "UNVERIFIED"]);
 
 /**
  * Pure: the state of one provider. row = provider_connections row (or null); activation = integration_activation row
@@ -48,38 +53,74 @@ export function integrationState({ row, activation = null, healthy = null }) {
   if (!row || !String(row.secrets_encrypted ?? "x")) return "NOT_CONFIGURED";
   if (!Number(row.active)) return "DISABLED";
   if (!activation?.activated_at || activation.deactivated_at) return "TESTING";
-  return healthy === false ? "DEGRADED" : "ACTIVE";
+  // v203: only a confirmed healthy check is ACTIVE; unknown health is UNVERIFIED, never «working».
+  return healthy === true ? "ACTIVE" : healthy === false ? "DEGRADED" : "UNVERIFIED";
+}
+
+/**
+ * The Channel Manager's own health from its sync state: true = the sync ran in the last 30′ and its last run did not
+ * end in an error that outlived the last success; false = not running / failing; null = the state could not be read.
+ */
+export function channelSyncHealthy(st, now = Date.now()) {
+  if (st === undefined) return null;
+  if (!st?.last_run_at || now - Number(st.last_run_at) > 30 * 60_000) return false;
+  if (st.last_error && (!st.last_ok_at || now - Number(st.last_ok_at) > 30 * 60_000)) return false;
+  return true;
 }
 
 /** May failures of this provider be pushed / e-mailed as failures? Only once it has been activated. */
 export const mayAlert = (state) => ALERTING_STATES.has(state);
 
-/** Pure: which prerequisites are proven (a recent PASSED check), and whether activation is allowed. */
-export function activationReadiness(provider, checks, now = Date.now()) {
+/**
+ * Pure: which prerequisites are proven, and whether activation is allowed. A check counts only if it PASSED, is not
+ * older than 30 days, is not dated in the future (beyond CHECK_CLOCK_SKEW_MS) and was made after the last change of
+ * the provider's configuration (configChangedAt: connection settings, room / rate mapping …).
+ */
+export function activationReadiness(provider, checks, now = Date.now(), configChangedAt = 0) {
   const list = PREREQUISITES[provider] ?? [];
   const items = list.map((p) => {
     const c = (checks ?? []).filter((x) => x.check_key === p.key).sort((a, b) => Number(b.checked_at) - Number(a.checked_at))[0];
-    const fresh = c && now - Number(c.checked_at) <= PREREQUISITE_MAX_AGE_MS;
-    return { key: p.key, el: p.el, ok: Boolean(c && Number(c.ok) === 1 && fresh), detail: !c ? "Δεν έχει ελεγχθεί" : !fresh ? "Ο έλεγχος είναι παλαιότερος από 30 ημέρες — επαναλάβετε τον" : String(c.detail ?? ""), checkedAt: c ? Number(c.checked_at) : null };
+    const at = c ? Number(c.checked_at) : null;
+    const future = c && at > now + CHECK_CLOCK_SKEW_MS;
+    const fresh = c && !future && now - at <= PREREQUISITE_MAX_AGE_MS;
+    const afterChange = c && at >= Number(configChangedAt || 0);
+    const detail = !c ? "Δεν έχει ελεγχθεί"
+      : future ? "Ο χρόνος του ελέγχου είναι στο μέλλον — δεν γίνεται δεκτός (ελέγξτε το ρολόι και επαναλάβετε τον έλεγχο)"
+      : !fresh ? "Ο έλεγχος είναι παλαιότερος από 30 ημέρες — επαναλάβετε τον"
+      : !afterChange ? "Οι ρυθμίσεις άλλαξαν μετά τον έλεγχο — απαιτείται νέα επαλήθευση"
+      : String(c.detail ?? "");
+    return { key: p.key, el: p.el, ok: Boolean(c && Number(c.ok) === 1 && fresh && afterChange), detail, checkedAt: at, future: Boolean(future), stale: Boolean(c && !afterChange) };
   });
-  return { provider, items, ready: list.length > 0 && items.every((i) => i.ok) };
+  return { provider, items, ready: list.length > 0 && items.every((i) => i.ok), configChangedAt: Number(configChangedAt || 0) || null };
 }
 
-/** Records one prerequisite check (history kept: every check is a new row). */
+/** When the provider's configuration last changed (its saved connection, and for the Channel Manager its mapping). */
+export async function configChangedAt(pool, owner, provider) {
+  const conn = (await pool.query(`SELECT updated_at FROM provider_connections WHERE owner_id=$1 AND provider_key=$2`, [owner, provider])).rows[0];
+  let at = Number(conn?.updated_at ?? 0);
+  if (provider === "channelManager") {
+    const m = (await pool.query(`SELECT max(updated_at) AS at FROM channel_room_mappings WHERE owner_id=$1`, [owner]).catch(() => ({ rows: [] }))).rows[0];
+    at = Math.max(at, Number(m?.at ?? 0));
+  }
+  return at;
+}
+
+/** Records one prerequisite check (history kept: every check is a new row). The time is the PMS clock, never later than now. */
 export async function recordIntegrationCheck({ pool, owner, provider, check, ok, detail = "", by = "system", now = Date.now() }) {
+  if (now > Date.now() + CHECK_CLOCK_SKEW_MS) throw new Error("CHECK_IN_FUTURE");
   await pool.query(`INSERT INTO integration_checks(owner_id,provider_key,check_key,ok,detail,checked_by,checked_at) VALUES($1,$2,$3,$4,$5,$6,$7)`, [owner, provider, check, ok ? 1 : 0, String(detail).slice(0, 500), by, now]);
 }
 
 /** Reads the state of providers (all, or the ones given). Never throws: an unreadable table → state per row only. */
 export async function integrationStates({ pool, owner, providers = null, health = {} }) {
-  const rows = (await pool.query(`SELECT provider_key,active,secrets_encrypted FROM provider_connections WHERE owner_id=$1`, [owner])).rows;
+  const rows = (await pool.query(`SELECT provider_key,active,secrets_encrypted,updated_at FROM provider_connections WHERE owner_id=$1`, [owner])).rows;
   const acts = (await pool.query(`SELECT provider_key,activated_at,activated_by,deactivated_at FROM integration_activation WHERE owner_id=$1`, [owner]).catch(() => ({ rows: [] }))).rows;
   const keys = providers ?? [...new Set([...Object.keys(PREREQUISITES), ...rows.map((r) => r.provider_key)])];
   const out = {};
   for (const k of keys) {
     const row = rows.find((r) => r.provider_key === k) ?? null;
     const activation = acts.find((a) => a.provider_key === k) ?? null;
-    out[k] = { state: integrationState({ row, activation, healthy: health[k] ?? null }), activatedAt: activation?.activated_at ? Number(activation.activated_at) : null, activatedBy: activation?.activated_by ?? null };
+    out[k] = { state: integrationState({ row, activation, healthy: health[k] ?? null }), configChangedAt: row?.updated_at == null ? null : Number(row.updated_at), activatedAt: activation?.activated_at ? Number(activation.activated_at) : null, activatedBy: activation?.activated_by ?? null };
   }
   return out;
 }
@@ -88,7 +129,8 @@ export async function integrationStates({ pool, owner, providers = null, health 
 export async function activateIntegration({ pool, owner, provider, by, now = Date.now() }) {
   const row = (await pool.query(`SELECT active,secrets_encrypted FROM provider_connections WHERE owner_id=$1 AND provider_key=$2`, [owner, provider])).rows[0];
   const checks = (await pool.query(`SELECT check_key,ok,detail,checked_at FROM integration_checks WHERE owner_id=$1 AND provider_key=$2 ORDER BY checked_at DESC LIMIT 200`, [owner, provider])).rows;
-  const readiness = activationReadiness(provider, checks, now);
+  // v203: validity re-checked AT activation time: not in the future, not expired, made after the last config change.
+  const readiness = activationReadiness(provider, checks, now, await configChangedAt(pool, owner, provider));
   if (!row) return { ok: false, error: "NOT_CONFIGURED", readiness };
   if (!Number(row.active)) return { ok: false, error: "DISABLED", readiness };
   if (!readiness.ready) return { ok: false, error: "PREREQUISITES_NOT_MET", readiness };
