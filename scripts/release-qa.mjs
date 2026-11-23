@@ -231,7 +231,12 @@ try {
     must(["sent", "failed", "pending", "processing"].includes(bal[0].status), `κατάσταση ${bal[0].status}`);
     const steps = (await q(`SELECT name,last_status FROM automation_status WHERE owner_id=$1`, [owner])).rows;
     must(steps.some((s) => s.name === "Guest messages"), `καταγραφές: ${steps.map((s) => s.name).join(", ")}`);
-    return `υπενθύμιση υπολοίπου: ${bal[0].status}${bal[0].e ? ` (${bal[0].e.slice(0, 60)} — χωρίς SMTP στη δοκιμή)` : ""} · ${steps.length} βήματα cron καταγράφηκαν`;
+    // v189 heartbeat: the run's start and end are recorded and nothing is left «running».
+    const hb = (await q(`SELECT last_status,running_since,runs,last_duration_ms FROM cron_heartbeat WHERE owner_id=$1 AND job='automations'`, [owner])).rows[0];
+    must(hb && hb.last_status === "ok" && hb.running_since === null && Number(hb.runs) === 1, `heartbeat: ${JSON.stringify(hb)}`);
+    const run = (await q(`SELECT status,finished_at,steps_ok FROM cron_runs WHERE owner_id=$1 AND job='automations'`, [owner])).rows;
+    must(run.length === 1 && run[0].status === "ok" && run[0].finished_at, `cron_runs: ${JSON.stringify(run)}`);
+    return `υπενθύμιση υπολοίπου: ${bal[0].status}${bal[0].e ? ` (${bal[0].e.slice(0, 60)} — χωρίς SMTP στη δοκιμή)` : ""} · ${steps.length} βήματα cron καταγράφηκαν · heartbeat: έναρξη + ολοκλήρωση σε ${hb.last_duration_ms} ms, ${run[0].steps_ok} βήματα OK`;
   });
 
   await flow("F10", "Κλείδωμα Cloudflare + έλεγχοι εγκατάστασης (smoke) για PMS και Booking", async () => {
@@ -255,6 +260,87 @@ try {
     must((await q(`SELECT status FROM channel_sync_outbox WHERE id=$1`, [id])).rows[0].status === "pending", "δεν επανήλθε σε αναμονή");
     await q(`DELETE FROM channel_sync_outbox WHERE id=$1`, [id]);
     return `εντοπίστηκε («${it.text.slice(0, 70)}…») και μπήκε ξανά σε συγχρονισμό · ${r.areas.length} περιοχές ελέγχθηκαν`;
+  });
+
+  const cron = (extra = {}) => spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/run-message-automations.mjs"], { cwd: pmsDir, encoding: "utf8", timeout: 290_000, env: { ...process.env, SMTP_HOST: "127.0.0.1", SMTP_PORT: "9", SMTP_FROM: "qa@example.invalid", ...extra } });
+
+  await flow("F13", "Cron: βήμα που τρέχει ακόμη δεν ξανατρέχει παράλληλα · ειδοποιήσεις με επιβεβαίωση παράδοσης και επανάληψη", async () => {
+    const { raiseAlert } = await import(path.join(pmsDir, "scripts/alert-core.mjs"));
+    const before = (await q(`SELECT last_run_at FROM automation_status WHERE owner_id=$1 AND name='Guest messages'`, [owner])).rows[0].last_run_at;
+    // The previous run still holds «Guest messages» (its lease expires in 5 minutes).
+    await q(`INSERT INTO job_leases(owner_id,lease_key,holder,acquired_at,expires_at) VALUES($1,'step:Guest messages','qa-previous-run',$2,$3)`, [owner, Date.now(), Date.now() + 300_000]);
+    const a = await raiseAlert({ pool: db, owner, key: "qa:alert", area: "automations", severity: "fail", title: "QA: κρίσιμη ειδοποίηση", emails: ["qa@example.invalid"] });
+    must(a.fresh, "η ειδοποίηση δεν δημιουργήθηκε");
+    const r = cron();
+    must(r.status !== null, `το cron δεν τελείωσε (${r.signal ?? "timeout"})`);
+    const after = (await q(`SELECT last_run_at FROM automation_status WHERE owner_id=$1 AND name='Guest messages'`, [owner])).rows[0].last_run_at;
+    must(String(after) === String(before), "το βήμα «Guest messages» έτρεξε ενώ το κρατούσε η προηγούμενη εκτέλεση");
+    const skipped = (await q(`SELECT steps_skipped FROM cron_runs WHERE owner_id=$1 AND job='automations' ORDER BY id DESC LIMIT 1`, [owner])).rows[0];
+    must(Number(skipped.steps_skipped) >= 1, `steps_skipped ${skipped.steps_skipped}`);
+    // Deliveries attempted, failure recorded with its reason, scheduled again — never reported «sent».
+    const box = (await q(`SELECT channel,status,attempts,last_error,next_attempt_at FROM alert_outbox WHERE alert_id=$1 ORDER BY channel`, [a.id])).rows;
+    must(box.length === 2 && box.every((b) => b.status === "pending" && Number(b.attempts) === 1 && b.last_error && Number(b.next_attempt_at) > Date.now()), `outbox: ${JSON.stringify(box)}`);
+    await q(`DELETE FROM job_leases WHERE holder='qa-previous-run'`);
+    return `«Guest messages» παραλείφθηκε (κρατούσε η προηγούμενη εκτέλεση), ${skipped.steps_skipped} βήμα · παράδοση: ${box.map((b) => `${b.channel} → ${b.last_error.slice(0, 40)} (νέα προσπάθεια)`).join(" · ")}`;
+  });
+
+  await flow("F14", "Αντίγραφο ασφαλείας: κρυπτογραφημένο backup, δοκιμαστική επαναφορά σε ξεχωριστή βάση, μέτρηση εγγραφών, αλλοιωμένο αρχείο απορρίπτεται", async () => {
+    const bin = pgBin();
+    must(bin && existsSync(path.join(bin, "pg_dump")) && existsSync(path.join(bin, "pg_restore")), "pg_dump / pg_restore δεν βρέθηκαν");
+    const u = new URL(dbUrl);
+    const admin = new pg.Client({ connectionString: dbUrl });
+    await admin.connect(); await admin.query("CREATE DATABASE corali_rehearsal"); await admin.end();
+    const rehearsal = new URL(dbUrl); rehearsal.pathname = "/corali_rehearsal";
+    const backups = path.join(work, "backups");
+    const env = { BACKUP_DIR: backups, PG_DUMP_BIN: path.join(bin, "pg_dump"), PG_RESTORE_BIN: path.join(bin, "pg_restore"), REHEARSAL_EVERY_RUN: "1", REHEARSAL_DATABASE_URL: rehearsal.toString() };
+    const r = spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/run-db-backup.mjs"], { cwd: pmsDir, encoding: "utf8", timeout: 240_000, env: { ...process.env, ...env } });
+    must(r.status === 0, `backup/rehearsal: ${(r.stderr || r.stdout).slice(-400)}`);
+    const runs = (await q(`SELECT kind,status,file,details_json,error FROM backup_runs WHERE owner_id=$1 ORDER BY id`, [owner])).rows;
+    const bk = runs.find((x) => x.kind === "backup"), rh = runs.find((x) => x.kind === "rehearsal");
+    must(bk?.status === "ok" && rh?.status === "ok", `backup ${bk?.status} ${bk?.error ?? ""} · rehearsal ${rh?.status} ${rh?.error ?? ""}`);
+    const d = JSON.parse(rh.details_json);
+    must(d.restored && d.restored.bookings === d.liveBefore.bookings && d.restored.bookings > 0, `επαναφορά: ${JSON.stringify(d.restored)} / ${JSON.stringify(d.liveBefore)}`);
+    const left = new pg.Client({ connectionString: rehearsal.toString() });
+    await left.connect(); const tables = Number((await left.query(`SELECT count(*)::int n FROM information_schema.tables WHERE table_schema='public'`)).rows[0].n); await left.end();
+    must(tables === 0, `η βάση δοκιμής δεν άδειασε (${tables} πίνακες)`);
+    // A damaged backup must fail the rehearsal, never pass it.
+    const file = path.join(backups, rh.file), buf = readFileSync(file); buf[buf.length - 40] ^= 0xff; writeFileSync(file, buf);
+    const bad = spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/run-restore-rehearsal.mjs", backups], { cwd: pmsDir, encoding: "utf8", timeout: 120_000, env: { ...process.env, ...env } });
+    const last = (await q(`SELECT status,error FROM backup_runs WHERE owner_id=$1 AND kind='rehearsal' ORDER BY id DESC LIMIT 1`, [owner])).rows[0];
+    must(bad.status !== 0 && last.status === "failed" && /Αποκρυπτογράφηση/.test(last.error), `αλλοιωμένο: ${last.status} ${last.error}`);
+    void u;
+    return `backup ${rh.file} · επαναφορά σε corali_rehearsal: ${Object.entries(d.restored).map(([k, v]) => `${k} ${v}`).join(", ")} = ζωντανή βάση · ${d.checks.length} έλεγχοι OK · βάση δοκιμής άδειασε · αλλοιωμένο αρχείο → failed`;
+  });
+
+  await flow("F15", "Έλεγχος μετά την εγκατάσταση: κάθε ON CONFLICT στη βάση, πίνακες σχήματος, αποτυχία όταν λείπει μοναδικό index", async () => {
+    const check = () => spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/post-install-check.mjs", pmsDir, version], { cwd: pmsDir, encoding: "utf8", timeout: 120_000 });
+    const ok = check();
+    must(ok.status === 0, `έλεγχος: ${(ok.stderr || ok.stdout).slice(-400)}`);
+    const row = (await q(`SELECT status,checks_json FROM release_checks ORDER BY id DESC LIMIT 1`)).rows[0];
+    const checks = JSON.parse(row.checks_json);
+    must(checks.find((c) => c.name.startsWith("ON CONFLICT"))?.status === "ok" && checks.find((c) => c.name.startsWith("Πίνακες"))?.status === "ok", JSON.stringify(checks));
+    // The v187 fault again (the full unique index missing): the check must stop the installation.
+    await q(`DROP INDEX "idx_payment_provider_reference_all"`);
+    try {
+      const bad = check();
+      must(bad.status !== 0 && /ON CONFLICT/.test(bad.stdout + bad.stderr), `δεν απέτυχε χωρίς το index: ${bad.status}`);
+    } finally { await q(`CREATE UNIQUE INDEX IF NOT EXISTS "idx_payment_provider_reference_all" ON "payment_transactions" ("provider", "provider_reference")`); }
+    return `${checks.map((c) => `${c.status === "ok" ? "✓" : "!"} ${c.name}: ${c.detail}`).join(" · ")} · χωρίς το index → η εγκατάσταση σταματά`;
+  });
+
+  await flow("F16", "Συμφωνία OTA: διαθεσιμότητα που στάλθηκε ≠ τρέχουσα εντοπίζεται και ξαναστέλνεται", async () => {
+    const { otaReconcile, queueOtaResync } = await import(path.join(pmsDir, "scripts/ota-reconcile-core.mjs"));
+    const day = addDays(today, 20);
+    await q(`DELETE FROM channel_sync_outbox WHERE owner_id=$1`, [owner]);
+    await q(`INSERT INTO channel_availability_state(owner_id,room_type,date,available,pushed_at) VALUES($1,'qa-101',$2,3,$3) ON CONFLICT(owner_id,room_type,date) DO UPDATE SET available=3`, [owner, day, Date.now()]);
+    const r = await otaReconcile({ pool: db, owner, days: 30 });
+    const m = r.mismatches.find((x) => x.roomType === "qa-101" && x.from === day);
+    must(m && m.ota === 3 && m.pms === 1, `αποκλίσεις: ${JSON.stringify(r.mismatches)}`);
+    await queueOtaResync({ pool: db, owner, mismatches: [m] });
+    must(!(await otaReconcile({ pool: db, owner, days: 30 })).mismatches.some((x) => x.roomType === "qa-101" && x.from === day), "η απόκλιση παρέμεινε μετά την επανάληψη");
+    await q(`DELETE FROM channel_sync_outbox WHERE owner_id=$1 AND reason='reconcile'`, [owner]);
+    await q(`DELETE FROM channel_availability_state WHERE owner_id=$1`, [owner]);
+    return `${r.checked} ημέρες×τύποι · qa-101 ${day}: στάλθηκε ${m.ota}, PMS ${m.pms} → μπήκε σε αποστολή`;
   });
 
   await flow("F11", "Αυτόματα tests του κώδικα (unit / integration)", async () => {

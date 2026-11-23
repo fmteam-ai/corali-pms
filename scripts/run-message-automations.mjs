@@ -17,6 +17,11 @@ import {runCampaigns} from "./campaign-worker.mjs";
 import {advisorDue,runSalesAdvisor} from "./sales-advisor-worker.mjs";
 import {recordAutomation,runJourney} from "./journey-worker.mjs";
 import {runReliabilityAlerts} from "./reliability-core.mjs";
+import {createStepRunner,cronFinish,cronStart,guardedPool,hardDeadline} from "./job-control-core.mjs";
+import {deliverAlerts} from "./alert-core.mjs";
+import {otaReconcile,queueOtaResync} from "./ota-reconcile-core.mjs";
+import {saveReconciliation,stripeReconcile} from "./stripe-reconcile-core.mjs";
+import {reconcile} from "./reconcile-core.mjs";
 import {runMailInbox} from "./mail-inbox-worker.mjs";
 import {runWhatsAppInboxSetup} from "./whatsapp-inbox-worker.mjs";
 import {normalizeBrand,renderBrandedEmail,stayDate,withFallbacks} from "./email-brand-core.mjs";
@@ -27,7 +32,7 @@ async function whatsappTokenReminder(){const n=new Date();if(n.getUTCHours()!==7
 // Keeps the booking site and the PMS awake: cPanel stops an app that had no visitors for a few minutes and the next
 // guest waits for it to start. Asking every few minutes (availability for next week also warms the database) avoids that.
 const warm=new Date().getMinutes()%4===0?Promise.allSettled([`${process.env.BOOKING_ORIGIN}/api/public/availability?checkIn=${new Date(Date.now()+7*86400000).toISOString().slice(0,10)}&checkOut=${new Date(Date.now()+8*86400000).toISOString().slice(0,10)}&adults=2&lang=el`,`${process.env.BOOKING_ORIGIN}/book`,...(process.env.PMS_ORIGIN?[`${process.env.PMS_ORIGIN}/api/health`]:[])].map(u=>fetch(u,{signal:AbortSignal.timeout(25_000),headers:{"User-Agent":"Corali-keep-warm"}}).then(r=>r.arrayBuffer()))):Promise.resolve();
-const owner=process.env.PMS_OWNER_ID??"hotel-corali",secret=process.env.PMS_DOCUMENT_KEY,pool=new pg.Pool({connectionString:process.env.DATABASE_URL,ssl:databaseSsl()}),now=Date.now();
+const owner=process.env.PMS_OWNER_ID??"hotel-corali",secret=process.env.PMS_DOCUMENT_KEY,pool=guardedPool(new pg.Pool({connectionString:process.env.DATABASE_URL,ssl:databaseSsl(),statement_timeout:60_000,idle_in_transaction_session_timeout:60_000})),now=Date.now();
 function key(){return createHash("sha256").update(secret).digest()}
 function seal(value){const iv=randomBytes(12),cipher=createCipheriv("aes-256-gcm",key(),iv),data=Buffer.concat([cipher.update(value,"utf8"),cipher.final()]);return ["v1",iv.toString("base64url"),cipher.getAuthTag().toString("base64url"),data.toString("base64url")].join(".")}
 function unseal(value){const [version,iv,tag,data]=value.split(".");if(version!=="v1")throw Error("INVALID_CIPHERTEXT");const decipher=createDecipheriv("aes-256-gcm",key(),Buffer.from(iv,"base64url"));decipher.setAuthTag(Buffer.from(tag,"base64url"));return Buffer.concat([decipher.update(Buffer.from(data,"base64url")),decipher.final()]).toString("utf8")}
@@ -66,37 +71,62 @@ async function run(){const r=await pool.query(`SELECT * FROM message_automation_
  console.log(`Automation scan complete: ${bookings.rowCount} bookings`)}
 // v173: a step that hangs (mail server, webhook) stops waiting after its limit, so the steps after it still run.
 // v187: every step's result (ok / failed / timeout, duration) is recorded (PMS → Ταξίδι πελάτη → Αυτοματισμοί).
-const track=(name,p)=>{const t0=Date.now();return Promise.resolve(p).then(async v=>{await recordAutomation(pool,owner,name,"ok","",Date.now()-t0).catch(()=>{});return v},async e=>{const m=e instanceof Error?e.message:String(e);await recordAutomation(pool,owner,name,/TIMEOUT/.test(m)?"timeout":"failed",m,Date.now()-t0).catch(()=>{});throw e})};
-const limit=(name,ms,p)=>track(name,Promise.race([p,new Promise((_,j)=>setTimeout(()=>j(Error(`${name}: TIMEOUT ${ms/1000}s`)),ms).unref())]));
+// v189: a step that passes its limit is CANCELLED (its HTTP requests aborted, its next queries refused) instead of
+// carrying on in the background; each step holds a lease, so if the previous minute's run is still doing it, this run
+// skips it instead of doing the same work in parallel; the whole run has a hard deadline (4 min 40 s).
+const runner=createStepRunner({pool,owner,record:(name,status,error,ms)=>status==="skipped"?Promise.resolve():recordAutomation(pool,owner,name,status,error,ms)});
+const limit=(name,ms,fn)=>runner.run(name,ms,fn,{lease:`step:${name}`});
+const track=(name,fn)=>limit(name,120_000,fn);
+const runStartedAt=Date.now();
+const runId=await cronStart(pool,owner,"automations",{now:runStartedAt}).catch(e=>{console.error("Heartbeat start failed",e instanceof Error?e.message:e);return null});
+const disarm=hardDeadline(280_000,()=>runId&&cronFinish(pool,owner,"automations",runId,{status:"killed",steps:runner.counts,error:"hard deadline 280s",startedAt:runStartedAt}));
+const athens=()=>Object.fromEntries(new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Athens",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date()).filter(p=>p.type!=="literal").map(p=>[p.type,Number(p.value)]));
+// v189 alert push: the PMS sends Web Push to the front desk's phones (the cron has no push library); signed request.
+async function pushAlert(row){const origin=process.env.PMS_ORIGIN;if(!origin)throw Error("PMS_ORIGIN_NOT_SET");const body=JSON.stringify({title:String(row.title).slice(0,120),body:row.purpose==="escalation"?"Υπενθύμιση: δεν έχει επιβεβαιωθεί":"Κέντρο αξιοπιστίας",url:row.link||"/pms/reliability",tag:`alert-${row.alert_id}`}),ts=String(Date.now()),sig=createHash("sha256").update(`corali-alert-push:${secret}:${ts}:${body}`).digest("hex");const r=await fetch(`${origin.replace(/\/$/,"")}/api/pms/alerts/push`,{method:"POST",headers:{"Content-Type":"application/json","x-corali-ts":ts,"x-corali-sig":sig},body,signal:AbortSignal.timeout(15_000)});const j=await r.json().catch(()=>({}));if(!r.ok)throw Error(`PUSH_HTTP_${r.status}${j.error?` ${j.error}`:""}`);return Number(j.sent??0)}
+async function emailAlert(row){await email(row.recipient,`${row.purpose==="escalation"?"[Υπενθύμιση] ":""}[Corali PMS] ${String(row.title).slice(0,150)}`,`${row.title}\n\n${process.env.PMS_ORIGIN?`${process.env.PMS_ORIGIN.replace(/\/$/,"")}${row.link||"/pms/reliability"}`:""}\n\nΕπιβεβαιώστε στο PMS → Αξιοπιστία ότι το είδατε.`)}
+// v189 reconciliations: OTA availability every 10 minutes (differences are queued again at once and recorded);
+// payments once a day at 04:12 Athens time (Stripe itself and the folio, last 3 days).
+async function runReconciliations(){const t=athens(),out={};const ota=await otaReconcile({pool,owner});if(ota.active&&ota.mismatches.length){await queueOtaResync({pool,owner,mismatches:ota.mismatches});await saveReconciliation(pool,owner,"ota",{issues:ota.mismatches.map(m=>({kind:"ota_mismatch",level:"warn",reference:m.roomType,amountCents:0,detail:`${m.roomType} ${m.from}${m.to!==m.from?` → ${m.to}`:""}: PMS ${m.pms}, OTA ${m.ota} — στάλθηκε ξανά αυτόματα`})),totals:{checked:ota.checked}});out.ota=ota.mismatches.length}
+ if(t.hour===4&&t.minute===12||process.env.RECONCILE_NOW==="1"){const toMs=Date.now(),fromMs=toMs-3*86400000;const f=await reconcile({pool,owner,fromMs,toMs});await saveReconciliation(pool,owner,"folio",{fromMs,toMs,issues:f.issues.map(i=>({...i,level:"fail"})),totals:f.totals});out.folio=f.issues.length;
+  const c=await credentials("stripe").catch(()=>null),key=c?(!c.disabled?c.secrets?.secretKey:null):process.env.STRIPE_SECRET_KEY;if(key){try{const sr=await stripeReconcile({pool,owner,secretKey:String(key),fromMs,toMs});await saveReconciliation(pool,owner,"stripe",{fromMs,toMs,issues:sr.issues,totals:sr.totals});out.stripe=sr.issues.length}catch(e){await saveReconciliation(pool,owner,"stripe",{fromMs,toMs,error:e instanceof Error?e.message:String(e)});throw e}}}
+ return out}
 try{
  // v173: room devices first — fast, and never held up by the e-mail / WhatsApp steps below.
  // Room A/C with presence sensors: every minute, so power returns within a minute when the guest comes back.
- await limit("A/C presence",40_000,runRoomAc({pool,owner,unseal,seal,presenceOnly:true})).catch(e=>console.error("A/C presence failed",e instanceof Error?e.message:e))
+ await limit("A/C presence",40_000,()=>runRoomAc({pool,owner,unseal,seal,presenceOnly:true})).catch(e=>console.error("A/C presence failed",e instanceof Error?e.message:e))
  // v174: room Shelly plugs (fridge or TV) every 5 minutes, so no separate cron is needed.
- if(new Date().getMinutes()%5===0)await limit("Room plugs",60_000,runTvPlugs({pool,owner,unseal})).then(r=>!r.off&&console.log(`${new Date().toISOString()} ${r.label} power: ${r.rooms} rooms checked, ${r.switched} switched${r.failed?`, ${r.failed} failed`:""}${r.faults?`, ${r.faults} fridge alert(s)`:""}`)).catch(e=>console.error("Room plugs failed",e instanceof Error?e.message:e))
+ if(new Date().getMinutes()%5===0)await limit("Room plugs",60_000,()=>runTvPlugs({pool,owner,unseal})).then(r=>!r.off&&console.log(`${new Date().toISOString()} ${r.label} power: ${r.rooms} rooms checked, ${r.switched} switched${r.failed?`, ${r.failed} failed`:""}${r.faults?`, ${r.faults} fridge alert(s)`:""}`)).catch(e=>console.error("Room plugs failed",e instanceof Error?e.message:e))
  // v177: per-booking Wi-Fi password (TP-Link Omada PPSK) every 5 minutes: added at check-in, removed after check-out.
- if(new Date().getMinutes()%5===1)await limit("Guest Wi-Fi",60_000,runGuestWifi({pool,owner,credentials,seal,today:new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Athens",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date())})).then(r=>r&&(r.added||r.removed||r.failed||r.queued)&&console.log(`${new Date().toISOString()} Guest Wi-Fi: ${r.added} added, ${r.removed} removed${r.failed?`, ${r.failed} failed`:""}${r.queued?`, ${r.queued} for the hotel bridge`:""}`)).catch(e=>console.error("Guest Wi-Fi failed",e instanceof Error?e.message:e))
+ if(new Date().getMinutes()%5===1)await limit("Guest Wi-Fi",60_000,()=>runGuestWifi({pool,owner,credentials,seal,today:new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Athens",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date())})).then(r=>r&&(r.added||r.removed||r.failed||r.queued)&&console.log(`${new Date().toISOString()} Guest Wi-Fi: ${r.added} added, ${r.removed} removed${r.failed?`, ${r.failed} failed`:""}${r.queued?`, ${r.queued} for the hotel bridge`:""}`)).catch(e=>console.error("Guest Wi-Fi failed",e instanceof Error?e.message:e))
  // v180: security check once an hour (PMS → Security center): suspicious requests, admins without 2FA, Cloudflare lock.
- if(new Date().getMinutes()===7)await limit("Security check",30_000,runSecurityCheck({pool,owner})).then(r=>r.told&&console.log(`${new Date().toISOString()} Security check: ${r.told} new alert(s)`)).catch(e=>console.error("Security check failed",e instanceof Error?e.message:e))
+ if(new Date().getMinutes()===7)await limit("Security check",30_000,()=>runSecurityCheck({pool,owner})).then(r=>r.told&&console.log(`${new Date().toISOString()} Security check: ${r.told} new alert(s)`)).catch(e=>console.error("Security check failed",e instanceof Error?e.message:e))
  // Room temperature / humidity sensors: read every ~10 minutes, alerts to the PMS.
- await limit("Room climate",60_000,runRoomClimate({pool,owner,unseal,seal})).then(r=>r&&console.log(`${new Date().toISOString()} Room climate: ${r.read}/${r.rooms} sensors read, ${r.alerts} alert(s)${r.error?`, error ${r.error}`:""}`)).catch(e=>console.error("Room climate failed",e instanceof Error?e.message:e))
- await limit("Guest messages",240_000,run()).catch(e=>{console.error("Guest message automations failed",e);process.exitCode=1});
+ await limit("Room climate",60_000,()=>runRoomClimate({pool,owner,unseal,seal})).then(r=>r&&console.log(`${new Date().toISOString()} Room climate: ${r.read}/${r.rooms} sensors read, ${r.alerts} alert(s)${r.error?`, error ${r.error}`:""}`)).catch(e=>console.error("Room climate failed",e instanceof Error?e.message:e))
+ await limit("Guest messages",240_000,()=>run()).catch(e=>{console.error("Guest message automations failed",e);process.exitCode=1});
  // Virtual access cards (PMS → Digital key): a failure here never stops the guest messages above.
- await track("Access cards",runAccessCards({pool,owner,seal,email,origin:process.env.BOOKING_ORIGIN})).catch(e=>console.error("Access cards failed",e))
+ await track("Access cards",()=>runAccessCards({pool,owner,seal,email,origin:process.env.BOOKING_ORIGIN})).catch(e=>console.error("Access cards failed",e))
  // Bulk messages to past guests (PMS → Bulk messages): a few per minute, consent and unsubscribes checked per message.
- await track("Campaigns",runCampaigns({pool,owner,secret,origin:process.env.BOOKING_ORIGIN,email,whatsappTemplate})).then(r=>r.campaigns&&console.log(`Campaigns: ${r.sent} sent, ${r.failed} failed`)).catch(e=>console.error("Campaigns failed",e))
+ await track("Campaigns",()=>runCampaigns({pool,owner,secret,origin:process.env.BOOKING_ORIGIN,email,whatsappTemplate})).then(r=>r.campaigns&&console.log(`Campaigns: ${r.sent} sent, ${r.failed} failed`)).catch(e=>console.error("Campaigns failed",e))
  // v184: sales advisor once a day (09:20 hotel time): rules always, Claude when an Anthropic key is set.
- if(advisorDue())await limit("Sales advisor",170_000,(async()=>{const c=await credentials("anthropic").catch(()=>null);const apiKey=c?(!c.disabled&&c.secrets?.apiKey?String(c.secrets.apiKey):null):process.env.ANTHROPIC_API_KEY||null;return runSalesAdvisor({pool,owner,apiKey})})()).then(r=>console.log(`${new Date().toISOString()} Sales advisor: ${r.added} suggestion(s)${r.ai?" (AI)":""}${r.error?`, AI error ${r.error}`:""}`)).catch(e=>console.error("Sales advisor failed",e instanceof Error?e.message:e))
+ if(advisorDue())await limit("Sales advisor",170_000,(async()=>{const c=await credentials("anthropic").catch(()=>null);const apiKey=c?(!c.disabled&&c.secrets?.apiKey?String(c.secrets.apiKey):null):process.env.ANTHROPIC_API_KEY||null;return runSalesAdvisor({pool,owner,apiKey})})).then(r=>console.log(`${new Date().toISOString()} Sales advisor: ${r.added} suggestion(s)${r.ai?" (AI)":""}${r.error?`, AI error ${r.error}`:""}`)).catch(e=>console.error("Sales advisor failed",e instanceof Error?e.message:e))
  // Open API webhooks (PMS → API): booking changes and folio charges / payments to the hotel's systems.
- await track("API webhooks",runApiWebhooks({pool,owner,unseal})).catch(e=>console.error("API webhooks failed",e))
+ await track("API webhooks",()=>runApiWebhooks({pool,owner,unseal})).catch(e=>console.error("API webhooks failed",e))
  // Automatic pricing (PMS → Prices → Automatic pricing): hourly, inside the hotel's minimum / maximum.
- await track("Auto pricing",runAutoPricing({pool,owner})).catch(e=>console.error("Auto pricing failed",e))
+ await track("Auto pricing",()=>runAutoPricing({pool,owner})).catch(e=>console.error("Auto pricing failed",e))
  // New e-mails in the hotel's mailbox (PMS → Συνδέσεις → Εισερχόμενα email): a PMS notification with sound; read-only.
- await track("Mail inbox",runMailInbox({pool,owner,credentials})).then(r=>r.stored&&console.log(`Mail inbox: ${r.stored} new`)).catch(e=>console.error("Mail inbox failed",e instanceof Error?e.message:e))
+ await track("Mail inbox",()=>runMailInbox({pool,owner,credentials})).then(r=>r.stored&&console.log(`Mail inbox: ${r.stored} new`)).catch(e=>console.error("Mail inbox failed",e instanceof Error?e.message:e))
  // «Ενεργοποίηση εισερχομένων» WhatsApp requested from PMS → Συνδέσεις (done here, so the page never waits on Meta).
- await track("WhatsApp inbox setup",runWhatsAppInboxSetup({pool,owner,credentials,origin:process.env.BOOKING_ORIGIN})).then(r=>r.ran&&console.log(`WhatsApp inbox setup: ${r.result}`)).catch(e=>console.error("WhatsApp inbox setup failed",e))
+ await track("WhatsApp inbox setup",()=>runWhatsAppInboxSetup({pool,owner,credentials,origin:process.env.BOOKING_ORIGIN})).then(r=>r.ran&&console.log(`WhatsApp inbox setup: ${r.result}`)).catch(e=>console.error("WhatsApp inbox setup failed",e))
  // v187: Guest Journey Orchestrator every 2 minutes (readiness, instructions, comfort, TV welcome).
- if(new Date().getMinutes()%2===0)await limit("Guest journey",60_000,runJourney({pool,owner})).then(r=>(r.actions.length||r.counts.failed)&&console.log(`${new Date().toISOString()} Guest journey: ${r.bookings} stays, ${r.actions.length} action(s), ${r.counts.failed} failed`)).catch(e=>console.error("Guest journey failed",e instanceof Error?e.message:e))
+ if(new Date().getMinutes()%2===0)await limit("Guest journey",60_000,()=>runJourney({pool,owner})).then(r=>(r.actions.length||r.counts.failed)&&console.log(`${new Date().toISOString()} Guest journey: ${r.bookings} stays, ${r.actions.length} action(s), ${r.counts.failed} failed`)).catch(e=>console.error("Guest journey failed",e instanceof Error?e.message:e))
  // v188: Operational Reliability Center every 10 minutes: unfinished / failed tasks of every service → one PMS notification each.
- if(new Date().getMinutes()%10===3)await limit("Reliability check",60_000,runReliabilityAlerts({pool,owner})).then(r=>r.told&&console.log(`${new Date().toISOString()} Reliability: ${r.told} new problem(s)`)).catch(e=>console.error("Reliability check failed",e instanceof Error?e.message:e))
- await whatsappTokenReminder().catch(e=>console.error("WhatsApp token reminder failed",e))}finally{await warm;await pool.end()}
+ if(new Date().getMinutes()%10===3){await limit("Reconciliation",90_000,()=>runReconciliations()).then(r=>Object.keys(r).length&&console.log(`${new Date().toISOString()} Reconciliation: ${JSON.stringify(r)}`)).catch(e=>console.error("Reconciliation failed",e instanceof Error?e.message:e));await limit("Reliability check",60_000,()=>runReliabilityAlerts({pool,owner})).then(r=>(r.told||r.escalated)&&console.log(`${new Date().toISOString()} Reliability: ${r.told} new problem(s), ${r.escalated} escalated`)).catch(e=>console.error("Reliability check failed",e instanceof Error?e.message:e))}
+ // v189: alerts are delivered (push / e-mail), confirmed and retried every minute.
+ await limit("Alert delivery",60_000,()=>deliverAlerts({pool,owner,send:{push:pushAlert,email:emailAlert}})).then(r=>(r.sent||r.failed||r.retry)&&console.log(`${new Date().toISOString()} Alerts: ${r.sent} delivered, ${r.retry} to retry, ${r.failed} failed`)).catch(e=>console.error("Alert delivery failed",e instanceof Error?e.message:e))
+ await whatsappTokenReminder().catch(e=>console.error("WhatsApp token reminder failed",e))}finally{
+ // v189 heartbeat end, and the optional external dead-man switch (CRON_HEARTBEAT_URL, e.g. a healthchecks.io check):
+ // it alerts by itself when these pings stop — the one alarm that works even if this server is down.
+ const status=process.exitCode?"failed":"ok";disarm();
+ if(runId)await cronFinish(pool,owner,"automations",runId,{status,steps:runner.counts,startedAt:runStartedAt}).catch(e=>console.error("Heartbeat end failed",e instanceof Error?e.message:e));
+ if(process.env.CRON_HEARTBEAT_URL)await fetch(`${process.env.CRON_HEARTBEAT_URL.replace(/\/$/,"")}${status==="ok"?"":"/fail"}`,{signal:AbortSignal.timeout(10_000)}).catch(()=>{});
+ await warm;await pool.end()}

@@ -2689,3 +2689,134 @@ CREATE TABLE IF NOT EXISTS reliability_state (
   status TEXT NOT NULL DEFAULT 'ok',
   checked_at BIGINT NOT NULL DEFAULT 0
 );
+
+-- v189 Reliability hardening.
+-- Cron heartbeat (dead-man switch): every run of a cron job writes its start and its end. A job whose last start is
+-- old has stopped; a run that started and never ended was killed or hung. The PMS and the TV polls read it, so a
+-- stopped cron is noticed even though the cron itself can no longer report.
+CREATE TABLE IF NOT EXISTS cron_heartbeat (
+  owner_id TEXT NOT NULL,
+  job TEXT NOT NULL,
+  last_start_at BIGINT,
+  last_finish_at BIGINT,
+  running_since BIGINT,
+  last_status TEXT NOT NULL DEFAULT '',
+  last_error TEXT NOT NULL DEFAULT '',
+  last_duration_ms INTEGER NOT NULL DEFAULT 0,
+  runs BIGINT NOT NULL DEFAULT 0,
+  failures BIGINT NOT NULL DEFAULT 0,
+  killed BIGINT NOT NULL DEFAULT 0,
+  overlap_count BIGINT NOT NULL DEFAULT 0,
+  host TEXT NOT NULL DEFAULT '',
+  pid INTEGER NOT NULL DEFAULT 0,
+  watchdog_alerted_at BIGINT,
+  PRIMARY KEY (owner_id, job)
+);
+CREATE TABLE IF NOT EXISTS cron_runs (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  job TEXT NOT NULL,
+  started_at BIGINT NOT NULL,
+  finished_at BIGINT,
+  status TEXT NOT NULL DEFAULT 'running',
+  steps_ok INTEGER NOT NULL DEFAULT 0,
+  steps_failed INTEGER NOT NULL DEFAULT 0,
+  steps_skipped INTEGER NOT NULL DEFAULT 0,
+  error TEXT NOT NULL DEFAULT '',
+  pid INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_cron_runs_job ON cron_runs(owner_id, job, started_at DESC);
+-- Leases: one holder at a time per task (a cron step, a recovery button), released at the end and expiring by
+-- themselves if the holder died, so a crash never blocks the task for good and two runs never do it in parallel.
+CREATE TABLE IF NOT EXISTS job_leases (
+  owner_id TEXT NOT NULL,
+  lease_key TEXT NOT NULL,
+  holder TEXT NOT NULL,
+  acquired_at BIGINT NOT NULL,
+  expires_at BIGINT NOT NULL,
+  PRIMARY KEY (owner_id, lease_key)
+);
+-- Alerts with delivery confirmation: one row per problem (re-opened when it returns), one outbox row per channel and
+-- recipient with retries and the delivery result; unacknowledged critical alerts are escalated.
+CREATE TABLE IF NOT EXISTS alerts (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  alert_key TEXT NOT NULL,
+  area TEXT NOT NULL DEFAULT '',
+  severity TEXT NOT NULL DEFAULT 'fail',
+  title TEXT NOT NULL,
+  link TEXT NOT NULL DEFAULT '/pms/reliability',
+  occurrence INTEGER NOT NULL DEFAULT 1,
+  created_at BIGINT NOT NULL,
+  acknowledged_at BIGINT,
+  acknowledged_by TEXT,
+  escalated_at BIGINT,
+  resolved_at BIGINT,
+  UNIQUE (owner_id, alert_key)
+);
+CREATE TABLE IF NOT EXISTS alert_outbox (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  alert_id BIGINT NOT NULL,
+  occurrence INTEGER NOT NULL DEFAULT 1,
+  channel TEXT NOT NULL,
+  recipient TEXT NOT NULL,
+  purpose TEXT NOT NULL DEFAULT 'alert',
+  status TEXT NOT NULL DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at BIGINT NOT NULL DEFAULT 0,
+  last_error TEXT NOT NULL DEFAULT '',
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  sent_at BIGINT,
+  UNIQUE (owner_id, alert_id, occurrence, channel, recipient, purpose)
+);
+CREATE INDEX IF NOT EXISTS idx_alert_outbox_due ON alert_outbox(owner_id, status, next_attempt_at);
+-- OTA reconciliation: what was last sent to the channel manager per room type and date, compared with what the PMS
+-- would sell now.
+CREATE TABLE IF NOT EXISTS channel_availability_state (
+  owner_id TEXT NOT NULL,
+  room_type TEXT NOT NULL,
+  date TEXT NOT NULL,
+  available INTEGER NOT NULL,
+  pushed_at BIGINT NOT NULL,
+  PRIMARY KEY (owner_id, room_type, date)
+);
+-- Reconciliation runs (payments with Stripe, folio, OTA) and their findings.
+CREATE TABLE IF NOT EXISTS reconciliation_runs (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  ran_at BIGINT NOT NULL,
+  from_ms BIGINT NOT NULL DEFAULT 0,
+  to_ms BIGINT NOT NULL DEFAULT 0,
+  status TEXT NOT NULL,
+  issues_json TEXT NOT NULL DEFAULT '[]',
+  totals_json TEXT NOT NULL DEFAULT '{}',
+  error TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_reconciliation_runs ON reconciliation_runs(owner_id, kind, ran_at DESC);
+-- Release evidence: the result of the post-install check of each installed version (files identical to the package
+-- that passed QA, unique indexes for every ON CONFLICT, schema), with the QA summary of that package.
+CREATE TABLE IF NOT EXISTS release_checks (
+  id BIGSERIAL PRIMARY KEY,
+  version TEXT NOT NULL,
+  ran_at BIGINT NOT NULL,
+  status TEXT NOT NULL,
+  checks_json TEXT NOT NULL DEFAULT '[]',
+  qa_json TEXT NOT NULL DEFAULT '{}'
+);
+-- Backups and restore rehearsals (the newest backup decrypted and restored into a separate database, then counted).
+CREATE TABLE IF NOT EXISTS backup_runs (
+  id BIGSERIAL PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  started_at BIGINT NOT NULL,
+  finished_at BIGINT,
+  status TEXT NOT NULL,
+  file TEXT NOT NULL DEFAULT '',
+  size_bytes BIGINT NOT NULL DEFAULT 0,
+  details_json TEXT NOT NULL DEFAULT '{}',
+  error TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_backup_runs ON backup_runs(owner_id, kind, started_at DESC);

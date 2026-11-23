@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto";
 import QRCode from "qrcode";
 import { db } from "@/lib/db";
+import { cronWatchdog } from "@/lib/alerts";
 import { env } from "@/lib/env";
 import { translatedText } from "@/lib/public-rate";
 import { newOpaqueToken } from "@/lib/security/tokens";
@@ -102,6 +103,8 @@ export async function tvScreenData(token: string, langOverride?: string | null) 
   if (!s) return null;
   const ownerId = String(s.owner_id), today = hotelToday(), now = Date.now();
   if (!s.last_seen_at || now - Number(s.last_seen_at) > 5 * 60_000) await db().query(`UPDATE tv_screens SET last_seen_at=$1 WHERE id=$2`, [now, s.id]);
+  // v189: the room TVs poll all day, independently of the cron: they also watch the cron's heartbeat (throttled).
+  void cronWatchdog(ownerId, now);
   const settings = await loadTvSettings(ownerId);
   const stays = (await db().query(`SELECT reference,guest_name,guest_language,check_in,check_out,status,adults,children FROM bookings WHERE owner_id=$1 AND room_id=$2 AND status IN ('confirmed','checked_in') AND check_in<=$3 AND check_out>=$3 ORDER BY check_in`, [ownerId, s.room_id, today])).rows as TvStay[];
   const state = currentStay(stays, today, hotelTime(), settings.checkOutTime);

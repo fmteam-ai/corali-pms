@@ -11,6 +11,7 @@ import { createDecipheriv, createHash } from "node:crypto";
 import pg from "pg";
 import { databaseSsl } from "./database-config.mjs";
 import { ROOM_READY_SQL } from "./room-ready-core.mjs";
+import { cronFinish, cronOverlap, cronStart } from "./job-control-core.mjs";
 import { AVAILABILITY_SQL, CHANNEX_HOSTS, availabilityRanges, computeRestrictions, feedHasMore, normalizeRevision, planRevision, restrictionKey, restrictionRanges, sellable, typeNightlyCents, otaRate } from "./channel-core.mjs";
 
 if (!process.env.DATABASE_URL || !process.env.PMS_DOCUMENT_KEY) throw Error("DATABASE_URL and PMS_DOCUMENT_KEY are required");
@@ -133,10 +134,14 @@ async function importRevision(rev) {
 
 // Only one run at a time (cron every minute; a slow push must not overlap the next run).
 const lock = await pool.connect();
+// v189: heartbeat of this cron (PMS → Αξιοπιστία shows a channel sync that stopped or hung).
+let runId = null, runStatus = "ok", runError = "";
+const startedAt = Date.now();
 try {
-  if (!(await lock.query("SELECT pg_try_advisory_lock(hashtext('corali-channel-sync')) AS ok")).rows[0].ok) { console.log("Channel sync already running."); process.exit(0); }
+  if (!(await lock.query("SELECT pg_try_advisory_lock(hashtext('corali-channel-sync')) AS ok")).rows[0].ok) { await cronOverlap(pool, owner, "channel-sync").catch(() => {}); console.log("Channel sync already running."); process.exit(0); }
+  runId = await cronStart(pool, owner, "channel-sync", { now: startedAt }).catch(() => null);
   const c = (await pool.query(`SELECT active,settings_json,secrets_encrypted FROM provider_connections WHERE owner_id=$1 AND provider_key='channelManager'`, [owner])).rows[0];
-  if (!c || !Number(c.active)) { console.log("Channel manager not active; nothing to do."); process.exit(0); }
+  if (!c || !Number(c.active)) { if (runId) await cronFinish(pool, owner, "channel-sync", runId, { status: "ok", startedAt }).catch(() => {}); console.log("Channel manager not active; nothing to do."); process.exit(0); }
   const settings = JSON.parse(c.settings_json), key = JSON.parse(unseal(c.secrets_encrypted)).apiKey;
   const host = process.env.CHANNEX_BASE_URL || CHANNEX_HOSTS[settings.environment === "staging" ? "staging" : "production"], propertyId = settings.propertyCode;
   if (!key || !propertyId) throw Error("Channel manager API key and property id are required");
@@ -181,6 +186,14 @@ try {
         const rows = await availability(from, end);
         const values = mappings.flatMap((m) => availabilityRanges(rows.filter((r) => r.room_type === m.room_type).map((r) => ({ date: r.date, available: sellable(r.free) }))).map((range) => ({ property_id: propertyId, room_type_id: m.external_room_type_id, ...range })));
         for (let i = 0; i < values.length; i += 500) await api(host, key, "/availability", { method: "POST", body: JSON.stringify({ values: values.slice(i, i + 500) }) });
+        // v189: what was accepted per room type and date, for the OTA reconciliation (PMS → Αξιοπιστία).
+        const mappedTypes = new Set(mappings.map((m) => m.room_type));
+        await pool.query(
+          `INSERT INTO channel_availability_state(owner_id,room_type,date,available,pushed_at) SELECT $1,x.room_type,x.date,x.available,$3 FROM jsonb_to_recordset($2::jsonb) AS x(room_type text,date text,available int)
+           ON CONFLICT(owner_id,room_type,date) DO UPDATE SET available=EXCLUDED.available,pushed_at=EXCLUDED.pushed_at`,
+          [owner, JSON.stringify(rows.filter((r) => mappedTypes.has(r.room_type)).map((r) => ({ room_type: r.room_type, date: r.date, available: sellable(r.free) }))), Date.now()],
+        );
+        await pool.query(`DELETE FROM channel_availability_state WHERE owner_id=$1 AND date<$2`, [owner, today]);
       }
       await pool.query(`UPDATE channel_sync_outbox SET status='sent',updated_at=$1 WHERE id=ANY($2::bigint[])`, [Date.now(), due.map((d) => d.id)]);
     } catch (error) {
@@ -236,9 +249,11 @@ try {
   await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$2,NULL) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$2,last_error=NULL`, [owner, Date.now()]);
   console.log(`Channel sync: ${due.length} availability range(s), ${restrictionDays} restriction day(s), ${rateDays} rate day(s), ${imported} OTA revision(s) imported.`);
 } catch (error) {
+  runStatus = "failed"; runError = String(error);
   await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_error) VALUES($1,$2,$3) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_error=$3`, [owner, Date.now(), String(error).slice(0, 500)]).catch(() => {});
   throw error;
 } finally {
+  if (runId) await cronFinish(pool, owner, "channel-sync", runId, { status: runStatus, error: runError, startedAt }).catch(() => {});
   lock.release();
   await pool.end();
 }

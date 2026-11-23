@@ -755,4 +755,6 @@ body:has(.pms){background:#f2f4f6}
 .pms .rcItems{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .pms .rcItem{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;font-size:14px}
 .pms .rcItem>span:nth-child(2){flex:1 1 200px}
+.pms .rcAlerts{margin-top:16px;display:grid;gap:10px}
+.pms .rcAlerts h2{margin:0;font-size:17px}
 .pms .navRcBadge{display:inline-block;min-width:18px;padding:0 5px;border-radius:999px;background:#d03b3b;color:#fff;font-size:11px;font-weight:800;text-align:center;margin-left:4px}

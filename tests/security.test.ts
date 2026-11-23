@@ -99,7 +99,10 @@ test("every state-changing PMS and auth route invokes the CSRF guard", () => {
     const target = path.join(directory, entry.name);
     return entry.isDirectory() ? visit(target) : entry.name === "route.ts" ? [target] : [];
   });
+  // Server-to-server, signed requests without cookies (CSRF does not apply): v189 cron → PMS alert push.
+  const signed = new Set([path.join(process.cwd(), "app/api/pms/alerts/push/route.ts")]);
   const unguarded = roots.flatMap(visit).filter((file) => {
+    if (signed.has(file)) return !fs.readFileSync(file, "utf8").includes("timingSafeEqual(");
     const source = fs.readFileSync(file, "utf8");
     return /export\s+(?:async\s+)?function\s+(?:POST|PUT|PATCH|DELETE)\b/.test(source) && !source.includes("assertTrustedOrigin(");
   });

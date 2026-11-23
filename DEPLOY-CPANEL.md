@@ -1,4 +1,4 @@
-# Hotel Corali PMS v188 — αυτόματη ασφαλής εγκατάσταση cPanel
+# Hotel Corali PMS v189 — αυτόματη ασφαλής εγκατάσταση cPanel
 
 ## Προτεινόμενη εγκατάσταση για τον συγκεκριμένο server
 
@@ -8,16 +8,16 @@
 
 Η διορθωμένη έκδοση περιλαμβάνει προσωρινό web installer τύπου WordPress. Ανεβάστε:
 
-- `corali-pms-cpanel-v188-root.tar.gz` και το `.sha256` στον `/home/corali/`
-- μόνο το `corali-web-installer-v188.php` ως `/home/corali/public_html/corali-installer.php`
+- `corali-pms-cpanel-v189-root.tar.gz` και το `.sha256` στον `/home/corali/`
+- μόνο το `corali-web-installer-v189.php` ως `/home/corali/public_html/corali-installer.php`
 
-Μην ανεβάσετε το `corali-web-installer-v188-access.txt`. Ανοίξτε το τοπικά και επισκεφθείτε την ιδιωτική διεύθυνση μίας χρήσης που περιέχει. Εναλλακτικά, ανοίξτε απευθείας τον installer και επικολλήστε τον προσωπικό κωδικό στη φόρμα. Επιλέξτε **Ελληνικά** ή **English** πριν την έναρξη. Ο web installer εντοπίζει το EA/CloudLinux Node.js του cPanel, εκτελεί προέλεγχο, checksum, backup PostgreSQL, migrations, δύο runtime tests, atomic swap και rollback. Μετά την εγκατάσταση προσφέρει ασφαλή δημιουργία/ανάκτηση του κύριου owner και επαναφορά 2FA χωρίς terminal. Αν οι παλιοί `/home/corali/releases` ή `/home/corali/backups` έχουν λάθος ιδιοκτησία, χρησιμοποιεί ιδιωτικούς εναλλακτικούς φακέλους μέσα στο εγγράψιμο `/home/corali/apps`. Μετά τον έλεγχο σύνδεσης πατήστε «Κλείδωμα και διαγραφή installer» και απενεργοποιήστε ξανά την PHP `exec`.
+Μην ανεβάσετε το `corali-web-installer-v189-access.txt`. Ανοίξτε το τοπικά και επισκεφθείτε την ιδιωτική διεύθυνση μίας χρήσης που περιέχει. Εναλλακτικά, ανοίξτε απευθείας τον installer και επικολλήστε τον προσωπικό κωδικό στη φόρμα. Επιλέξτε **Ελληνικά** ή **English** πριν την έναρξη. Ο web installer εντοπίζει το EA/CloudLinux Node.js του cPanel, εκτελεί προέλεγχο, checksum, backup PostgreSQL, migrations, δύο runtime tests, atomic swap και rollback. Μετά την εγκατάσταση προσφέρει ασφαλή δημιουργία/ανάκτηση του κύριου owner και επαναφορά 2FA χωρίς terminal. Αν οι παλιοί `/home/corali/releases` ή `/home/corali/backups` έχουν λάθος ιδιοκτησία, χρησιμοποιεί ιδιωτικούς εναλλακτικούς φακέλους μέσα στο εγγράψιμο `/home/corali/apps`. Μετά τον έλεγχο σύνδεσης πατήστε «Κλείδωμα και διαγραφή installer» και απενεργοποιήστε ξανά την PHP `exec`.
 
 Αν εμφανιστεί «Ο installer είναι κλειδωμένος», έχει οριστικοποιηθεί παλαιότερη εγκατάσταση. Κάθε νέο πακέτο αποκτά δικό του κλείδωμα με βάση το checksum του αρχείου. Ανεβάστε **μαζί** τον νέο installer, το νέο αρχείο πρόσβασης (μόνο τοπικά, ποτέ στον server), το νέο archive και το νέο checksum. Μην διαγράψετε το ιδιωτικό `locked` του παλιού installer για να παρακάμψετε το μήνυμα.
 
 Αν ο προέλεγχος δείξει ότι η PHP `exec` είναι απενεργοποιημένη ή ότι ο ενεργός φάκελος `/home/corali/apps` δεν είναι εγγράψιμος, δεν γίνεται καμία αλλαγή.
 
-Η v188 ενημερώνει μαζί τις δύο ενεργές εφαρμογές:
+Η v189 ενημερώνει μαζί τις δύο ενεργές εφαρμογές:
 
 - `/home/corali/apps/corali-pms`
 - `/home/corali/apps/corali-booking`
@@ -28,14 +28,14 @@
 
 Ανεβάστε τα παρακάτω στο `/home/corali/`:
 
-- `corali-pms-cpanel-v188-root.tar.gz`
-- `corali-pms-cpanel-v188-root.tar.gz.sha256`
+- `corali-pms-cpanel-v189-root.tar.gz`
+- `corali-pms-cpanel-v189-root.tar.gz.sha256`
 
 Στο Terminal:
 
 ```bash
 cd /home/corali
-sha256sum -c corali-pms-cpanel-v188-root.tar.gz.sha256
+sha256sum -c corali-pms-cpanel-v189-root.tar.gz.sha256
 ```
 
 Πρέπει να εμφανιστεί `OK`. Αν αποτύχει, μη συνεχίσετε.
@@ -43,9 +43,9 @@ sha256sum -c corali-pms-cpanel-v188-root.tar.gz.sha256
 ## 2. Καθαρή εξαγωγή
 
 ```bash
-mkdir -p /home/corali/releases/corali-v188
-tar -xzf /home/corali/corali-pms-cpanel-v188-root.tar.gz \
-  -C /home/corali/releases/corali-v188
+mkdir -p /home/corali/releases/corali-v189
+tar -xzf /home/corali/corali-pms-cpanel-v189-root.tar.gz \
+  -C /home/corali/releases/corali-v189
 ```
 
 Μην αντιγράψετε `runtime.env` στον release φάκελο. Ο installer το παίρνει αυτόματα από κάθε ενεργή εφαρμογή.
@@ -55,7 +55,7 @@ tar -xzf /home/corali/corali-pms-cpanel-v188-root.tar.gz \
 Ως `root`:
 
 ```bash
-cd /home/corali/releases/corali-v188
+cd /home/corali/releases/corali-v189
 bash INSTALL-CPANEL.sh
 ```
 
@@ -88,16 +88,16 @@ bash INSTALL-CPANEL.sh --yes
 
 ## 4. Τελικός έλεγχος
 
-Μετά το `INSTALLATION COMPLETE — v188`, ανοίξτε από browser:
+Μετά το `INSTALLATION COMPLETE — v189`, ανοίξτε από browser:
 
 ```text
 https://pms.hotelcorali.gr/api/health
 https://booking.hotelcorali.gr/api/health
 ```
 
-Και τα δύο πρέπει να επιστρέφουν `"ok":true` και `"version":"v188"`. Ο έλεγχος γίνεται από browser επειδή το ModSecurity/Cloudflare μπορεί να επιστρέψει 406 σε server-side `curl`.
+Και τα δύο πρέπει να επιστρέφουν `"ok":true` και `"version":"v189"`. Ο έλεγχος γίνεται από browser επειδή το ModSecurity/Cloudflare μπορεί να επιστρέψει 406 σε server-side `curl`.
 
-Ελέγξτε επίσης login/2FA/profile, σημειώσεις και ειδοποιήσεις, μία δοκιμαστική κράτηση, folio/check-in/out, room grid, housekeeping, `/book` στα Ελληνικά και Αγγλικά και πληρωμή μόνο σε Stripe test mode. Η v188 δεν προσφέρει Viva ως μέθοδο πληρωμής επισκέπτη.
+Ελέγξτε επίσης login/2FA/profile, σημειώσεις και ειδοποιήσεις, μία δοκιμαστική κράτηση, folio/check-in/out, room grid, housekeeping, `/book` στα Ελληνικά και Αγγλικά και πληρωμή μόνο σε Stripe test mode. Η v189 δεν προσφέρει Viva ως μέθοδο πληρωμής επισκέπτη.
 
 Η δρομολόγηση πρέπει να είναι:
 
@@ -111,7 +111,7 @@ https://booking.hotelcorali.gr/api/health
 
 ```bash
 bash /home/corali/apps/corali-pms/ROLLBACK-CPANEL.sh \
-  /home/corali/backups/corali-deployment-v188-TIMESTAMP.manifest
+  /home/corali/backups/corali-deployment-v189-TIMESTAMP.manifest
 ```
 
 Το rollback επαναφέρει και τις δύο εφαρμογές. Δεν επαναφέρει αυτόματα τη βάση, επειδή οι migrations είναι additive και η επαναφορά παλιού dump θα μπορούσε να διαγράψει νεότερες κρατήσεις.
@@ -240,6 +240,14 @@ PMS → Κρατήσεις → «Ψηφιακά κλειδιά». Οι κάρτ�
 cd /home/corali/apps/corali-pms && /opt/cpanel/ea-nodejs22/bin/node --env-file=runtime.env scripts/run-db-backup.mjs >> /home/corali/logs/corali-db-backup.log 2>&1
 ```
 
+**v189 — δοκιμαστική επαναφορά (κάθε Κυριακή, αυτόματα μετά το backup).** Ένα αντίγραφο αποδεικνύεται μόνο αν επαναφερθεί. Δημιουργήστε μία φορά μια **κενή, ξεχωριστή** βάση (cPanel → PostgreSQL Databases, π.χ. `corali_rehearsal`, με τον ίδιο χρήστη) και προσθέστε στο `runtime.env` του PMS:
+
+```
+REHEARSAL_DATABASE_URL=postgresql://ΧΡΗΣΤΗΣ:ΚΩΔΙΚΟΣ@localhost:5432/corali_rehearsal
+```
+
+Κάθε Κυριακή το νεότερο αντίγραφο αποκρυπτογραφείται, επαναφέρεται εκεί, μετρώνται οι βασικοί πίνακες (κρατήσεις, folio, πληρωμές, χρήστες, παραστατικά) έναντι της ζωντανής βάσης και η βάση δοκιμής αδειάζει ξανά. Το αποτέλεσμα φαίνεται στο PMS → Αξιοπιστία → Αντίγραφα ασφαλείας. Η δοκιμή αρνείται να τρέξει αν η διεύθυνση δείχνει στη βάση παραγωγής. Χωρίς `REHEARSAL_DATABASE_URL` ελέγχεται μόνο ότι το αρχείο αποκρυπτογραφείται και διαβάζεται («μερική»). Με το χέρι: `node --env-file=runtime.env scripts/run-restore-rehearsal.mjs`. Αν το `pg_restore` δεν είναι δίπλα στο `pg_dump`, ορίστε `PG_RESTORE_BIN`.
+
 Κατεβάζετε τακτικά ένα αντίγραφο εκτός server (cPanel → File Manager). Χωρίς το `PMS_DOCUMENT_KEY` το αρχείο δεν ανοίγει — κρατήστε το κλειδί σε ασφαλές μέρος (π.χ. password manager), αλλιώς το αντίγραφο δεν επαναφέρεται. Επαναφορά: `node --env-file=runtime.env scripts/restore-db-backup.mjs ΑΡΧΕΙΟ.dump.enc /tmp/restore.dump` και μετά `pg_restore --clean --no-owner --dbname=… /tmp/restore.dump`. Αν το `pg_dump` δεν είναι στο PATH, ορίστε `PG_DUMP_BIN`.
 
 ### Ειδοποιήσεις για εισερχόμενα email (IMAP)
@@ -255,3 +263,11 @@ cd /home/corali/apps/corali-pms && /opt/cpanel/ea-nodejs22/bin/node --env-file=r
 ```
 
 Χρησιμοποιήστε την πραγματική διαδρομή Node.js της εγκατάστασής σας. Ο worker δεν πρέπει να εκτελείται και στο booking instance. Η αποστολή confirmation καθυστερεί έως την επόμενη εκτέλεση (συνήθως ≤1 λεπτό). Πριν ενεργοποιήσετε WhatsApp, καταχωρίστε εγκεκριμένα Meta templates για κάθε ενεργό γεγονός και γλώσσα και βεβαιωθείτε ότι ο επισκέπτης έχει συναινέσει. Παρακολουθείτε το ιστορικό αποστολών στο PMS και τη λειτουργία του cron.
+
+### v189 — αξιοπιστία cron και ειδοποιήσεων (χωρίς νέο cron)
+
+- **Heartbeat:** κάθε εκτέλεση του cron μηνυμάτων και του channel sync καταγράφει έναρξη και ολοκλήρωση. Αν σταματήσει, το βλέπουν το PMS και οι τηλεοράσεις των δωματίων (που ρωτούν όλη μέρα) και στέλνουν μόνα τους ειδοποίηση.
+- **Εξωτερικός έλεγχος (προαιρετικός, συνιστάται):** για ειδοποίηση ακόμη κι αν πέσει όλος ο server, δημιουργήστε δωρεάν έλεγχο σε υπηρεσία «dead-man switch» (π.χ. healthchecks.io, περίοδος 1 λεπτό, χάρη 10 λεπτά) και βάλτε τη διεύθυνση ping στο `runtime.env` του PMS: `CRON_HEARTBEAT_URL=https://hc-ping.com/…`. Το cron στέλνει ping σε κάθε επιτυχή εκτέλεση (`…/fail` σε αποτυχία)· η υπηρεσία σάς ειδοποιεί όταν σταματήσουν.
+- **Παράδοση ειδοποιήσεων:** κάθε κρίσιμο πρόβλημα πηγαίνει στο PMS, ως push στα κινητά της ρεσεψιόν (Corali Staff) και με email στους owner/admin (ή στις διευθύνσεις του `ALERT_EMAILS=a@…,b@…`). Κάθε παράδοση επιβεβαιώνεται ή ξαναδοκιμάζεται (1′, 5′, 15′, 60′, 3 ώρες)· αν κανείς δεν πατήσει «Το είδα» σε 30 λεπτά, στέλνεται ξανά. Το push από το cron περνά από το PMS, άρα χρειάζεται `PMS_ORIGIN` στο runtime.env (το ορίζει ο installer).
+- **Συμφωνία πληρωμών με το Stripe:** καθημερινά στις 04:12 (και «Έλεγχος τώρα» στο PMS) διαβάζονται οι επιτυχείς πληρωμές του Stripe των 3 τελευταίων ημερών και συγκρίνονται με όσες κατέγραψε το PMS — μόνο ανάγνωση, τίποτα δεν αλλάζει στο Stripe.
+- **Έλεγχος μετά την εγκατάσταση:** ο installer επιβεβαιώνει ότι τα αρχεία είναι ακριβώς εκείνα του πακέτου που πέρασε το QA (`RELEASE-EVIDENCE.json`) και ότι κάθε `ON CONFLICT` του κώδικα λειτουργεί στη βάση παραγωγής, πριν ενεργοποιήσει τη νέα έκδοση.
