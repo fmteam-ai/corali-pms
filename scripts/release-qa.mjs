@@ -536,6 +536,9 @@ try {
       await sync();
       const w = await st(ids.warned);
       must(w.status === "failed" && /CHANNEX_WARNINGS/.test(w.last_error), `warnings: ${w.status} ${w.last_error}`);
+      // v204: that run is a FAILED run for the health of the connection (latest run after the last success, error kept).
+      const ss = (await q(`SELECT last_run_at,last_ok_at,last_error FROM channel_sync_state WHERE owner_id=$1`, [owner])).rows[0];
+      must(ss && Number(ss.last_run_at) > Number(ss.last_ok_at ?? 0) && /availability push: .*CHANNEX_WARNINGS/.test(ss.last_error ?? ""), `κατάσταση συγχρονισμού μετά από αποτυχημένη αποστολή: ${JSON.stringify(ss)}`);
       warn = false;
       // 4) Read-back that returns only part of the dates: never «full agreement».
       await q(`DELETE FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed')`, [owner]);

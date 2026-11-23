@@ -83,7 +83,9 @@ test("v201 incident engine: dedup, severity, evidence, three-question report, re
     assert.equal(st.incidents.filter((i) => i.key === "sync:ota").length, 1);
     assert.equal(st.incidents.find((i) => i.key === "sync:ota")!.occurrences, 2);
     // A person fixes it (the Sentinel never does): it is not «resolved» at the first clean check.
+    // v204: fixed = the row was sent AND the sync's latest run succeeded (the failing sync is itself the incident).
     await db.query(`UPDATE channel_sync_outbox SET status='sent' WHERE id=$1`, [outbox]);
+    await db.query(`UPDATE channel_sync_state SET last_run_at=$2,last_ok_at=$2,last_error=NULL WHERE owner_id=$1`, [o, t0 + 9 * MIN]);
     await runSentinel({ pool, owner: o, now: t0 + 10 * MIN });
     assert.equal((await sentinelIncidents({ pool, owner: o })).incidents.find((i) => i.key === "sync:ota")!.status, "recovering");
     await runSentinel({ pool, owner: o, now: t0 + 5 * MIN + RECOVERY_MIN_MS + MIN });
@@ -154,7 +156,9 @@ test("v202 P1: a failed collection changes no other incident — recovery only f
     assert.deepEqual([inc.status, inc.cleanChecks], ["open", 0]);
     // Only completed checks that see the fault gone count — then recovery is verified as before.
     await db.query(`UPDATE channel_sync_outbox SET status='sent' WHERE id=$1`, [outbox]);
+    await db.query(`UPDATE channel_sync_state SET last_run_at=$2,last_ok_at=$2,last_error=NULL WHERE owner_id=$1`, [o, t0 + 139 * MIN]);
     await runSentinel({ pool, owner: o, now: t0 + 140 * MIN });
+    await db.query(`UPDATE channel_sync_state SET last_run_at=$2,last_ok_at=$2,last_error=NULL WHERE owner_id=$1`, [o, t0 + 159 * MIN]);
     await runSentinel({ pool, owner: o, now: t0 + 160 * MIN });
     assert.equal((await sentinelIncidents({ pool, owner: o })).incidents.find((i) => i.key === key)!.status, "resolved");
   } finally { await db.close(); }

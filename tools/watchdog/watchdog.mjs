@@ -56,36 +56,62 @@ export function parseHeartbeat(text) {
 }
 
 export const BATCH_MAX = 5, QUEUE_WARN = 50, QUEUE_MAX = 100;
-/** Telegram accepts at most 4096 characters, ntfy 4096 bytes as a message: a longer text is never accepted. */
-export const TEXT_MAX = 3500;
-/** A message text from lines, within TEXT_MAX: the head, the lines that fit, then «… και N ακόμη». */
+/**
+ * Telegram accepts at most 4096 characters, ntfy 4096 BYTES as a message (Greek = 2 bytes, emoji = 4): a text is
+ * kept within TEXT_MAX bytes, which satisfies both.
+ */
+export const TEXT_MAX = 3500, ITEMS_MAX = 1000;
+const bytes = (t) => Buffer.byteLength(t, "utf8");
+/** A message text from lines, within TEXT_MAX bytes: the head, the lines that fit, then «… και N ακόμη». */
 export function listText(head, lines) {
   let text = head, shown = 0;
+  const tail = (n) => `\n… και ${n} ακόμη — όλες στο log του watchdog (fly logs) και στο webhook`;
   for (const l of lines) {
     const next = `${text}\n• ${l}`;
-    if (next.length > TEXT_MAX - 60) break;
+    if (bytes(next) + bytes(tail(lines.length)) > TEXT_MAX) break;
     text = next; shown++;
   }
-  return shown < lines.length ? `${text}\n… και ${lines.length - shown} ακόμη (όλες στο state.json του watchdog)` : text;
+  return shown < lines.length ? text + tail(lines.length - shown) : text;
 }
 const priorityOf = (m) => ((m.kind === "open" || m.kind === "escalated" || m.kind === "batch") && m.severity === "critical" ? 1 : m.kind === "open" || m.kind === "batch" || m.kind === "escalated" ? 2 : m.kind === "resolved" ? 3 : 4);
 const itemsOf = (m) => (m.kind === "batch" || m.kind === "digest" ? m.items ?? [] : [{ kind: m.kind, severity: m.severity, check: m.check, at: m.at, text: m.text }]);
+/** Bounded state without loss: beyond ITEMS_MAX, items of the same check and kind are counted together. */
+function collapseItems(items) {
+  if (items.length <= ITEMS_MAX) return items;
+  const by = new Map();
+  for (const x of items) {
+    const k = `${x.check}|${x.kind}`, g = by.get(k);
+    if (!g) by.set(k, { ...x, count: Number(x.count) || 1, firstAt: x.firstAt ?? x.at });
+    else { g.count += Number(x.count) || 1; if ((Number(x.at) || 0) >= (Number(g.at) || 0)) { g.at = x.at; g.text = x.text; } if (x.severity === "critical") g.severity = "critical"; }
+  }
+  return [...by.values()];
+}
 /**
- * Bounded WITHOUT loss: at most QUEUE_MAX messages. Above it (or when more than one digest exists), the
- * lowest-priority, oldest messages and every earlier digest are merged into ONE digest that keeps all their items.
- * Critical «open» / «escalated» messages are the last to be merged.
+ * Bounded WITHOUT loss: at most QUEUE_MAX messages. Above it, the lowest-priority, oldest messages are merged into
+ * digests — ONE per set of channels that already accepted them (v204: a channel that accepted the merged messages
+ * is never sent them again; digests of the same set are merged together). Critical «open» / «escalated» messages are
+ * the last to be merged.
  */
 export function compactOutbox(outbox, label = "") {
+  const sig = (m) => [...(m.delivered ?? [])].sort().join(",");
   const digests = outbox.filter((m) => m.kind === "digest"), rest = outbox.filter((m) => m.kind !== "digest");
-  if (rest.length + digests.length <= QUEUE_MAX && digests.length <= 1) return outbox;
+  const sigs = new Set(digests.map(sig));
+  if (rest.length + digests.length <= QUEUE_MAX && sigs.size === digests.length) return outbox;
+  const room = Math.max(1, QUEUE_MAX - Math.max(1, new Set([...digests, ...rest].map(sig)).size));
   const order = rest.map((m, i) => ({ m, i })).sort((a, b) => priorityOf(a.m) - priorityOf(b.m) || a.i - b.i);
-  const keep = new Set(order.slice(0, QUEUE_MAX - 1).map((x) => x.i));
+  const keep = new Set(rest.length + digests.length <= QUEUE_MAX ? rest.map((_, i) => i) : order.slice(0, room).map((x) => x.i));
   const merged = [...digests, ...rest.filter((_, i) => !keep.has(i))];
-  const items = merged.flatMap(itemsOf);
-  if (!items.length) return rest;
-  const digest = { kind: "digest", severity: items.some((x) => x.severity === "critical") ? "critical" : "warning", check: "*", at: Math.max(...items.map((x) => Number(x.at) || 0)), items,
-    text: listText(`📋 ${label}: ${items.length} ειδοποιήσεις συγκεντρώθηκαν (η ουρά ξεπέρασε τις ${QUEUE_MAX})`, items.slice().reverse().map((x) => x.text)) };
-  return [...rest.filter((_, i) => keep.has(i)), digest];
+  const groups = new Map();
+  for (const m of merged) { const k = sig(m); (groups.get(k) ?? groups.set(k, []).get(k)).push(m); }
+  const out = rest.filter((_, i) => keep.has(i));
+  for (const [k, ms] of groups) {
+    const items = collapseItems(ms.flatMap(itemsOf));
+    if (!items.length) continue;
+    const total = items.reduce((n, x) => n + (Number(x.count) || 1), 0);
+    out.push({ kind: "digest", severity: items.some((x) => x.severity === "critical") ? "critical" : "warning", check: "*", at: Math.max(...items.map((x) => Number(x.at) || 0)), items, delivered: k ? k.split(",") : [], errors: {},
+      text: listText(`📋 ${label}: ${total} ειδοποιήσεις συγκεντρώθηκαν (η ουρά ξεπέρασε τις ${QUEUE_MAX})`, items.slice().sort((a, b) => priorityOf(a) - priorityOf(b) || (Number(b.at) || 0) - (Number(a.at) || 0)).map((x) => `${x.text}${Number(x.count) > 1 ? ` (×${x.count})` : ""}`)) });
+  }
+  return out;
 }
 
 export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = (l) => console.log(l) } = {}) {
@@ -154,15 +180,21 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     return `άγνωστος πάροχος ${name}`;
   }
 
-  async function deliver(msg) {
+  /**
+   * Delivers one message to every target that has not accepted it yet. v204: `down` = targets that already failed in
+   * THIS cycle — skipped for the remaining messages (a channel that times out cannot block the cycle for an hour);
+   * they are retried in the next cycle. Critical alerts go to ntfy with high priority whatever their kind.
+   */
+  async function deliver(msg, down = new Set()) {
+    const urgent = msg.severity === "critical" && ["open", "escalated", "batch", "digest"].includes(msg.kind);
     const targets = [];
     if (cfg.telegram) targets.push(["telegram", () => fetchImpl(`https://api.telegram.org/bot${cfg.telegram.token}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: cfg.telegram.chat, text: msg.text }), signal: AbortSignal.timeout(cfg.timeoutMs) })]);
-    if (cfg.ntfyUrl) targets.push(["ntfy", () => fetchImpl(cfg.ntfyUrl, { method: "POST", headers: { Title: `${cfg.label} watchdog`, Priority: msg.kind === "open" ? "high" : "default" }, body: msg.text, signal: AbortSignal.timeout(cfg.timeoutMs) })]);
+    if (cfg.ntfyUrl) targets.push(["ntfy", () => fetchImpl(cfg.ntfyUrl, { method: "POST", headers: { Title: `${cfg.label} watchdog`, Priority: urgent ? "high" : "default" }, body: msg.text, signal: AbortSignal.timeout(cfg.timeoutMs) })]);
     if (cfg.webhookUrl) targets.push(["webhook", () => fetchImpl(cfg.webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg), signal: AbortSignal.timeout(cfg.timeoutMs) })]);
     msg.delivered ??= [];
     msg.errors ??= {};
     for (const [name, send] of targets) {
-      if (msg.delivered.includes(name)) continue;
+      if (msg.delivered.includes(name) || down.has(name)) continue;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
           const r = await send();
@@ -172,8 +204,9 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
         } catch (e) { msg.errors[name] = `σύνδεση: ${String(e?.message ?? e).slice(0, 120)}`; }
         await sleep(200 * 2 ** attempt);
       }
+      if (!msg.delivered.includes(name)) down.add(name);
     }
-    return targets.length > 0 && msg.delivered.length === targets.length;
+    return targets.length > 0 && targets.every(([name]) => msg.delivered.includes(name));
   }
 
   async function cycle() {
@@ -185,7 +218,8 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     if (cfg.bookingHealthUrl) Object.assign(results, await guard(async () => ({ booking: await health(cfg.bookingHealthUrl) }), "booking"));
     if (cfg.heartbeatUrl) Object.assign(results, await guard(() => heartbeat(t), "heartbeat"));
     // v204: a queue that grows (no channel accepts the alerts) is reported before it reaches the merge limit.
-    if (state.outbox.length >= QUEUE_WARN) results.alert_queue = { ok: false, severity: "warning", detail: `${state.outbox.length} ειδοποιήσεις δεν έχουν παραδοθεί (όριο συγχώνευσης ${QUEUE_MAX}) — ελέγξτε ntfy / Telegram / webhook` };
+    const queuedItems = state.outbox.reduce((n, m) => n + (m.kind === "batch" || m.kind === "digest" ? (m.items ?? []).reduce((k, x) => k + (Number(x.count) || 1), 0) : 1), 0);
+    if (queuedItems >= QUEUE_WARN) results.alert_queue = { ok: false, severity: "warning", detail: `${queuedItems} ειδοποιήσεις δεν έχουν παραδοθεί σε όλα τα κανάλια (${state.outbox.length} μηνύματα) — ελέγξτε ntfy / Telegram / webhook` };
     else if (state.outbox.length || state.checks.alert_queue) results.alert_queue = { ok: true };
     if (cfg.stateFile) results.state_storage = storageError ? { ok: false, severity: "warning", detail: `η κατάσταση του watchdog δεν αποθηκεύεται (${storageError}) — μετά από επανεκκίνηση χάνεται` } : { ok: true };
     const fresh = [];
@@ -207,6 +241,9 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
         else if (c.open && t - c.lastAlertAt >= remind) { c.lastAlertAt = t; fresh.push({ kind: "reminder", severity: c.severity, check: name, at: t, text: `${c.severity === "warning" ? "🟠" : "🔴"} ${cfg.label}: «${name}» εξακολουθεί — ${r.detail} (από ${Math.round((t - c.openedAt) / MIN)}′)` }); }
       }
     }
+    // Every alert is written to the log when it is decided: the complete record, also of lines that a long message
+    // cannot show (fly logs).
+    for (const m of fresh) log(JSON.stringify({ event: "alert", at: new Date(m.at).toISOString(), kind: m.kind, severity: m.severity ?? null, check: m.check, text: m.text }));
     // v204 aggregation: many alerts in one cycle (e.g. a provider outage that fails 20 subsystems) → ONE message that
     // lists them all (each kept in items), not 20 messages.
     if (fresh.length > BATCH_MAX) {
@@ -216,8 +253,8 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     } else state.outbox.push(...fresh);
     // Saved BEFORE delivering: an alert decided in this cycle survives a restart even if delivery never happened.
     persist();
-    const pending = [];
-    for (const msg of state.outbox) if (!(await deliver(msg))) pending.push(msg);
+    const pending = [], down = new Set();
+    for (const msg of state.outbox) if (!(await deliver(msg, down))) pending.push(msg);
     // v204: nothing is dropped. Above QUEUE_MAX the least important messages are MERGED into one digest (their items
     // kept); critical «open» / «escalated» messages are kept individually first.
     state.outbox = compactOutbox(pending, cfg.label);

@@ -22,3 +22,5 @@ export declare function recordIntegrationCheck(x: { pool: Pool; owner: string; p
 export declare function integrationStates(x: { pool: Pool; owner: string; providers?: string[] | null; health?: Record<string, boolean | null>; documentKey?: string }): Promise<Record<string, { state: IntegrationState; credentials: CredentialsStatus; configChangedAt: number | null; activatedAt: number | null; activatedBy: string | null }>>;
 export declare function activateIntegration(x: { pool: Pool; owner: string; provider: string; by: string; now?: number; documentKey?: string }): Promise<{ ok: boolean; error?: string; missing?: string[]; reason?: string; readiness: Readiness }>;
 export declare function deactivateIntegration(x: { pool: Pool; owner: string; provider: string; now?: number }): Promise<boolean>;
+export declare function lastRunFailed(st: Record<string, unknown> | null | undefined): boolean;
+export declare const SYNC_FAIL_GRACE_MS: number;

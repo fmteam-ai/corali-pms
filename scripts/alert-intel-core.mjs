@@ -12,6 +12,7 @@
 //                   while the sync succeeds) is decided from the evidence, and said apart from the probable causes
 //
 // The cooldown, escalation on worsening, reminders and the single recovery notice are applied by alert-core.mjs.
+import { SYNC_FAIL_GRACE_MS } from "./integration-state-core.mjs";
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 
 export const PRIORITIES = ["low", "medium", "high", "critical"];
@@ -43,37 +44,51 @@ const SERVICE = { channel: "OTA Sync", payments: "Payments", messaging: "Guest M
  * to report. connection: NOT_CONFIGURED · DISABLED · TESTING · ACTIVE · DEGRADED.
  */
 export function channelIncident(s, now) {
-  if (!s || !(s.live > 0)) return null;
-  const oldest = s.oldestAt ? now - Number(s.oldestAt) : 0;
-  const summary = `${s.live} εκκρεμή γεγονότα διαθεσιμότητας${s.oldestAt ? `, με παλαιότερο πριν από ${days(oldest)}` : ""}${s.oldestRange ? ` (${s.oldestRange})` : ""}${s.failed ? ` · ${s.failed} απέτυχαν` : ""}${s.past ? ` · και ${s.past} για ημερομηνίες που πέρασαν (χωρίς σημασία)` : ""}.`;
-  const base = { key: "sync:ota", area: "channel", service: "OTA Sync", count: s.live, oldestAt: s.oldestAt ?? null, summary, connection: s.connection };
-  const ran = s.lastRunAt ? `τελευταία εκτέλεση πριν από ${days(now - Number(s.lastRunAt))}` : "δεν έχει εκτελεστεί ποτέ";
-  const ok = s.lastOkAt ? `τελευταία επιβεβαιωμένη αποστολή πριν από ${days(now - Number(s.lastOkAt))}` : "καμία επιβεβαιωμένη αποστολή";
+  if (!s) return null;
   // State awareness: a connection that is not configured / disabled is not a failure — no incident at all (the
   // Reliability Center shows one information line). TESTING: shown as LOW (PMS only), never pushed or e-mailed.
   if (s.connection === "NOT_CONFIGURED" || s.connection === "DISABLED") return null;
+  const live = Number(s.live ?? 0);
+  const oldest = s.oldestAt ? now - Number(s.oldestAt) : 0;
+  const summary = `${live} εκκρεμή γεγονότα διαθεσιμότητας${s.oldestAt ? `, με παλαιότερο πριν από ${days(oldest)}` : ""}${s.oldestRange ? ` (${s.oldestRange})` : ""}${s.failed ? ` · ${s.failed} απέτυχαν` : ""}${s.past ? ` · και ${s.past} για ημερομηνίες που πέρασαν (χωρίς σημασία)` : ""}.`;
+  const base = { key: "sync:ota", area: "channel", service: "OTA Sync", count: live, oldestAt: s.oldestAt ?? null, summary, connection: s.connection };
   if (s.connection === "TESTING") {
+    if (!(live > 0)) return null;
     return { ...base, priority: "low", problem: "Ο Channel Manager είναι σε δοκιμή (δεν έχει ενεργοποιηθεί) — μεταβολές διαθεσιμότητας σε αναμονή.",
       rootCause: "Επιβεβαιωμένο: η σύνδεση δεν έχει ενεργοποιηθεί (δεν έχουν αποδειχθεί η αντιστοίχιση τύπων / rate plans και η αρχική πλήρης σύγκριση διαθεσιμότητας). Οι αποτυχίες της δεν ειδοποιούνται μέχρι την ενεργοποίηση.",
       causes: [], action: "Συνδέσεις → Channel Manager: «Έλεγχος σύνδεσης Channex» μέχρι όλα ✅, «Πλήρης συγχρονισμός», και «Ενεργοποίηση»." };
   }
+  // Activated (ACTIVE / DEGRADED / UNVERIFIED): a broken sync is an incident even with an empty queue — the OTA
+  // bookings are imported by the same sync.
   const soon = s.soon ? ` ${s.soon} από αυτά αφορούν τις επόμενες 14 ημέρες — κίνδυνος overbooking.` : "";
+  const ran = s.lastRunAt ? `τελευταία εκτέλεση πριν από ${days(now - Number(s.lastRunAt))}` : "δεν έχει εκτελεστεί ποτέ";
+  const ok = s.lastOkAt ? `τελευταία επιβεβαιωμένη επιτυχία πριν από ${days(now - Number(s.lastOkAt))}` : "καμία επιβεβαιωμένη επιτυχία";
   const evidence = `Channex: ${ran}· ${ok}${s.lastError ? `· τελευταίο σφάλμα: ${String(s.lastError).slice(0, 160)}` : ""}.`;
+  if (s.credentials && !["OK", "CREDENTIAL_FREE", "CANNOT_VERIFY"].includes(s.credentials)) {
+    return { ...base, priority: "critical", problem: "Ο Channel Manager είναι ενεργοποιημένος, αλλά τα στοιχεία σύνδεσής του λείπουν ή δεν διαβάζονται — ο συγχρονισμός δεν μπορεί να λειτουργήσει." + soon,
+      rootCause: `Επιβεβαιωμένο: έλεγχος στοιχείων σύνδεσης → ${s.credentials}${s.credentialsMissing?.length ? ` (λείπουν: ${s.credentialsMissing.join(", ")})` : ""}. ${evidence}`,
+      causes: ["Άλλαξε το PMS_DOCUMENT_KEY (τα κλειδιά δεν αποκρυπτογραφούνται)", "Διαγράφηκε πεδίο στις Συνδέσεις → Channel Manager"],
+      action: "Συνδέσεις → Channel Manager: αποθηκεύστε ξανά API key και property id, «Έλεγχος σύνδεσης Channex», μετά «Συγχρονισμός τώρα»." };
+  }
   if (!s.lastRunAt || now - Number(s.lastRunAt) > 30 * MIN) {
-    return { ...base, priority: "critical", problem: "Ο συγχρονισμός με τον Channel Manager δεν εκτελείται — οι μεταβολές διαθεσιμότητας δεν φτάνουν στις OTA." + soon,
+    return { ...base, priority: "critical", problem: "Ο συγχρονισμός με τον Channel Manager δεν εκτελείται — οι μεταβολές διαθεσιμότητας και οι κρατήσεις OTA δεν συγχρονίζονται." + soon,
       rootCause: `Επιβεβαιωμένο: ${evidence} Ο συγχρονισμός (scripts/run-channel-sync.mjs) δεν τρέχει.`,
       causes: ["Λείπει το cron του run-channel-sync.mjs στο cPanel", "Το cron αποτυγχάνει πριν ξεκινήσει (δείτε /home/corali/logs/corali-channels.log)"],
       action: "Ελέγξτε στο cPanel → Cron Jobs ότι υπάρχει το scripts/run-channel-sync.mjs (κάθε λεπτό) και το log του. Μετά: Κέντρο αξιοπιστίας → «Συγχρονισμός τώρα»." };
   }
-  if (s.lastError && (!s.lastOkAt || now - Number(s.lastOkAt) > 30 * MIN)) {
-    return { ...base, priority: !s.lastOkAt || now - Number(s.lastOkAt) > 6 * HOUR ? "critical" : "high", problem: "Ο συγχρονισμός εκτελείται αλλά οι αποστολές προς τον Channel Manager αποτυγχάνουν." + soon,
+  // v204: judged by the LATEST run; raised after SYNC_FAIL_GRACE_MS of continuous failure (no success since).
+  const runFailed = !s.lastOkAt || Number(s.lastOkAt) < Number(s.lastRunAt) || Boolean(String(s.lastError ?? "").trim());
+  if (runFailed) {
+    const failingFor = s.lastOkAt ? now - Number(s.lastOkAt) : Infinity;
+    if (failingFor < SYNC_FAIL_GRACE_MS) return null;
+    return { ...base, priority: failingFor > 6 * HOUR ? "critical" : "high", problem: "Ο συγχρονισμός εκτελείται αλλά η τελευταία εκτέλεση απέτυχε — οι αλλαγές δεν φτάνουν στον Channel Manager." + soon,
       rootCause: `Επιβεβαιωμένο: ${evidence}`,
-      causes: ["Λάθος / ληγμένο API key ή property ID στο Channex", "Το Channex δεν απαντά (5xx / χρονικό όριο)", "Μη αντιστοιχισμένος τύπος δωματίου ή rate plan"],
-      action: "Κάντε «Έλεγχος σύνδεσης Channex» στο PMS· διορθώστε ό,τι δείχνει το σφάλμα· μετά «Συγχρονισμός τώρα» και επιβεβαιώστε ότι οι εκκρεμότητες μηδενίζονται." };
+      causes: ["Λάθος / ληγμένο API key ή property ID στο Channex", "Το Channex δεν απαντά (5xx / χρονικό όριο) ή επιστρέφει warnings", "Μη αντιστοιχισμένος τύπος δωματίου ή rate plan"],
+      action: "Κάντε «Έλεγχος σύνδεσης Channex» στο PMS· διορθώστε ό,τι δείχνει το σφάλμα· μετά «Συγχρονισμός τώρα» και επιβεβαιώστε ότι η επόμενη εκτέλεση πετυχαίνει." };
   }
-  if (oldest > 30 * MIN) {
+  if (live > 0 && oldest > 30 * MIN) {
     return { ...base, priority: "high", problem: "Ο συγχρονισμός πετυχαίνει, αλλά μεταβολές διαθεσιμότητας παραμένουν σε αναμονή." + soon,
-      rootCause: `Επιβεβαιωμένο: ${evidence} Οι εγγραφές της ουράς δεν κλείνουν παρότι ο συγχρονισμός ολοκληρώνεται — λανθασμένη κατάσταση outbox ή εγγραφές εκτός ορίου αποστολής.`,
+      rootCause: `Επιβεβαιωμένο: ${evidence} Η τελευταία εκτέλεση πέτυχε, αλλά οι εγγραφές της ουράς δεν κλείνουν — λανθασμένη κατάσταση outbox ή εγγραφές εκτός ορίου αποστολής.`,
       causes: ["Εγγραφές έμειναν «processing» από διακοπείσα εκτέλεση", "Η πλήρης αποστολή δεν κάλυψε όλους τους τύπους × ημερομηνίες (δείτε OTA reconciliation)"],
       action: "Κέντρο αξιοπιστίας → «Επανάληψη» για τις εκκρεμότητες· αν μένουν, «Πλήρης συγχρονισμός διαθεσιμότητας» και έλεγχος OTA reconciliation." };
   }
@@ -91,7 +106,7 @@ export function buildIncidents(reliability, now) {
       if (i.level !== "fail") continue;
       const key = String(i.key);
       // The OTA sync items are the channel incident's symptoms (rows of its backlog).
-      if (a.key === "channel" && /^(outbox:|sync:)/.test(key)) continue;
+      if (a.key === "channel" && /^(outbox:|sync:|integration:channelManager)/.test(key)) continue;
       const m = /^([a-z_]+):\d+$/i.exec(key);
       const gk = m ? `${m[1]}:*` : key;
       const g = groups.get(gk) ?? { key: gk, items: [] };

@@ -138,6 +138,9 @@ async function importRevision(rev) {
 const lock = await pool.connect();
 // v189: heartbeat of this cron (PMS → Αξιοπιστία shows a channel sync that stopped or hung).
 let runId = null, runStatus = "ok", runError = "";
+// v204: a failed availability push inside an otherwise completed run makes the run FAILED (not «ok» with the error
+// wiped): last_run_at moves, last_ok_at does not, last_error keeps the reason.
+let pushError = null;
 const startedAt = Date.now();
 try {
   if (!(await lock.query("SELECT pg_try_advisory_lock(hashtext('corali-channel-sync')) AS ok")).rows[0].ok) { await cronOverlap(pool, owner, "channel-sync").catch(() => {}); console.log("Channel sync already running."); process.exit(0); }
@@ -217,6 +220,7 @@ try {
       }
       await pool.query(`UPDATE channel_sync_outbox SET status='sent',last_error=NULL,updated_at=$1 WHERE id=ANY($2::bigint[])`, [Date.now(), sendIds]);
     } catch (error) {
+      pushError = `availability push: ${String(error instanceof Error ? error.message : error).slice(0, 400)}`;
       for (const d of due.filter((x) => sendIds.includes(Number(x.id)))) await pool.query(`UPDATE channel_sync_outbox SET status='failed',attempts=attempts+1,last_error=$1,next_attempt_at=$2,updated_at=$3 WHERE id=$4`, [String(error).slice(0, 500), Date.now() + Math.min(60, 2 ** Number(d.attempts)) * 60_000, Date.now(), d.id]);
     }
   }
@@ -292,7 +296,10 @@ try {
     }
   }
 
-  await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$2,NULL) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$2,last_error=NULL`, [owner, Date.now()]);
+  if (pushError) {
+    runStatus = "failed"; runError = pushError;
+    await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_error) VALUES($1,$2,$3) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_error=$3`, [owner, Date.now(), pushError]);
+  } else await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$2,NULL) ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$2,last_error=NULL`, [owner, Date.now()]);
   console.log(`Channel sync: ${sendIds.length} availability range(s) sent, ${plan.outOfRange.length} beyond the horizon, ${plan.skipped.length} past, ${restrictionDays} restriction day(s), ${rateDays} rate day(s), ${imported} OTA revision(s) imported.`);
 } catch (error) {
   runStatus = "failed"; runError = String(error);

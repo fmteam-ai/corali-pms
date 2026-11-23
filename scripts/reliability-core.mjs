@@ -9,7 +9,7 @@ const hhmm = (t) => new Intl.DateTimeFormat("el-GR", { timeZone: "Europe/Athens"
 const worst = (items) => (items.some((i) => i.level === "fail") ? "fail" : items.some((i) => i.level === "warn") ? "warn" : "ok");
 const one = async (pool, sql, params) => (await pool.query(sql, params)).rows;
 import { heartbeatState } from "./job-control-core.mjs";
-import { channelSyncHealthy, credentialsStatus, integrationState, mayAlert } from "./integration-state-core.mjs";
+import { SYNC_FAIL_GRACE_MS, channelSyncHealthy, credentialsStatus, integrationState, lastRunFailed, mayAlert } from "./integration-state-core.mjs";
 import { alertDeliveryIssues } from "./alert-core.mjs";
 import { otaReconcile, queueOtaResync } from "./ota-reconcile-core.mjs";
 import { turnoverBoard } from "./turnover-core.mjs";
@@ -78,7 +78,7 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
   // ACTIVATED connection (ACTIVE / DEGRADED) raises sync failures.
   const st = syncState[0];
   const chRow = channex[0] ?? null;
-  const chActivation = chRow?.activated_at ? { activated_at: chRow.activated_at, deactivated_at: chRow.deactivated_at } : null;
+  const chActivation = chRow?.activated_at && !chRow.deactivated_at ? { activated_at: chRow.activated_at, deactivated_at: null } : null;
   const syncDead = !st?.last_run_at || now - Number(st.last_run_at) > 30 * MIN;
   // v204: credentials verified (decrypted, required fields present) — an empty connection is NOT_CONFIGURED.
   const chCredentials = credentialsStatus("channelManager", chRow, documentKey);
@@ -89,7 +89,8 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
   const stats = (await one(pool, `SELECT count(*) FILTER (WHERE date_to>=$3)::int AS live,count(*) FILTER (WHERE date_to<$3)::int AS past,count(*) FILTER (WHERE date_to>=$3 AND date_from<=$4)::int AS soon,count(*) FILTER (WHERE date_to>=$3 AND status='failed')::int AS failed,min(created_at) FILTER (WHERE date_to>=$3) AS oldest FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed','processing') AND created_at<$2::bigint-10*60000`, [owner, now, today, in14]))[0] ?? {};
   const live = outbox.filter((o) => String(o.date_to) >= today);
   const oldestRow = live[0];
-  const channelStats = { connection: chState, live: Number(stats.live ?? 0), past: Number(stats.past ?? 0), soon: Number(stats.soon ?? 0), failed: Number(stats.failed ?? 0), oldestAt: stats.oldest == null ? null : Number(stats.oldest), oldestRange: oldestRow ? `${oldestRow.date_from}${oldestRow.date_to !== oldestRow.date_from ? ` → ${oldestRow.date_to}` : ""}, ${oldestRow.reason || "—"}` : null, lastRunAt: st?.last_run_at == null ? null : Number(st.last_run_at), lastOkAt: st?.last_ok_at == null ? null : Number(st.last_ok_at), lastError: st?.last_error || null };
+  const channelStats = { credentials: chCredentials.reason, credentialsMissing: chCredentials.missing,
+    connection: chState, live: Number(stats.live ?? 0), past: Number(stats.past ?? 0), soon: Number(stats.soon ?? 0), failed: Number(stats.failed ?? 0), oldestAt: stats.oldest == null ? null : Number(stats.oldest), oldestRange: oldestRow ? `${oldestRow.date_from}${oldestRow.date_to !== oldestRow.date_from ? ` → ${oldestRow.date_to}` : ""}, ${oldestRow.reason || "—"}` : null, lastRunAt: st?.last_run_at == null ? null : Number(st.last_run_at), lastOkAt: st?.last_ok_at == null ? null : Number(st.last_ok_at), lastError: st?.last_error || null };
   if (!channelOn) {
     if (chRow && Number(chRow.active) && !chCredentials.ok) info("channel", `Η σύνδεση Channel Manager είναι ενεργή αλλά ελλιπής (${chCredentials.reason === "MISSING" ? `λείπουν: ${chCredentials.missing.join(", ")}` : chCredentials.reason}) — θεωρείται μη ρυθμισμένη`);
     info("channel", chState === "DISABLED" ? "Channel Manager disabled — OTA synchronization inactive (Ο Channel Manager είναι απενεργοποιημένος)" : "Channel Manager not configured — OTA synchronization inactive (Ο Channel Manager δεν έχει ρυθμιστεί)");
@@ -99,6 +100,7 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
     // continue (the connection is live); a person repeats the verification.
     const cfgAt = Math.max(Number(chRow?.updated_at ?? 0), Number(chRow?.mapping_at ?? 0));
     if (chActivation && cfgAt > Number(chActivation.activated_at)) add("channel", { key: "integration:channelManager:revalidate", level: "warn", text: `Οι ρυθμίσεις του Channel Manager άλλαξαν μετά την ενεργοποίηση (${hhmm(cfgAt)}) — επαναλάβετε τον «Έλεγχο προϋποθέσεων ενεργοποίησης»`, link: "/pms/integrations" });
+    if (chActivation && !chCredentials.ok && chCredentials.reason !== "CANNOT_VERIFY") add("channel", { key: "integration:channelManager:credentials", level: "fail", text: `Ο Channel Manager είναι ενεργοποιημένος αλλά τα στοιχεία σύνδεσης ${chCredentials.reason === "MISSING" ? `είναι ελλιπή (λείπουν: ${chCredentials.missing.join(", ")})` : chCredentials.reason === "SECRETS_UNREADABLE" ? "δεν διαβάζονται (άλλαξε το PMS_DOCUMENT_KEY;)" : "λείπουν"} — ο συγχρονισμός δεν λειτουργεί`, link: "/pms/integrations" });
     if (chState === "UNVERIFIED") add("channel", { key: "integration:channelManager:unverified", level: "warn", text: "Ο Channel Manager είναι ενεργοποιημένος, αλλά η λειτουργία του δεν μπορεί να επιβεβαιωθεί (η κατάσταση του συγχρονισμού δεν διαβάστηκε)", link: "/pms/integrations" });
     if (chState === "TESTING") add("channel", { key: "integration:channelManager", level: "warn", text: "Ο Channel Manager είναι σε δοκιμή — δεν έχει ενεργοποιηθεί. Ολοκληρώστε την επαλήθευση αντιστοίχισης και την αρχική πλήρη σύγκριση διαθεσιμότητας (Συνδέσεις → Channel Manager → Ενεργοποίηση)", link: "/pms/integrations" });
     if (channelStats.past) info("channel", `${channelStats.past} παλιές μεταβολές αφορούν μόνο ημερομηνίες που πέρασαν — δεν επηρεάζουν πωλήσεις`);
@@ -107,7 +109,8 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
       const age = now - Number(o.created_at);
       add("channel", { key: `outbox:${o.id}`, level: syncDead ? "warn" : o.status === "failed" || Number(o.attempts) >= 3 || age > 30 * MIN ? "fail" : "warn", text: `Μεταβολή διαθεσιμότητας ${o.date_from}${o.date_to !== o.date_from ? ` → ${o.date_to}` : ""} (${o.reason || "—"}) δεν έχει συγχρονιστεί εδώ και ${ago(now, o.created_at)}${Number(o.attempts) ? ` · ${o.attempts} προσπάθειες` : ""}${o.err ? ` · ${o.err.slice(0, 120)}` : ""}`, action: { type: "retry_outbox", id: Number(o.id) }, at: Number(o.created_at) });
     }
-    if (!syncDead && st?.last_ok_at && now - Number(st.last_ok_at) > 30 * MIN && live.length) add("channel", { key: "sync:stale", level: "fail", text: `Τελευταίος επιτυχής συγχρονισμός ${hhmm(st.last_ok_at)}${st.last_error ? ` · ${st.last_error.slice(0, 120)}` : ""}`, action: { type: "sync_now" }, at: Number(st.last_ok_at) });
+    // v204: judged by the LATEST run (a failure after a recent success counts), after SYNC_FAIL_GRACE_MS of failing.
+    if (!syncDead && lastRunFailed(st) && (!st?.last_ok_at || now - Number(st.last_ok_at) >= SYNC_FAIL_GRACE_MS)) add("channel", { key: "sync:stale", level: "fail", text: `Η τελευταία εκτέλεση του συγχρονισμού απέτυχε · τελευταία επιτυχία ${st?.last_ok_at ? hhmm(st.last_ok_at) : "ποτέ"}${st?.last_error ? ` · ${String(st.last_error).slice(0, 120)}` : ""}`, action: { type: "sync_now" }, at: Number(st?.last_ok_at ?? st?.last_run_at ?? 0) });
   }
   for (const b of otaNoRoom) add("channel", { key: `noroom:${b.id}`, level: "warn", text: `Κράτηση OTA ${b.reference} (${b.guest_name}, άφιξη ${b.check_in}) χωρίς δωμάτιο — τύπος ${b.external_room_type}`, link: `/pms/reservations?q=${encodeURIComponent(b.reference)}` });
   // v189 OTA reconciliation: what the PMS sells now ≠ what was last sent, with nothing queued to fix it.

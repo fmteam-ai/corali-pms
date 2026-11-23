@@ -112,11 +112,26 @@ export function credentialsStatus(provider, row, documentKey = process.env.PMS_D
 export function integrationState({ row, credentials = null, activation = null, healthy = null }) {
   if (!row) return "NOT_CONFIGURED";
   if (!Number(row.active)) return "DISABLED";
-  if (credentials?.ok !== true) return "NOT_CONFIGURED";
-  if (!activation?.activated_at || activation.deactivated_at) return "TESTING";
+  const activated = Boolean(activation?.activated_at && !activation.deactivated_at);
+  if (credentials?.ok !== true) {
+    // Never activated: an incomplete connection is simply not configured (no alerts).
+    if (!activated) return "NOT_CONFIGURED";
+    // v204: an ACTIVATED connection that lost its credentials (key rotated, field cleared) is a FAILURE that must be
+    // alerted, never a silent «not configured»; when this process cannot check them at all, it is UNVERIFIED.
+    return credentials?.reason === "CANNOT_VERIFY" ? "UNVERIFIED" : "DEGRADED";
+  }
+  if (!activated) return "TESTING";
   // v203: only a confirmed healthy check is ACTIVE; unknown health is UNVERIFIED, never «working».
   return healthy === true ? "ACTIVE" : healthy === false ? "DEGRADED" : "UNVERIFIED";
 }
+
+/** v204: did the LATEST sync run fail? (never succeeded, a run after the last success, or an error recorded) */
+export function lastRunFailed(st) {
+  if (!st?.last_run_at) return false;
+  return !st.last_ok_at || Number(st.last_ok_at) < Number(st.last_run_at) || Boolean(String(st.last_error ?? "").trim());
+}
+/** Minutes of continuous failure: an incident is raised only after SYNC_FAIL_GRACE_MS (the sync runs every minute). */
+export const SYNC_FAIL_GRACE_MS = 10 * 60_000;
 
 /**
  * The Channel Manager's health from its sync state (v204: judged by the LATEST run, not by a recent success):
@@ -186,7 +201,7 @@ export async function integrationStates({ pool, owner, providers = null, health 
     const row = rows.find((r) => r.provider_key === k) ?? null;
     const activation = acts.find((a) => a.provider_key === k) ?? null;
     const credentials = credentialsStatus(k, row, documentKey);
-    out[k] = { state: integrationState({ row, credentials, activation, healthy: health[k] ?? null }), credentials: { ok: credentials.ok, missing: credentials.missing, reason: credentials.reason }, configChangedAt: row?.updated_at == null ? null : Number(row.updated_at), activatedAt: activation?.activated_at ? Number(activation.activated_at) : null, activatedBy: activation?.activated_by ?? null };
+    out[k] = { state: integrationState({ row, credentials, activation, healthy: health[k] ?? null }), credentials: { ok: credentials.ok, missing: credentials.missing, reason: credentials.reason }, configChangedAt: row?.updated_at == null ? null : Number(row.updated_at), activatedAt: activation?.activated_at && !activation.deactivated_at ? Number(activation.activated_at) : null, activatedBy: activation?.activated_at && !activation.deactivated_at ? activation.activated_by ?? null : null };
   }
   return out;
 }

@@ -217,12 +217,12 @@ test("v204 P1 watchdog: 65 failing subsystems with no working channel — nothin
   assert.equal(st.alerts.length, 1);
   assert.equal((st.alerts[0] as unknown as { items: unknown[] }).items.length, 65);
   const { TEXT_MAX } = await import("../tools/watchdog/watchdog.mjs");
-  assert.ok(st.alerts[0].text.length <= TEXT_MAX, `the text fits Telegram / ntfy (${st.alerts[0].text.length})`);
+  assert.ok(Buffer.byteLength(st.alerts[0].text) <= TEXT_MAX, `the text fits Telegram / ntfy in BYTES (${Buffer.byteLength(st.alerts[0].text)})`);
   assert.match(st.alerts[0].text, /… και \d+ ακόμη/, "what does not fit is counted, and kept in items");
   // The queue itself above its limit: merged into a digest, every item kept.
   const many = Array.from({ length: 150 }, (_, i) => ({ kind: i % 3 ? "reminder" : "open", severity: i % 2 ? "critical" : "warning", check: `c${i}`, at: i, text: `m${i}` }));
   const c = compactOutbox(many, "QA");
-  assert.equal(c.length, QUEUE_MAX);
+  assert.ok(c.length <= QUEUE_MAX);
   const kept = c.flatMap((m) => (m.kind === "digest" ? m.items ?? [] : [m]));
   assert.equal(kept.length, 150, "no message lost");
   assert.ok(c.filter((m) => m.kind !== "digest").every((m) => !(m.kind === "reminder" && c.some((x) => x.kind === "digest" && x.items?.some((y) => y.kind === "open" && y.severity === "critical")))), "critical «open» kept individually before reminders");
@@ -230,7 +230,7 @@ test("v204 P1 watchdog: 65 failing subsystems with no working channel — nothin
   const again = compactOutbox([...c, ...Array.from({ length: 30 }, (_, i) => ({ kind: "reminder", severity: "warning", check: `n${i}`, at: 200 + i, text: `n${i}` }))], "QA");
   assert.equal(again.filter((m) => m.kind === "digest").length, 1);
   assert.equal(again.flatMap((m) => (m.kind === "digest" ? m.items ?? [] : [m])).length, 180);
-  assert.ok(again.every((m) => m.text.length <= TEXT_MAX));
+  assert.ok(again.every((m) => Buffer.byteLength(m.text) <= TEXT_MAX));
   // A growing queue is reported before the merge limit.
   st.receiverDown = true;
   for (let i = 1; i <= QUEUE_WARN; i++) comps[`late${i}`] = "warn";
@@ -241,4 +241,44 @@ test("v204 P1 watchdog: 65 failing subsystems with no working channel — nothin
   assert.match(r.results.alert_queue.detail!, /δεν έχουν παραδοθεί/);
   box = wd2.state().outbox;
   assert.ok(box.length <= QUEUE_MAX);
+});
+
+test("v204 review: no duplicate digests to a channel that already accepted, ntfy byte limit, high priority, slow channel bounded, bounded state", async () => {
+  const { compactOutbox, listText, QUEUE_MAX, TEXT_MAX, ITEMS_MAX } = await import("../tools/watchdog/watchdog.mjs");
+  // Greek + emoji lines: the limit is in bytes (ntfy), not characters.
+  const greek = Array.from({ length: 80 }, (_, i) => `🔴 Ξενοδοχείο: «υποσύστημα_${i}» — η υπηρεσία δεν απαντά εδώ και πολλή ώρα`);
+  const t = listText("🔴 Πολλές ειδοποιήσεις", greek);
+  assert.ok(Buffer.byteLength(t) <= TEXT_MAX, `${Buffer.byteLength(t)} bytes`);
+  assert.match(t, /… και \d+ ακόμη — όλες στο log του watchdog/);
+  // Telegram accepts, ntfy always fails: 120 messages already on Telegram are merged into a digest that Telegram
+  // never receives again; only ntfy is retried.
+  let clock = Date.parse("2026-11-24T10:00:00Z");
+  const calls: { target: string; text: string; priority?: string }[] = [];
+  const st = { body: hbBody({ database: "ok", sentinel: "ok", automations: "ok" }), now: () => clock, alerts: [] };
+  const base = fakeFetch(st);
+  const fetchImpl = (async (url: string, init?: { body?: string; headers?: Record<string, string> }) => {
+    if (url.includes("api.telegram.org")) { calls.push({ target: "telegram", text: JSON.parse(String(init?.body)).text }); return new Response(JSON.stringify({ ok: true }), { status: 200 }); }
+    if (url.includes("ntfy.example")) { calls.push({ target: "ntfy", text: String(init?.body), priority: init?.headers?.Priority }); return new Response("down", { status: 500 }); }
+    return base(url, init as RequestInit);
+  }) as unknown as typeof fetch;
+  const wd = createWatchdog(cfgFor({ webhookUrl: "", telegram: { token: "T", chat: "C" }, ntfyUrl: "https://ntfy.example/t" }), { fetchImpl, now: () => clock, sleep: async () => {}, log: () => {} });
+  const box = wd.state().outbox as { kind: string; severity?: string; check: string; at?: number; text: string; delivered?: string[] }[];
+  for (let i = 0; i < 120; i++) box.push({ kind: "open", severity: "critical", check: `x${i}`, at: i, text: `x${i}`, delivered: ["telegram"] });
+  for (let i = 0; i < 5; i++) { await wd.cycle(); clock += 60_000; }
+  assert.equal(calls.filter((c) => c.target === "telegram").length, 0, "Telegram is never sent what it already accepted");
+  const after = wd.state().outbox;
+  assert.ok(after.length <= QUEUE_MAX);
+  assert.equal(after.flatMap((m) => (m.kind === "digest" ? m.items ?? [] : [m])).length, 120, "nothing lost");
+  assert.ok(after.filter((m) => m.kind === "digest").every((m) => m.delivered?.includes("telegram")));
+  // A slow / failing channel is tried once per cycle (3 attempts), not once per queued message.
+  calls.length = 0; await wd.cycle();
+  assert.equal(calls.filter((c) => c.target === "ntfy").length, 3, "one message × 3 attempts, then skipped for this cycle");
+  // Critical aggregated messages go to ntfy with high priority.
+  assert.ok(calls.filter((c) => c.target === "ntfy").every((c) => c.priority === "high"));
+  // State stays bounded without loss: more than ITEMS_MAX items are counted per check.
+  const huge = Array.from({ length: QUEUE_MAX + ITEMS_MAX + 500 }, (_, i) => ({ kind: "reminder", severity: "warning", check: `c${i % 20}`, at: i, text: `r${i}` }));
+  const compacted = compactOutbox(huge, "QA");
+  const items = compacted.flatMap((m) => (m.kind === "digest" ? m.items ?? [] : [m]));
+  assert.ok(items.length <= QUEUE_MAX + ITEMS_MAX);
+  assert.equal(items.reduce((n, x) => n + (Number((x as { count?: number }).count) || 1), 0), huge.length, "every reminder still counted");
 });
