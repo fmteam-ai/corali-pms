@@ -14,3 +14,5 @@ runtime.env
 corali-web-installer-*.php
 corali-web-installer-*-access.txt
 .DS_Store
+__pycache__/
+docs/qa/qa-logs-*/

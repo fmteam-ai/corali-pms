@@ -1,6 +1,7 @@
 // Room temperature / humidity sensors (Tuya Wi-Fi) in the automation cron: read every ~10 minutes, keep the latest
 // values for the PMS and the TV assistant, and raise the three alerts (PMS notification; an A/C fault also opens a
 // maintenance notice for the room).
+import { reportDataUnavailable } from "./data-availability.mjs";
 import { climateFromStatus, evaluateClimate } from "./room-climate-core.mjs";
 import { irLimitDecision, normalizePowerSettings } from "./tv-power-core.mjs";
 import { cachedToken, tuyaCreds } from "./room-ac-worker.mjs";
@@ -59,6 +60,9 @@ export async function runRoomClimate({ pool, owner, unseal, seal = null, force =
       `UPDATE room_climate SET temp=$3,humidity=$4,battery=$5,read_at=$6,checked_at=$6,error='',humid_since=$7,hot_since=$8,alerted_humid_at=$9,alerted_temp_at=$10,alerted_battery_at=$11 WHERE owner_id=$1 AND room_id=$2`,
       [owner, r.room_id, reading.temp, reading.humidity, reading.battery, now, next.humid_since, next.hot_since, next.alerted_humid_at, next.alerted_temp_at, next.alerted_battery_at],
     );
+    // v196: keep the measurement history (30 days) — the evidence for «did the repair actually restore comfort».
+    await pool.query(`INSERT INTO climate_readings(owner_id,room_id,temp,humidity,occupied,ac_on,read_at) VALUES($1,$2,$3,$4,$5,$6,$7)`, [owner, r.room_id, reading.temp, reading.humidity, occupied ? 1 : 0, r.ac_device ? (Number(r.ac_state) === 1 ? 1 : 0) : null, now])
+      .catch((e) => reportDataUnavailable("climate", "history_write", e, now));
     // v171: IR A/C temperature limit (the guest set it too cold / too hot): re-send the hotel's setting.
     if (r.ir_hub && r.ir_ac) {
       const d = irLimitDecision(ir, { temp: reading.temp, readAt: now, occupied, lastAt: r.ir_limit_at ? Number(r.ir_limit_at) : null, count: Number(r.ir_limit_count ?? 0), now });
@@ -81,5 +85,6 @@ export async function runRoomClimate({ pool, owner, unseal, seal = null, force =
       alerts++;
     }
   }
+  if (read) await pool.query(`DELETE FROM climate_readings WHERE owner_id=$1 AND read_at<$2::bigint`, [owner, now - 30 * 86_400_000]).catch(() => { /* pruning is best effort; reads are unaffected */ });
   return { rooms: rows.length, read, alerts, error };
 }

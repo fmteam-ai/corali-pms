@@ -8,7 +8,10 @@
 // A step that does not apply (no TV in the room, Wi-Fi not used) is «n/a». «Επιβεβαίωση» is possible only when every
 // applicable step is done; it stores the documented result (each step's evidence and time) and who confirmed it.
 import { DEFAULT_CHECKIN_TIME, hotelMs } from "./room-ready-core.mjs";
+import { reportDataUnavailable } from "./data-availability.mjs";
 
+/** Tolerance between the clocks that time the evidence (PMS server, staff devices): 2 minutes. */
+export const CLOCK_SKEW_MS = 2 * 60_000;
 const HOUR = 3_600_000, HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const STEPS = [
   { key: "cleaning", el: "Καθαρισμός & επιθεώρηση" },
@@ -32,24 +35,42 @@ export function evaluateTurnover(f, now = Date.now()) {
     (t.bookingId !== null && t.bookingId !== undefined && Number(t.bookingId) === Number(f.bookingId)) ||
     ((t.bookingId === null || t.bookingId === undefined) && [t.completedAt, t.startedAt].some((x) => x && Number(x) >= at - 5 * 60_000 && Number(x) < until))
   ));
-  const hk = mine.sort((a, b) => Number(b.completedAt ?? b.startedAt ?? 0) - Number(a.completedAt ?? a.startedAt ?? 0))[0];
-  // v195: «done» only with consistent evidence — the task finished (status «ready» after approval), finished AFTER
-  // this check-out, and inspected (approved) after it was finished. Approved-but-inconsistent data is refused.
-  if (!hk) out.cleaning = { state: "pending", detail: "δεν υπάρχει καθαρισμός για αυτή την αναχώρηση" };
-  else if (hk.inspection === "approved") {
-    const done = hk.completedAt !== null && hk.completedAt !== undefined && Number(hk.completedAt) > 0 ? Number(hk.completedAt) : null;
-    const inspected = hk.inspectedAt !== null && hk.inspectedAt !== undefined && Number(hk.inspectedAt) > 0 ? Number(hk.inspectedAt) : null;
-    const problem = hk.status !== "ready" ? `η εργασία δεν έχει ολοκληρωθεί (κατάσταση «${hk.status}»)`
-      : done === null ? "χωρίς χρόνο ολοκλήρωσης"
+  // v196: every candidate task is judged on its own evidence, in creation order (id), and one rule decides:
+  //  • valid evidence = status «ready», finished after this check-out, inspected (approved) after finishing — and both
+  //    times real (finite), not in the future (tolerance CLOCK_SKEW_MS) and BEFORE the next guest checked in;
+  //  • a task opened AFTER that approval (re-clean, repair) reopens the room: it needs its own approval;
+  //  • a later task that was not opened after the approval (a duplicate / inconsistent record) does not hide the valid
+  //    one — it is listed in the history as a remark.
+  const ts = (v) => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : NaN);
+  const judge = (t) => {
+    const done = ts(t.completedAt), inspected = ts(t.inspectedAt);
+    if (t.inspection === "rejected") return { ok: false, state: "failed", why: `απορρίφθηκε στην επιθεώρηση${t.notes ? `: ${String(t.notes).slice(0, 80)}` : ""}` };
+    if (t.inspection !== "approved") return { ok: false, state: "pending", why: done ? "καθαρίστηκε — αναμένει επιθεώρηση" : "σε εξέλιξη" };
+    const problem = t.status !== "ready" ? `η εργασία δεν έχει ολοκληρωθεί (κατάσταση «${t.status}»)`
+      : done === null ? "χωρίς χρόνο ολοκλήρωσης" : Number.isNaN(done) ? "μη έγκυρος χρόνος ολοκλήρωσης"
       : done < at ? "ολοκληρώθηκε πριν από το check-out"
-      : inspected === null ? "χωρίς χρόνο επιθεώρησης"
-      : inspected < done ? "η επιθεώρηση καταγράφηκε πριν από την ολοκλήρωση" : null;
-    out.cleaning = problem
-      ? { state: "failed", detail: `εργασία #${hk.id}: ασυνεπή στοιχεία — ${problem}· χρειάζεται νέος καθαρισμός / επιθεώρηση`, taskId: Number(hk.id) }
-      : { state: "done", detail: `εργασία #${hk.id} ολοκληρώθηκε και εγκρίθηκε στην επιθεώρηση`, at: inspected, taskId: Number(hk.id) };
+      : done > now + CLOCK_SKEW_MS ? "χρόνος ολοκλήρωσης στο μέλλον"
+      : inspected === null ? "χωρίς χρόνο επιθεώρησης" : Number.isNaN(inspected) ? "μη έγκυρος χρόνος επιθεώρησης"
+      : inspected < done ? "η επιθεώρηση καταγράφηκε πριν από την ολοκλήρωση"
+      : inspected > now + CLOCK_SKEW_MS ? "χρόνος επιθεώρησης στο μέλλον"
+      : inspected >= until ? "εγκρίθηκε αφού είχε ήδη μπει ο επόμενος πελάτης" : null;
+    return problem ? { ok: false, state: "failed", why: `ασυνεπή στοιχεία — ${problem}`, inconsistent: true } : { ok: true, state: "done", inspected };
+  };
+  const ordered = [...mine].sort((a, b) => Number(a.id) - Number(b.id)).map((t) => ({ t, j: judge(t) }));
+  const valid = [...ordered].reverse().find((x) => x.j.ok) ?? null;
+  // Tasks after the valid one: opened after its approval (or with no opening time) = reopened work, which decides.
+  const later = valid ? ordered.filter((x) => Number(x.t.id) > Number(valid.t.id)) : ordered;
+  const reopened = valid ? later.filter((x) => { const opened = ts(x.t.createdAt); return opened === null || Number.isNaN(opened) || opened >= valid.j.inspected; }) : later;
+  const history = ordered.map((x) => ({ taskId: Number(x.t.id), state: x.j.state, detail: x.j.why ?? "έγκυρο τεκμήριο" }));
+  const decider = reopened.length ? reopened[reopened.length - 1] : valid;
+  if (!decider) out.cleaning = { state: "pending", detail: "δεν υπάρχει καθαρισμός για αυτή την αναχώρηση", history };
+  else if (decider === valid) {
+    const ignored = later.filter((x) => !reopened.includes(x));
+    out.cleaning = { state: "done", detail: `εργασία #${valid.t.id} ολοκληρώθηκε και εγκρίθηκε στην επιθεώρηση${ignored.length ? ` · ${ignored.length} νεότερη(ες) εγγραφή(ές) με ασυνεπή στοιχεία στο ιστορικό` : ""}`, at: valid.j.inspected, taskId: Number(valid.t.id), history };
+  } else {
+    const prefix = valid ? `νέα εργασία #${decider.t.id} μετά την έγκριση της #${valid.t.id} — χρειάζεται νέα έγκριση: ` : `εργασία #${decider.t.id}: `;
+    out.cleaning = { state: decider.j.state, detail: `${prefix}${decider.j.why}${decider.j.inconsistent ? "· χρειάζεται νέος καθαρισμός / επιθεώρηση" : ""}`, taskId: Number(decider.t.id), history };
   }
-  else if (hk.inspection === "rejected") out.cleaning = { state: "failed", detail: `εργασία #${hk.id} απορρίφθηκε στην επιθεώρηση${hk.notes ? `: ${String(hk.notes).slice(0, 80)}` : ""}`, taskId: Number(hk.id) };
-  else out.cleaning = { state: "pending", detail: hk.completedAt ? `εργασία #${hk.id} καθαρίστηκε — αναμένει επιθεώρηση` : `εργασία #${hk.id} σε εξέλιξη`, taskId: Number(hk.id) };
   // Equipment: a person's confirmation; a serious open fault blocks it.
   const serious = (f.faults ?? []).filter((m) => m.severity !== "minor"), minor = (f.faults ?? []).filter((m) => m.severity === "minor");
   if (serious.length) out.equipment = { state: "failed", detail: `ανοιχτή ${serious[0].severity === "out_of_order" ? "βλάβη εκτός λειτουργίας" : "σοβαρή βλάβη"}: ${String(serious[0].description).slice(0, 80)}`, severity: serious[0].severity };
@@ -73,9 +94,45 @@ export function evaluateTurnover(f, now = Date.now()) {
   if (!cards.length) out.access = { state: "na", detail: "χωρίς κάρτες πρόσβασης" };
   else if (live.length) out.access = { state: now - at > HOUR ? "failed" : "pending", detail: `${live.length} κάρτα(ες) ακόμη ενεργή(ές)` };
   else out.access = { state: "done", detail: "όλες οι κάρτες ανακλήθηκαν ή έληξαν" };
+  // v196: a step whose source could not be read is DATA_UNAVAILABLE — never «n/a», never «done».
+  const missingSteps = { faults: "equipment", tv: "tv", wifi: "wifi", access: "access" };
+  for (const src of f.unavailable ?? []) {
+    const k = missingSteps[src];
+    if (k) out[k] = { state: "unavailable", code: "DATA_UNAVAILABLE", detail: "τα στοιχεία δεν μπόρεσαν να διαβαστούν (DATA_UNAVAILABLE) — δεν θεωρείται ότι δεν ισχύει" };
+  }
   const applicable = STEPS.filter((s) => out[s.key].state !== "na");
-  const status = applicable.some((s) => out[s.key].state === "failed") ? "failed" : applicable.every((s) => out[s.key].state === "done") ? "ready" : "pending";
+  const status = applicable.some((s) => out[s.key].state === "failed") ? "failed" : applicable.some((s) => out[s.key].state === "unavailable") ? "data_unavailable" : applicable.every((s) => out[s.key].state === "done") ? "ready" : "pending";
   return { steps: out, status };
+}
+
+/**
+ * v196 Predictive Room Readiness (pure): when the room will likely be ready, from what is left of its cleaning and the
+ * hotel's own history — the median cleaning time (start → finish) and inspection lag (finish → approval) of the last 30
+ * days (defaults 45′ / 20′ when there are fewer than 5 samples), and the housekeeper's queue: tasks of the same
+ * housekeeper opened before this one and still unfinished each take one median cleaning first. Steps other than the
+ * cleaning that are still pending add a fixed allowance (15′ each). Result: predictedReadyAt, and against the arrival
+ * on_time (≥ 30′ to spare) | tight | late | unknown — «late» is the warning before the room is overdue.
+ */
+export const FORECAST_DEFAULTS = { cleanMin: 45, inspectMin: 20, otherStepMin: 15, minSamples: 5, spareMin: 30 };
+const median = (xs) => { const a = [...xs].sort((x, y) => x - y); return a.length ? (a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2) : null; };
+export function predictReadiness({ now, cleaning, task = null, queueAhead = 0, history = [], otherPending = 0, arrivalAt = null }) {
+  const D = FORECAST_DEFAULTS, MINUTE = 60_000;
+  const cleans = history.map((h) => (Number(h.completedAt) - Number(h.startedAt)) / MINUTE).filter((m) => Number.isFinite(m) && m > 0 && m < 8 * 60);
+  const lags = history.map((h) => (Number(h.inspectedAt) - Number(h.completedAt)) / MINUTE).filter((m) => Number.isFinite(m) && m >= 0 && m < 8 * 60);
+  const cleanMin = cleans.length >= D.minSamples ? median(cleans) : D.cleanMin, inspectMin = lags.length >= D.minSamples ? median(lags) : D.inspectMin;
+  const basis = cleans.length >= D.minSamples && lags.length >= D.minSamples ? "history" : "defaults";
+  let left; let stage;
+  if (cleaning === "done") { left = 0; stage = "καθαρισμός εγκρίθηκε"; }
+  else if (cleaning === "failed") { left = queueAhead * cleanMin + cleanMin + inspectMin; stage = "χρειάζεται νέος καθαρισμός"; }
+  else if (!task) { left = queueAhead * cleanMin + cleanMin + inspectMin; stage = "δεν έχει ανοίξει εργασία καθαρισμού"; }
+  else if (task.status === "ready" || task.completedAt) { left = inspectMin; stage = "αναμένει επιθεώρηση"; }
+  else if (task.startedAt && Number.isFinite(Number(task.startedAt))) { const spent = Math.max(0, (now - Number(task.startedAt)) / MINUTE); left = Math.max(5, cleanMin - spent) + inspectMin; stage = "καθαρισμός σε εξέλιξη"; }
+  else { left = queueAhead * cleanMin + cleanMin + inspectMin; stage = queueAhead ? `${queueAhead} εργασία(ες) πριν από αυτή στην ουρά` : "σε αναμονή καθαρισμού"; }
+  left += otherPending * D.otherStepMin;
+  const predictedReadyAt = Math.round(now + left * MINUTE);
+  const spare = arrivalAt === null ? null : Math.round((arrivalAt - predictedReadyAt) / MINUTE);
+  const risk = spare === null ? "unknown" : spare >= D.spareMin ? "on_time" : spare >= 0 ? "tight" : "late";
+  return { predictedReadyAt, minutesLeft: Math.round(left), spareMinutes: spare, risk, stage, basis, cleanMin: Math.round(cleanMin), inspectMin: Math.round(inspectMin) };
 }
 
 /**
@@ -92,18 +149,29 @@ export async function turnoverBoard({ pool, owner, now = Date.now(), days = 3, b
     : await q(`SELECT b.id booking_id,b.reference,b.guest_name,b.room_id,r.code,COALESCE(b.checked_out_at,0) checked_out_at FROM bookings b JOIN rooms r ON r.owner_id=b.owner_id AND r.id=b.room_id WHERE b.owner_id=$1 AND b.status='checked_out' AND b.checked_out_at>=$2 ORDER BY b.checked_out_at DESC LIMIT 100`, [owner, since]);
   if (!outs.length) return { at: now, turnovers: [] };
   const roomIds = [...new Set(outs.map((o) => Number(o.room_id)))], bookingIds = outs.map((o) => Number(o.booking_id));
+  // v196: a source that cannot be read is never taken as «nothing there» (no TV, no Wi-Fi, no fault): the step it
+  // proves becomes DATA_UNAVAILABLE (blocks the confirmation) and the failure is logged and reported.
+  const unavailable = new Map();
+  const soft = (source, sql, p) => q(sql, p).catch((e) => { unavailable.set(source, reportDataUnavailable("turnover", source, e)); return null; });
   const [hk, faults, tvs, jobs, wifi, cards, saved, next, checkins, usedRows] = await Promise.all([
-    q(`SELECT id,room_id,booking_id,status,completed_at,started_at,inspection_status,inspected_at,inspection_notes FROM housekeeping_tasks WHERE owner_id=$1 AND room_id=ANY($2::bigint[]) AND (booking_id=ANY($4::bigint[]) OR completed_at>=$3 OR started_at>=$3 OR due_at>=$3)`, [owner, roomIds, since - 86_400_000, bookingIds]),
-    q(`SELECT room_id,severity,description,reported_at FROM maintenance_notices WHERE owner_id=$1 AND status='open' AND room_id=ANY($2::bigint[])`, [owner, roomIds]).catch(() => []),
-    q(`SELECT room_id FROM tv_screens WHERE owner_id=$1 AND active=1 AND room_id=ANY($2::bigint[])`, [owner, roomIds]).catch(() => []),
-    q(`SELECT booking_id,room_id,status,error_code,staff_checked_at_ms FROM tv_privacy_jobs WHERE owner_id=$1 AND booking_id=ANY($2::bigint[])`, [owner, bookingIds]).catch(() => []),
-    q(`SELECT booking_id,status,error,removed_at FROM guest_wifi WHERE owner_id=$1 AND booking_id=ANY($2::bigint[])`, [owner, bookingIds]).catch(() => []),
-    q(`SELECT booking_id,status,valid_until FROM access_cards WHERE owner_id=$1 AND booking_id=ANY($2::bigint[])`, [owner, bookingIds]).catch(() => []),
+    q(`SELECT id,room_id,booking_id,status,assigned_to,created_at,completed_at,started_at,inspection_status,inspected_at,inspection_notes FROM housekeeping_tasks WHERE owner_id=$1 AND room_id=ANY($2::bigint[]) AND (booking_id=ANY($4::bigint[]) OR completed_at>=$3 OR started_at>=$3 OR due_at>=$3)`, [owner, roomIds, since - 86_400_000, bookingIds]),
+    soft("faults", `SELECT room_id,severity,description,reported_at FROM maintenance_notices WHERE owner_id=$1 AND status='open' AND room_id=ANY($2::bigint[])`, [owner, roomIds]),
+    soft("tv", `SELECT room_id FROM tv_screens WHERE owner_id=$1 AND active=1 AND room_id=ANY($2::bigint[])`, [owner, roomIds]),
+    soft("tv", `SELECT booking_id,room_id,status,error_code,staff_checked_at_ms FROM tv_privacy_jobs WHERE owner_id=$1 AND booking_id=ANY($2::bigint[])`, [owner, bookingIds]),
+    soft("wifi", `SELECT booking_id,status,error,removed_at FROM guest_wifi WHERE owner_id=$1 AND booking_id=ANY($2::bigint[])`, [owner, bookingIds]),
+    soft("access", `SELECT booking_id,status,valid_until FROM access_cards WHERE owner_id=$1 AND booking_id=ANY($2::bigint[])`, [owner, bookingIds]),
     q(`SELECT * FROM room_turnovers WHERE owner_id=$1 AND booking_id=ANY($2::bigint[])`, [owner, bookingIds]),
     q(`SELECT DISTINCT ON (b.room_id) b.room_id,b.id,b.reference,b.check_in next_in,(SELECT g.arrival_time FROM guest_checkins g WHERE g.owner_id=b.owner_id AND g.booking_id=b.id ORDER BY g.id DESC LIMIT 1) arrival_time FROM bookings b WHERE b.owner_id=$1 AND b.status='confirmed' AND b.room_id=ANY($2::bigint[]) ORDER BY b.room_id,b.check_in`, [owner, roomIds]),
     q(`SELECT room_id,checked_in_at,status FROM bookings WHERE owner_id=$1 AND room_id=ANY($2::bigint[]) AND checked_in_at IS NOT NULL`, [owner, roomIds]),
     q(`SELECT booking_id,hk_task_id FROM room_turnovers WHERE owner_id=$1 AND hk_task_id IS NOT NULL`, [owner]),
   ]);
+  // v196 forecast inputs: the last 30 days of approved cleanings (durations) and every unfinished task (queues).
+  const [history, openTasks] = await Promise.all([
+    soft("forecast", `SELECT started_at,completed_at,inspected_at FROM housekeeping_tasks WHERE owner_id=$1 AND inspection_status='approved' AND started_at IS NOT NULL AND completed_at>=$2 ORDER BY completed_at DESC LIMIT 500`, [owner, now - 30 * 86_400_000]),
+    soft("forecast", `SELECT id,room_id,assigned_to,status FROM housekeeping_tasks WHERE owner_id=$1 AND status NOT IN ('ready','done','cancelled') AND task_type<>'maintenance'`, [owner]),
+  ]);
+  const forecastHistory = (history ?? []).map((h) => ({ startedAt: Number(h.started_at), completedAt: Number(h.completed_at), inspectedAt: Number(h.inspected_at) }));
+  const missing = { faults: faults === null, tv: tvs === null || jobs === null, wifi: wifi === null, access: cards === null };
   const checkInTime = await q(`SELECT settings_json FROM tv_settings WHERE owner_id=$1`, [owner]).then((r) => { try { const t = JSON.parse(String(r[0]?.settings_json ?? "{}")).checkInTime; return HHMM.test(String(t ?? "")) ? String(t) : DEFAULT_CHECKIN_TIME; } catch { return DEFAULT_CHECKIN_TIME; } }, () => DEFAULT_CHECKIN_TIME);
   const turnovers = outs.map((o) => {
     const bid = Number(o.booking_id), rid = Number(o.room_id), out = Number(o.checked_out_at);
@@ -111,22 +179,23 @@ export async function turnoverBoard({ pool, owner, now = Date.now(), days = 3, b
     const nextIn = checkins.filter((c) => Number(c.room_id) === rid && Number(c.checked_in_at) > out).map((c) => Number(c.checked_in_at)).sort((a, b) => a - b)[0] ?? null;
     const occupied = checkins.some((c) => Number(c.room_id) === rid && c.status === "checked_in" && Number(c.checked_in_at) > out);
     const equipment = rec?.equipment_at ? { ok: true, by: rec.equipment_by, note: rec.equipment_note, at: Number(rec.equipment_at) } : null;
-    const job = jobs.find((j) => Number(j.booking_id) === bid && Number(j.room_id) === rid);
-    const w = wifi.find((x) => Number(x.booking_id) === bid);
+    const job = (jobs ?? []).find((j) => Number(j.booking_id) === bid && Number(j.room_id) === rid);
+    const w = (wifi ?? []).find((x) => Number(x.booking_id) === bid);
     const facts = {
       bookingId: bid, checkoutAt: out, nextCheckinAt: nextIn,
       usedTaskIds: usedRows.filter((u) => Number(u.booking_id) !== bid).map((u) => Number(u.hk_task_id)),
-      hkTasks: hk.filter((t) => Number(t.room_id) === rid).map((t) => ({ id: Number(t.id), bookingId: t.booking_id === null ? null : Number(t.booking_id), status: t.status, completedAt: t.completed_at, startedAt: t.started_at, inspection: t.inspection_status, inspectedAt: t.inspected_at, notes: t.inspection_notes })),
-      faults: faults.filter((m) => Number(m.room_id) === rid),
+      hkTasks: hk.filter((t) => Number(t.room_id) === rid).map((t) => ({ id: Number(t.id), bookingId: t.booking_id === null ? null : Number(t.booking_id), status: t.status, createdAt: t.created_at, completedAt: t.completed_at, startedAt: t.started_at, inspection: t.inspection_status, inspectedAt: t.inspected_at, notes: t.inspection_notes })),
+      unavailable: Object.keys(missing).filter((k) => missing[k]),
+      faults: (faults ?? []).filter((m) => Number(m.room_id) === rid),
       equipment,
-      hasTv: tvs.some((t) => Number(t.room_id) === rid),
+      hasTv: (tvs ?? []).some((t) => Number(t.room_id) === rid),
       tvJob: job ? { status: job.status, error: job.error_code, staffCheckedAt: job.staff_checked_at_ms } : null,
       wifi: w ? { status: w.status, error: w.error, removedAt: w.removed_at } : null,
-      cards: cards.filter((c) => Number(c.booking_id) === bid).map((c) => ({ status: c.status, validUntil: Number(c.valid_until) })),
+      cards: (cards ?? []).filter((c) => Number(c.booking_id) === bid).map((c) => ({ status: c.status, validUntil: Number(c.valid_until) })),
     };
     const live = evaluateTurnover(facts, now);
     const verified = rec?.status === "verified";
-    const problems = Object.entries(live.steps).filter(([, v]) => v.state === "failed").map(([k, v]) => `${k}: ${v.detail}`);
+    const problems = Object.entries(live.steps).filter(([, v]) => v.state === "failed" || v.state === "unavailable").map(([k, v]) => `${k}: ${v.detail}`);
     // v195: readiness against the next arrival — when the next guest is expected (their pre-check-in time, else the
     // hotel's check-in time) and how far that is; a minor open fault is a remark, a serious one makes it not ready.
     const nx = next.find((n) => Number(n.room_id) === rid);
@@ -137,7 +206,16 @@ export async function turnoverBoard({ pool, owner, now = Date.now(), days = 3, b
       : live.status === "ready" ? (remarks ? { state: "ready_with_remarks", detail: `έτοιμο, με ${remarks} μικρή(ές) βλάβη(ες) ανοιχτή(ές)` } : { state: "ready", detail: "όλα τα βήματα ισχύουν τώρα" })
       : { state: "not_ready", detail: problems.length ? problems.join(" · ") : "εκκρεμούν βήματα" };
     const urgency = base.state === "not_ready" && minutesToArrival !== null ? (minutesToArrival <= 0 ? "overdue" : minutesToArrival <= 180 ? "urgent" : "planned") : "none";
-    const current = { ...base, arrivalAt, minutesToArrival, nextReference: nx ? String(nx.reference) : null, urgency };
+    // v196 forecast for a room not ready yet with a next arrival.
+    let forecast = null;
+    if (base.state === "not_ready" && history !== null && openTasks !== null) {
+      const tid = live.steps.cleaning.taskId;
+      const task = tid ? hk.find((t) => Number(t.id) === tid) : null;
+      const ahead = task?.assigned_to ? (openTasks ?? []).filter((t) => String(t.assigned_to) === String(task.assigned_to) && Number(t.id) < Number(task.id) && Number(t.room_id) !== rid).length : 0;
+      const otherPending = STEPS.filter((st) => st.key !== "cleaning" && ["pending", "failed"].includes(live.steps[st.key].state)).length;
+      forecast = predictReadiness({ now, cleaning: live.steps.cleaning.state, task: task ? { status: task.status, startedAt: task.started_at, completedAt: task.completed_at } : null, queueAhead: ahead, history: forecastHistory, otherPending, arrivalAt });
+    }
+    const current = { ...base, arrivalAt, minutesToArrival, nextReference: nx ? String(nx.reference) : null, urgency, forecast };
     return {
       bookingId: bid, roomId: rid, code: String(o.code), reference: String(o.reference), guest: String(o.guest_name ?? "").split(" ")[0], checkoutAt: out,
       nextArrival: nx?.next_in ?? null,
@@ -147,7 +225,7 @@ export async function turnoverBoard({ pool, owner, now = Date.now(), days = 3, b
       current, regressed: verified && current.state === "not_ready",
     };
   });
-  return { at: now, turnovers };
+  return { at: now, turnovers, dataUnavailable: [...unavailable.values()] };
 }
 
 /** Records the equipment check (a person's confirmation). */

@@ -1,0 +1,6 @@
+192.168.10.1 dev wlan0 lladdr 50:c7:bf:aa:bb:cc REACHABLE
+192.168.10.21 dev wlan0 lladdr 10:d5:61:11:22:33 STALE
+192.168.10.31 dev wlan0 lladdr 34:ea:34:01:02:03 REACHABLE
+192.168.10.32 dev wlan0 lladdr b4:43:0d:04:05:06 REACHABLE
+192.168.10.55 dev wlan0 lladdr 3a:11:22:33:44:55 STALE
+192.168.10.77 dev wlan0 lladdr ac:cf:23:99:88:77 REACHABLE

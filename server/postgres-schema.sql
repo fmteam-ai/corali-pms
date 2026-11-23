@@ -2895,3 +2895,22 @@ CREATE TABLE IF NOT EXISTS resolution_cases (
   UNIQUE (owner_id, maintenance_id)
 );
 CREATE INDEX IF NOT EXISTS idx_resolution_cases_owner ON resolution_cases(owner_id, opened_at DESC);
+
+-- v196: when a housekeeping task was opened. A task opened after an approved clean reopens the room (needs its own
+-- approval). Existing rows stay NULL (unknown) — the default applies only to new rows.
+ALTER TABLE housekeeping_tasks ADD COLUMN IF NOT EXISTS created_at BIGINT;
+ALTER TABLE housekeeping_tasks ALTER COLUMN created_at SET DEFAULT ((EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::bigint);
+
+-- v196 Guest Experience Outcome Verification: the room's measured temperature over time (append-only, from the
+-- climate worker) so a repair can be judged by measurement, not only by the absence of complaints.
+CREATE TABLE IF NOT EXISTS climate_readings (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ room_id BIGINT NOT NULL,
+ temp NUMERIC(5,1),
+ humidity BIGINT,
+ occupied BIGINT NOT NULL DEFAULT 0,
+ ac_on BIGINT,
+ read_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_climate_readings_room ON climate_readings(owner_id,room_id,read_at);

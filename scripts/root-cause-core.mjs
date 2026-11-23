@@ -4,6 +4,8 @@
 // shown as an association, not as proof of the cause, and findings with too small a sample are not shown.
 const DAY = 86_400_000;
 export const MIN_REPEATS = 3, MIN_STAYS = 2, MIN_RATED = 2, SYSTEMIC_ROOMS = 4;
+import { reportDataUnavailable } from "./data-availability.mjs";
+import { normalizePolicy, rangeFor } from "./comfort-core.mjs";
 
 export const PROBLEM_LABELS = { ac: "Κλιματιστικό", hot_water: "Ζεστό νερό", water_leak: "Διαρροή νερού", wifi: "Wi-Fi", tv: "Τηλεόραση", electrical: "Ρεύμα / πρίζες", lighting: "Φωτισμός", door_lock: "Πόρτα / κλειδαριά", safe: "Χρηματοκιβώτιο", noise: "Θόρυβος", cleaning: "Καθαριότητα", other: "Άλλο" };
 export const SUGGESTIONS = {
@@ -112,12 +114,16 @@ export function findRootCauses({ events, ratings, handling = [] }) {
 export async function rootCauses({ pool, owner, now = Date.now(), days = 90 }) {
   const since = now - days * DAY;
   const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
+  // v196: a source that cannot be read is reported (DATA_UNAVAILABLE) — the analysis says it is incomplete instead
+  // of presenting «no findings» as a fact.
+  const unavailable = [];
+  const soft = (source, sql, p) => q(sql, p).catch((e) => { unavailable.push(reportDataUnavailable("root_causes", source, e, now)); return []; });
   const [reqs, faults, ratings, handled, done] = await Promise.all([
-    q(`SELECT q.id,q.room_id,r.code,q.booking_id,q.kind,q.details_json,q.created_at FROM tv_requests q JOIN rooms r ON r.owner_id=q.owner_id AND r.id=q.room_id WHERE q.owner_id=$1 AND q.created_at>=$2 AND q.kind='problem'`, [owner, since]).catch(() => []),
-    q(`SELECT m.id,m.room_id,r.code,m.description,m.reported_at,(SELECT b.id FROM bookings b WHERE b.owner_id=m.owner_id AND b.room_id=m.room_id AND b.check_in<=to_char(to_timestamp(m.reported_at/1000) AT TIME ZONE 'Europe/Athens','YYYY-MM-DD') AND b.check_out>=to_char(to_timestamp(m.reported_at/1000) AT TIME ZONE 'Europe/Athens','YYYY-MM-DD') AND b.status IN ('checked_in','checked_out') ORDER BY b.check_in DESC LIMIT 1) booking_id FROM maintenance_notices m JOIN rooms r ON r.owner_id=m.owner_id AND r.id=m.room_id WHERE m.owner_id=$1 AND m.reported_at>=$2 AND m.description NOT LIKE '[Ανάλυση αιτιών]%'`, [owner, since]).catch(() => []),
-    q(`SELECT v.booking_id,v.rating,b.room_id,r.code FROM review_requests v JOIN bookings b ON b.owner_id=v.owner_id AND b.id=v.booking_id LEFT JOIN rooms r ON r.owner_id=b.owner_id AND r.id=b.room_id WHERE v.owner_id=$1 AND v.rating IS NOT NULL AND v.rated_at>=$2 AND b.room_id IS NOT NULL`, [owner, since]).catch(() => []),
-    q(`SELECT kind,(handled_at-created_at)/60000.0 minutes FROM tv_requests WHERE owner_id=$1 AND created_at>=$2 AND handled_at IS NOT NULL AND kind NOT IN ('dnd_on','dnd_off','instay_good')`, [owner, since]).catch(() => []),
-    q(`SELECT finding_key,status,maintenance_id,updated_at FROM root_cause_actions WHERE owner_id=$1`, [owner]).catch(() => []),
+    soft("tv_requests", `SELECT q.id,q.room_id,r.code,q.booking_id,q.kind,q.details_json,q.created_at FROM tv_requests q JOIN rooms r ON r.owner_id=q.owner_id AND r.id=q.room_id WHERE q.owner_id=$1 AND q.created_at>=$2 AND q.kind='problem'`, [owner, since]),
+    soft("maintenance", `SELECT m.id,m.room_id,r.code,m.description,m.reported_at,(SELECT b.id FROM bookings b WHERE b.owner_id=m.owner_id AND b.room_id=m.room_id AND b.check_in<=to_char(to_timestamp(m.reported_at/1000) AT TIME ZONE 'Europe/Athens','YYYY-MM-DD') AND b.check_out>=to_char(to_timestamp(m.reported_at/1000) AT TIME ZONE 'Europe/Athens','YYYY-MM-DD') AND b.status IN ('checked_in','checked_out') ORDER BY b.check_in DESC LIMIT 1) booking_id FROM maintenance_notices m JOIN rooms r ON r.owner_id=m.owner_id AND r.id=m.room_id WHERE m.owner_id=$1 AND m.reported_at>=$2 AND m.description NOT LIKE '[Ανάλυση αιτιών]%'`, [owner, since]),
+    soft("ratings", `SELECT v.booking_id,v.rating,b.room_id,r.code FROM review_requests v JOIN bookings b ON b.owner_id=v.owner_id AND b.id=v.booking_id LEFT JOIN rooms r ON r.owner_id=b.owner_id AND r.id=b.room_id WHERE v.owner_id=$1 AND v.rating IS NOT NULL AND v.rated_at>=$2 AND b.room_id IS NOT NULL`, [owner, since]),
+    soft("handling", `SELECT kind,(handled_at-created_at)/60000.0 minutes FROM tv_requests WHERE owner_id=$1 AND created_at>=$2 AND handled_at IS NOT NULL AND kind NOT IN ('dnd_on','dnd_off','instay_good')`, [owner, since]),
+    soft("actions", `SELECT finding_key,status,maintenance_id,updated_at FROM root_cause_actions WHERE owner_id=$1`, [owner]),
   ]);
   const events = [
     ...reqs.map((x) => { let d = {}; try { d = (typeof x.details_json === "object" ? x.details_json : JSON.parse(String(x.details_json ?? "{}"))) ?? {}; } catch { d = {}; } return { roomId: Number(x.room_id), code: String(x.code), bookingId: x.booking_id ? Number(x.booking_id) : null, category: PROBLEM_LABELS[d.problem] ? d.problem : "other", at: Number(x.created_at), source: "tv" }; }),
@@ -126,7 +132,7 @@ export async function rootCauses({ pool, owner, now = Date.now(), days = 90 }) {
   const findings = findRootCauses({ events, ratings: ratings.map((r) => ({ bookingId: Number(r.booking_id), roomId: Number(r.room_id), code: String(r.code), rating: Number(r.rating) })), handling: handled.map((h) => ({ kind: String(h.kind), minutes: Number(h.minutes) })) });
   const actions = new Map(done.map((d) => [String(d.finding_key), d]));
   // v195: resolution is followed by its own lasting case (resolution_cases), not re-derived from the finding.
-  const cases = await resolutionCases({ pool, owner });
+  const cases = await resolutionCases({ pool, owner, now, onUnavailable: (u) => unavailable.push(u) });
   const withAction = (f) => {
     const a = actions.get(f.key);
     if (!a) return { ...f, action: null };
@@ -134,7 +140,7 @@ export async function rootCauses({ pool, owner, now = Date.now(), days = 90 }) {
     const c = cases.find((x) => x.maintenanceId === action.maintenanceId);
     return { ...f, severity: c?.state === "RECURRED" ? "high" : f.severity, action: c ? { ...action, resolution: { state: c.state, detail: c.detail }, caseId: c.id } : action };
   };
-  return { at: now, days, events: events.length, ratings: ratings.length, findings: findings.map(withAction), cases };
+  return { at: now, days, events: events.length, ratings: ratings.length, findings: findings.map(withAction), cases, dataUnavailable: unavailable, complete: unavailable.length === 0 };
 }
 
 /** v194: a dismissal needs a real reason — at least 10 characters with letters, not just punctuation or repeats. */
@@ -205,38 +211,72 @@ export async function actOnFinding({ pool, owner, key, action, userId = null, re
  *                            not proof of a fix);
  *   EFFECTIVE_CONFIRMED    — a technician confirmed the repair by a test, and nothing was reported since.
  */
-export function resolutionState({ resolvedAt, eventsAfter, staysAfter, confirmedAt = null, stays = 2 }) {
+export function resolutionState({ resolvedAt, eventsAfter, staysAfter, confirmedAt = null, stays = 2, measured = null, evidenceUnavailable = false }) {
   if (!resolvedAt) return { state: "OPEN_TASK", detail: "η εργασία συντήρησης δεν έχει ολοκληρωθεί" };
+  // v196: without the post-repair records (reports, stays) nothing can be concluded — never «no recurrence».
+  if (evidenceUnavailable) return { state: "DATA_UNAVAILABLE", detail: "τα στοιχεία μετά την επισκευή δεν μπόρεσαν να διαβαστούν — δεν μπορεί να κριθεί" };
   if (eventsAfter > 0) return { state: "RECURRED", detail: `το ίδιο πρόβλημα αναφέρθηκε ξανά ${eventsAfter} φορ${eventsAfter === 1 ? "ά" : "ές"} μετά την επισκευή — η παρέμβαση δεν το έλυσε` };
+  // v196: a measurement that shows the problem persists outranks the absence of complaints.
+  if (measured?.state === "MEASURED_NOT_RECOVERED") return { state: "MEASURED_NOT_RECOVERED", detail: `καμία αναφορά, αλλά οι μετρήσεις δείχνουν ότι το πρόβλημα παραμένει: ${measured.detail}` };
+  if (confirmedAt && measured?.state === "MEASURED_RECOVERED") return { state: "EFFECTIVE_CONFIRMED", detail: `επιβεβαιώθηκε από τεχνικό και από μετρήσεις (${measured.detail}) · ${staysAfter} διαμονές χωρίς αναφορά` };
   if (confirmedAt) return { state: "EFFECTIVE_CONFIRMED", detail: `επιβεβαιώθηκε από τεχνικό · ${staysAfter} διαμονές από τότε χωρίς αναφορά` };
-  if (staysAfter >= stays) return { state: "NO_RECURRENCE_OBSERVED", detail: `${staysAfter} διαμονές που ξεκίνησαν μετά την επισκευή χωρίς αναφορά — δεν αποδεικνύει τη διόρθωση· χρειάζεται επιβεβαίωση τεχνικού` };
+  if (measured?.state === "MEASURED_RECOVERED") return { state: "MEASURED_RECOVERY", detail: `μετρημένη αποκατάσταση: ${measured.detail} · χρειάζεται ακόμη επιβεβαίωση τεχνικού` };
+  if (staysAfter >= stays) return { state: "NO_RECURRENCE_OBSERVED", detail: `${staysAfter} διαμονές που ξεκίνησαν μετά την επισκευή χωρίς αναφορά — απουσία παραπόνων, όχι μέτρηση· δεν αποδεικνύει τη διόρθωση· χρειάζεται επιβεβαίωση τεχνικού` };
   return { state: "MONITORING", detail: `επισκευάστηκε · ${staysAfter}/${stays} διαμονές μετά την επισκευή χωρίς αναφορά μέχρι τώρα` };
 }
 
+/**
+ * v196 measured outcome of an A/C repair: the room's temperature readings taken AFTER the repair while the room was
+ * occupied (and the A/C on, where a relay tells). Recovered = at least `need` such readings, and at least 80% inside the
+ * hotel's comfort range widened by its hard margin. Readings in the future or invalid are ignored. Other categories
+ * have no measurement (NOT_MEASURABLE) — their outcome rests on reports and the technician.
+ */
+export function measuredOutcome({ category, resolvedAt, readings = [], range, hardMargin = 2, now = Date.now(), need = 3 }) {
+  if (category !== "ac") return { state: "NOT_MEASURABLE", detail: "δεν υπάρχει μέτρηση για αυτή την κατηγορία" };
+  if (!resolvedAt) return { state: "NO_MEASUREMENTS", detail: "η επισκευή δεν έχει ολοκληρωθεί" };
+  const lo = range.min - hardMargin, hi = range.max + hardMargin;
+  const valid = readings.filter((r) => Number.isFinite(Number(r.temp)) && r.temp !== null && Number(r.readAt) > resolvedAt && Number(r.readAt) <= now + 2 * 60_000 && r.occupied && r.acOn !== false);
+  if (valid.length < need) return { state: "NO_MEASUREMENTS", detail: `${valid.length}/${need} μετρήσεις με κατειλημμένο δωμάτιο μετά την επισκευή — δεν αρκούν για κρίση`, readings: valid.length };
+  const inside = valid.filter((r) => Number(r.temp) >= lo && Number(r.temp) <= hi).length;
+  const share = inside / valid.length;
+  const worst = valid.reduce((w, r) => (Math.abs(Number(r.temp) - (range.min + range.max) / 2) > Math.abs(Number(w.temp) - (range.min + range.max) / 2) ? r : w), valid[0]);
+  const detail = `${inside}/${valid.length} μετρήσεις εντός ${lo}–${hi} °C (χειρότερη ${Number(worst.temp)} °C)`;
+  return share >= 0.8 ? { state: "MEASURED_RECOVERED", detail, readings: valid.length } : { state: "MEASURED_NOT_RECOVERED", detail, readings: valid.length };
+}
+
 /** Every resolution case with its state — independent of whether its finding is still detected. */
-export async function resolutionCases({ pool, owner }) {
+export async function resolutionCases({ pool, owner, now = Date.now(), onUnavailable = () => {} }) {
   const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
-  const cases = await q(`SELECT c.*,r.code,m.status m_status,m.resolved_at FROM resolution_cases c JOIN rooms r ON r.owner_id=c.owner_id AND r.id=c.room_id LEFT JOIN maintenance_notices m ON m.owner_id=c.owner_id AND m.id=c.maintenance_id WHERE c.owner_id=$1 AND c.closed_at IS NULL ORDER BY c.opened_at DESC LIMIT 100`, [owner]).catch(() => []);
-  if (!cases.length) return [];
+  const missing = new Set();
+  const soft = (source, sql, p) => q(sql, p).catch((e) => { missing.add(source); onUnavailable(reportDataUnavailable("resolution_cases", source, e, now)); return null; });
+  const cases = await soft("cases", `SELECT c.*,r.code,m.status m_status,m.resolved_at FROM resolution_cases c JOIN rooms r ON r.owner_id=c.owner_id AND r.id=c.room_id LEFT JOIN maintenance_notices m ON m.owner_id=c.owner_id AND m.id=c.maintenance_id WHERE c.owner_id=$1 AND c.closed_at IS NULL ORDER BY c.opened_at DESC LIMIT 100`, [owner]);
+  if (!cases?.length) return [];
   const roomIds = [...new Set(cases.map((c) => Number(c.room_id)))];
   const since = Math.min(...cases.map((c) => Number(c.resolved_at ?? c.opened_at)));
-  const [reqs, faults, stays] = await Promise.all([
-    q(`SELECT room_id,details_json,created_at FROM tv_requests WHERE owner_id=$1 AND kind='problem' AND room_id=ANY($2::bigint[]) AND created_at>=$3`, [owner, roomIds, since]).catch(() => []),
-    q(`SELECT room_id,description,reported_at FROM maintenance_notices WHERE owner_id=$1 AND room_id=ANY($2::bigint[]) AND reported_at>=$3 AND description NOT LIKE '[Ανάλυση αιτιών]%'`, [owner, roomIds, since]).catch(() => []),
-    q(`SELECT room_id,checked_in_at FROM bookings WHERE owner_id=$1 AND room_id=ANY($2::bigint[]) AND status='checked_out' AND checked_in_at>=$3`, [owner, roomIds, since]),
+  const [reqs, faults, stays, readings, policyRow] = await Promise.all([
+    soft("tv_requests", `SELECT room_id,details_json,created_at FROM tv_requests WHERE owner_id=$1 AND kind='problem' AND room_id=ANY($2::bigint[]) AND created_at>=$3`, [owner, roomIds, since]),
+    soft("maintenance", `SELECT room_id,description,reported_at FROM maintenance_notices WHERE owner_id=$1 AND room_id=ANY($2::bigint[]) AND reported_at>=$3 AND description NOT LIKE '[Ανάλυση αιτιών]%'`, [owner, roomIds, since]),
+    soft("stays", `SELECT room_id,checked_in_at FROM bookings WHERE owner_id=$1 AND room_id=ANY($2::bigint[]) AND status='checked_out' AND checked_in_at>=$3`, [owner, roomIds, since]),
+    cases.some((c) => c.category === "ac") ? soft("climate_readings", `SELECT room_id,temp,occupied,ac_on,read_at FROM climate_readings WHERE owner_id=$1 AND room_id=ANY($2::bigint[]) AND read_at>=$3 ORDER BY read_at`, [owner, roomIds, since]) : Promise.resolve([]),
+    soft("policy", `SELECT settings_json FROM comfort_policies WHERE owner_id=$1`, [owner]),
   ]);
+  const policy = normalizePolicy(policyRow?.[0]?.settings_json ?? null);
   const events = [
-    ...reqs.map((x) => { let d = {}; try { d = (typeof x.details_json === "object" ? x.details_json : JSON.parse(String(x.details_json ?? "{}"))) ?? {}; } catch { d = {}; } return { roomId: Number(x.room_id), category: PROBLEM_LABELS[d.problem] ? d.problem : "other", at: Number(x.created_at) }; }),
-    ...faults.map((x) => ({ roomId: Number(x.room_id), category: categorize(x.description), at: Number(x.reported_at) })),
+    ...(reqs ?? []).map((x) => { let d = {}; try { d = (typeof x.details_json === "object" ? x.details_json : JSON.parse(String(x.details_json ?? "{}"))) ?? {}; } catch { d = {}; } return { roomId: Number(x.room_id), category: PROBLEM_LABELS[d.problem] ? d.problem : "other", at: Number(x.created_at) }; }),
+    ...(faults ?? []).map((x) => ({ roomId: Number(x.room_id), category: categorize(x.description), at: Number(x.reported_at) })),
   ];
+  const evidenceUnavailable = missing.has("tv_requests") || missing.has("maintenance") || missing.has("stays");
   return cases.map((c) => {
     const resolvedAt = c.m_status === "resolved" && c.resolved_at ? Number(c.resolved_at) : null;
     const rid = Number(c.room_id);
     const eventsAfter = resolvedAt ? events.filter((e) => e.roomId === rid && e.category === c.category && e.at > resolvedAt).length : 0;
     // Only stays that STARTED after the repair (a stay begun before it says nothing about the repair).
-    const staysAfter = resolvedAt ? stays.filter((b) => Number(b.room_id) === rid && Number(b.checked_in_at) > resolvedAt).length : 0;
-    const res = resolutionState({ resolvedAt, eventsAfter, staysAfter, confirmedAt: c.technician_confirmed_at ? Number(c.technician_confirmed_at) : null });
-    return { id: Number(c.id), findingKey: String(c.finding_key), roomId: rid, code: String(c.code), category: String(c.category), title: String(c.title), maintenanceId: Number(c.maintenance_id), openedAt: Number(c.opened_at), resolvedAt, confirmedAt: c.technician_confirmed_at ? Number(c.technician_confirmed_at) : null, confirmedBy: c.technician_confirmed_by ? String(c.technician_confirmed_by) : null, note: String(c.technician_note ?? ""), ...res };
+    const staysAfter = resolvedAt ? (stays ?? []).filter((b) => Number(b.room_id) === rid && Number(b.checked_in_at) > resolvedAt).length : 0;
+    const measured = missing.has("climate_readings") && c.category === "ac"
+      ? { state: "DATA_UNAVAILABLE", detail: "οι μετρήσεις θερμοκρασίας δεν μπόρεσαν να διαβαστούν" }
+      : measuredOutcome({ category: String(c.category), resolvedAt, now, range: rangeFor(policy, rid, now), hardMargin: policy.hardMargin, readings: (readings ?? []).filter((r) => Number(r.room_id) === rid).map((r) => ({ temp: r.temp === null ? null : Number(r.temp), occupied: Number(r.occupied) === 1, acOn: r.ac_on === null ? null : Number(r.ac_on) === 1, readAt: Number(r.read_at) })) });
+    const res = resolutionState({ resolvedAt, eventsAfter, staysAfter, confirmedAt: c.technician_confirmed_at ? Number(c.technician_confirmed_at) : null, measured, evidenceUnavailable });
+    return { id: Number(c.id), findingKey: String(c.finding_key), roomId: rid, code: String(c.code), category: String(c.category), title: String(c.title), maintenanceId: Number(c.maintenance_id), openedAt: Number(c.opened_at), resolvedAt, confirmedAt: c.technician_confirmed_at ? Number(c.technician_confirmed_at) : null, confirmedBy: c.technician_confirmed_by ? String(c.technician_confirmed_by) : null, note: String(c.technician_note ?? ""), measured, ...res };
   });
 }
 

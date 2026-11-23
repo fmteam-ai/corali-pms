@@ -4,6 +4,7 @@
 // evidence, and says plainly when a signal is unknown (no sensor, no recent reading) instead of guessing.
 const MIN = 60_000, HOUR = 60 * MIN;
 export const COMFORT_RANGE = { min: 20, max: 26, hardMin: 18, hardMax: 28, humidMax: 70 };
+import { reportDataUnavailable } from "./data-availability.mjs";
 
 /**
  * v194 adaptive comfort policy (PMS → Εμπειρία πελάτη → Άνεση → Όρια): a range for the cooling season and one for the
@@ -89,42 +90,51 @@ export function scoreRoom(f, now = Date.now(), policy = normalizePolicy(null)) {
   return { score, level: score >= 80 ? "ok" : score >= 50 ? "attention" : "act", signals: signals.sort((a, b) => b.penalty - a.penalty), unknown, sensor, roomTemp, setpoint };
 }
 
+const SOURCE_LABEL = { climate: "Θερμοκρασία", requests: "Αιτήματα", orders: "Παραγγελίες", faults: "Βλάβες", tv: "Τηλεόραση", wifi: "Wi-Fi" };
+
 /** Every occupied room now, worst first. */
 export async function comfortBoard({ pool, owner, now = Date.now() }) {
   const q = (sql, p = [owner]) => pool.query(sql, p).then((r) => r.rows);
-  const policy = normalizePolicy((await q(`SELECT settings_json FROM comfort_policies WHERE owner_id=$1`).catch(() => []))[0]?.settings_json ?? null);
+  // v196: a source that cannot be read is DATA_UNAVAILABLE (logged, shown per room as «άγνωστο»), never «nothing».
+  const unavailable = [];
+  const soft = (source, sql, p, empty = null) => q(sql, p).catch((e) => { unavailable.push(reportDataUnavailable("comfort", source, e, now)); return empty; });
+  const policy = normalizePolicy((await soft("policy", `SELECT settings_json FROM comfort_policies WHERE owner_id=$1`, undefined, []))[0]?.settings_json ?? null);
   const [rooms, climate, requests, orders, faults, tvs, wifi, wifiUsed] = await Promise.all([
     q(`SELECT r.id room_id,r.code,b.id booking_id,b.reference,b.guest_name,b.check_out FROM bookings b JOIN rooms r ON r.owner_id=b.owner_id AND r.id=b.room_id WHERE b.owner_id=$1 AND b.status='checked_in' ORDER BY r.code`),
-    q(`SELECT room_id,temp,humidity,battery,read_at FROM room_climate WHERE owner_id=$1 AND device_id<>''`).catch(() => []),
-    q(`SELECT id,room_id,kind,created_at,details_json FROM tv_requests WHERE owner_id=$1 AND status='open' AND created_at>$2::bigint-3*86400000`, [owner, now]).catch(() => []),
-    q(`SELECT o.id,o.booking_id,o.title_el,o.created_at FROM department_orders o WHERE o.owner_id=$1 AND o.status NOT IN ('done','cancelled') AND o.created_at>$2::bigint-2*86400000`, [owner, now]).catch(() => []),
-    q(`SELECT id,room_id,severity,description,reported_at FROM maintenance_notices WHERE owner_id=$1 AND status='open'`).catch(() => []),
-    q(`SELECT room_id,last_seen_at FROM tv_screens WHERE owner_id=$1 AND active=1`).catch(() => []),
-    q(`SELECT booking_id,status,error FROM guest_wifi WHERE owner_id=$1`).catch(() => []),
-    q(`SELECT EXISTS(SELECT 1 FROM guest_wifi WHERE owner_id=$1) used`).then((r) => Boolean(r[0]?.used)).catch(() => false),
+    soft("climate", `SELECT room_id,temp,humidity,battery,read_at FROM room_climate WHERE owner_id=$1 AND device_id<>''`),
+    soft("requests", `SELECT id,room_id,kind,created_at,details_json FROM tv_requests WHERE owner_id=$1 AND status='open' AND created_at>$2::bigint-3*86400000`, [owner, now]),
+    soft("orders", `SELECT o.id,o.booking_id,o.title_el,o.created_at FROM department_orders o WHERE o.owner_id=$1 AND o.status NOT IN ('done','cancelled') AND o.created_at>$2::bigint-2*86400000`, [owner, now]),
+    soft("faults", `SELECT id,room_id,severity,description,reported_at FROM maintenance_notices WHERE owner_id=$1 AND status='open'`),
+    soft("tv", `SELECT room_id,last_seen_at FROM tv_screens WHERE owner_id=$1 AND active=1`),
+    soft("wifi", `SELECT booking_id,status,error FROM guest_wifi WHERE owner_id=$1`),
+    soft("wifi", `SELECT EXISTS(SELECT 1 FROM guest_wifi WHERE owner_id=$1) used`).then((r) => (r === null ? null : Boolean(r[0]?.used))),
   ]);
   const labels = { cleaning: "Καθαρισμός", towels: "Πετσέτες", pillows: "Μαξιλάρια", blankets: "Κουβέρτες", toiletries: "Είδη μπάνιου", call_me: "Να τον καλέσουν", taxi: "Ταξί / transfer" };
   const problems = { wifi: "Wi-Fi", tv: "Τηλεόραση", ac: "Κλιματιστικό", electrical: "Ρεύμα", lighting: "Φωτισμός", hot_water: "Ζεστό νερό", water_leak: "Διαρροή νερού", door_lock: "Πόρτα / κλειδαριά", safe: "Χρηματοκιβώτιο", other: "Άλλο" };
   const out = rooms.map((r) => {
-    const c = climate.find((x) => Number(x.room_id) === Number(r.room_id));
-    const reqs = requests.filter((x) => Number(x.room_id) === Number(r.room_id) && !["dnd_on", "dnd_off", "instay_good"].includes(x.kind)).map((x) => {
+    const c = (climate ?? []).find((x) => Number(x.room_id) === Number(r.room_id));
+    const reqs = (requests ?? []).filter((x) => Number(x.room_id) === Number(r.room_id) && !["dnd_on", "dnd_off", "instay_good"].includes(x.kind)).map((x) => {
       let d = {}; try { d = (typeof x.details_json === "object" ? x.details_json : JSON.parse(String(x.details_json ?? "{}"))) ?? {}; } catch { d = {}; }
       return { id: Number(x.id), kind: x.kind, problem: d.problem, createdAt: Number(x.created_at), label: x.kind === "problem" ? `Πρόβλημα: ${problems[d.problem] ?? d.problem ?? "—"}` : labels[x.kind] ?? x.kind };
     });
-    const tv = tvs.find((x) => Number(x.room_id) === Number(r.room_id));
+    const tv = (tvs ?? []).find((x) => Number(x.room_id) === Number(r.room_id));
     const facts = {
       roomId: Number(r.room_id),
       climate: c ? { temp: reading(c.temp), humidity: reading(c.humidity), battery: reading(c.battery), readAt: reading(c.read_at) } : null,
       requests: reqs,
-      orders: orders.filter((x) => Number(x.booking_id) === Number(r.booking_id)).map((x) => ({ id: Number(x.id), title: String(x.title_el), createdAt: Number(x.created_at) })),
-      faults: faults.filter((x) => Number(x.room_id) === Number(r.room_id)).map((x) => ({ id: Number(x.id), severity: x.severity, description: String(x.description), reportedAt: Number(x.reported_at) })),
+      orders: (orders ?? []).filter((x) => Number(x.booking_id) === Number(r.booking_id)).map((x) => ({ id: Number(x.id), title: String(x.title_el), createdAt: Number(x.created_at) })),
+      faults: (faults ?? []).filter((x) => Number(x.room_id) === Number(r.room_id)).map((x) => ({ id: Number(x.id), severity: x.severity, description: String(x.description), reportedAt: Number(x.reported_at) })),
       tv: tv ? { lastSeenAt: tv.last_seen_at ? Number(tv.last_seen_at) : null } : null,
-      wifiUsed, wifi: wifi.find((x) => Number(x.booking_id) === Number(r.booking_id)) ?? null,
+      wifiUsed: Boolean(wifiUsed), wifi: (wifi ?? []).find((x) => Number(x.booking_id) === Number(r.booking_id)) ?? null,
     };
-    return { roomId: Number(r.room_id), code: String(r.code), bookingId: Number(r.booking_id), reference: String(r.reference), guest: String(r.guest_name ?? "").split(" ")[0], checkOut: String(r.check_out), range: rangeFor(policy, r.room_id, now), ...scoreRoom(facts, now, policy) };
+    const scored = scoreRoom(facts, now, policy);
+    // A score computed without some of its sources is marked: those signals are «άγνωστο (DATA_UNAVAILABLE)».
+    const missing = [...new Set(unavailable.map((u) => u.source))].filter((s) => s !== "policy");
+    for (const m of missing) scored.unknown.push({ key: `data:${m}`, label: SOURCE_LABEL[m] ?? m, detail: "DATA_UNAVAILABLE — τα στοιχεία δεν μπόρεσαν να διαβαστούν" });
+    return { roomId: Number(r.room_id), code: String(r.code), bookingId: Number(r.booking_id), reference: String(r.reference), guest: String(r.guest_name ?? "").split(" ")[0], checkOut: String(r.check_out), range: rangeFor(policy, r.room_id, now), ...scored, complete: missing.length === 0 };
   });
   out.sort((a, b) => a.score - b.score || a.code.localeCompare(b.code));
-  return { at: now, policy, rooms: out, summary: { rooms: out.length, act: out.filter((r) => r.level === "act").length, attention: out.filter((r) => r.level === "attention").length, ok: out.filter((r) => r.level === "ok").length } };
+  return { at: now, policy, rooms: out, dataUnavailable: unavailable, summary: { rooms: out.length, act: out.filter((r) => r.level === "act").length, attention: out.filter((r) => r.level === "attention").length, ok: out.filter((r) => r.level === "ok").length } };
 }
 
 /** Saves the hotel's comfort policy (normalised; invalid values fall back to the defaults). */

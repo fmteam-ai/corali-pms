@@ -12,6 +12,7 @@ import { heartbeatState } from "./job-control-core.mjs";
 import { alertDeliveryIssues } from "./alert-core.mjs";
 import { otaReconcile, queueOtaResync } from "./ota-reconcile-core.mjs";
 import { turnoverBoard } from "./turnover-core.mjs";
+import { reportDataUnavailable, recentDataUnavailable } from "./data-availability.mjs";
 
 export const AREAS = [
   { key: "channel", el: "Booking & Channel Manager", en: "Booking & Channel Manager" },
@@ -191,7 +192,11 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
 
   // v193 room turnover: a room with a step that failed after check-out (Wi-Fi still active, TV not cleared, cleaning
   // rejected, serious fault); critical when the next guest arrives today.
-  const turn = await turnoverBoard({ pool, owner, now, days: 3 }).catch(() => ({ turnovers: [] }));
+  // v196: a board that cannot be built, or a source it could not read, is reported — never shown as «all good».
+  const turn = await turnoverBoard({ pool, owner, now, days: 3 }).catch((e) => ({ turnovers: [], dataUnavailable: [reportDataUnavailable("turnover", "board", e, now)] }));
+  for (const d of turn.dataUnavailable ?? []) add("turnover", { key: `data-unavailable:turnover:${d.source}`, level: "fail", text: `DATA_UNAVAILABLE: τα στοιχεία «${d.source}» της παράδοσης δωματίων δεν μπόρεσαν να διαβαστούν (${d.cause}) — τα σχετικά βήματα δεν θεωρούνται ολοκληρωμένα ούτε «δεν ισχύει»`, at: now });
+  // Other screens (comfort, root causes, repair follow-up) that hit a read failure in this process recently.
+  for (const d of recentDataUnavailable(now)) if (d.area !== "turnover") add("integrations", { key: `data-unavailable:${d.area}:${d.source}`, level: "warn", text: `DATA_UNAVAILABLE: «${d.area}/${d.source}» δεν μπόρεσε να διαβαστεί (${d.cause}) ${ago(now, d.at)} πριν — η οθόνη το δείχνει ως μη διαθέσιμο`, at: d.at });
   const todayAthens = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now));
   for (const x of turn.turnovers) {
     // v194 dynamic readiness: a room confirmed ready that is no longer ready now (new serious fault, reversed inspection).
@@ -199,7 +204,11 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
     const soon = ["urgent", "overdue"].includes(x.current.urgency);
     const eta = x.current.minutesToArrival === null ? "" : x.current.minutesToArrival <= 0 ? " — ο πελάτης αναμένεται ΗΔΗ" : ` — άφιξη σε ${Math.floor(x.current.minutesToArrival / 60)}ώ ${x.current.minutesToArrival % 60}′`;
     if (!x.regressed && x.status !== "verified" && x.current.state === "not_ready" && soon) { add("turnover", { key: `turnover-soon:${x.bookingId}`, level: "fail", text: `Δωμάτιο ${x.code} δεν είναι έτοιμο${eta} (${x.current.nextReference ?? "επόμενη κράτηση"}): ${x.current.detail.slice(0, 160)}`, link: "/pms/guest-experience?tab=turnover", at: now }); continue; }
+    // v196 predictive readiness: warn before the arrival when the forecast says the room will not make it.
+    const fc = x.current.forecast;
+    if (!soon && fc && fc.risk === "late") add("turnover", { key: `turnover-forecast:${x.bookingId}`, level: "warn", text: `Δωμάτιο ${x.code}: πρόβλεψη ετοιμότητας ${hhmm(fc.predictedReadyAt)} — ${-fc.spareMinutes}′ μετά την αναμενόμενη άφιξη (${x.current.nextReference ?? "επόμενη κράτηση"}) · ${fc.stage} · ${fc.basis === "history" ? "βάσει ιστορικού 30 ημερών" : "βάσει προεπιλεγμένων χρόνων"}`, link: "/pms/guest-experience?tab=turnover", at: now });
     if (x.regressed) { add("turnover", { key: `turnover-regressed:${x.bookingId}`, level: soon || (x.nextArrival && x.nextArrival <= todayAthens) ? "fail" : "warn", text: `Δωμάτιο ${x.code}: επιβεβαιώθηκε έτοιμο ${hhmm(x.verifiedAt)} αλλά ΤΩΡΑ δεν είναι — ${x.current.detail.slice(0, 180)}${eta}`, link: "/pms/guest-experience?tab=turnover", at: now }); continue; }
+    if (x.status === "data_unavailable") continue; // reported once above, per source
     if (x.status !== "failed") continue;
     const failedSteps = Object.entries(x.steps).filter(([, v]) => v.state === "failed").map(([k, v]) => `${k}: ${v.detail}`).join(" · ");
     add("turnover", { key: `turnover:${x.bookingId}`, level: x.nextArrival && x.nextArrival <= todayAthens ? "fail" : "warn", text: `Δωμάτιο ${x.code} μετά το check-out ${x.reference}${x.nextArrival ? ` (επόμενη άφιξη ${x.nextArrival})` : ""}: ${failedSteps.slice(0, 200)}`, link: "/pms/guest-experience?tab=turnover", at: Number(x.checkoutAt) });

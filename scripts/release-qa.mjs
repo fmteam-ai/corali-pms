@@ -8,7 +8,7 @@
 //   node scripts/release-qa.mjs corali-pms-cpanel-v187-root.tar.gz v187 [output-dir]
 //
 // PostgreSQL: QA_DATABASE_URL (an empty database), or the local PostgreSQL binaries (a temporary cluster).
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync as spawnSyncRaw } from "node:child_process";
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import http from "node:http";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, chownSync } from "node:fs";
@@ -26,6 +26,7 @@ const Stripe = require("stripe");
 const owner = "hotel-corali";
 const work = `/var/tmp/corali-qa-${randomBytes(4).toString("hex")}`;
 const results = [], started = Date.now(), children = [];
+let testTap = "";
 const rnd = (n = 32, enc = "hex") => randomBytes(n).toString(enc);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const must = (cond, msg) => { if (!cond) throw Error(msg); };
@@ -33,10 +34,25 @@ const athens = (ms = Date.now()) => Object.fromEntries(new Intl.DateTimeFormat("
 const today = (() => { const p = athens(); return `${p.year}-${p.month}-${p.day}`; })();
 const addDays = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
+// v196 evidence logs: every flow keeps its own log (start/end, each command it ran with exit code and output tail,
+// the error with its stack); the applications' output and the full TAP of the tests are kept too. Written to
+// <output-dir>/qa-logs-<version>/ and shipped as a separate archive with the reproduction instructions. Secrets of the
+// temporary environment (keys, passwords) are masked.
+const flowLogs = new Map(); let currentFlow = "setup";
+const secrets = new Set();
+const mask = (t) => { let x = String(t); for (const v of secrets) if (v && v.length >= 8) x = x.split(v).join("«masked»"); return x.replace(/(postgres(?:ql)?:\/\/[^:/\s]+:)[^@\s]+@/g, "$1«masked»@"); };
+const log = (line) => { const k = currentFlow; if (!flowLogs.has(k)) flowLogs.set(k, []); flowLogs.get(k).push(`${new Date().toISOString()} ${mask(line)}`); };
+const tail = (t, n = 4000) => { const x = String(t ?? ""); return x.length > n ? `…${x.slice(-n)}` : x; };
+function spawnSync(cmd, args = [], opts = {}) {
+  const t0 = Date.now(), r = spawnSyncRaw(cmd, args, opts);
+  log(`$ ${path.basename(String(cmd))} ${args.map((a) => String(a).replace(/^--env-file=.*/, "--env-file=…")).join(" ")}\n  → exit ${r.status}${r.signal ? ` (${r.signal})` : ""} in ${Date.now() - t0} ms${r.stdout ? `\n  stdout: ${tail(r.stdout)}` : ""}${r.stderr ? `\n  stderr: ${tail(r.stderr)}` : ""}`);
+  return r;
+}
 async function flow(id, name, fn) {
-  const t0 = Date.now();
-  try { const detail = await fn(); results.push({ id, name, status: "PASS", detail: String(detail ?? ""), ms: Date.now() - t0 }); console.log(`PASS ${id} ${name}`); }
-  catch (e) { results.push({ id, name, status: "FAIL", detail: e instanceof Error ? e.message : String(e), ms: Date.now() - t0 }); console.log(`FAIL ${id} ${name}: ${e instanceof Error ? e.message : e}`); }
+  const t0 = Date.now(); currentFlow = id; log(`START ${id} ${name}`);
+  try { const detail = await fn(); results.push({ id, name, status: "PASS", detail: String(detail ?? ""), ms: Date.now() - t0 }); log(`PASS (${Date.now() - t0} ms): ${detail ?? ""}`); console.log(`PASS ${id} ${name}`); }
+  catch (e) { results.push({ id, name, status: "FAIL", detail: e instanceof Error ? e.message : String(e), ms: Date.now() - t0 }); log(`FAIL (${Date.now() - t0} ms): ${e instanceof Error ? e.stack : e}`); console.log(`FAIL ${id} ${name}: ${e instanceof Error ? e.message : e}`); }
+  finally { currentFlow = "teardown"; }
 }
 
 // ── PostgreSQL ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -85,14 +101,17 @@ function stage(role) {
   return dir;
 }
 const documentKey = rnd(32, "base64");
+secrets.add(documentKey);
+const appLogs = [];
 async function startApp(dir) {
   const port = await freePort();
   const envLines = Object.fromEntries(readFileSync(path.join(dir, "runtime.env"), "utf8").split("\n").filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]));
+  for (const [k, v] of Object.entries(envLines)) if (/SECRET|KEY|PASSWORD|TOKEN|DATABASE_URL/.test(k)) secrets.add(v);
   const child = spawn(process.execPath, ["app.js"], { cwd: dir, env: { ...process.env, ...envLines, PORT: String(port), HOSTNAME: "127.0.0.1" }, stdio: ["ignore", "pipe", "pipe"] });
-  let log = ""; child.stdout.on("data", (d) => { log += d; }); child.stderr.on("data", (d) => { log += d; });
-  children.push(child);
-  for (let i = 0; i < 120; i++) { try { const r = await fetch(`http://127.0.0.1:${port}/api/health`); if (r.ok) return { url: `http://127.0.0.1:${port}`, log: () => log }; } catch { /* starting */ } await sleep(250); }
-  throw Error(`application did not start: ${log.slice(-400)}`);
+  let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+  children.push(child); appLogs.push({ name: path.basename(dir), get: () => out });
+  for (let i = 0; i < 120; i++) { try { const r = await fetch(`http://127.0.0.1:${port}/api/health`); if (r.ok) return { url: `http://127.0.0.1:${port}`, log: () => out }; } catch { /* starting */ } await sleep(250); }
+  throw Error(`application did not start: ${out.slice(-400)}`);
 }
 
 // ── run ─────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -503,6 +522,7 @@ try {
   await flow("F11", "Αυτόματα tests του κώδικα (unit / integration)", async () => {
     const files = readdirSync(path.join(project, "tests")).filter((f) => f.endsWith(".test.ts")).map((f) => path.join("tests", f));
     const r = spawnSync(process.execPath, ["--experimental-strip-types", "--test", "--test-reporter=tap", ...files], { cwd: project, encoding: "utf8", timeout: 600_000, maxBuffer: 64 * 1024 * 1024 });
+    testTap = r.stdout + (r.stderr ? `\n# stderr\n${r.stderr}` : "");
     const n = (k) => Number((r.stdout.match(new RegExp(`^# ${k} (\\d+)`, "m")) ?? [])[1] ?? NaN);
     must(n("fail") === 0 && n("pass") > 0, `pass ${n("pass")}, fail ${n("fail")}: ${(r.stdout.match(/^not ok .*/gm) ?? []).slice(0, 5).join(" | ")}`);
     return `${n("pass")}/${n("tests")} PASS`;
@@ -548,6 +568,22 @@ const md = [
 mkdirSync(outDir, { recursive: true });
 writeFileSync(path.join(outDir, `QA-REPORT-${version}.md`), md);
 writeFileSync(path.join(outDir, `qa-report-${version}.json`), JSON.stringify(report, null, 2));
+// v196 evidence logs (see the top of the file).
+const logDir = path.join(outDir, `qa-logs-${version}`);
+rmSync(logDir, { recursive: true, force: true }); mkdirSync(logDir, { recursive: true });
+for (const [k, lines] of flowLogs) writeFileSync(path.join(logDir, `${k}.log`), `${lines.join("\n")}\n`);
+for (const a of appLogs) writeFileSync(path.join(logDir, `app-${a.name}.log`), mask(a.get()));
+if (testTap) writeFileSync(path.join(logDir, "tests.tap"), mask(testTap));
+writeFileSync(path.join(logDir, "sandbox.json"), JSON.stringify(sandbox, null, 2));
+writeFileSync(path.join(logDir, "REPRODUCE.md"), [
+  `# Αναπαραγωγή του ελέγχου ${version}`, "",
+  `Πακέτο \`${report.package.file}\` (SHA-256 \`${sha}\`) · commit \`${commit}\` · Node ${process.version} · ${report.database}.`, "",
+  "Από τον πηγαίο κώδικα (corali-pms-source-*.tar.gz) σε μηχάνημα με Node 22+, pnpm και PostgreSQL 16+ (ή QA_DATABASE_URL προς άδεια βάση):", "",
+  "```bash", "pnpm install --frozen-lockfile", "pnpm test            # → tests.tap", `bash scripts/package-cpanel.sh   # χτίζει το πακέτο και τρέχει: node scripts/release-qa.mjs <πακέτο> ${version} docs/qa`, "```", "",
+  "Μόνο ο έλεγχος σε ήδη χτισμένο πακέτο:", "", "```bash", `node scripts/release-qa.mjs ${report.package.file} ${version} /tmp/qa-out`, "```", "",
+  "Ένα αρχείο `<ροή>.log` ανά κρίσιμη ροή (κάθε εντολή με κωδικό εξόδου και έξοδο, το σφάλμα με stack), `app-*.log` η έξοδος των εφαρμογών, `tests.tap` όλα τα αυτόματα tests, `sandbox.json` οι έλεγχοι παρόχων (NOT RUN χωρίς κλειδιά δοκιμής).",
+  "Κλειδιά και κωδικοί του προσωρινού περιβάλλοντος εμφανίζονται ως «masked».", "",
+].join("\n"));
 rmSync(work, { recursive: true, force: true });
 console.log(`\nQA ${version}: ${report.verdict} — ${path.join(outDir, `QA-REPORT-${version}.md`)}`);
 process.exit(failed ? 1 : 0);
