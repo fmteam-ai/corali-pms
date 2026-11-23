@@ -2914,3 +2914,51 @@ CREATE TABLE IF NOT EXISTS climate_readings (
  read_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_climate_readings_room ON climate_readings(owner_id,room_id,read_at);
+
+-- v198: what the origin lock does when Cloudflare's key stops arriving (see scripts/security-core.mjs).
+ALTER TABLE security_settings ADD COLUMN IF NOT EXISTS edge_stale_policy TEXT NOT NULL DEFAULT 'open_all';
+ALTER TABLE security_settings ADD COLUMN IF NOT EXISTS edge_open_alerted_at BIGINT;
+
+-- v198 Device Compatibility Registry: what is PROVEN per A/C model + Wi-Fi module + app + firmware (never assumed from
+-- the brand), per installed unit, and the evidence of every test (append-only). Levels: DISCOVERED → AUTHENTICATED →
+-- STATUS_READ → COMMAND_CONFIRMED, each proven by its own test. Unit network identifiers (IP / MAC / device id) are
+-- protected diagnostics: shown only to users who manage rooms.
+CREATE TABLE IF NOT EXISTS device_compat_models (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ ac_brand TEXT NOT NULL DEFAULT '',
+ ac_model TEXT NOT NULL DEFAULT '',
+ wifi_module TEXT NOT NULL DEFAULT '',
+ app TEXT NOT NULL DEFAULT '',
+ firmware TEXT NOT NULL DEFAULT '',
+ protocol TEXT NOT NULL DEFAULT '',
+ notes TEXT NOT NULL DEFAULT '',
+ created_at BIGINT NOT NULL,
+ updated_at BIGINT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_device_compat_model ON device_compat_models(owner_id,ac_brand,ac_model,wifi_module,app,firmware);
+CREATE TABLE IF NOT EXISTS device_compat_units (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ unit_key TEXT NOT NULL,
+ model_id BIGINT,
+ room_id BIGINT,
+ label TEXT NOT NULL DEFAULT '',
+ refs_json TEXT NOT NULL DEFAULT '{}',
+ created_at BIGINT NOT NULL,
+ updated_at BIGINT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_device_compat_unit ON device_compat_units(owner_id,unit_key);
+CREATE TABLE IF NOT EXISTS device_compat_evidence (
+ id BIGSERIAL PRIMARY KEY,
+ owner_id TEXT NOT NULL,
+ unit_id BIGINT NOT NULL,
+ level TEXT NOT NULL,
+ result TEXT NOT NULL,
+ method TEXT NOT NULL,
+ detail TEXT NOT NULL DEFAULT '',
+ functions_json TEXT NOT NULL DEFAULT '{}',
+ recorded_by TEXT NOT NULL,
+ at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_device_compat_evidence_unit ON device_compat_evidence(owner_id,unit_id,at);

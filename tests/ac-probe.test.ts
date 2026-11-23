@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -14,13 +14,13 @@ function probe(args: string[]) {
   });
   assert.equal(run.status, 0, run.stderr);
   assert.doesNotMatch(run.stdout + run.stderr, /COMMAND SENT/, "no command reaches an A/C");
-  const text = readFileSync(out, "utf8");
-  return { text, rep: JSON.parse(text), by: Object.fromEntries(JSON.parse(text).devices.map((d: { ip: string }) => [d.ip, d])) };
+  const text = readFileSync(out, "utf8"), shareText = readFileSync(join(dir, "r-share.json"), "utf8");
+  return { text, shareText, mode: statSync(out).mode & 0o777, rep: JSON.parse(text), share: JSON.parse(shareText), by: Object.fromEntries(JSON.parse(text).devices.map((d: { ip: string }) => [d.ip, d])) };
 }
 
 test("v197 AC probe: discovery is not proof — AUTHENTICATED / DISCOVERED_UNVERIFIED / AUTH_FAILED / NETWORK_ERROR / LOCAL_LOCKED", { skip: !py && "python3 not available" }, () => {
   const { rep, by } = probe([]);
-  assert.equal(rep.version, 3);
+  assert.equal(rep.version, 4);
   assert.equal(by["192.168.10.31"].access, "DISCOVERED_UNVERIFIED", "BroadLink answered discovery, no local session tried");
   assert.equal(by["192.168.10.21"].access, "DISCOVERED_UNVERIFIED", "Tuya broadcast, no key");
   assert.equal(by["192.168.10.32"].access, "LOCAL_LOCKED");
@@ -44,4 +44,20 @@ test("v196/v197 AC probe: explicit Tuya target read even when discovery misses i
   // Wrong key (tinytuya Err 914) → AUTH_FAILED; timeout → NETWORK_ERROR.
   assert.equal(probe(["--tuya-id", "x", "--tuya-ip", "192.168.10.21", "--tuya-key", "BADKEY_000"]).by["192.168.10.21"].access, "AUTH_FAILED");
   assert.equal(probe(["--tuya-id", "x", "--tuya-ip", "192.168.10.21", "--tuya-key", "TIMEOUT_000"]).by["192.168.10.21"].access, "NETWORK_ERROR");
+});
+
+test("v198 AC probe: compatibility level per device (DISCOVERED → AUTHENTICATED → STATUS_READ, never COMMAND_CONFIRMED); protected full report, shareable copy without IP/MAC/IDs", { skip: !py && "python3 not available" }, () => {
+  const r = probe(["--broadlink-auth", "--tuya-id", "bf1234567890abcdef", "--tuya-ip", "192.168.10.21", "--tuya-key", "SECRETKEY123"]);
+  assert.equal(r.by["192.168.10.21"].level, "STATUS_READ");
+  assert.equal(r.by["192.168.10.31"].level, "AUTHENTICATED");
+  assert.equal(r.by["192.168.10.33"].level, "DISCOVERED", "a timeout proves nothing beyond discovery");
+  assert.equal(r.by["192.168.10.34"].level, "DISCOVERED");
+  assert.ok(!r.rep.devices.some((d: { level: string }) => d.level === "COMMAND_CONFIRMED"), "the probe sends no command, so it never claims one");
+  assert.match(r.rep.classification, /^PROTECTED_DIAGNOSTICS/);
+  assert.equal(r.mode, 0o600, "the full report is readable by its owner only");
+  // The shareable copy: labels instead of IP / MAC / device id / product key; levels and findings kept.
+  for (const secret of ["192.168.10.", "34:ea:34", "10:d5:61", "bf1234567890abcdef", "keyabc", "SECRETKEY123"]) assert.ok(!r.shareText.includes(secret), secret);
+  assert.match(r.share.classification, /^SHAREABLE/);
+  assert.deepEqual(r.share.devices.map((d: { label: string }) => d.label), r.rep.devices.map((_: unknown, i: number) => `dev-${i + 1}`));
+  assert.deepEqual(r.share.devices.map((d: { level: string }) => d.level), r.rep.devices.map((d: { level: string }) => d.level));
 });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { routeForRole, type ApplicationRole } from "@/lib/app-role";
-import { edgeState, markEdgeSeen, recordSecurityEvent } from "@/lib/security-center";
+import { edgeState, markEdgeSeen, notifyEdgeOpen, recordSecurityEvent } from "@/lib/security-center";
 import { CLIENT_IP_HEADER, EDGE_HEADER, SMOKE_HEADER, edgeDecision, edgeExempt, edgeKeyMatches, pickClientIp, smokeBypass } from "./scripts/security-core.mjs";
 
 function configuredRole(): ApplicationRole {
@@ -21,7 +21,10 @@ export async function proxy(request: NextRequest) {
     const edge = await edgeState();
     const keyOk = edgeKeyMatches(request.headers.get(EDGE_HEADER), edge.hash);
     if (keyOk) void markEdgeSeen();
-    if (edgeDecision({ enforce: edge.enforce, keyOk, lastSeenAt: edge.lastSeenAt, now: Date.now() }) === "block") {
+    const now = Date.now();
+    // v198: locked, but the key stopped arriving (stale) — the owner is told at once, whatever the policy does next.
+    if (edge.enforce && !keyOk && edgeDecision({ enforce: true, keyOk: false, lastSeenAt: edge.lastSeenAt, now }) === "open") void notifyEdgeOpen(edge);
+    if (edgeDecision({ enforce: edge.enforce, keyOk, lastSeenAt: edge.lastSeenAt, now, path, policy: edge.policy }) === "block") {
       void recordSecurityEvent("origin_blocked", ip, path.slice(0, 60));
       return new NextResponse("Forbidden", { status: 403 });
     }

@@ -5,7 +5,9 @@ export declare function pickClientIp(get: (name: string) => string | null | unde
 export declare function newEdgeSecret(rand?: (n: number) => Buffer): string;
 export declare function edgeSecretHash(secret: string): string;
 export declare function edgeKeyMatches(headerValue: string | null | undefined, storedHash: string | null | undefined): boolean;
-export declare function edgeDecision(x: { enforce: boolean; keyOk: boolean; lastSeenAt: number | null; now: number }): "allow" | "block" | "open";
+export declare const EDGE_STALE_POLICIES: string[];
+export declare function isAdminPath(path: string): boolean;
+export declare function edgeDecision(x: { enforce: boolean; keyOk: boolean; lastSeenAt: number | null; now: number; path?: string; policy?: string }): "allow" | "block" | "open";
 export declare function edgeExempt(path: string): boolean;
 export type SecurityEventKind = "origin_blocked" | "rate_limited" | "bad_api_key" | "bad_bridge_token" | "bad_tv_token" | "bad_webhook" | "login_failed";
 export declare const SECURITY_EVENT_KINDS: SecurityEventKind[];

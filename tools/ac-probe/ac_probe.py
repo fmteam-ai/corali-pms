@@ -30,7 +30,7 @@ import subprocess
 import sys
 import time
 
-REPORT_VERSION = 3
+REPORT_VERSION = 4
 
 # Προθέματα MAC (OUI) κατασκευαστών Wi-Fi modules κλιματιστικών / IoT. Ενδεικτικά: ο κατασκευαστής του MODULE, όχι
 # απαραίτητα του κλιματιστικού. Ό,τι δεν είναι στη λίστα δεν καταγράφεται (προστασία στοιχείων πελατών).
@@ -202,6 +202,41 @@ def classify(dev):
     return "CLOUD_ONLY_OR_UNKNOWN", "δεν απαντά σε τοπικό πρωτόκολλο που γνωρίζουμε — πιθανώς μόνο cloud"
 
 
+# v198 compatibility ladder — each level proven by its own test; this probe never sends a command, so it can reach
+# STATUS_READ at most. COMMAND_CONFIRMED is recorded only in the PMS Device Compatibility Registry, after a command
+# test with read-back.
+LEVELS = ["NONE", "DISCOVERED", "AUTHENTICATED", "STATUS_READ"]
+
+
+def compat_level(d):
+    if d.get("tuya_read", {}).get("ok"):
+        return "STATUS_READ"  # a Tuya status read with the local key = authenticated + state read
+    if d.get("access") == "AUTHENTICATED":
+        return "AUTHENTICATED"
+    if d.get("tuya") or d.get("broadlink") or d.get("ports", {}).get("6668"):
+        return "DISCOVERED"
+    return "NONE"
+
+
+def share_report(report):
+    """A copy safe to share: no IP, MAC, device id or product key — each device gets a label (dev-1, dev-2 …)."""
+    out = {k: v for k, v in report.items() if k not in ("devices", "probe_id")}
+    out["classification"] = "SHAREABLE — χωρίς IP, MAC και αναγνωριστικά συσκευών"
+    out["devices"] = []
+    for i, d in enumerate(report["devices"], 1):
+        x = {"label": f"dev-{i}", "module_vendor": d.get("module_vendor"), "access": d["access"], "level": d["level"],
+             "access_reason": d["access_reason"], "requested": d.get("requested", False)}
+        if d.get("tuya"):
+            x["tuya"] = {"version": d["tuya"].get("version"), "encrypted": d["tuya"].get("encrypted")}
+        if d.get("broadlink"):
+            x["broadlink"] = {k: d["broadlink"][k] for k in ("devtype", "model", "manufacturer", "locked")}
+        r = d.get("tuya_read")
+        if r:
+            x["tuya_read"] = {"ok": r["ok"], "result": r.get("result"), "candidates": r.get("candidates"), "dp_ids": sorted((r.get("dps") or {}).keys())}
+        out["devices"].append(x)
+    return out
+
+
 def build_report(a, neighbors, neigh_error, tuya, bl, now=None):
     devices = {}
     for n in neighbors:
@@ -231,6 +266,7 @@ def build_report(a, neighbors, neigh_error, tuya, bl, now=None):
         if a.tuya_id and a.tuya_ip == ip and a.tuya_key:
             d["tuya_read"] = read_tuya(a.tuya_id, a.tuya_ip, a.tuya_key, a.tuya_version)
         d["access"], d["access_reason"] = classify(d)
+        d["level"] = compat_level(d)
     listed = sorted(devices.values(), key=lambda x: tuple(int(p) for p in x["ip"].split(".")))
     summary = {}
     for d in listed:
@@ -247,6 +283,8 @@ def build_report(a, neighbors, neigh_error, tuya, bl, now=None):
         "broadlink": {k: v for k, v in bl.items() if k != "devices"},
         "devices": listed, "summary": summary,
         "privacy": "χωρίς κωδικούς, local keys, όνομα δικτύου, όνομα υπολογιστή ή συσκευές πελατών",
+        "classification": "PROTECTED_DIAGNOSTICS — περιέχει IP, MAC και τεχνικά αναγνωριστικά: μόνο σε προστατευμένο χώρο διαγνωστικών· για κοινή χρήση το αρχείο -share.json",
+        "levels": {"order": LEVELS[1:] + ["COMMAND_CONFIRMED"], "note": "το εργαλείο δεν στέλνει εντολές — το COMMAND_CONFIRMED καταγράφεται μόνο μετά από δοκιμή εντολής με επαλήθευση στο PMS"},
     }
 
 
@@ -275,12 +313,20 @@ def main(argv=None):
     neighbors, neigh_error = read_neighbors(a.neigh_file)
     tuya, bl = scan_tuya(a.seconds), scan_broadlink(min(a.seconds, 10))
     report = build_report(a, neighbors, neigh_error, tuya, bl)
+    share = share_report(report)
     redaction_check(report, [a.tuya_key])
-    with open(a.out, "w", encoding="utf-8") as f:
+    redaction_check(share, [a.tuya_key] + [d["ip"] for d in report["devices"]] + [d.get("mac") for d in report["devices"]]
+                    + [(d.get("tuya") or {}).get("device_id") for d in report["devices"]] + [(d.get("tuya") or {}).get("product_key") for d in report["devices"]] + [a.tuya_id])
+    # The full report is protected diagnostics: readable by the owner of the file only.
+    fd = os.open(a.out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
+    share_path = (a.out[:-5] if a.out.endswith(".json") else a.out) + "-share.json"
+    with open(share_path, "w", encoding="utf-8") as f:
+        json.dump(share, f, ensure_ascii=False, indent=2)
     print(f"Συσκευές IoT που βρέθηκαν: {len(report['devices'])} (άλλες συσκευές στο δίκτυο, χωρίς καταγραφή: {report['neighbors']['not_listed']})")
     for d in report["devices"]:
-        print(f"  {d['ip']:15} {d.get('mac') or '—':17} {d.get('module_vendor') or '—':22} {d['access']:22} {d['access_reason']}")
+        print(f"  {d['ip']:15} {d.get('mac') or '—':17} {d.get('module_vendor') or '—':22} {d['level']:13} {d['access']:22} {d['access_reason']}")
         r = d.get("tuya_read")
         if r:
             print("     ανάγνωση:", json.dumps(r.get("candidates") if r["ok"] else r["error"], ensure_ascii=False))
@@ -288,7 +334,8 @@ def main(argv=None):
         print("Tuya:", tuya["error"])
     if not bl["ok"]:
         print("BroadLink:", bl["error"])
-    print(f"Αναφορά: {a.out} — δεν περιέχει κλειδιά ή στοιχεία πελατών.")
+    print(f"Πλήρης αναφορά (ΠΡΟΣΤΑΤΕΥΜΕΝΗ — IP/MAC/IDs, μόνο για εισαγωγή στο PMS): {a.out}")
+    print(f"Αναφορά κοινής χρήσης (χωρίς IP/MAC/IDs): {share_path}")
     return 0
 
 

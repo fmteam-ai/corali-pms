@@ -1,25 +1,44 @@
 // v180: PMS → Security center: the Cloudflare origin lock, the counters of suspicious requests and the account checks.
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
-import { edgeDecision, edgeSecretHash, eventHour, eventLabel, newEdgeSecret, type SecurityEventKind } from "../scripts/security-core.mjs";
+import { EDGE_STALE_POLICIES, edgeDecision, edgeSecretHash, eventHour, eventLabel, newEdgeSecret, type SecurityEventKind } from "../scripts/security-core.mjs";
 
-type EdgeState = { hash: string; enforce: boolean; lastSeenAt: number | null };
-const g = globalThis as typeof globalThis & { coraliEdge?: { state: EdgeState; at: number }; coraliEdgeSeen?: number };
+type EdgeState = { hash: string; enforce: boolean; lastSeenAt: number | null; policy: string };
+const g = globalThis as typeof globalThis & { coraliEdge?: { state: EdgeState; at: number }; coraliEdgeSeen?: number; coraliEdgeOpenNotice?: number };
 
 /** The origin-lock state for proxy.ts, read from the database at most every 30 seconds per app process. */
 export async function edgeState(): Promise<EdgeState> {
   const now = Date.now();
   if (g.coraliEdge && now - g.coraliEdge.at < 30_000) return g.coraliEdge.state;
-  let state: EdgeState = { hash: "", enforce: false, lastSeenAt: null };
+  let state: EdgeState = { hash: "", enforce: false, lastSeenAt: null, policy: "open_all" };
   try {
-    const r = (await db().query(`SELECT edge_secret_hash,edge_enforce,edge_last_seen_at FROM security_settings WHERE owner_id=$1`, [env().PMS_OWNER_ID])).rows[0];
-    if (r) state = { hash: String(r.edge_secret_hash ?? ""), enforce: Number(r.edge_enforce) === 1, lastSeenAt: r.edge_last_seen_at ? Number(r.edge_last_seen_at) : null };
+    const r = (await db().query(`SELECT edge_secret_hash,edge_enforce,edge_last_seen_at,edge_stale_policy FROM security_settings WHERE owner_id=$1`, [env().PMS_OWNER_ID])).rows[0];
+    if (r) state = { hash: String(r.edge_secret_hash ?? ""), enforce: Number(r.edge_enforce) === 1, lastSeenAt: r.edge_last_seen_at ? Number(r.edge_last_seen_at) : null, policy: String(r.edge_stale_policy ?? "open_all") };
   } catch {
-    // Database unavailable (or the table not created yet): the lock never shuts the hotel out.
-    state = { hash: "", enforce: false, lastSeenAt: null };
+    // v198: the database could not be read. A state already known in this process is kept (a short database outage
+    // does not switch the lock off); only with nothing known yet (first request, or the table not created yet) does
+    // the lock stay out of the way — without the database the PMS cannot serve anything anyway.
+    if (g.coraliEdge) { g.coraliEdge.at = now; return g.coraliEdge.state; }
   }
   g.coraliEdge = { state, at: now };
   return state;
+}
+
+/**
+ * v198: the lock is «open» because the key stopped arriving — tell the owner NOW (one alert, pushed / emailed by the
+ * alert outbox), not at the hourly check. At most once per 10 minutes per process; the alert itself is deduplicated.
+ */
+export async function notifyEdgeOpen(state: EdgeState): Promise<void> {
+  const now = Date.now();
+  if (g.coraliEdgeOpenNotice && now - g.coraliEdgeOpenNotice < 10 * 60_000) return;
+  g.coraliEdgeOpenNotice = now;
+  try {
+    const { raiseAlert } = await import("../scripts/alert-core.mjs");
+    const since = state.lastSeenAt ? new Date(state.lastSeenAt).toISOString().slice(0, 16).replace("T", " ") : "—";
+    const what = state.policy === "protect_admin" ? "οι σελίδες πελατών άνοιξαν, η διαχείριση (PMS) παραμένει κλειδωμένη" : "όλο το PMS και η σελίδα κρατήσεων είναι ΑΝΟΙΧΤΑ χωρίς την προστασία του Cloudflare";
+    await raiseAlert({ pool: db(), owner: env().PMS_OWNER_ID, key: "security:edge_open", area: "security", severity: "fail", title: `🛡️ Το κλείδωμα Cloudflare δεν λαμβάνει το κλειδί (τελευταίο ${since} UTC): ${what}. Ελέγξτε τον κανόνα στο Cloudflare.`, link: "/pms/security", now });
+    await db().query(`UPDATE security_settings SET edge_open_alerted_at=$2 WHERE owner_id=$1`, [env().PMS_OWNER_ID, now]);
+  } catch { /* the hourly security check reports it too */ }
 }
 
 /** A request arrived with the right key: remember when (at most once a minute per process). */
@@ -57,6 +76,12 @@ export async function newEdgeKey(ownerId: string): Promise<string> {
 }
 
 /** Switch the lock on (only once Cloudflare was seen sending the key in the last 10 minutes) or off. */
+export async function setEdgeStalePolicy(ownerId: string, policy: string): Promise<void> {
+  if (!EDGE_STALE_POLICIES.includes(policy)) throw Error("INVALID_POLICY");
+  await db().query(`INSERT INTO security_settings(owner_id,edge_stale_policy,updated_at) VALUES($1,$2,$3) ON CONFLICT(owner_id) DO UPDATE SET edge_stale_policy=$2,updated_at=$3`, [ownerId, policy, Date.now()]);
+  g.coraliEdge = undefined;
+}
+
 export async function setEdgeEnforce(ownerId: string, on: boolean): Promise<void> {
   const r = (await db().query(`SELECT edge_secret_hash,edge_last_seen_at FROM security_settings WHERE owner_id=$1`, [ownerId])).rows[0];
   if (on && (!r?.edge_secret_hash)) throw Error("NO_KEY");
@@ -66,7 +91,7 @@ export async function setEdgeEnforce(ownerId: string, on: boolean): Promise<void
 }
 
 export type SecurityOverview = {
-  edge: { configured: boolean; createdAt: number | null; enforce: boolean; lastSeenAt: number | null; status: "off" | "waiting" | "seen" | "locked" | "open" };
+  edge: { configured: boolean; createdAt: number | null; enforce: boolean; lastSeenAt: number | null; status: "off" | "waiting" | "seen" | "locked" | "open"; policy: string; openAlertedAt: number | null };
   users: { id: number; username: string; name: string; role: string; totp: boolean; active: boolean }[];
   failed24h: number;
   events: { kind: string; label: string; ip: string; count: number; lastAt: number; detail: string }[];
@@ -76,7 +101,7 @@ export type SecurityOverview = {
 export async function securityOverview(ownerId: string, lang: "el" | "en"): Promise<SecurityOverview> {
   const now = Date.now();
   const [s, users, failed, events, totals] = await Promise.all([
-    db().query(`SELECT edge_secret_hash,edge_secret_created_at,edge_enforce,edge_last_seen_at FROM security_settings WHERE owner_id=$1`, [ownerId]),
+    db().query(`SELECT edge_secret_hash,edge_secret_created_at,edge_enforce,edge_last_seen_at,edge_stale_policy,edge_open_alerted_at FROM security_settings WHERE owner_id=$1`, [ownerId]),
     db().query(`SELECT id,username,display_name,COALESCE(NULLIF(role,''),'readonly') AS role,totp_confirmed_at,active FROM pms_staff_users WHERE owner_id=$1 ORDER BY active DESC,display_name`, [ownerId]),
     db().query(`SELECT count(*)::int AS n FROM audit_logs WHERE owner_id=$1 AND action IN ('security.login_failed','security.login_blocked') AND created_at>$2::bigint`, [ownerId, now - 86_400_000]),
     db().query(`SELECT kind,ip,sum(count)::int AS n,max(last_at) AS last_at,max(detail) AS detail FROM security_events WHERE owner_id=$1 AND hour_at>$2::bigint GROUP BY kind,ip ORDER BY n DESC LIMIT 40`, [ownerId, now - 7 * 86_400_000]),
@@ -88,7 +113,7 @@ export async function securityOverview(ownerId: string, lang: "el" | "en"): Prom
   const lastSeenAt = r?.edge_last_seen_at ? Number(r.edge_last_seen_at) : null;
   const status = !configured ? "off" : enforce ? (edgeDecision({ enforce, keyOk: false, lastSeenAt, now }) === "open" ? "open" : "locked") : lastSeenAt && now - lastSeenAt < 10 * 60_000 ? "seen" : "waiting";
   return {
-    edge: { configured, createdAt: r?.edge_secret_created_at ? Number(r.edge_secret_created_at) : null, enforce, lastSeenAt, status },
+    edge: { configured, createdAt: r?.edge_secret_created_at ? Number(r.edge_secret_created_at) : null, enforce, lastSeenAt, status, policy: String(r?.edge_stale_policy ?? "open_all"), openAlertedAt: r?.edge_open_alerted_at ? Number(r.edge_open_alerted_at) : null },
     users: users.rows.map((u) => ({ id: Number(u.id), username: String(u.username), name: String(u.display_name ?? u.username), role: String(u.role), totp: Boolean(u.totp_confirmed_at), active: Number(u.active) === 1 })),
     failed24h: Number(failed.rows[0]?.n ?? 0),
     events: events.rows.map((e) => ({ kind: String(e.kind), label: eventLabel(String(e.kind), lang), ip: String(e.ip), count: Number(e.n), lastAt: Number(e.last_at), detail: String(e.detail ?? "") })),

@@ -97,3 +97,23 @@ test("v184: only the installer's one-time smoke key passes the origin lock, and 
   assert.match(proxy, /smokeBypass\(process\.env\.CORALI_SMOKE_TOKEN/);
   assert.match(proxy, /headers\.delete\(SMOKE_HEADER\)/);
 });
+
+test("v198 origin lock when the key stops arriving: documented policy — open_all opens everything, protect_admin keeps the administration locked", async () => {
+  const { isAdminPath, EDGE_STALE_POLICIES } = await import("../scripts/security-core.mjs");
+  const now = Date.parse("2026-11-23T12:00:00Z"), stale = now - EDGE_STALE_MS - 1;
+  const d = (path: string, policy: string, lastSeenAt = stale) => edgeDecision({ enforce: true, keyOk: false, lastSeenAt, now, path, policy });
+  assert.deepEqual(EDGE_STALE_POLICIES, ["open_all", "protect_admin"]);
+  assert.equal(d("/api/pms/reservations", "open_all"), "open", "default stays fail-open (documented, alerted at once)");
+  assert.equal(d("/api/public/availability", "protect_admin"), "open");
+  for (const p of ["/pms", "/pms/reservations", "/api/pms/security", "/login", "/api/auth/login", "/hk", "/staff"]) assert.equal(d(p, "protect_admin"), "block", p);
+  assert.equal(isAdminPath("/pmsx"), false);
+  assert.equal(d("/api/pms/x", "protect_admin", now - 60_000), "block", "not stale: locked as always");
+  assert.equal(edgeDecision({ enforce: true, keyOk: true, lastSeenAt: stale, now, path: "/pms", policy: "protect_admin" }), "allow", "the right key always passes");
+  // The PMS tells the owner at once (not only at the hourly check) and the recovery command exists in the package.
+  const fs = await import("node:fs");
+  const proxy = fs.readFileSync(new URL("../proxy.ts", import.meta.url), "utf8");
+  assert.match(proxy, /void notifyEdgeOpen\(edge\)/);
+  assert.match(proxy, /policy: edge\.policy/);
+  const pkg = fs.readFileSync(new URL("../scripts/package-cpanel.sh", import.meta.url), "utf8");
+  assert.match(pkg, /scripts\/edge-lock\.mjs/);
+});

@@ -44,7 +44,9 @@ export function SecurityCenter({ lang: l, initial, canManage }: { lang: L; initi
     waiting: t("Περιμένει το κλειδί από το Cloudflare", "Waiting for the key from Cloudflare"),
     seen: t("Το Cloudflare στέλνει το κλειδί ✓ — μπορείτε να ενεργοποιήσετε το κλείδωμα", "Cloudflare sends the key ✓ — you can switch the lock on"),
     locked: t("Ενεργό — δεκτά μόνο αιτήματα μέσω Cloudflare", "On — only requests through Cloudflare are accepted"),
-    open: t("Ενεργό αλλά το κλειδί δεν έρχεται εδώ και 30′ — το PMS έμεινε ανοιχτό, ελέγξτε τον κανόνα στο Cloudflare", "On, but the key has not arrived for 30′ — the PMS was left open, check the Cloudflare rule"),
+    open: e.policy === "protect_admin"
+      ? t("Ενεργό αλλά το κλειδί δεν έρχεται εδώ και 30′ — οι σελίδες πελατών άνοιξαν, η διαχείριση μένει κλειδωμένη· ελέγξτε τον κανόνα στο Cloudflare", "On, but the key has not arrived for 30′ — guest pages opened, administration stays locked; check the Cloudflare rule")
+      : t("ΑΝΟΙΧΤΟ: το κλειδί δεν έρχεται εδώ και 30′ — όλο το PMS δέχεται αιτήματα χωρίς Cloudflare· ελέγξτε τον κανόνα στο Cloudflare", "OPEN: the key has not arrived for 30′ — the whole PMS accepts requests without Cloudflare; check the Cloudflare rule"),
   }[e.status];
   const ok = (good: boolean) => <b className={good ? "credit" : "debit"}>{good ? "✓" : "⚠"}</b>;
 
@@ -80,7 +82,18 @@ export function SecurityCenter({ lang: l, initial, canManage }: { lang: L; initi
               : <button type="button" disabled={busy || e.status !== "seen"} onClick={() => void enforce(true)}>{t("Ενεργοποίηση κλειδώματος", "Switch the lock on")}</button>}
           </li>
         </ol>}
-        <small className="muted">{t("Ασφάλεια: αν ο κανόνας του Cloudflare σβηστεί, μετά από 30 λεπτά το PMS ανοίγει μόνο του και έρχεται ειδοποίηση — δεν κλειδώνεστε ποτέ έξω.", "Safety: if the Cloudflare rule is removed, after 30 minutes the PMS opens by itself and a notification comes — you are never locked out.")}</small>
+        <fieldset className="card">
+          <legend>{t("Όταν το κλειδί σταματήσει να έρχεται (30′)", "When the key stops arriving (30′)")}</legend>
+          <p><b className={e.policy === "protect_admin" ? "credit" : "debit"}>{e.policy === "protect_admin"
+            ? t("Προστασία διαχείρισης: ανοίγουν μόνο οι σελίδες πελατών· το PMS, η σύνδεση και το API διαχείρισης μένουν κλειδωμένα.", "Protect administration: only guest pages open; the PMS, sign-in and admin API stay locked.")
+            : t("Άνοιγμα όλων: μετά από 30′ χωρίς κλειδί ΟΛΟ το PMS και η σελίδα κρατήσεων δέχονται αιτήματα χωρίς Cloudflare (fail-open).", "Open all: after 30′ without the key the WHOLE PMS and booking page accept requests without Cloudflare (fail-open).")}</b></p>
+          <small className="muted">{t("Και στις δύο περιπτώσεις έρχεται ΑΜΕΣΩΣ ειδοποίηση (push / email). Ανάκτηση πρόσβασης με «Προστασία διαχείρισης» χωρίς Cloudflare: στο τερματικό του cPanel, στον φάκελο της εφαρμογής PMS, ", "In both cases a notification comes IMMEDIATELY (push / email). Recovering access under «Protect administration» without Cloudflare: in the cPanel terminal, in the PMS application folder, ")}<code>node --env-file=runtime.env scripts/edge-lock.mjs off</code>{t(" — απαιτεί πρόσβαση στον server, όχι γενικό άνοιγμα.", " — needs access to the server, not a general opening.")}</small>
+          {canManage && <p>
+            <button type="button" className="secondaryButton" disabled={busy || e.policy === "protect_admin"} onClick={() => { if (window.confirm(t("Με αυτή τη ρύθμιση, αν το Cloudflare σταματήσει να στέλνει το κλειδί, το PMS θα κλειδώσει και η πρόσβαση ανακτάται μόνο από το τερματικό του cPanel. Συνέχεια;", "With this setting, if Cloudflare stops sending the key, the PMS locks and access is recovered only from the cPanel terminal. Continue?"))) void post({ action: "stalePolicy", policy: "protect_admin" }).then((r) => { setMsg(r?.ok ? t("✓ Προστασία διαχείρισης ενεργή.", "✓ Protect administration on.") : t("Δεν έγινε η αλλαγή.", "The change failed.")); void load(); }); }}>{t("Προστασία διαχείρισης", "Protect administration")}</button>{" "}
+            <button type="button" className="secondaryButton" disabled={busy || e.policy !== "protect_admin"} onClick={() => void post({ action: "stalePolicy", policy: "open_all" }).then((r) => { setMsg(r?.ok ? t("Επιλέχθηκε «Άνοιγμα όλων».", "«Open all» selected.") : t("Δεν έγινε η αλλαγή.", "The change failed.")); void load(); })}>{t("Άνοιγμα όλων", "Open all")}</button>
+          </p>}
+          {e.openAlertedAt ? <small className="debit">{t("Τελευταία ειδοποίηση «το κλειδί δεν έρχεται»", "Last «key not arriving» alert")}: {when(e.openAlertedAt, l)}</small> : null}
+        </fieldset>
         {msg && <p className="notice" role="status">{msg}</p>}
       </section>
 

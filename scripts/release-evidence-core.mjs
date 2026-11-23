@@ -45,6 +45,8 @@ export function verifyManifest(dir, manifest) {
 export function qaSummary(report) {
   return {
     version: report.version, verdict: report.verdict, at: report.at, commit: report.commit, database: report.database,
+    // v198: the archive this QA tested (the final archive = the same files + this evidence file).
+    testedPackageSha256: report.package?.sha256 ?? null,
     passed: report.flows.filter((f) => f.status === "PASS").length, total: report.flows.length,
     flows: report.flows.map((f) => ({ id: f.id, name: f.name, status: f.status })),
     sandbox: (report.sandbox ?? []).map((s) => ({ name: s.name, status: s.status })),

@@ -53,12 +53,21 @@ export function edgeKeyMatches(headerValue, storedHash) {
 
 /**
  * Let a request in? `allow` — no lock, or the key is right; `block` — locked and no key; `open` — locked, but no
- * request has carried the key for EDGE_STALE_MS (the Cloudflare rule was removed): the PMS stays reachable and the
- * hourly check tells the owner.
+ * request has carried the key for EDGE_STALE_MS (the Cloudflare rule was removed or stopped working).
+ *
+ * v198: what «stale» does is the hotel's documented choice (Security center → «Όταν το κλειδί σταματήσει»):
+ *   open_all       (default, as before v198) every route opens, so the hotel never loses the PMS because of a
+ *                  Cloudflare mistake — the owner is told IMMEDIATELY (alert + push/email), not at the hourly check;
+ *   protect_admin  guest-facing routes open, but the administration routes (PMS, sign-in, staff, PMS API) stay
+ *                  locked; access is recovered safely from the server itself (`node scripts/edge-lock.mjs off` in the
+ *                  cPanel terminal), never by a general fail-open.
  */
-export function edgeDecision({ enforce, keyOk, lastSeenAt, now }) {
+export const EDGE_STALE_POLICIES = ["open_all", "protect_admin"];
+const ADMIN_PREFIXES = ["/pms", "/api/pms", "/login", "/api/auth", "/hk", "/staff"];
+export const isAdminPath = (path) => ADMIN_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
+export function edgeDecision({ enforce, keyOk, lastSeenAt, now, path = "", policy = "open_all" }) {
   if (!enforce || keyOk) return "allow";
-  if (!lastSeenAt || now - Number(lastSeenAt) > EDGE_STALE_MS) return "open";
+  if (!lastSeenAt || now - Number(lastSeenAt) > EDGE_STALE_MS) return policy === "protect_admin" && isAdminPath(path) ? "block" : "open";
   return "block";
 }
 

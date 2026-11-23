@@ -50,7 +50,10 @@ function spawnSync(cmd, args = [], opts = {}) {
 }
 async function flow(id, name, fn) {
   const t0 = Date.now(); currentFlow = id; log(`START ${id} ${name}`);
-  try { const detail = await fn(); results.push({ id, name, status: "PASS", detail: String(detail ?? ""), ms: Date.now() - t0 }); log(`PASS (${Date.now() - t0} ms): ${detail ?? ""}`); console.log(`PASS ${id} ${name}`); }
+  // v198: a flow may say exactly WHAT it proved (evidence levels), so a cron that ran is never read as a message that
+  // reached a guest: JOB_EXECUTION (the automation ran), FAILURE_HANDLING (a failed send was recorded and scheduled
+  // again), DELIVERY (CONFIRMED only by a provider; NOT_TESTED in these internal flows — see the sandbox section).
+  try { const out = await fn(); const detail = out && typeof out === "object" ? out.detail : out; const evidence = out && typeof out === "object" ? out.evidence ?? null : null; results.push({ id, name, status: "PASS", detail: String(detail ?? ""), evidence, ms: Date.now() - t0 }); log(`PASS (${Date.now() - t0} ms): ${detail ?? ""}${evidence ? ` · ${JSON.stringify(evidence)}` : ""}`); console.log(`PASS ${id} ${name}`); }
   catch (e) { results.push({ id, name, status: "FAIL", detail: e instanceof Error ? e.message : String(e), ms: Date.now() - t0 }); log(`FAIL (${Date.now() - t0} ms): ${e instanceof Error ? e.stack : e}`); console.log(`FAIL ${id} ${name}: ${e instanceof Error ? e.message : e}`); }
   finally { currentFlow = "teardown"; }
 }
@@ -243,12 +246,14 @@ try {
 
   // Send hour 00:00 (and settings older than the reminder) so the balance reminder is due whatever the time of the run.
   await q(`INSERT INTO message_automation_settings(owner_id,send_hour,updated_at) VALUES($1,0,0) ON CONFLICT(owner_id) DO UPDATE SET send_hour=0,updated_at=0`, [owner]);
-  await flow("F09", "Cron πακέτου: ολοκληρώνεται, υπενθύμιση υπολοίπου 1 μέρα πριν την αναχώρηση, καταγραφή κάθε βήματος", async () => {
+  await flow("F09", "Cron πακέτου: ολοκληρώνεται, υπενθύμιση υπολοίπου 1 μέρα πριν την αναχώρηση, καταγραφή κάθε βήματος · χωρίς SMTP η υπενθύμιση ΔΕΝ μετριέται ως παραδομένη", async () => {
     const r = spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/run-message-automations.mjs"], { cwd: pmsDir, encoding: "utf8", timeout: 280_000, env: { ...process.env, SMTP_HOST: "127.0.0.1", SMTP_PORT: "9", SMTP_FROM: "qa@example.invalid" } });
     must(r.status !== null, `το cron δεν τελείωσε (${r.signal ?? "timeout"})`);
     const bal = (await q(`SELECT status,COALESCE(last_error,'') e FROM message_deliveries WHERE booking_id=$1 AND event_key='balance'`, [leaving])).rows;
     must(bal.length > 0, `δεν δημιουργήθηκε υπενθύμιση υπολοίπου · cron: ${(r.stderr || r.stdout).slice(-300)}`);
-    must(["sent", "failed", "pending", "processing"].includes(bal[0].status), `κατάσταση ${bal[0].status}`);
+    // There is no mail server in this test (SMTP to a closed port): the reminder must be recorded as NOT delivered,
+    // with its reason, and kept for another attempt — «sent» here would be a false delivery.
+    must(["failed", "pending"].includes(bal[0].status) && bal[0].e, `υπενθύμιση: κατάσταση «${bal[0].status}» χωρίς SMTP (αναμένεται failed/pending με αιτία)`);
     const steps = (await q(`SELECT name,last_status FROM automation_status WHERE owner_id=$1`, [owner])).rows;
     must(steps.some((s) => s.name === "Guest messages"), `καταγραφές: ${steps.map((s) => s.name).join(", ")}`);
     // v189 heartbeat: the run's start and end are recorded and nothing is left «running».
@@ -256,17 +261,55 @@ try {
     must(hb && hb.last_status === "ok" && hb.running_since === null && Number(hb.runs) === 1, `heartbeat: ${JSON.stringify(hb)}`);
     const run = (await q(`SELECT status,finished_at,steps_ok FROM cron_runs WHERE owner_id=$1 AND job='automations'`, [owner])).rows;
     must(run.length === 1 && run[0].status === "ok" && run[0].finished_at, `cron_runs: ${JSON.stringify(run)}`);
-    return `υπενθύμιση υπολοίπου: ${bal[0].status}${bal[0].e ? ` (${bal[0].e.slice(0, 60)} — χωρίς SMTP στη δοκιμή)` : ""} · ${steps.length} βήματα cron καταγράφηκαν · heartbeat: έναρξη + ολοκλήρωση σε ${hb.last_duration_ms} ms, ${run[0].steps_ok} βήματα OK`;
+    return { detail: `υπενθύμιση υπολοίπου: ${bal[0].status} (${bal[0].e.slice(0, 60)} — χωρίς SMTP στη δοκιμή) · ${steps.length} βήματα cron καταγράφηκαν · heartbeat: έναρξη + ολοκλήρωση σε ${hb.last_duration_ms} ms, ${run[0].steps_ok} βήματα OK`,
+      evidence: { JOB_EXECUTION: "PASS", FAILURE_HANDLING: "PASS", DELIVERY: "NOT_TESTED" } };
   });
 
-  await flow("F10", "Κλείδωμα Cloudflare + έλεγχοι εγκατάστασης (smoke) για PMS και Booking", async () => {
-    await q(`INSERT INTO security_settings(owner_id,edge_secret_hash,edge_enforce,edge_last_seen_at,updated_at) VALUES($1,'qa',1,$2,$2) ON CONFLICT(owner_id) DO UPDATE SET edge_secret_hash='qa',edge_enforce=1,edge_last_seen_at=$2`, [owner, Date.now()]);
+  await flow("F10", "Κλείδωμα Cloudflare: 403 χωρίς κλειδί, δεκτό με το σωστό κλειδί, λάθος κλειδί → 403, συμπεριφορά όταν σταματήσει το κλειδί, άμεση ειδοποίηση, ανάκτηση από τον server · smoke PMS και Booking", async () => {
+    // v198: the lock is proven by requests, never assumed. The applications read the lock state at most every 30″, so
+    // each change is awaited by polling until the applications show it (max 45″) — a timeout is a FAIL.
+    const secret = `ce_${rnd(24, "base64url")}`, hash = createHash("sha256").update(secret).digest("hex");
+    const avail = `/api/public/availability?checkIn=${addDays(today, 5)}&checkOut=${addDays(today, 6)}&adults=2&children=0&rooms=1&lang=en`;
+    const get = (base, p, key) => fetch(`${base}${p}`, { headers: key ? { "x-corali-edge": key } : {}, redirect: "manual" }).then((r) => r.status);
+    const until = async (what, fn) => { for (let i = 0; i < 90; i++) { if (await fn()) return; await sleep(500); } throw Error(`δεν επιβεβαιώθηκε μέσα σε 45″: ${what}`); };
+    const set = (sql, p = []) => q(`UPDATE security_settings SET ${sql} WHERE owner_id=$1`, [owner, ...p]);
+    const seen = [];
+    await q(`INSERT INTO security_settings(owner_id,edge_secret_hash,edge_enforce,edge_last_seen_at,edge_stale_policy,updated_at) VALUES($1,$2,1,$3,'open_all',$3) ON CONFLICT(owner_id) DO UPDATE SET edge_secret_hash=$2,edge_enforce=1,edge_last_seen_at=$3,edge_stale_policy='open_all'`, [owner, hash, Date.now()]);
     try {
+      // 1) Locked: no key → 403 on the booking page API and on the PMS administration API.
+      await until("Booking: αίτημα χωρίς κλειδί → 403", async () => (await get(booking.url, avail)) === 403);
+      await until("PMS: αίτημα διαχείρισης χωρίς κλειδί → 403", async () => (await get(pms.url, "/api/pms/security")) === 403);
+      must((await get(booking.url, avail, `ce_${rnd(24, "base64url")}`)) === 403, "λάθος κλειδί δεν απορρίφθηκε");
+      // 2) The right key passes (availability answers 200; the PMS API answers as without the lock: 401 without sign-in).
+      const okAvail = await get(booking.url, avail, secret), okPms = await get(pms.url, "/api/pms/security", secret);
+      must(okAvail === 200, `σωστό κλειδί: Booking HTTP ${okAvail}`); must(okPms !== 403, `σωστό κλειδί: PMS HTTP ${okPms}`);
+      must((await get(pms.url, "/api/health")) === 200, "έλεγχος υγείας χωρίς κλειδί δεν απάντησε 200 (εξαίρεση)");
+      seen.push(`χωρίς κλειδί 403 · λάθος κλειδί 403 · σωστό κλειδί ${okAvail}/${okPms}`);
+      // Installer smoke checks with the lock on (their one-time token).
       for (const dir of [pmsDir, bookingDir]) { const r = spawnSync("bash", [path.join(dir, "scripts/smoke-runtime.sh"), dir, version], { encoding: "utf8", timeout: 180_000 }); must(r.status === 0, `${path.basename(dir)}: ${(r.stderr || r.stdout).slice(-300)}`); }
-      const blocked = await fetch(`${booking.url}/api/public/availability?checkIn=${addDays(today, 5)}&checkOut=${addDays(today, 6)}&adults=2&children=0&rooms=1&lang=en`);
-      await sleep(0);
-      return `smoke OK και για τις δύο με το κλείδωμα ενεργό · αίτημα χωρίς κλειδί: HTTP ${blocked.status}`;
-    } finally { await q(`UPDATE security_settings SET edge_enforce=0`); }
+      // 3) The key stopped arriving (31′), policy «open_all»: documented fail-open — and an alert at once.
+      await set(`edge_last_seen_at=$2`, [Date.now() - 31 * 60_000]);
+      await until("open_all: μετά από 30′ χωρίς κλειδί το αίτημα περνά (τεκμηριωμένο fail-open)", async () => (await get(booking.url, avail)) === 200);
+      await until("άμεση ειδοποίηση «security:edge_open»", async () => (await q(`SELECT 1 FROM alerts WHERE owner_id=$1 AND alert_key='security:edge_open' AND resolved_at IS NULL`, [owner])).rows.length === 1);
+      seen.push("open_all: άνοιγμα μετά από 30′ + άμεση ειδοποίηση");
+      // 4) Policy «protect_admin»: guest pages open, administration stays locked.
+      await set(`edge_stale_policy='protect_admin'`);
+      await until("protect_admin: διαχείριση PMS χωρίς κλειδί → 403", async () => (await get(pms.url, "/api/pms/security")) === 403 && (await get(pms.url, "/login")) === 403);
+      must((await get(booking.url, avail)) === 200, "protect_admin: η σελίδα κρατήσεων έπρεπε να μείνει ανοιχτή");
+      seen.push("protect_admin: πελάτες ανοιχτά, διαχείριση 403");
+      // 5) Safe recovery from the server (packaged command), not a general opening.
+      const rec = spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/edge-lock.mjs", "off"], { cwd: pmsDir, encoding: "utf8", timeout: 60_000 });
+      must(rec.status === 0, `edge-lock.mjs off: ${(rec.stderr || rec.stdout).slice(-300)}`);
+      await until("μετά την ανάκτηση από τον server η διαχείριση είναι προσβάσιμη", async () => (await get(pms.url, "/api/pms/security")) !== 403);
+      must((await q(`SELECT 1 FROM audit_logs WHERE owner_id=$1 AND action='security.edge_off'`, [owner])).rows.length === 1, "η ανάκτηση δεν καταγράφηκε στο audit log");
+      seen.push("ανάκτηση με scripts/edge-lock.mjs off (καταγράφηκε)");
+      return seen.join(" · ");
+    } finally {
+      // Later flows make requests without the key: wait until both applications see the lock off.
+      await set(`edge_enforce=0,edge_stale_policy='open_all'`);
+      await q(`UPDATE alerts SET resolved_at=$2 WHERE owner_id=$1 AND alert_key='security:edge_open'`, [owner, Date.now()]);
+      await until("κλείδωμα ανενεργό μετά το F10", async () => (await get(booking.url, avail)) !== 403 && (await get(pms.url, "/api/pms/security")) !== 403).catch(() => undefined);
+    }
   });
 
   await flow("F12", "Κέντρο αξιοπιστίας: εντοπίζει μεταβολή διαθεσιμότητας που δεν συγχρονίστηκε και την ξαναστέλνει", async () => {
@@ -284,7 +327,7 @@ try {
 
   const cron = (extra = {}) => spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/run-message-automations.mjs"], { cwd: pmsDir, encoding: "utf8", timeout: 290_000, env: { ...process.env, SMTP_HOST: "127.0.0.1", SMTP_PORT: "9", SMTP_FROM: "qa@example.invalid", ...extra } });
 
-  await flow("F13", "Cron: βήμα που τρέχει ακόμη δεν ξανατρέχει παράλληλα · ειδοποιήσεις με επιβεβαίωση παράδοσης και επανάληψη", async () => {
+  await flow("F13", "Cron: βήμα που τρέχει ακόμη δεν ξανατρέχει παράλληλα · αποτυχημένη αποστολή ειδοποίησης καταγράφεται και επαναλαμβάνεται (όχι παράδοση)", async () => {
     const { raiseAlert } = await import(path.join(pmsDir, "scripts/alert-core.mjs"));
     const before = (await q(`SELECT last_run_at FROM automation_status WHERE owner_id=$1 AND name='Guest messages'`, [owner])).rows[0].last_run_at;
     // The previous run still holds «Guest messages» (its lease expires in 5 minutes).
@@ -301,7 +344,8 @@ try {
     const box = (await q(`SELECT channel,status,attempts,last_error,next_attempt_at FROM alert_outbox WHERE alert_id=$1 ORDER BY channel`, [a.id])).rows;
     must(box.length === 2 && box.every((b) => b.status === "pending" && Number(b.attempts) === 1 && b.last_error && Number(b.next_attempt_at) > Date.now()), `outbox: ${JSON.stringify(box)}`);
     await q(`DELETE FROM job_leases WHERE holder='qa-previous-run'`);
-    return `«Guest messages» παραλείφθηκε (κρατούσε η προηγούμενη εκτέλεση), ${skipped.steps_skipped} βήμα · παράδοση: ${box.map((b) => `${b.channel} → ${b.last_error.slice(0, 40)} (νέα προσπάθεια)`).join(" · ")}`;
+    return { detail: `«Guest messages» παραλείφθηκε (κρατούσε η προηγούμενη εκτέλεση), ${skipped.steps_skipped} βήμα · αποτυχημένη αποστολή ειδοποίησης καταγράφηκε και ξαναπρογραμματίστηκε: ${box.map((b) => `${b.channel} → ${b.last_error.slice(0, 40)}`).join(" · ")}`,
+      evidence: { JOB_EXECUTION: "PASS", FAILURE_HANDLING: "PASS", DELIVERY: "NOT_TESTED" } };
   });
 
   await flow("F14", "Αντίγραφο ασφαλείας: κρυπτογραφημένο backup, δοκιμαστική επαναφορά σε ξεχωριστή βάση, μέτρηση εγγραφών, αλλοιωμένο αρχείο απορρίπτεται", async () => {
@@ -558,8 +602,9 @@ const md = [
   `**Αποδοχή έκδοσης: ${acceptance.status === "ACCEPTED" ? "✅ ACCEPTED" : "⛔ NOT ACCEPTED"}**${acceptance.reasons.length ? ` — ${acceptance.reasons.join(" · ")}` : ""} (απαιτεί PASS και στους εξωτερικούς παρόχους σε sandbox)`, "",
   `- Πακέτο: \`${report.package.file}\` · SHA-256 \`${sha}\``, `- Κώδικας: commit \`${commit}\` · Node ${process.version} · ${report.database}`,
   `- Αναπαραγωγή: \`node scripts/release-qa.mjs ${report.package.file} ${version}\` (νέα βάση PostgreSQL, οι εφαρμογές του πακέτου σε λειτουργία, πραγματικά αιτήματα HTTP και το cron του πακέτου).`, "",
-  "| # | Κρίσιμη ροή | Αποτέλεσμα | Λεπτομέρειες | ms |", "|---|---|---|---|---|",
-  ...results.map((r) => `| ${r.id} | ${esc(r.name)} | ${r.status === "PASS" ? "✅ PASS" : "❌ FAIL"} | ${esc(r.detail)} | ${r.ms} |`), "",
+  "| # | Κρίσιμη ροή | Αποτέλεσμα | Τι αποδεικνύει | Λεπτομέρειες | ms |", "|---|---|---|---|---|---|",
+  ...results.map((r) => `| ${r.id} | ${esc(r.name)} | ${r.status === "PASS" ? "✅ PASS" : "❌ FAIL"} | ${r.evidence ? Object.entries(r.evidence).map(([k, v]) => `${k}_${v}`).join("<br>") : ""} | ${esc(r.detail)} | ${r.ms} |`), "",
+  "**Επίπεδα τεκμηρίωσης αποστολών:** `JOB_EXECUTION_PASS` — ο αυτοματισμός εκτελέστηκε · `FAILURE_HANDLING_PASS` — η αποτυχημένη αποστολή καταγράφηκε με την αιτία της και μπήκε σε επανάληψη · `DELIVERY_CONFIRMED` — το μήνυμα παραδόθηκε / επιβεβαιώθηκε από τον πάροχο. Οι εσωτερικές ροές τρέχουν χωρίς πραγματικό πάροχο, άρα `DELIVERY_NOT_TESTED`· επιβεβαιωμένη παράδοση προκύπτει μόνο από τους ελέγχους παρόχων σε sandbox (παρακάτω).", "",
   "## Εξωτερικοί πάροχοι (sandbox)", "",
   "Τρέχουν με κλειδιά δοκιμής (`node scripts/provider-sandbox-e2e.mjs`): Stripe test mode, Viva demo, Channex staging, WhatsApp test number. Χωρίς κλειδί: NOT RUN — δεν θεωρείται PASS.", "",
   "| Ροή | Έλεγχος | Αποτέλεσμα | Λεπτομέρειες |", "|---|---|---|---|",
