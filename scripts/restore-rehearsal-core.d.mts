@@ -4,3 +4,5 @@ export declare function backupTime(name: string | null | undefined): number | nu
 export declare function tablesWithData(listOutput: string): Set<string>;
 export declare function sameDatabase(a: string, b: string): boolean;
 export declare function evaluateRehearsal(x: { toc: Set<string>; restored?: Record<string, number> | null; liveBefore?: Record<string, number>; decryptOk?: boolean }): { status: "ok" | "partial" | "failed"; checks: { name: string; ok: boolean; detail?: string }[] };
+export declare const REHEARSAL_MARKER: string;
+export declare function targetDecision(x: { sameUrl: boolean; nonceSeen: boolean; tables: string[]; marker: boolean }): { ok: boolean; reason?: string };

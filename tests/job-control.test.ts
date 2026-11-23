@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
-import { claimLease, createStepRunner, cronFinish, cronOverlap, cronStart, guardedPool, hardDeadline, heartbeatState, releaseLease, withLease } from "../scripts/job-control-core.mjs";
+import { claimLease, createStepRunner, cronFinish, cronOverlap, cronStart, guardedPool, hardDeadline, heartbeatState, holdsLease, releaseLease, renewLease, withLease } from "../scripts/job-control-core.mjs";
 
 async function fresh() {
   const db = new PGlite();
@@ -19,12 +19,17 @@ test("v189 leases: one holder at a time, expiry frees a crashed holder, withLeas
   const { db, pool } = await fresh();
   try {
     const t = 1_000_000;
-    assert.equal(await claimLease(pool, o, "step:x", "A", 60_000, t), true);
-    assert.equal(await claimLease(pool, o, "step:x", "B", 60_000, t + 1000), false, "held by A");
-    assert.equal(await claimLease(pool, o, "step:x", "A", 60_000, t + 2000), true, "the holder may renew");
-    assert.equal(await claimLease(pool, o, "step:x", "B", 60_000, t + 62_001), true, "expired: A crashed");
+    const fA = await claimLease(pool, o, "step:x", "A", 60_000, t);
+    assert.equal(fA, 1, "first holder: fencing token 1");
+    assert.equal(await claimLease(pool, o, "step:x", "B", 60_000, t + 1000), 0, "held by A");
+    assert.equal(await claimLease(pool, o, "step:x", "A", 60_000, t + 2000), 1, "the holder may renew, same token");
+    const fB = await claimLease(pool, o, "step:x", "B", 60_000, t + 62_001);
+    assert.equal(fB, 2, "expired: A crashed, B takes over with a higher token");
+    assert.equal(await holdsLease(pool, o, "step:x", "A", fA), false, "A's token is stale (fencing)");
+    assert.equal(await holdsLease(pool, o, "step:x", "B", fB), true);
+    assert.equal(await renewLease(pool, o, "step:x", "A", 60_000, t + 63_000), false, "A cannot extend B's lease");
     await releaseLease(pool, o, "step:x", "A");
-    assert.equal(await claimLease(pool, o, "step:x", "C", 60_000, t + 63_000), false, "A cannot release B's lease");
+    assert.equal(await claimLease(pool, o, "step:x", "C", 60_000, t + 63_000), 0, "A cannot release B's lease");
     await releaseLease(pool, o, "step:x", "B");
     // Two clicks at the same time: the work runs once.
     let runs = 0;
@@ -93,8 +98,9 @@ test("v189 cancellable steps: after the time limit the step's fetch is aborted a
     const ctl = await runner.run("Tx", 1000, async () => { await c.query("BEGIN"); return "ok"; });
     assert.equal(ctl, "ok");
     await c.query("ROLLBACK");
-    assert.deepEqual(records, ["Hanging step:timeout", "Quick:ok", "Tx:ok"]);
-    assert.deepEqual(runner.counts, { ok: 2, failed: 1, skipped: 0 });
+    await runner.drain(1000);
+    assert.deepEqual([...records].sort(), ["Hanging step:late_ok", "Hanging step:timeout", "Quick:ok", "Tx:ok"]);
+    assert.deepEqual(runner.counts, { ok: 2, failed: 1, skipped: 0, late: 1 });
   } finally { globalThis.fetch = original; await db.close(); }
 });
 
@@ -125,4 +131,40 @@ test("v189 hard deadline: records the kill, then exits", async () => {
   await new Promise((r) => setTimeout(r, 40));
   assert.equal(events.length, 2);
   clearTimeout(keep);
+});
+
+test("v190 a timed-out step keeps its lease until it really ends; a lost lease cancels it (fencing)", async () => {
+  const { db, pool } = await fresh();
+  try {
+    const records: string[] = [];
+    const a = createStepRunner({ pool, owner: o, holder: "run-1", record: async (n, st) => { records.push(st); } });
+    let release!: () => void;
+    const slowSmtp = new Promise<void>((r) => { release = r; }); // e.g. an SMTP session that ignores abort signals
+    let finished = false;
+    await assert.rejects(a.run("Guest messages", 50, async () => { await slowSmtp; finished = true; }, { lease: "step:Guest messages" }), /TIMEOUT/);
+    // The next minute's run: the work may still be sending, so it must NOT start the same step.
+    const b = createStepRunner({ pool, owner: o, holder: "run-2" });
+    let ran = false;
+    assert.equal(await b.run("Guest messages", 1000, async () => { ran = true; }, { lease: "step:Guest messages" }), undefined);
+    assert.equal(ran, false);
+    assert.equal(b.counts.skipped, 1);
+    release();
+    assert.equal(await a.drain(1000), true);
+    assert.equal(finished, true);
+    assert.deepEqual(records, ["timeout", "late_ok"]);
+    assert.equal((await db.query(`SELECT 1 FROM job_leases WHERE lease_key='step:Guest messages'`)).rows.length, 0, "released only after the real end");
+    assert.notEqual(await b.run("Guest messages", 1000, async () => { ran = true; return 1; }, { lease: "step:Guest messages" }), undefined);
+
+    // Lease lost while running (taken over after expiry): the step is cancelled and its writes refused.
+    const gp = guardedPool(pool);
+    const c = createStepRunner({ pool: gp, owner: o, holder: "run-3", renewEveryMs: 20 });
+    let write = "";
+    const p = c.run("Room climate", 2000, async () => {
+      await db.query(`UPDATE job_leases SET holder='intruder',fence=fence+1 WHERE lease_key='step:Room climate'`);
+      await new Promise((r) => setTimeout(r, 80));
+      try { await gp.query(`SELECT 1`); write = "done"; } catch (e) { write = (e as Error).message; }
+    }, { lease: "step:Room climate" });
+    await p;
+    assert.match(write, /CANCELLED: Room climate lost its lease/);
+  } finally { await db.close(); }
 });

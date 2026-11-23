@@ -103,7 +103,39 @@ test("v189 reliability center: heartbeat, devices never connected, backups, rele
     // A message being sent right now is not taken back (no double send); a stuck one (20 minutes) is.
     await db.query(`INSERT INTO bookings(id,owner_id,reference,guest_name,check_in,check_out,status,room_id,total_cents,balance_cents,created_at) VALUES(1,$1,'CR-1','Anna','2026-07-14','2026-07-18','checked_in',5,1,0,1)`, [o]);
     await db.query(`INSERT INTO message_deliveries(id,owner_id,booking_id,event_key,channel,scheduled_at,status,attempts,created_at,updated_at) VALUES(10,$1,1,'checkin','email',$2,'processing',1,$2,$3),(11,$1,1,'review','email',$2,'processing',1,$2,$4)`, [o, now - H, now - 60_000, now - 20 * 60_000]);
-    assert.equal(await recoverReliability({ pool, owner: o, type: "retry_delivery", now }), 1);
-    assert.deepEqual((await db.query<{ id: number; status: string }>(`SELECT id,status FROM message_deliveries ORDER BY id`)).rows.map((x) => `${x.id}:${x.status}`), ["10:processing", "11:pending"]);
+    // v190: neither one is taken back automatically — «processing» may be sending right now or may have gone.
+    assert.equal(await recoverReliability({ pool, owner: o, type: "retry_delivery", now }), 0);
+    assert.deepEqual((await db.query<{ id: number; status: string }>(`SELECT id,status FROM message_deliveries ORDER BY id`)).rows.map((x) => `${x.id}:${x.status}`), ["10:processing", "11:processing"]);
+    // The cron marks the stuck one «uncertain»; the center asks a person, with both choices.
+    await db.query(`UPDATE message_deliveries SET status='uncertain' WHERE id IN (11,10)`);
+    const r2 = await checkReliability({ pool, owner: o, now, version: "v190" });
+    const unc = r2.areas.find((a) => a.key === "messaging")!.items.find((i) => i.key === "uncertain:11")!;
+    assert.match(unc.text, /αβέβαιο αν στάλθηκε/);
+    assert.deepEqual([unc.action, unc.altAction], [{ type: "resend_uncertain", id: 11 }, { type: "mark_sent", id: 11 }]);
+    await assert.rejects(recoverReliability({ pool, owner: o, type: "resend_uncertain", now }), /ID_REQUIRED/, "never «all» for uncertain sends");
+    assert.equal(await recoverReliability({ pool, owner: o, type: "resend_uncertain", id: 11, now }), 1);
+    assert.equal(await recoverReliability({ pool, owner: o, type: "mark_sent", id: 10, now }), 1);
+    assert.deepEqual((await db.query<{ id: number; status: string }>(`SELECT id,status FROM message_deliveries ORDER BY id`)).rows.map((x) => `${x.id}:${x.status}`), ["10:sent", "11:pending"]);
+    // v190: the release check is installation-wide, read by its explicit scope.
+    await db.query(`INSERT INTO release_checks(version,ran_at,status,checks_json,qa_json,scope) VALUES('v-other',$1,'ok','[]','{}','something-else')`, [now]);
+    assert.match((await checkReliability({ pool, owner: o, now, version: "v189" })).areas.find((a) => a.key === "release")!.items.map((i) => i.text).join(" "), /v189/);
+  } finally { await db.close(); }
+});
+
+test("v190 every critical problem becomes an alert (none dropped beyond 40); at most 10 notifications + a summary", async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(readFileSync("server/postgres-schema.sql", "utf8"));
+    const pool = { query: async (sql: string, params: unknown[] = []) => { const r = await db.query<Record<string, unknown>>(sql, params); return { rows: r.rows, rowCount: r.affectedRows || r.rows.length }; } };
+    const o = "hotel-corali", now = Date.parse("2026-07-15T10:00:00Z");
+    await db.query(`INSERT INTO bookings(id,owner_id,reference,guest_name,check_in,check_out,status,total_cents,balance_cents,created_at) VALUES(1,$1,'CR-1','Anna','2026-07-14','2026-07-18','checked_in',1,0,1)`, [o]);
+    for (let i = 0; i < 45; i++) await db.query(`INSERT INTO fiscal_documents(owner_id,booking_id,payer,invoice_type,series,aa,issue_date,buckets_json,document_json,total_cents,status,attempts,last_error,created_by,created_at,updated_at) VALUES($1,1,'guest','11.1','A',$2,'2026-07-15','[]','{}',100,'failed',3,'AADE','system',$3,$3)`, [o, i + 1, now - 3_600_000]);
+    const r = await runReliabilityAlerts({ pool, owner: o, now, emails: [] });
+    const alerts = Number((await db.query<{ n: number }>(`SELECT count(*)::int n FROM alerts WHERE alert_key LIKE 'rel:fiscal:%'`)).rows[0].n);
+    assert.equal(alerts, 45, "all 45 failing documents have an alert");
+    assert.equal(Number((await db.query<{ n: number }>(`SELECT count(*)::int n FROM alert_outbox`)).rows[0].n), 45 + r.failing - 45, "each one queued for delivery");
+    const notes = (await db.query<{ title_el: string }>(`SELECT title_el FROM pms_notifications ORDER BY id`)).rows;
+    assert.ok(notes.length <= 11);
+    assert.match(notes.at(-1)!.title_el, /Και \d+ ακόμη νέα προβλήματα/);
   } finally { await db.close(); }
 });

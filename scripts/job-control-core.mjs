@@ -2,21 +2,39 @@
 //  • leases — one holder per task at a time (two cron runs, or a double click, never do the same work in parallel);
 //    a lease expires by itself, so a crashed holder never blocks the task for good;
 //  • heartbeat — every cron run records its start and end (dead-man switch, see heartbeatState);
+//  • v190: leases carry a fencing token and are held until the work really ends (a timeout is not proof it stopped);
 //  • cancellable steps — a step that passes its time limit is cancelled: its HTTP requests are aborted and its next
 //    database queries are refused, so it does not keep working (and writing) in the background after the timeout.
 import { AsyncLocalStorage } from "node:async_hooks";
 
 const MIN = 60_000;
 
-/** Takes the lease if it is free or expired. True when this holder has it. */
+/**
+ * Takes the lease if it is free or expired. Returns the fencing token (a number that grows with every new holder,
+ * truthy) or 0 when another holder has it. A holder that lost its lease (expired and taken over) can tell, because the
+ * current token is no longer its own (see renewLease / holdsLease).
+ */
 export async function claimLease(pool, owner, key, holder, ttlMs, now = Date.now()) {
   const r = await pool.query(
-    `INSERT INTO job_leases(owner_id,lease_key,holder,acquired_at,expires_at) VALUES($1,$2,$3,$4,$5)
-     ON CONFLICT(owner_id,lease_key) DO UPDATE SET holder=EXCLUDED.holder,acquired_at=EXCLUDED.acquired_at,expires_at=EXCLUDED.expires_at
-     WHERE job_leases.expires_at<=$4 OR job_leases.holder=EXCLUDED.holder RETURNING holder`,
+    `INSERT INTO job_leases(owner_id,lease_key,holder,acquired_at,expires_at,fence) VALUES($1,$2,$3,$4::bigint,$5::bigint,1)
+     ON CONFLICT(owner_id,lease_key) DO UPDATE SET holder=EXCLUDED.holder,acquired_at=EXCLUDED.acquired_at,expires_at=EXCLUDED.expires_at,
+       fence=CASE WHEN job_leases.holder=EXCLUDED.holder THEN job_leases.fence ELSE job_leases.fence+1 END
+     WHERE job_leases.expires_at<=$4::bigint OR job_leases.holder=EXCLUDED.holder RETURNING holder,fence`,
     [owner, key, holder, now, now + ttlMs],
   );
-  return r.rows.length > 0 && r.rows[0].holder === holder;
+  return r.rows.length > 0 && r.rows[0].holder === holder ? Number(r.rows[0].fence) : 0;
+}
+
+/** Extends the lease while the work is still running. False when this holder no longer has it (taken over). */
+export async function renewLease(pool, owner, key, holder, ttlMs, now = Date.now()) {
+  const r = await pool.query(`UPDATE job_leases SET expires_at=$4::bigint WHERE owner_id=$1 AND lease_key=$2 AND holder=$3 RETURNING fence`, [owner, key, holder, now + ttlMs]);
+  return r.rows.length > 0;
+}
+
+/** Fencing check before an irreversible action: does this holder still hold the lease with this token? */
+export async function holdsLease(pool, owner, key, holder, fence) {
+  const r = await pool.query(`SELECT 1 FROM job_leases WHERE owner_id=$1 AND lease_key=$2 AND holder=$3 AND fence=$4::bigint`, [owner, key, holder, fence]);
+  return r.rows.length > 0;
 }
 
 export async function releaseLease(pool, owner, key, holder) {
@@ -80,8 +98,8 @@ let fetchPatched = false;
 /** Inside a step: its cancellation signal (undefined outside a step). */
 export const currentSignal = () => steps.getStore()?.signal;
 
-function cancelledError(name) {
-  const e = new Error(`CANCELLED: ${name} passed its time limit`);
+function cancelledError(name, lost = false) {
+  const e = new Error(lost ? `CANCELLED: ${name} lost its lease to another run` : `CANCELLED: ${name} passed its time limit`);
   e.name = "AbortError";
   return e;
 }
@@ -108,7 +126,7 @@ const guard = (q) => function (...args) {
   const store = steps.getStore();
   const text = typeof args[0] === "string" ? args[0] : args[0]?.text ?? "";
   // After the time limit: no new work. ROLLBACK still passes, so an open transaction is closed cleanly.
-  if (store?.signal.aborted && !PASS.test(text)) return Promise.reject(cancelledError(store.name));
+  if (store?.signal.aborted && !PASS.test(text)) return Promise.reject(cancelledError(store.name, store.lost));
   return q.apply(this, args);
 };
 
@@ -131,39 +149,76 @@ export function guardedPool(pool) {
  * Cron step runner. run(name, ms, fn, { lease }) runs fn inside a cancellable scope with a time limit; with a lease
  * key the step is skipped (status «skipped») while another run still holds it. record(name, status, error, ms) keeps
  * the result. Returns fn's value; throws on failure / timeout.
+ *
+ * v190: a timeout is NOT proof that the work stopped (an SMTP session or a request already at the provider may still
+ * complete). So the lease is kept — and renewed — until the work really settles; only then is it released and the
+ * late result recorded («late_ok» / «late_failed»). If the lease is lost anyway (the process was frozen past its
+ * expiry and another run took it), the step is cancelled and its queries refused (fencing). drain() waits for the
+ * late completions (bounded) so the cron records them before it exits.
  */
-export function createStepRunner({ pool, owner, record = async () => {}, holder = `${process.pid}:${Date.now().toString(36)}` }) {
+export function createStepRunner({ pool, owner, record = async () => {}, holder = `${process.pid}:${Date.now().toString(36)}`, renewEveryMs = 20_000 }) {
   installCancellableFetch();
-  const counts = { ok: 0, failed: 0, skipped: 0 };
+  const counts = { ok: 0, failed: 0, skipped: 0, late: 0 };
+  const pending = new Set();
   async function run(name, ms, fn, { lease = null } = {}) {
-    const t0 = Date.now();
-    if (lease && !(await claimLease(pool, owner, lease, holder, ms + 30_000).catch(() => false))) {
+    const t0 = Date.now(), ttl = ms + 30_000;
+    const fence = lease ? await claimLease(pool, owner, lease, holder, ttl).catch(() => 0) : 0;
+    if (lease && !fence) {
       counts.skipped++;
       await record(name, "skipped", "previous run still working", 0).catch(() => {});
       return undefined;
     }
     const ctl = new AbortController();
-    let timer;
-    try {
-      const value = await Promise.race([
-        steps.run({ signal: ctl.signal, name }, () => Promise.resolve().then(fn)),
-        new Promise((_, reject) => { timer = setTimeout(() => { ctl.abort(); reject(Error(`${name}: TIMEOUT ${ms / 1000}s`)); }, ms); timer.unref?.(); }),
-      ]);
-      counts.ok++;
-      await record(name, "ok", "", Date.now() - t0).catch(() => {});
-      return value;
-    } catch (e) {
-      ctl.abort();
-      const m = e instanceof Error ? e.message : String(e);
-      counts.failed++;
-      await record(name, /TIMEOUT/.test(m) ? "timeout" : "failed", m, Date.now() - t0).catch(() => {});
-      throw e;
-    } finally {
-      clearTimeout(timer);
-      if (lease) await releaseLease(pool, owner, lease, holder).catch(() => {});
+    const store = { signal: ctl.signal, name, lost: false, lease, fence, holder };
+    let renew = null;
+    if (lease) {
+      renew = setInterval(() => {
+        renewLease(pool, owner, lease, holder, ttl).then((ok) => { if (!ok) { store.lost = true; ctl.abort(); } }, () => {});
+      }, renewEveryMs);
+      renew.unref?.();
     }
+    const settled = steps.run(store, () => Promise.resolve().then(fn)).then((v) => ({ ok: true, v }), (e) => ({ ok: false, e }));
+    const finish = async () => { if (renew) clearInterval(renew); if (lease) await releaseLease(pool, owner, lease, holder).catch(() => {}); };
+    let timer;
+    const timedOut = new Promise((resolve) => { timer = setTimeout(() => resolve({ timeout: true }), ms); timer.unref?.(); });
+    const first = await Promise.race([settled, timedOut]);
+    clearTimeout(timer);
+    if (!first.timeout) {
+      await finish();
+      if (first.ok) { counts.ok++; await record(name, "ok", "", Date.now() - t0).catch(() => {}); return first.v; }
+      const m = first.e instanceof Error ? first.e.message : String(first.e);
+      counts.failed++;
+      await record(name, "failed", m, Date.now() - t0).catch(() => {});
+      throw first.e;
+    }
+    // Timed out: cancel what can be cancelled, keep the lease until the work really ends.
+    ctl.abort();
+    counts.failed++;
+    await record(name, "timeout", `${name}: TIMEOUT ${ms / 1000}s — η εργασία ίσως συνεχίζει· το κλείδωμα κρατιέται μέχρι να τελειώσει`, Date.now() - t0).catch(() => {});
+    const late = settled.then(async (r) => {
+      await finish();
+      counts.late++;
+      await record(name, r.ok ? "late_ok" : "late_failed", r.ok ? `ολοκληρώθηκε μετά το όριο (${Math.round((Date.now() - t0) / 1000)}s)` : String(r.e instanceof Error ? r.e.message : r.e), Date.now() - t0).catch(() => {});
+    });
+    pending.add(late);
+    late.finally(() => pending.delete(late));
+    throw Error(`${name}: TIMEOUT ${ms / 1000}s`);
   }
-  return { run, counts };
+  /** Waits (at most maxMs) for steps that passed their limit to really finish, so their lease and result are recorded. */
+  async function drain(maxMs = 20_000) {
+    if (!pending.size) return true;
+    let t;
+    const done = await Promise.race([Promise.allSettled([...pending]).then(() => true), new Promise((r) => { t = setTimeout(() => r(false), maxMs); t.unref?.(); })]);
+    clearTimeout(t);
+    return done;
+  }
+  return { run, drain, counts };
+}
+
+/** Inside a step: the lease it holds and its fencing token (for a check right before an irreversible action). */
+export function currentLease() {
+  const s = steps.getStore();
+  return s?.lease ? { key: s.lease, fence: s.fence, holder: s.holder, lost: s.lost } : null;
 }
 
 /**

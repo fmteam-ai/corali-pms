@@ -12,6 +12,8 @@ import pg from "pg";
 import { databaseSsl } from "./database-config.mjs";
 import { ROOM_READY_SQL } from "./room-ready-core.mjs";
 import { cronFinish, cronOverlap, cronStart } from "./job-control-core.mjs";
+import { compareRemote, parseRemoteAvailability, queueOtaResync } from "./ota-reconcile-core.mjs";
+import { saveReconciliation } from "./stripe-reconcile-core.mjs";
 import { AVAILABILITY_SQL, CHANNEX_HOSTS, availabilityRanges, computeRestrictions, feedHasMore, normalizeRevision, planRevision, restrictionKey, restrictionRanges, sellable, typeNightlyCents, otaRate } from "./channel-core.mjs";
 
 if (!process.env.DATABASE_URL || !process.env.PMS_DOCUMENT_KEY) throw Error("DATABASE_URL and PMS_DOCUMENT_KEY are required");
@@ -185,7 +187,12 @@ try {
       if (end >= from) {
         const rows = await availability(from, end);
         const values = mappings.flatMap((m) => availabilityRanges(rows.filter((r) => r.room_type === m.room_type).map((r) => ({ date: r.date, available: sellable(r.free) }))).map((range) => ({ property_id: propertyId, room_type_id: m.external_room_type_id, ...range })));
-        for (let i = 0; i < values.length; i += 500) await api(host, key, "/availability", { method: "POST", body: JSON.stringify({ values: values.slice(i, i + 500) }) });
+        for (let i = 0; i < values.length; i += 500) {
+          const ack = await api(host, key, "/availability", { method: "POST", body: JSON.stringify({ values: values.slice(i, i + 500) }) });
+          // v190: HTTP 200 with warnings means some values were not applied — not recorded as sent, retried.
+          const warnings = Array.isArray(ack?.meta?.warnings) ? ack.meta.warnings : [];
+          if (warnings.length) throw Error(`CHANNEX_WARNINGS: ${JSON.stringify(warnings).slice(0, 300)}`);
+        }
         // v189: what was accepted per room type and date, for the OTA reconciliation (PMS → Αξιοπιστία).
         const mappedTypes = new Set(mappings.map((m) => m.room_type));
         await pool.query(
@@ -243,6 +250,25 @@ try {
         await pool.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_error) VALUES($1,$2,$3) ON CONFLICT(owner_id) DO UPDATE SET last_error=$3`, [owner, Date.now(), `restrictions ${m.room_type}: ${String(error).slice(0, 400)}`]);
         throw error;
       }
+    }
+  }
+
+  // 4) v190 read-back (hourly, and with CHANNEL_READBACK_NOW=1): the availability Channex itself holds for the next
+  //    60 days, compared with what the PMS sells now. Differences are queued again and shown in PMS → Αξιοπιστία.
+  //    This reads Channex's copy (what it distributes to the OTAs), not each OTA's own extranet.
+  if (mappings.length && (new Date().getMinutes() === 35 || process.env.CHANNEL_READBACK_NOW === "1")) {
+    const rbFrom = today, rbTo = addDays(today, 60), ranAt = Date.now();
+    try {
+      const body = await api(host, key, `/availability?filter[property_id]=${encodeURIComponent(propertyId)}&filter[date][gte]=${rbFrom}&filter[date][lte]=${rbTo}`);
+      const remote = parseRemoteAvailability(body, typeByExternal);
+      if (!remote) throw Error("Άγνωστη μορφή απάντησης του Channex — δεν συγκρίθηκε");
+      const [current, open] = await Promise.all([availability(rbFrom, rbTo), pool.query(`SELECT date_from,date_to FROM channel_sync_outbox WHERE owner_id=$1 AND status IN ('pending','failed','processing')`, [owner]).then((r) => r.rows)]);
+      const diff = compareRemote(current, remote, open);
+      if (diff.length) await queueOtaResync({ pool, owner, mismatches: diff });
+      await pool.query(`UPDATE channel_availability_state SET remote_available=x.n,remote_read_at=$3 FROM jsonb_to_recordset($2::jsonb) AS x(k text,n int) WHERE owner_id=$1 AND room_type||'|'||date=x.k`, [owner, JSON.stringify(Object.entries(remote).map(([k, n]) => ({ k, n }))), ranAt]);
+      await saveReconciliation(pool, owner, "ota_readback", { ranAt, issues: diff.map((m) => ({ kind: "readback_mismatch", level: "warn", reference: m.roomType, amountCents: 0, detail: `«${m.roomType}» ${m.from}${m.to !== m.from ? ` → ${m.to}` : ""}: Channex ${m.ota}, PMS ${m.pms} — στάλθηκε ξανά` })), totals: { compared: Object.keys(remote).length } });
+    } catch (e) {
+      await saveReconciliation(pool, owner, "ota_readback", { ranAt, error: String(e instanceof Error ? e.message : e) }).catch(() => {});
     }
   }
 

@@ -55,3 +55,17 @@ export function evaluateRehearsal({ toc, restored = null, liveBefore = {}, decry
   const failed = checks.some((c) => !c.ok);
   return { status: failed ? "failed" : restored ? "ok" : "partial", checks };
 }
+
+export const REHEARSAL_MARKER = "corali_rehearsal_target";
+
+/**
+ * v190: may the rehearsal write to this target? Refused when it is the live database (same address, or the guard value
+ * written to the live database is visible there), or when it holds tables of something else (not empty and not marked
+ * as a rehearsal target by an earlier run).
+ */
+export function targetDecision({ sameUrl, nonceSeen, tables, marker }) {
+  if (sameUrl || nonceSeen) return { ok: false, reason: "Η βάση δοκιμής είναι η βάση παραγωγής — η δοκιμή ακυρώθηκε χωρίς να αγγίξει τίποτα" };
+  const foreign = tables.filter((t) => t !== REHEARSAL_MARKER);
+  if (foreign.length && !marker) return { ok: false, reason: `Η βάση δοκιμής δεν είναι κενή (${foreign.slice(0, 5).join(", ")}${foreign.length > 5 ? "…" : ""}) και δεν έχει σημανθεί ως βάση δοκιμής — η δοκιμή ακυρώθηκε` };
+  return { ok: true };
+}

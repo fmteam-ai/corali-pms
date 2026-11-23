@@ -3,6 +3,8 @@
 // ones, to the administrators by e-mail. Every delivery is an outbox row with retries and its own result, so «the
 // alert was raised» and «someone received it» are two different, visible facts. A critical alert nobody acknowledged
 // within 30 minutes is sent again (escalation) by e-mail and push.
+import { failedStatus } from "./delivery-policy-core.mjs";
+
 const MIN = 60_000;
 export const ALERT_BACKOFF_MIN = [1, 5, 15, 60, 180];
 export const ALERT_MAX_ATTEMPTS = 6;
@@ -25,7 +27,7 @@ export async function alertRecipients(pool, owner, envList = process.env.ALERT_E
  * Raises an alert. Returns { id, fresh }: fresh only when it is new or came back after it was resolved; only then the
  * PMS notification and the deliveries are created (so an ongoing problem is not told every 10 minutes).
  */
-export async function raiseAlert({ pool, owner, key, area = "", severity = "fail", title, titleEn = null, link = "/pms/reliability", now = Date.now(), emails = null }) {
+export async function raiseAlert({ pool, owner, key, area = "", severity = "fail", title, titleEn = null, link = "/pms/reliability", now = Date.now(), emails = null, notify = true }) {
   const r = await pool.query(
     `INSERT INTO alerts(owner_id,alert_key,area,severity,title,link,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)
      ON CONFLICT(owner_id,alert_key) DO UPDATE SET occurrence=alerts.occurrence+1,resolved_at=NULL,acknowledged_at=NULL,acknowledged_by=NULL,escalated_at=NULL,created_at=EXCLUDED.created_at,title=EXCLUDED.title,severity=EXCLUDED.severity
@@ -37,7 +39,7 @@ export async function raiseAlert({ pool, owner, key, area = "", severity = "fail
     return { id: Number(cur.rows[0]?.id ?? 0), fresh: false };
   }
   const id = Number(r.rows[0].id), occurrence = Number(r.rows[0].occurrence);
-  await pool.query(`INSERT INTO pms_notifications(owner_id,kind,title_el,title_en,link,created_at) VALUES($1,'system',$2,$3,$4,$5)`, [owner, `⚠️ ${title}`.slice(0, 300), `⚠️ ${titleEn ?? title}`.slice(0, 300), link, now]);
+  if (notify) await pool.query(`INSERT INTO pms_notifications(owner_id,kind,title_el,title_en,link,created_at) VALUES($1,'system',$2,$3,$4,$5)`, [owner, `⚠️ ${title}`.slice(0, 300), `⚠️ ${titleEn ?? title}`.slice(0, 300), link, now]);
   await queueDeliveries(pool, owner, id, occurrence, severity, "alert", now, emails);
   return { id, fresh: true };
 }
@@ -81,7 +83,9 @@ export async function escalateAlerts({ pool, owner, now = Date.now(), emails = n
  * pending after 10 minutes. Push with no subscribed phone is «skipped» (nothing to deliver), not a failure.
  */
 export async function deliverAlerts({ pool, owner, send, now = Date.now(), max = 30 }) {
-  await pool.query(`UPDATE alert_outbox SET status='pending',updated_at=$2 WHERE owner_id=$1 AND status='sending' AND updated_at<$3`, [owner, now, now - 10 * MIN]);
+  // v190: a delivery left «sending» by a crash: push is sent again (same tag, it replaces the first on the phone);
+  // an e-mail may already be in the mailbox, so it becomes «uncertain» instead of a second copy.
+  await pool.query(`UPDATE alert_outbox SET status=CASE WHEN channel='push' THEN 'pending' ELSE 'uncertain' END,last_error=CASE WHEN channel='push' THEN last_error ELSE 'Αποτέλεσμα άγνωστο (η αποστολή διακόπηκε)' END,updated_at=$2 WHERE owner_id=$1 AND status='sending' AND updated_at<$3`, [owner, now, now - 10 * MIN]);
   const due = (await pool.query(
     `SELECT o.*,a.title,a.link,a.severity,a.alert_key FROM alert_outbox o JOIN alerts a ON a.id=o.alert_id
       WHERE o.owner_id=$1 AND o.status='pending' AND o.next_attempt_at<=$2 ORDER BY o.id LIMIT $3`,
@@ -104,6 +108,12 @@ export async function deliverAlerts({ pool, owner, send, now = Date.now(), max =
       }
     } catch (e) {
       const attempts = Number(row.attempts) + 1, final = attempts >= ALERT_MAX_ATTEMPTS;
+      // v190: an e-mail that may have gone (timeout after the server took it) is not sent a second time.
+      if (failedStatus(e, row.channel) === "uncertain") {
+        await pool.query(`UPDATE alert_outbox SET status='uncertain',attempts=$2,last_error=$3,updated_at=$4 WHERE id=$1`, [row.id, attempts, `Αβέβαιο: ${String(e instanceof Error ? e.message : e)}`.slice(0, 300), now]);
+        out.uncertain = (out.uncertain ?? 0) + 1;
+        continue;
+      }
       await pool.query(`UPDATE alert_outbox SET status=$2,attempts=$3,last_error=$4,next_attempt_at=$5,updated_at=$6 WHERE id=$1`, [row.id, final ? "failed" : "pending", attempts, String(e instanceof Error ? e.message : e).slice(0, 300), final ? 0 : nextAlertAttempt(attempts, now), now]);
       if (final) out.failed++; else out.retry++;
     }
@@ -115,7 +125,7 @@ export async function deliverAlerts({ pool, owner, send, now = Date.now(), max =
 export async function alertDeliveryIssues(pool, owner, now = Date.now()) {
   return (await pool.query(
     `SELECT o.id,o.channel,o.recipient,o.status,o.attempts,o.last_error,o.created_at,a.title FROM alert_outbox o JOIN alerts a ON a.id=o.alert_id
-      WHERE o.owner_id=$1 AND a.resolved_at IS NULL AND (o.status='failed' OR (o.status='pending' AND o.attempts>0 AND o.created_at<$2)) ORDER BY o.id DESC LIMIT 20`,
+      WHERE o.owner_id=$1 AND a.resolved_at IS NULL AND (o.status IN ('failed','uncertain') OR (o.status='pending' AND o.attempts>0 AND o.created_at<$2)) ORDER BY o.id DESC LIMIT 20`,
     [owner, now - 30 * MIN],
   )).rows;
 }

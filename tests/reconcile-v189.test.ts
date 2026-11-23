@@ -5,9 +5,10 @@ import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { athensToday, groupMismatches, otaReconcile, queueOtaResync } from "../scripts/ota-reconcile-core.mjs";
+import { athensToday, compareRemote, groupMismatches, otaReconcile, parseRemoteAvailability, queueOtaResync } from "../scripts/ota-reconcile-core.mjs";
+import { sendOutcome, failedStatus } from "../scripts/delivery-policy-core.mjs";
 import { saveReconciliation, stripeReconcile } from "../scripts/stripe-reconcile-core.mjs";
-import { backupTime, evaluateRehearsal, newestBackup, sameDatabase, tablesWithData } from "../scripts/restore-rehearsal-core.mjs";
+import { REHEARSAL_MARKER, backupTime, evaluateRehearsal, newestBackup, sameDatabase, tablesWithData, targetDecision } from "../scripts/restore-rehearsal-core.mjs";
 import { contentHash, fileManifest, verifyManifest } from "../scripts/release-evidence-core.mjs";
 
 const o = "hotel-corali";
@@ -30,8 +31,12 @@ test("v189 OTA reconciliation: a change that never reached the OTAs is found; qu
     // Last push: 2 free for days +10..+14.
     for (let i = 10; i <= 14; i++) await db.query(`INSERT INTO channel_availability_state(owner_id,room_type,date,available,pushed_at) VALUES($1,'double',$2,2,1)`, [o, addDays(today, i)]);
     let r = await otaReconcile({ pool, owner: o, now, days: 20 });
-    assert.deepEqual(r.mismatches, []);
-    assert.ok(r.neverPushed > 0, "dates never pushed are counted, not flagged");
+    // v190: dates never sent are differences too (ota: null), queued like the others.
+    assert.deepEqual(r.changed, []);
+    assert.ok(r.neverPushed > 0);
+    assert.deepEqual(r.unsent!.map((m) => `${m.from}..${m.to}:${m.pms}`), [`${today}..${addDays(today, 9)}:2`, `${addDays(today, 15)}..${addDays(today, 20)}:2`]);
+    // Treat them as sent from here on, to test the «changed» case alone.
+    await db.query(`INSERT INTO channel_availability_state(owner_id,room_type,date,available,pushed_at) SELECT $1,'double',d::date::text,2,1 FROM generate_series($2::date,$3::date,interval '1 day') d ON CONFLICT DO NOTHING`, [o, today, addDays(today, 20)]);
     // A booking for +11..+13 written without its availability change (the fault this check exists for).
     await db.query(`INSERT INTO bookings(id,owner_id,reference,guest_name,check_in,check_out,status,room_id,total_cents,balance_cents,created_at) VALUES(1,$1,'CR-1','Anna',$2,$3,'confirmed',1,1,0,1)`, [o, addDays(today, 11), addDays(today, 13)]);
     r = await otaReconcile({ pool, owner: o, now, days: 20 });
@@ -104,4 +109,36 @@ test("v189 restore rehearsal verdicts and the release evidence of the installed 
     rmSync(path.join(dir, "scripts", "a.mjs"));
     assert.deepEqual(verifyManifest(dir, m), { total: 2, missing: ["scripts/a.mjs"], changed: ["server.js"], ok: false });
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("v190 OTA read-back parsing and comparison", () => {
+  const ext = { "rt-1": "double", "rt-2": "single" };
+  assert.deepEqual(parseRemoteAvailability({ data: { "rt-1": { "2026-08-01": 2, "2026-08-02": { availability: 1 } }, "rt-x": { "2026-08-01": 5 } } }, ext), { "double|2026-08-01": 2, "double|2026-08-02": 1 });
+  assert.deepEqual(parseRemoteAvailability({ data: [{ attributes: { room_type_id: "rt-2", date: "2026-08-01", availability: 3 } }] }, ext), { "single|2026-08-01": 3 });
+  assert.equal(parseRemoteAvailability({ errors: ["x"] }, ext), null, "unknown shape: no conclusion");
+  const current = [{ room_type: "double", date: "2026-08-01", free: 2 }, { room_type: "double", date: "2026-08-02", free: 0 }, { room_type: "double", date: "2026-08-03", free: 1 }];
+  assert.deepEqual(compareRemote(current, { "double|2026-08-01": 2, "double|2026-08-02": 1, "double|2026-08-03": 4 }, [{ date_from: "2026-08-03", date_to: "2026-08-03" }]), [{ roomType: "double", from: "2026-08-02", to: "2026-08-02", pms: 0, ota: 1 }]);
+});
+
+test("v190 send outcome: a timeout may have delivered (no automatic retry); a refusal did not", () => {
+  assert.equal(sendOutcome(Object.assign(new Error("Connection timeout"), { code: "ETIMEDOUT" })), "uncertain");
+  assert.equal(sendOutcome(Object.assign(new Error("Client network socket disconnected"), { code: "ESOCKET" })), "uncertain");
+  assert.equal(sendOutcome(new Error("CANCELLED: Guest messages passed its time limit")), "uncertain");
+  assert.equal(sendOutcome(Object.assign(new Error("This operation was aborted"), { name: "AbortError" })), "uncertain");
+  assert.equal(sendOutcome(Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:9"), { code: "ECONNECTION" })), "not_sent");
+  assert.equal(sendOutcome(Object.assign(new Error("550 5.1.1 user unknown"), { responseCode: 550 })), "not_sent");
+  assert.equal(sendOutcome(new Error("SMTP_NOT_CONFIGURED")), "not_sent");
+  assert.equal(sendOutcome(new Error("WHATSAPP_HTTP_400")), "not_sent");
+  assert.equal(sendOutcome(Object.assign(new TypeError("fetch failed"), { cause: { code: "ENOTFOUND" } })), "not_sent");
+  assert.equal(sendOutcome(new Error("something odd happened")), "uncertain", "unknown → the safe answer");
+  assert.equal(failedStatus(new Error("timeout"), "email"), "uncertain");
+  assert.equal(failedStatus(new Error("timeout"), "push"), "failed", "push repeats safely (same tag)");
+});
+
+test("v190 rehearsal target: never the live database, never a foreign non-empty one", () => {
+  assert.equal(targetDecision({ sameUrl: true, nonceSeen: false, tables: [], marker: false }).ok, false);
+  assert.match(targetDecision({ sameUrl: false, nonceSeen: true, tables: [], marker: false }).reason!, /βάση παραγωγής/);
+  assert.match(targetDecision({ sameUrl: false, nonceSeen: false, tables: ["bookings", "rooms"], marker: false }).reason!, /δεν είναι κενή \(bookings, rooms\)/);
+  assert.equal(targetDecision({ sameUrl: false, nonceSeen: false, tables: [], marker: false }).ok, true, "empty");
+  assert.equal(targetDecision({ sameUrl: false, nonceSeen: false, tables: [REHEARSAL_MARKER, "bookings"], marker: true }).ok, true, "ours from a previous run");
 });

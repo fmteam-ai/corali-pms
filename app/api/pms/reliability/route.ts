@@ -12,7 +12,7 @@ export async function GET() {
   return Response.json({ ok: true, ...(await reliabilityState(u.ownerId)) }, { headers: { "Cache-Control": "no-store" } });
 }
 
-const input = z.object({ type: z.enum(["retry_outbox", "retry_delivery", "retry_fiscal", "retry_webhook", "retry_alert", "resync_ota", "reconcile_now", "sync_now", "ack_alert"]), id: z.number().int().positive().nullable().default(null) });
+const input = z.object({ type: z.enum(["retry_outbox", "retry_delivery", "retry_fiscal", "retry_webhook", "retry_alert", "resync_ota", "reconcile_now", "sync_now", "ack_alert", "resend_uncertain", "mark_sent"]), id: z.number().int().positive().nullable().default(null) });
 
 async function handlePOST(request: Request) {
   const u = await requireApiUser("reservations.write");

@@ -1,5 +1,8 @@
 type Pool = { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
-export declare function claimLease(pool: Pool, owner: string, key: string, holder: string, ttlMs: number, now?: number): Promise<boolean>;
+export declare function claimLease(pool: Pool, owner: string, key: string, holder: string, ttlMs: number, now?: number): Promise<number>;
+export declare function renewLease(pool: Pool, owner: string, key: string, holder: string, ttlMs: number, now?: number): Promise<boolean>;
+export declare function holdsLease(pool: Pool, owner: string, key: string, holder: string, fence: number): Promise<boolean>;
+export declare function currentLease(): { key: string; fence: number; holder: string; lost: boolean } | null;
 export declare function releaseLease(pool: Pool, owner: string, key: string, holder: string): Promise<void>;
 export declare function withLease<T>(pool: Pool, owner: string, key: string, ttlMs: number, fn: () => Promise<T>, holder?: string): Promise<{ ran: false } | { ran: true; value: T }>;
 export declare function cronStart(pool: Pool, owner: string, job: string, opts?: { now?: number; pid?: number; host?: string }): Promise<number>;
@@ -10,5 +13,5 @@ export declare function heartbeatState(row: Record<string, unknown> | null | und
 export declare function currentSignal(): AbortSignal | undefined;
 export declare function installCancellableFetch(): void;
 export declare function guardedPool<T extends object>(pool: T): T;
-export declare function createStepRunner(x: { pool: Pool; owner: string; record?: (name: string, status: string, error: string, ms: number) => Promise<unknown>; holder?: string }): { run: <T>(name: string, ms: number, fn: () => T | Promise<T>, opts?: { lease?: string | null }) => Promise<T | undefined>; counts: { ok: number; failed: number; skipped: number } };
+export declare function createStepRunner(x: { pool: Pool; owner: string; record?: (name: string, status: string, error: string, ms: number) => Promise<unknown>; holder?: string; renewEveryMs?: number }): { run: <T>(name: string, ms: number, fn: () => T | Promise<T>, opts?: { lease?: string | null }) => Promise<T | undefined>; drain: (maxMs?: number) => Promise<boolean>; counts: { ok: number; failed: number; skipped: number; late: number } };
 export declare function hardDeadline(ms: number, onKill: () => unknown, exit?: (code: number) => void): () => void;

@@ -8,14 +8,15 @@ const ICON = { ok: "✓", warn: "!", fail: "✕", inactive: "–" } as const;
 const ACTION: Record<string, { el: string; en: string }> = {
   retry_outbox: { el: "Επανάληψη συγχρονισμού", en: "Retry sync" }, retry_delivery: { el: "Νέα αποστολή", en: "Send again" },
   retry_fiscal: { el: "Νέα αποστολή στο myDATA", en: "Resend to myDATA" }, retry_webhook: { el: "Νέα παράδοση", en: "Deliver again" }, sync_now: { el: "Συγχρονισμός τώρα", en: "Sync now" },
-  retry_alert: { el: "Νέα αποστολή ειδοποίησης", en: "Send alert again" }, resync_ota: { el: "Αποστολή διαφορών στα OTA", en: "Send differences to OTAs" }, reconcile_now: { el: "Έλεγχος τώρα", en: "Check now" },
+  retry_alert: { el: "Νέα αποστολή ειδοποίησης", en: "Send alert again" }, resync_ota: { el: "Αποστολή διαφορών στα OTA", en: "Send differences to OTAs" },
+  resend_uncertain: { el: "Δεν το έλαβε — νέα αποστολή", en: "Not received — send again" }, mark_sent: { el: "Το έλαβε — σημείωση ως σταλμένο", en: "Received — mark as sent" }, reconcile_now: { el: "Έλεγχος τώρα", en: "Check now" },
 };
 type Delivery = { channel: string; recipient: string; purpose: string; status: string; attempts: number; error: string; sentAt: number | null };
 type AlertRow = { id: number; area: string; severity: string; title: string; link: string; createdAt: number; acknowledgedAt: number | null; acknowledgedBy: string | null; escalatedAt: number | null; resolvedAt: number | null; deliveries: Delivery[] };
 type State = Reliability & { version?: string; alerts?: AlertRow[] };
 const DELIVERY: Record<string, { el: string; en: string }> = {
   sent: { el: "παραδόθηκε", en: "delivered" }, pending: { el: "σε αναμονή", en: "pending" }, sending: { el: "αποστέλλεται", en: "sending" },
-  failed: { el: "απέτυχε", en: "failed" }, skipped: { el: "κανένα κινητό", en: "no phone" }, cancelled: { el: "δεν χρειάστηκε", en: "not needed" },
+  failed: { el: "απέτυχε", en: "failed" }, skipped: { el: "κανένα κινητό", en: "no phone" }, uncertain: { el: "αβέβαιο", en: "uncertain" }, cancelled: { el: "δεν χρειάστηκε", en: "not needed" },
 };
 
 export function ReliabilityView({ lang, initial, canAct }: { lang: PmsLang; initial: State; canAct: boolean }) {
@@ -44,6 +45,7 @@ export function ReliabilityView({ lang, initial, canAct }: { lang: PmsLang; init
       <span>{i.text}</span>
       {i.link && <Link href={i.link} className="linkButton">→</Link>}
       {canAct && i.action && <button type="button" className="secondaryButton" disabled={busy} onClick={() => void act(i.action!.type, i.action!.id)}>↻ {ACTION[i.action.type]?.[lang]}</button>}
+      {canAct && i.altAction && <button type="button" className="secondaryButton" disabled={busy} onClick={() => void act(i.altAction!.type, i.altAction!.id)}>✓ {ACTION[i.altAction.type]?.[lang]}</button>}
     </li>
   );
   return (
@@ -65,7 +67,7 @@ export function ReliabilityView({ lang, initial, canAct }: { lang: PmsLang; init
           {(a.items.length > 0 ? a.info : a.info.slice(1)).length > 0 && <small className="muted">{(a.items.length > 0 ? a.info : a.info.slice(1)).join(" · ")}</small>}
           {a.items.length > 0 && <ul className="rcItems">{a.items.slice(0, 20).map(item)}</ul>}
           {a.items.length > 20 && <small className="muted">+{a.items.length - 20}</small>}
-          {canAct && a.items.filter((i) => i.action?.id).length > 1 && (() => { const t = a.items.find((i) => i.action?.id)!.action!.type; return <button type="button" className="primaryAction" disabled={busy} onClick={() => void act(t)}>↻ {el ? "Επανάληψη όλων" : "Retry all"}</button>; })()}
+          {canAct && a.items.filter((i) => i.action?.id && !i.altAction).length > 1 && (() => { const t = a.items.find((i) => i.action?.id && !i.altAction)!.action!.type; return <button type="button" className="primaryAction" disabled={busy} onClick={() => void act(t)}>↻ {el ? "Επανάληψη όλων" : "Retry all"}</button>; })()}
         </article>
       ))}</div>
       {(state.alerts?.length ?? 0) > 0 && (

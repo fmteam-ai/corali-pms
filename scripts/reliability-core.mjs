@@ -34,7 +34,7 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
     one(pool, `SELECT 1 FROM provider_connections WHERE owner_id=$1 AND provider_key IN ('channex','channelManager') AND active=1`, [owner]).catch(() => []),
     one(pool, `SELECT id,reference,guest_name,check_in,external_room_type FROM bookings WHERE owner_id=$1 AND room_id IS NULL AND external_room_type IS NOT NULL AND status='confirmed' AND check_in<=(to_char(now() AT TIME ZONE 'Europe/Athens','YYYY-MM-DD')::date+14)::text ORDER BY check_in LIMIT 30`, [owner]),
     one(pool, `SELECT d.id,d.event_key,d.channel,COALESCE(d.last_error,'') err,d.attempts,d.updated_at,b.reference,b.guest_name FROM message_deliveries d JOIN bookings b ON b.owner_id=d.owner_id AND b.id=d.booking_id WHERE d.owner_id=$1 AND d.status='failed' AND d.updated_at>$2::bigint-7*86400000 ORDER BY d.updated_at DESC LIMIT 50`, P),
-    one(pool, `SELECT d.id,d.event_key,d.channel,d.status,d.scheduled_at,d.updated_at,b.reference FROM message_deliveries d JOIN bookings b ON b.owner_id=d.owner_id AND b.id=d.booking_id WHERE d.owner_id=$1 AND ((d.status='pending' AND d.scheduled_at<$2::bigint-20*60000 AND d.scheduled_at>$2::bigint-3*86400000) OR (d.status='processing' AND d.updated_at<$2::bigint-15*60000)) ORDER BY d.scheduled_at LIMIT 50`, P),
+    one(pool, `SELECT d.id,d.event_key,d.channel,d.status,d.scheduled_at,d.updated_at,b.reference FROM message_deliveries d JOIN bookings b ON b.owner_id=d.owner_id AND b.id=d.booking_id WHERE d.owner_id=$1 AND ((d.status='pending' AND d.scheduled_at<$2::bigint-20*60000 AND d.scheduled_at>$2::bigint-3*86400000) OR (d.status='processing' AND d.updated_at<$2::bigint-15*60000) OR (d.status='uncertain' AND d.updated_at>$2::bigint-7*86400000)) ORDER BY d.scheduled_at LIMIT 50`, P),
     one(pool, `SELECT c.name,r.channel,count(*)::int n,max(r.error) err FROM campaign_recipients r JOIN campaigns c ON c.id=r.campaign_id WHERE r.owner_id=$1 AND r.status='failed' AND r.updated_at>$2::bigint-7*86400000 GROUP BY c.name,r.channel`, P),
     one(pool, `SELECT id,guest_first_name,guest_last_name,payable_cents,check_in,created_at,payment_gateway FROM booking_sessions WHERE owner_id=$1 AND status='payment_pending' AND recovery_due_at<$2::bigint AND created_at>$2::bigint-7*86400000 ORDER BY created_at DESC LIMIT 30`, P),
     one(pool, `SELECT l.id,b.reference,l.updated_at FROM balance_payment_links l JOIN bookings b ON b.owner_id=l.owner_id AND b.id=l.booking_id WHERE l.owner_id=$1 AND l.status='checkout_pending' AND l.updated_at<$2::bigint-2*3600000 LIMIT 30`, P).catch(() => []),
@@ -60,7 +60,7 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
     one(pool, `SELECT a.room_id,r.code FROM room_ac_devices a JOIN rooms r ON r.owner_id=a.owner_id AND r.id=a.room_id WHERE a.owner_id=$1 AND a.presence_device_id<>'' AND a.presence_seen_at IS NULL AND a.presence_checked_at IS NOT NULL`, [owner]).catch(() => []),
     one(pool, `SELECT DISTINCT ON (kind) kind,ran_at,status,issues_json,error FROM reconciliation_runs WHERE owner_id=$1 ORDER BY kind,ran_at DESC`, [owner]).catch(() => []),
     one(pool, `SELECT DISTINCT ON (kind) kind,started_at,finished_at,status,file,size_bytes,details_json,error FROM backup_runs WHERE owner_id=$1 AND status<>'running' ORDER BY kind,started_at DESC`, [owner]).catch(() => []),
-    one(pool, `SELECT version,ran_at,status,checks_json,qa_json FROM release_checks ORDER BY ran_at DESC LIMIT 1`, []).catch(() => []),
+    one(pool, `SELECT version,ran_at,status,checks_json,qa_json FROM release_checks WHERE scope='installation' ORDER BY ran_at DESC LIMIT 1`, []).catch(() => []),
     otaReconcile({ pool, owner, now }).catch((e) => ({ active: false, error: e instanceof Error ? e.message : String(e), mismatches: [] })),
   ]);
 
@@ -78,8 +78,20 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
   for (const b of otaNoRoom) add("channel", { key: `noroom:${b.id}`, level: "warn", text: `Κράτηση OTA ${b.reference} (${b.guest_name}, άφιξη ${b.check_in}) χωρίς δωμάτιο — τύπος ${b.external_room_type}`, link: `/pms/reservations?q=${encodeURIComponent(b.reference)}` });
   // v189 OTA reconciliation: what the PMS sells now ≠ what was last sent, with nothing queued to fix it.
   if (ota.active) {
-    for (const m of ota.mismatches.slice(0, 20)) add("channel", { key: `ota:${m.roomType}:${m.from}`, level: "fail", text: `Διαθεσιμότητα «${m.roomType}» ${m.from}${m.to !== m.from ? ` → ${m.to}` : ""}: PMS ${m.pms}, στάλθηκε στα OTA ${m.ota} — η αλλαγή δεν έχει σταλεί`, action: { type: "resync_ota" }, at: now });
+    for (const m of ota.mismatches.slice(0, 30)) add("channel", m.ota === null
+      ? { key: `ota-unsent:${m.roomType}:${m.from}`, level: "warn", text: `Διαθεσιμότητα «${m.roomType}» ${m.from}${m.to !== m.from ? ` → ${m.to}` : ""}: δεν έχει σταλεί ποτέ στον channel manager (PMS ${m.pms})`, action: { type: "resync_ota" }, at: now }
+      : { key: `ota:${m.roomType}:${m.from}`, level: "fail", text: `Διαθεσιμότητα «${m.roomType}» ${m.from}${m.to !== m.from ? ` → ${m.to}` : ""}: PMS ${m.pms}, στάλθηκε στα OTA ${m.ota} — η αλλαγή δεν έχει σταλεί`, action: { type: "resync_ota" }, at: now });
+    if (ota.mismatches.length > 30) add("channel", { key: "ota:more", level: "warn", text: `και ${ota.mismatches.length - 30} ακόμη διαστήματα με διαφορά`, action: { type: "resync_ota" }, at: now });
     info("channel", `Συμφωνία διαθεσιμότητας: ${ota.checked} ημέρες×τύποι ελέγχθηκαν${ota.mismatches.length ? `, ${ota.mismatches.length} αποκλίσεις` : ", χωρίς αποκλίσεις"}${ota.neverPushed ? ` · ${ota.neverPushed} δεν έχουν σταλεί ακόμη` : ""}`);
+  }
+  // v190 read-back: what Channex itself reports (hourly); a difference after our push was accepted.
+  const rb = recon.find((r) => r.kind === "ota_readback");
+  if (channelOn && rb) {
+    let issues = [];
+    try { issues = JSON.parse(String(rb.issues_json)); } catch { issues = []; }
+    if (rb.status === "error") add("channel", { key: "readback:error", level: "warn", text: `Ανάγνωση διαθεσιμότητας από το Channex ${hhmm(rb.ran_at)}: δεν έγινε · ${String(rb.error).slice(0, 140)}`, at: Number(rb.ran_at) });
+    else if (issues.length) for (const i of issues.slice(0, 10)) add("channel", { key: `readback:${i.reference}:${i.detail.slice(0, 40)}`, level: "warn", text: `Channex (ανάγνωση ${hhmm(rb.ran_at)}): ${i.detail}`, at: Number(rb.ran_at) });
+    else info("channel", `Ανάγνωση από το Channex ${hhmm(rb.ran_at)}: ίδια διαθεσιμότητα με το PMS`);
   }
   const syncBeat = beats.find((b) => b.job === "channel-sync");
   if (channelOn && syncBeat) {
@@ -92,7 +104,12 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
 
   // Guest messaging: a failed or stuck message, failed campaign messages.
   for (const d of deliveries) add("messaging", { key: `delivery:${d.id}`, level: "fail", text: `${d.reference} · ${d.guest_name}: «${d.event_key}» (${d.channel}) απέτυχε · ${d.err.slice(0, 140) || "σφάλμα"} · ${d.attempts} προσπάθειες`, action: { type: "retry_delivery", id: Number(d.id) }, at: Number(d.updated_at) });
-  for (const d of stuckDeliveries) add("messaging", { key: `stuck:${d.id}`, level: d.status === "processing" ? "fail" : "warn", text: `${d.reference}: «${d.event_key}» (${d.channel}) ${d.status === "processing" ? "κόλλησε στην αποστολή" : "δεν στάλθηκε ενώ έπρεπε"} εδώ και ${ago(now, d.status === "processing" ? d.updated_at : d.scheduled_at)}`, action: { type: "retry_delivery", id: Number(d.id) }, at: Number(d.scheduled_at) });
+  for (const d of stuckDeliveries) {
+    // v190: «uncertain» = the send started but was never confirmed; it may have reached the guest, so it is never
+    // retried automatically — a person checks and decides (send again / mark as sent).
+    if (d.status === "uncertain") add("messaging", { key: `uncertain:${d.id}`, level: "warn", text: `${d.reference}: «${d.event_key}» (${d.channel}) — αβέβαιο αν στάλθηκε (η αποστολή διακόπηκε). Ελέγξτε με τον πελάτη πριν την ξαναστείλετε.`, action: { type: "resend_uncertain", id: Number(d.id) }, altAction: { type: "mark_sent", id: Number(d.id) }, at: Number(d.updated_at) });
+    else add("messaging", { key: `stuck:${d.id}`, level: d.status === "processing" ? "fail" : "warn", text: `${d.reference}: «${d.event_key}» (${d.channel}) ${d.status === "processing" ? "η αποστολή δεν έχει επιβεβαιωθεί" : "δεν στάλθηκε ενώ έπρεπε"} εδώ και ${ago(now, d.status === "processing" ? d.updated_at : d.scheduled_at)}`, action: d.status === "pending" ? { type: "retry_delivery", id: Number(d.id) } : undefined, at: Number(d.scheduled_at) });
+  }
   for (const c of campaignFails) add("messaging", { key: `campaign:${c.name}:${c.channel}`, level: "warn", text: `Καμπάνια «${c.name}»: ${c.n} αποτυχίες (${c.channel}) · ${String(c.err ?? "").slice(0, 100)}`, link: "/pms/campaigns" });
   if (!deliveries.length && !stuckDeliveries.length) info("messaging", "Ουρά αποστολής χωρίς εκκρεμότητες");
 
@@ -155,7 +172,7 @@ export async function checkReliability({ pool, owner, now = Date.now(), version 
     if (beat.last_status === "killed") add("automations", { key: "cron:killed", level: "warn", text: `Η τελευταία εκτέλεση τερματίστηκε στο όριο χρόνου (${Math.round(Number(beat.last_duration_ms) / 1000)}s) · ${String(beat.last_error).slice(0, 120)}`, at: Number(beat.last_finish_at) });
     info("automations", `Heartbeat: τελευταία έναρξη ${hhmm(beat.last_start_at)}${beat.last_finish_at ? ` · ολοκλήρωση ${hhmm(beat.last_finish_at)} (${Math.round(Number(beat.last_duration_ms) / 1000)}s)` : ""} · ${beat.runs} εκτελέσεις${Number(beat.overlap_count) ? ` · ${beat.overlap_count} επικαλύψεις αποφεύχθηκαν` : ""}`);
   } else if (gm && now - Number(gm.last_run_at) > 10 * MIN) add("automations", { key: "cron:stopped", level: "fail", text: `Το cron δεν έχει τρέξει από ${hhmm(gm.last_run_at)} — κανένας αυτοματισμός δεν εκτελείται (μηνύματα, συγχρονισμός, συσκευές). Ελέγξτε το Cron Jobs στο cPanel.`, at: Number(gm.last_run_at) });
-  for (const d of undelivered) add("automations", { key: `alertdelivery:${d.id}`, level: d.status === "failed" ? "fail" : "warn", text: `Η ειδοποίηση «${String(d.title).slice(0, 80)}» ${d.status === "failed" ? "δεν παραδόθηκε" : "δεν έχει παραδοθεί ακόμη"} (${d.channel === "email" ? `email ${d.recipient}` : "push στα κινητά"}) · ${d.attempts} προσπάθειες · ${String(d.last_error).slice(0, 100)}`, action: { type: "retry_alert", id: Number(d.id) }, at: Number(d.created_at) });
+  for (const d of undelivered) add("automations", { key: `alertdelivery:${d.id}`, level: d.status === "failed" ? "fail" : "warn", text: `Η ειδοποίηση «${String(d.title).slice(0, 80)}» ${d.status === "failed" ? "δεν παραδόθηκε" : d.status === "uncertain" ? "ίσως παραδόθηκε (αβέβαιο — δεν ξαναστέλνεται αυτόματα)" : "δεν έχει παραδοθεί ακόμη"} (${d.channel === "email" ? `email ${d.recipient}` : "push στα κινητά"}) · ${d.attempts} προσπάθειες · ${String(d.last_error).slice(0, 100)}`, action: { type: "retry_alert", id: Number(d.id) }, at: Number(d.created_at) });
   if (Number(unacked[0]?.n ?? 0)) info("automations", `${unacked[0].n} κρίσιμες ειδοποιήσεις χωρίς επιβεβαίωση`);
   for (const s of steps) if (s.last_status !== "ok" && s.last_status !== "skipped") add("automations", { key: `step:${s.name}`, level: Number(s.consecutive_failures) >= 3 ? "fail" : "warn", text: `«${s.name}»: ${s.last_status === "timeout" ? "λήξη χρόνου" : "αποτυχία"} ${Number(s.consecutive_failures)} φορές στη σειρά · ${String(s.last_error).slice(0, 140)}${s.last_ok_at ? ` · τελευταία επιτυχία ${hhmm(s.last_ok_at)}` : ""}`, at: Number(s.last_run_at) });
   if (gm && !areas.automations) info("automations", `Όλα τα βήματα OK · τελευταία εκτέλεση ${hhmm(gm.last_run_at)}`);
@@ -205,7 +222,14 @@ export async function recoverReliability({ pool, owner, type, id = null, now = D
   const p = id === null ? [owner, now] : [owner, now, id];
   const run = async (sql) => (await pool.query(sql, p)).rowCount ?? 0;
   if (type === "retry_outbox") return run(`UPDATE channel_sync_outbox SET status='pending',next_attempt_at=0,last_error=NULL,updated_at=$2 WHERE owner_id=$1 AND (status IN ('pending','failed') OR (status='processing' AND updated_at<$2::bigint-600000))${by}`);
-  if (type === "retry_delivery") return run(`UPDATE message_deliveries SET status='pending',scheduled_at=$2,last_error=NULL,updated_at=$2 WHERE owner_id=$1 AND (status IN ('failed','pending') OR (status='processing' AND updated_at<$2::bigint-900000))${by}`);
+  // v190: only work that definitely did not go out is taken back; «processing» / «uncertain» never automatically.
+  if (type === "retry_delivery") return run(`UPDATE message_deliveries SET status='pending',scheduled_at=$2,last_error=NULL,updated_at=$2 WHERE owner_id=$1 AND status IN ('failed','pending')${by}`);
+  if (type === "resend_uncertain" || type === "mark_sent") {
+    if (id === null) throw Error("ID_REQUIRED");
+    return run(type === "resend_uncertain"
+      ? `UPDATE message_deliveries SET status='pending',scheduled_at=$2,last_error='Νέα αποστολή μετά από έλεγχο (αβέβαιο αποτέλεσμα)',updated_at=$2 WHERE owner_id=$1 AND status='uncertain' AND id=$3`
+      : `UPDATE message_deliveries SET status='sent',last_error='Επιβεβαιώθηκε χειροκίνητα ότι στάλθηκε',updated_at=$2 WHERE owner_id=$1 AND status='uncertain' AND id=$3`);
+  }
   if (type === "retry_fiscal") return run(`UPDATE fiscal_documents SET status='pending',next_attempt_at=$2,updated_at=$2 WHERE owner_id=$1 AND status IN ('failed','pending')${by}`);
   if (type === "retry_webhook") return run(`UPDATE api_webhook_deliveries SET status='pending',next_at=$2 WHERE owner_id=$1 AND status<>'sent'${by}`);
   if (type === "retry_alert") return run(`UPDATE alert_outbox SET status='pending',attempts=0,next_attempt_at=0,updated_at=$2 WHERE owner_id=$1 AND status IN ('failed','pending')${by}`);
@@ -222,11 +246,19 @@ export async function runReliabilityAlerts({ pool, owner, now = Date.now(), emai
   const { raiseAlert, resolveAlerts, escalateAlerts } = await import("./alert-core.mjs");
   const r = await checkReliability({ pool, owner, now });
   const failing = r.areas.flatMap((a) => a.items.filter((i) => i.level === "fail").map((i) => ({ area: a, item: i })));
-  let told = 0;
-  for (const f of failing.slice(0, 40)) {
-    const res = await raiseAlert({ pool, owner, key: `rel:${f.item.key}`, area: f.area.key, severity: "fail", title: `${f.area.el}: ${f.item.text}`, titleEn: `${f.area.en}: problem (see Reliability center)`, link: "/pms/reliability", now, emails });
-    if (res.fresh) told++;
+  // v190: EVERY critical problem becomes an alert (none dropped), most important areas first. The PMS notification
+  // list gets at most 10 new entries per run plus one summary; every alert still gets its deliveries, which the
+  // alert outbox sends in order, 30 per minute.
+  const PRIORITY = ["payments", "channel", "automations", "backups", "release", "mydata", "messaging", "network", "devices", "integrations"];
+  const rank = (k) => { const i = PRIORITY.indexOf(k); return i < 0 ? PRIORITY.length : i; };
+  failing.sort((a, b) => rank(a.area.key) - rank(b.area.key));
+  let told = 0, silent = 0;
+  for (const f of failing) {
+    const res = await raiseAlert({ pool, owner, key: `rel:${f.item.key}`, area: f.area.key, severity: "fail", title: `${f.area.el}: ${f.item.text}`, titleEn: `${f.area.en}: problem (see Reliability center)`, link: "/pms/reliability", now, emails, notify: told < 10 });
+    if (res.fresh) { if (told < 10) told++; else silent++; }
   }
+  if (silent) await pool.query(`INSERT INTO pms_notifications(owner_id,kind,title_el,title_en,link,created_at) VALUES($1,'system',$2,$3,'/pms/reliability',$4)`, [owner, `⚠️ Και ${silent} ακόμη νέα προβλήματα — δείτε το Κέντρο αξιοπιστίας`, `⚠️ ${silent} more new problems — see the Reliability center`, now]);
+  told += silent;
   const resolved = await resolveAlerts({ pool, owner, activeKeys: failing.map((f) => `rel:${f.item.key}`), now });
   const escalated = await escalateAlerts({ pool, owner, now, emails });
   await pool.query(`INSERT INTO reliability_state(owner_id,alerted_json,status,checked_at) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id) DO UPDATE SET alerted_json=$2,status=$3,checked_at=$4`, [owner, JSON.stringify(failing.map((f) => f.item.key).slice(0, 300)), r.status, now]);

@@ -52,7 +52,7 @@ if (!noDb) {
     for (const t of tables) if (!(await client.query(`SELECT to_regclass($1) IS NOT NULL ok`, [`public.${t}`])).rows[0].ok) missing.push(t);
     check("Πίνακες σχήματος", missing.length ? "fail" : "ok", missing.length ? `λείπουν: ${missing.slice(0, 8).join(", ")}` : `${tables.length} πίνακες`);
     const status = checks.some((c) => c.status === "fail") ? "failed" : checks.some((c) => c.status === "warn") ? "unverified" : "ok";
-    await client.query(`INSERT INTO release_checks(version,ran_at,status,checks_json,qa_json) VALUES($1,$2,$3,$4,$5)`, [version, Date.now(), status, JSON.stringify(checks), JSON.stringify(qa)]);
+    await client.query(`INSERT INTO release_checks(version,ran_at,status,checks_json,qa_json,scope) VALUES($1,$2,$3,$4,$5,'installation')`, [version, Date.now(), status, JSON.stringify(checks), JSON.stringify(qa)]);
   } finally { await client.end(); }
 }
 const failed = checks.filter((c) => c.status === "fail");

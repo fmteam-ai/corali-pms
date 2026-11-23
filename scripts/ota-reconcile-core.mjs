@@ -35,15 +35,58 @@ export async function otaReconcile({ pool, owner, now = Date.now(), days = 120 }
   let neverPushed = 0;
   for (const r of current) {
     const k = `${r.room_type}|${r.date}`;
-    if (!sent.has(k)) { neverPushed++; continue; }
-    const pms = sellable(r.free), ota = sent.get(k);
-    if (pms !== ota && !queued(r.date)) list.push({ roomType: r.room_type, date: r.date, pms, ota });
+    if (queued(r.date)) continue;
+    const pms = sellable(r.free);
+    // v190: a date never sent is a difference too (ota: null) and is queued like the others.
+    if (!sent.has(k)) { neverPushed++; list.push({ roomType: r.room_type, date: r.date, pms, ota: null }); continue; }
+    const ota = sent.get(k);
+    if (pms !== ota) list.push({ roomType: r.room_type, date: r.date, pms, ota });
   }
-  return { active: true, checked: current.length, neverPushed, mismatches: groupMismatches(list) };
+  const mismatches = groupMismatches(list);
+  return { active: true, checked: current.length, neverPushed, mismatches, unsent: mismatches.filter((m) => m.ota === null), changed: mismatches.filter((m) => m.ota !== null) };
 }
 
 /** Queues a push for every difference (the next channel sync sends them). Returns how many ranges were queued. */
 export async function queueOtaResync({ pool, owner, mismatches, now = Date.now() }) {
   for (const m of mismatches) await pool.query(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,created_at,updated_at) VALUES($1,$2,$3,'reconcile',$4,$4)`, [owner, m.from, m.to, now]);
   return mismatches.length;
+}
+
+/**
+ * v190 read-back: the availability the channel manager itself holds (Channex GET /availability), turned into
+ * { "<room type>|<date>": n }. Accepts { data: { <room_type_id>: { <date>: n | {availability:n} } } } and the
+ * JSON:API list form [{ attributes: { room_type_id, date, availability } }]. Returns null for an unknown shape (then
+ * nothing is concluded from it).
+ */
+export function parseRemoteAvailability(body, typeByExternal) {
+  const out = {};
+  const put = (ext, date, v) => {
+    const type = typeByExternal[ext];
+    const n = typeof v === "object" && v !== null ? Number(v.availability ?? v.value) : Number(v);
+    if (type && /^\d{4}-\d{2}-\d{2}$/.test(String(date)) && Number.isFinite(n)) out[`${type}|${date}`] = Math.max(0, Math.trunc(n));
+  };
+  const d = body?.data;
+  if (Array.isArray(d)) {
+    for (const x of d) { const a = x?.attributes ?? x; put(a?.room_type_id, a?.date, a?.availability); }
+  } else if (d && typeof d === "object") {
+    for (const [ext, dates] of Object.entries(d)) {
+      if (dates && typeof dates === "object") for (const [date, v] of Object.entries(dates)) put(ext, date, v);
+    }
+  } else {
+    return null;
+  }
+  return out;
+}
+
+/** Differences between what the PMS sells now and what the channel manager reports (queued dates excluded). */
+export function compareRemote(current, remote, open = []) {
+  const queued = (d) => open.some((o) => o.date_from <= d && o.date_to >= d);
+  const list = [];
+  for (const r of current) {
+    const k = `${r.room_type}|${r.date}`;
+    if (!(k in remote) || queued(r.date)) continue;
+    const pms = sellable(r.free);
+    if (pms !== remote[k]) list.push({ roomType: r.room_type, date: r.date, pms, ota: remote[k] });
+  }
+  return groupMismatches(list);
 }

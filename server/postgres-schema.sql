@@ -2820,3 +2820,18 @@ CREATE TABLE IF NOT EXISTS backup_runs (
   error TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_backup_runs ON backup_runs(owner_id, kind, started_at DESC);
+
+-- v190 fixes. Leases carry a fencing token (grows with every new holder).
+ALTER TABLE job_leases ADD COLUMN IF NOT EXISTS fence BIGINT NOT NULL DEFAULT 1;
+-- The release check is installation-wide on purpose (one code version and schema for every owner of the
+-- installation; it holds no tenant data): explicit scope, every read filters on it.
+ALTER TABLE release_checks ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'installation';
+-- OTA read-back: what the channel manager itself reports, per room type and date.
+ALTER TABLE channel_availability_state ADD COLUMN IF NOT EXISTS remote_available INTEGER;
+ALTER TABLE channel_availability_state ADD COLUMN IF NOT EXISTS remote_read_at BIGINT;
+-- Restore rehearsal guard: a random value written to the live database and looked for in the rehearsal target; found
+-- there means the target IS the live database (another name / address) and the rehearsal refuses to touch it.
+CREATE TABLE IF NOT EXISTS rehearsal_guard (
+  nonce TEXT PRIMARY KEY,
+  created_at BIGINT NOT NULL
+);

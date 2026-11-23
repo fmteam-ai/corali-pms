@@ -301,8 +301,8 @@ try {
     const d = JSON.parse(rh.details_json);
     must(d.restored && d.restored.bookings === d.liveBefore.bookings && d.restored.bookings > 0, `επαναφορά: ${JSON.stringify(d.restored)} / ${JSON.stringify(d.liveBefore)}`);
     const left = new pg.Client({ connectionString: rehearsal.toString() });
-    await left.connect(); const tables = Number((await left.query(`SELECT count(*)::int n FROM information_schema.tables WHERE table_schema='public'`)).rows[0].n); await left.end();
-    must(tables === 0, `η βάση δοκιμής δεν άδειασε (${tables} πίνακες)`);
+    await left.connect(); const tables = (await left.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public'`)).rows.map((x) => x.table_name); await left.end();
+    must(tables.length === 1 && tables[0] === "corali_rehearsal_target", `η βάση δοκιμής δεν άδειασε (${tables.join(", ")})`);
     // A damaged backup must fail the rehearsal, never pass it.
     const file = path.join(backups, rh.file), buf = readFileSync(file); buf[buf.length - 40] ^= 0xff; writeFileSync(file, buf);
     const bad = spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/run-restore-rehearsal.mjs", backups], { cwd: pmsDir, encoding: "utf8", timeout: 120_000, env: { ...process.env, ...env } });
@@ -316,7 +316,7 @@ try {
     const check = () => spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/post-install-check.mjs", pmsDir, version], { cwd: pmsDir, encoding: "utf8", timeout: 120_000 });
     const ok = check();
     must(ok.status === 0, `έλεγχος: ${(ok.stderr || ok.stdout).slice(-400)}`);
-    const row = (await q(`SELECT status,checks_json FROM release_checks ORDER BY id DESC LIMIT 1`)).rows[0];
+    const row = (await q(`SELECT status,checks_json FROM release_checks WHERE scope='installation' ORDER BY id DESC LIMIT 1`)).rows[0];
     const checks = JSON.parse(row.checks_json);
     must(checks.find((c) => c.name.startsWith("ON CONFLICT"))?.status === "ok" && checks.find((c) => c.name.startsWith("Πίνακες"))?.status === "ok", JSON.stringify(checks));
     // The v187 fault again (the full unique index missing): the check must stop the installation.
@@ -341,6 +341,46 @@ try {
     await q(`DELETE FROM channel_sync_outbox WHERE owner_id=$1 AND reason='reconcile'`, [owner]);
     await q(`DELETE FROM channel_availability_state WHERE owner_id=$1`, [owner]);
     return `${r.checked} ημέρες×τύποι · qa-101 ${day}: στάλθηκε ${m.ota}, PMS ${m.pms} → μπήκε σε αποστολή`;
+  });
+
+  await flow("F17", "Δοκιμαστική επαναφορά: αρνείται τη βάση παραγωγής με άλλο όνομα και ξένη βάση · καθαρίζει ακόμη κι όταν αποτύχει στη μέση", async () => {
+    const bin = pgBin();
+    const backups = path.join(work, "backups");
+    const rehearsalRun = (target, extra = {}) => spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/run-restore-rehearsal.mjs", backups], { cwd: pmsDir, encoding: "utf8", timeout: 180_000, env: { ...process.env, PG_RESTORE_BIN: path.join(bin, "pg_restore"), REHEARSAL_DATABASE_URL: target, ...extra } });
+    const last = async () => (await q(`SELECT status,error,details_json FROM backup_runs WHERE owner_id=$1 AND kind='rehearsal' ORDER BY id DESC LIMIT 1`, [owner])).rows[0];
+    // A fresh, valid backup (F14 damaged the previous one).
+    const b = spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/run-db-backup.mjs"], { cwd: pmsDir, encoding: "utf8", timeout: 240_000, env: { ...process.env, BACKUP_DIR: backups, PG_DUMP_BIN: path.join(bin, "pg_dump"), REHEARSAL_EVERY_RUN: "0" } });
+    must(b.status === 0, `backup: ${(b.stderr || b.stdout).slice(-300)}`);
+    const bookingsBefore = Number((await q(`SELECT count(*)::int n FROM bookings`)).rows[0].n);
+    // 1) The live database under another host name (same server, same database): found by the guard value.
+    const alias = dbUrl.replace("@localhost:", "@qa-alias:");
+    must(alias !== dbUrl, "δεν δημιουργήθηκε εναλλακτική διεύθυνση");
+    const r1 = rehearsalRun(alias);
+    const l1 = await last();
+    must(r1.status !== 0 && l1.status === "failed" && /βάση παραγωγής/.test(l1.error), `παραγωγή με άλλο όνομα: ${l1.status} ${l1.error}`);
+    must(Number((await q(`SELECT count(*)::int n FROM bookings`)).rows[0].n) === bookingsBefore, "η βάση παραγωγής άλλαξε");
+    // 2) A database that holds something else.
+    const admin = new pg.Client({ connectionString: dbUrl });
+    await admin.connect(); await admin.query("CREATE DATABASE corali_foreign"); await admin.end();
+    const foreign = new URL(dbUrl); foreign.pathname = "/corali_foreign";
+    const f = new pg.Client({ connectionString: foreign.toString() });
+    await f.connect(); await f.query("CREATE TABLE invoices(id int)"); await f.end();
+    const r2 = rehearsalRun(foreign.toString());
+    const l2 = await last();
+    must(r2.status !== 0 && /δεν είναι κενή \(invoices\)/.test(l2.error), `ξένη βάση: ${l2.status} ${l2.error}`);
+    // 3) pg_restore writes the data and then fails: the rehearsal database must still be emptied.
+    const wrapper = path.join(work, "pg_restore_fails.sh");
+    writeFileSync(wrapper, `#!/bin/bash\nfor a in "$@"; do [[ "$a" == "--list" ]] && exec "${path.join(bin, "pg_restore")}" "$@"; done\n"${path.join(bin, "pg_restore")}" "$@"; echo "simulated failure after restore" >&2; exit 1\n`, { mode: 0o755 });
+    const rehearsal = new URL(dbUrl); rehearsal.pathname = "/corali_rehearsal";
+    const r3 = rehearsalRun(rehearsal.toString(), { PG_RESTORE_BIN: wrapper });
+    const l3 = await last();
+    const d3 = JSON.parse(l3.details_json || "{}");
+    const t = new pg.Client({ connectionString: rehearsal.toString() });
+    await t.connect(); const left = (await t.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public'`)).rows.map((x) => x.table_name); await t.end();
+    must(r3.status !== 0 && l3.status === "failed" && /επαναφορά απέτυχε/.test(l3.error), `αποτυχία στη μέση: ${l3.status} ${l3.error}`);
+    must(left.length === 1 && left[0] === "corali_rehearsal_target", `έμειναν πίνακες: ${left.join(", ")}`);
+    must((d3.checks ?? []).some((c) => c.name === "Καθαρισμός βάσης δοκιμής" && c.ok), `καθαρισμός: ${JSON.stringify(d3.checks)}`);
+    return `άλλο όνομα της παραγωγής → άρνηση (η παραγωγή ανέγγιχτη, ${bookingsBefore} κρατήσεις) · ξένη βάση (invoices) → άρνηση · αποτυχία μετά την επαναφορά → η βάση δοκιμής άδειασε (μόνο ο δείκτης «${left[0]}»)`;
   });
 
   await flow("F11", "Αυτόματα tests του κώδικα (unit / integration)", async () => {
