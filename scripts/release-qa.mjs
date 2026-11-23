@@ -322,21 +322,22 @@ try {
     try {
       // 1) Not configured (the hotel's real state): one information line, no failure, no e-mail, the row is kept.
       await q(`DELETE FROM provider_connections WHERE owner_id=$1 AND provider_key='channelManager'`, [owner]);
-      let r = await checkReliability({ pool: db, owner });
+      let r = await checkReliability({ pool: db, owner, documentKey });
       let ch = r.areas.find((a) => a.key === "channel");
       must(ch.status === "inactive" && ch.items.length === 0 && ch.info.filter((x) => /OTA synchronization inactive/.test(x)).length === 1, `μη ρυθμισμένος: ${JSON.stringify(ch).slice(0, 240)}`);
-      for (let i = 0; i < 3; i++) await runReliabilityAlerts({ pool: db, owner, emails: ["qa@example.invalid"] });
+      for (let i = 0; i < 3; i++) await runReliabilityAlerts({ pool: db, owner, emails: ["qa@example.invalid"], documentKey });
       must(await mails() === 0, "email για μη ρυθμισμένο Channel Manager");
       must((await q(`SELECT 1 FROM channel_sync_outbox WHERE id=$1`, [id])).rows.length === 1, "η εγγραφή της ουράς χάθηκε");
       // 2) Activated, the sync runs and fails → ONE critical incident (not one per row), the row can be retried.
-      await q(`INSERT INTO provider_connections(owner_id,provider_key,active,settings_json,secrets_encrypted,updated_by,updated_at) VALUES($1,'channelManager',1,'{}','qa','qa',$2)`, [owner, Date.now()]);
+      const { sealSecrets } = await import(path.join(pmsDir, "scripts/integration-state-core.mjs"));
+      await q(`INSERT INTO provider_connections(owner_id,provider_key,active,settings_json,secrets_encrypted,updated_by,updated_at) VALUES($1,'channelManager',1,$3,$4,'qa',$2)`, [owner, Date.now(), JSON.stringify({ propertyCode: "qa-prop" }), sealSecrets({ apiKey: "qa-key" }, documentKey)]);
       await q(`INSERT INTO integration_activation(owner_id,provider_key,activated_at,activated_by) VALUES($1,'channelManager',$2,'qa') ON CONFLICT(owner_id,provider_key) DO UPDATE SET activated_at=$2,deactivated_at=NULL`, [owner, Date.now() - 86_400_000]);
       await q(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$3,'Channex 503 (QA)') ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$3,last_error='Channex 503 (QA)'`, [owner, Date.now() - 60_000, Date.now() - 8 * 3_600_000]);
-      r = await checkReliability({ pool: db, owner });
+      r = await checkReliability({ pool: db, owner, documentKey });
       ch = r.areas.find((a) => a.key === "channel");
       it = ch.items.find((i) => i.key === `outbox:${id}`);
       must(ch.status === "fail" && it && it.action?.type === "retry_outbox", `channel ${ch.status}: ${JSON.stringify(ch.items).slice(0, 200)}`);
-      const res = await runReliabilityAlerts({ pool: db, owner, emails: ["qa@example.invalid"] });
+      const res = await runReliabilityAlerts({ pool: db, owner, emails: ["qa@example.invalid"], documentKey });
       const ota = res.incidents.filter((x) => x.key === "sync:ota");
       must(ota.length === 1 && ota[0].priority === "critical" && !res.incidents.some((x) => /^outbox:/.test(x.key)), `συμβάντα: ${JSON.stringify(res.incidents)}`);
       must(await mails() === 1, `ένα email για το συμβάν, όχι ένα ανά εγγραφή (${await mails()})`);
@@ -596,7 +597,8 @@ try {
     const runSentinelCron = () => spawnSync(process.execPath, [`--env-file=${path.join(pmsDir, "runtime.env")}`, "scripts/run-sentinel.mjs"], { cwd: pmsDir, encoding: "utf8", timeout: 150_000 });
     // A real fault: an availability change that failed to reach the OTAs 45′ ago.
     // v202: only an ACTIVATED Channel Manager whose sync fails is a fault (an inactive one is not).
-    await q(`INSERT INTO provider_connections(owner_id,provider_key,active,settings_json,secrets_encrypted,updated_by,updated_at) VALUES($1,'channelManager',1,'{}','qa','qa',$2) ON CONFLICT(owner_id,provider_key) DO UPDATE SET active=1`, [owner, Date.now()]);
+    const { sealSecrets: sealQa } = await import(path.join(pmsDir, "scripts/integration-state-core.mjs"));
+    await q(`INSERT INTO provider_connections(owner_id,provider_key,active,settings_json,secrets_encrypted,updated_by,updated_at) VALUES($1,'channelManager',1,$3,$4,'qa',$2) ON CONFLICT(owner_id,provider_key) DO UPDATE SET active=1,settings_json=$3,secrets_encrypted=$4`, [owner, Date.now(), JSON.stringify({ propertyCode: "qa-prop" }), sealQa({ apiKey: "qa-key" }, documentKey)]);
     await q(`INSERT INTO integration_activation(owner_id,provider_key,activated_at,activated_by) VALUES($1,'channelManager',$2,'qa') ON CONFLICT(owner_id,provider_key) DO UPDATE SET activated_at=$2,deactivated_at=NULL`, [owner, Date.now() - 86_400_000]);
     const prevSync = (await q(`SELECT * FROM channel_sync_state WHERE owner_id=$1`, [owner])).rows[0] ?? null;
     await q(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$3,'Channex 503 (QA sentinel)') ON CONFLICT(owner_id) DO UPDATE SET last_run_at=$2,last_ok_at=$3,last_error='Channex 503 (QA sentinel)'`, [owner, Date.now() - 60_000, Date.now() - 8 * 3_600_000]);

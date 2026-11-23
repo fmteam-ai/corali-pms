@@ -6,7 +6,11 @@ import { checkReliability, runReliabilityAlerts } from "../scripts/reliability-c
 import { deliverAlerts, raiseAlert, resolveAlerts, ALERT_EMAILS_PER_HOUR } from "../scripts/alert-core.mjs";
 import { findingsFrom } from "../scripts/sentinel-core.mjs";
 import { buildIncidents, channelIncident, formatAlertMessage } from "../scripts/alert-intel-core.mjs";
-import { activateIntegration, activationReadiness, integrationState, recordIntegrationCheck } from "../scripts/integration-state-core.mjs";
+import { activateIntegration, activationReadiness, integrationState, recordIntegrationCheck, sealSecrets } from "../scripts/integration-state-core.mjs";
+
+process.env.PMS_DOCUMENT_KEY = "test-document-key-0123456789abcdef0123456789abcdef";
+const SEALED = sealSecrets({ apiKey: "channex-test-key" }, process.env.PMS_DOCUMENT_KEY);
+const OK = { ok: true, missing: [], reason: "OK" };
 
 const o = "hotel-corali", MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const t0 = Date.parse("2026-11-23T10:00:00Z");
@@ -29,7 +33,8 @@ async function backlog(db: PGlite) {
 }
 const send = { push: async () => 1, email: async () => undefined };
 async function connection(db: PGlite, active: number, activated: boolean) {
-  await db.query(`INSERT INTO provider_connections(owner_id,provider_key,active,secrets_encrypted,updated_by,updated_at) VALUES($1,'channelManager',$2,'sealed','qa',$3)`, [o, active, t0]);
+  await db.query(`INSERT INTO provider_connections(owner_id,provider_key,active,secrets_encrypted,updated_by,updated_at) VALUES($1,'channelManager',$2,$4,'qa',$3)`, [o, active, t0, SEALED]);
+  await db.query(`UPDATE provider_connections SET settings_json=$2 WHERE owner_id=$1`, [o, JSON.stringify({ propertyCode: "prop-1" })]);
   if (activated) await db.query(`INSERT INTO integration_activation(owner_id,provider_key,activated_at,activated_by) VALUES($1,'channelManager',$2,'qa')`, [o, t0 - 30 * DAY]);
 }
 
@@ -168,10 +173,10 @@ test("v202 activation requires proven prerequisites (verified mapping + initial 
     assert.equal(r.error, "PREREQUISITES_NOT_MET", "a failed reconciliation blocks activation");
     await recordIntegrationCheck({ pool, owner: o, provider: "channelManager", check: "initial_reconciliation", ok: true, detail: "500 ημέρες χωρίς διαφορές", now: t0 + MIN });
     assert.equal((await activateIntegration({ pool, owner: o, provider: "channelManager", by: "Maria", now: t0 + 2 * MIN })).ok, true);
-    assert.equal(integrationState({ row: { active: 1, secrets_encrypted: "s" }, activation: { activated_at: t0 }, healthy: true }), "ACTIVE");
-    assert.equal(integrationState({ row: { active: 1, secrets_encrypted: "s" }, activation: { activated_at: t0 } }), "UNVERIFIED", "v203: unknown health is not ACTIVE");
-    assert.equal(integrationState({ row: { active: 1, secrets_encrypted: "s" }, activation: { activated_at: t0 }, healthy: false }), "DEGRADED");
-    assert.equal(integrationState({ row: { active: 0, secrets_encrypted: "s" }, activation: { activated_at: t0 } }), "DISABLED");
+    assert.equal(integrationState({ row: { active: 1, secrets_encrypted: "s" }, credentials: OK, activation: { activated_at: t0 }, healthy: true }), "ACTIVE");
+    assert.equal(integrationState({ row: { active: 1, secrets_encrypted: "s" }, credentials: OK, activation: { activated_at: t0 } }), "UNVERIFIED", "v203: unknown health is not ACTIVE");
+    assert.equal(integrationState({ row: { active: 1, secrets_encrypted: "s" }, credentials: OK, activation: { activated_at: t0 }, healthy: false }), "DEGRADED");
+    assert.equal(integrationState({ row: { active: 0, secrets_encrypted: "s" }, credentials: OK, activation: { activated_at: t0 } }), "DISABLED");
     assert.equal(integrationState({ row: null }), "NOT_CONFIGURED");
     // Evidence older than 30 days is not proof any more.
     const old = activationReadiness("channelManager", [{ check_key: "room_rate_mapping", ok: 1, checked_at: t0 }, { check_key: "initial_reconciliation", ok: 1, checked_at: t0 }], t0 + 31 * DAY);
@@ -209,12 +214,12 @@ test("v202 deep health / watchdog heartbeat: an inactive Channel Manager's old q
 test("v203 P1: an activated connection whose health is unknown is UNVERIFIED — never ACTIVE; intentionally inactive ones stay silent", async () => {
   const act = { activated_at: t0 };
   const row = { active: 1, secrets_encrypted: "s" };
-  assert.equal(integrationState({ row, activation: act }), "UNVERIFIED", "healthy omitted");
-  assert.equal(integrationState({ row, activation: act, healthy: null }), "UNVERIFIED", "healthy null");
-  assert.equal(integrationState({ row, activation: act, healthy: true }), "ACTIVE");
-  assert.equal(integrationState({ row, activation: act, healthy: false }), "DEGRADED");
+  assert.equal(integrationState({ row, credentials: OK, activation: act }), "UNVERIFIED", "healthy omitted");
+  assert.equal(integrationState({ row, credentials: OK, activation: act, healthy: null }), "UNVERIFIED", "healthy null");
+  assert.equal(integrationState({ row, credentials: OK, activation: act, healthy: true }), "ACTIVE");
+  assert.equal(integrationState({ row, credentials: OK, activation: act, healthy: false }), "DEGRADED");
   assert.equal(integrationState({ row: null, healthy: null }), "NOT_CONFIGURED");
-  assert.equal(integrationState({ row: { active: 0, secrets_encrypted: "s" }, activation: act, healthy: null }), "DISABLED");
+  assert.equal(integrationState({ row: { active: 0, secrets_encrypted: "s" }, credentials: OK, activation: act, healthy: null }), "DISABLED");
   // From the sync's own evidence.
   const { channelSyncHealthy } = await import("../scripts/integration-state-core.mjs");
   assert.equal(channelSyncHealthy(undefined, t0), null, "state unreadable → unknown");
@@ -264,5 +269,55 @@ test("v203 P2: prerequisite checks dated in the future (or before the last confi
     const rel = await checkReliability({ pool, owner: o, now: t0 + 2 * MIN });
     assert.equal(rel.integrations?.channelManager, "ACTIVE");
     assert.ok(rel.areas.find((a) => a.key === "channel")!.items.some((i) => i.key === "integration:channelManager:revalidate"));
+  } finally { await db.close(); }
+});
+
+test("v204 P1: the Channex health follows the LATEST run — a recent success does not hide a failure after it", async () => {
+  const { channelSyncHealthy } = await import("../scripts/integration-state-core.mjs");
+  // The reported case: success 2′ ago, failed run 1′ ago with HTTP 401 → was true.
+  assert.equal(channelSyncHealthy({ last_run_at: t0 - MIN, last_ok_at: t0 - 2 * MIN, last_error: "HTTP 401" }, t0), false);
+  assert.equal(channelSyncHealthy({ last_run_at: t0 - MIN, last_ok_at: t0 - 2 * MIN, last_error: null }, t0), false, "latest run after the last success = failed, even without an error text");
+  assert.equal(channelSyncHealthy({ last_run_at: t0 - MIN, last_ok_at: t0 - MIN, last_error: "restrictions double: 422" }, t0), false, "an error recorded after the success");
+  assert.equal(channelSyncHealthy({ last_run_at: t0 - MIN, last_ok_at: t0 - MIN, last_error: null }, t0), true);
+  // On the real schema: activated Channex, latest run failed → DEGRADED and one critical incident.
+  const { db, pool } = await fresh();
+  try {
+    await connection(db, 1, true);
+    await db.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$3,'HTTP 401')`, [o, t0 - MIN, t0 - 2 * MIN]);
+    assert.equal((await checkReliability({ pool, owner: o, now: t0 })).integrations?.channelManager, "DEGRADED");
+  } finally { await db.close(); }
+});
+
+test("v204 P1: without its required credentials a connection is NOT_CONFIGURED — even with an old activation — and cannot be activated", async () => {
+  const { credentialsStatus } = await import("../scripts/integration-state-core.mjs");
+  const key = process.env.PMS_DOCUMENT_KEY!;
+  // The reported case: active=1, secrets_encrypted=null, an old activation, healthy → was TESTING / ACTIVE.
+  const empty = { active: 1, secrets_encrypted: null, settings_json: "{}" };
+  const cred = credentialsStatus("channelManager", empty, key);
+  assert.deepEqual([cred.ok, cred.reason], [false, "NO_SECRETS"]);
+  assert.equal(integrationState({ row: empty, credentials: cred, activation: { activated_at: t0 - DAY }, healthy: true }), "NOT_CONFIGURED");
+  assert.equal(integrationState({ row: empty, activation: { activated_at: t0 - DAY }, healthy: true }), "NOT_CONFIGURED", "credentials not checked → not trusted");
+  // Sealed but incomplete, unreadable, complete.
+  assert.deepEqual(credentialsStatus("channelManager", { secrets_encrypted: sealSecrets({ apiKey: " " }, key), settings_json: "{}" }, key).missing, ["apiKey", "propertyCode"]);
+  assert.equal(credentialsStatus("channelManager", { secrets_encrypted: sealSecrets({ apiKey: "k" }, "another-key-0123456789abcdef0123456789"), settings_json: '{"propertyCode":"p"}' }, key).reason, "SECRETS_UNREADABLE");
+  assert.equal(credentialsStatus("channelManager", { secrets_encrypted: "x", settings_json: "{}" }, key).ok, false, "no artificial placeholder");
+  assert.equal(credentialsStatus("channelManager", { secrets_encrypted: SEALED, settings_json: '{"propertyCode":"p"}' }, key).ok, true);
+  assert.equal(credentialsStatus("someNewProvider", { secrets_encrypted: SEALED }, key).reason, "NO_REQUIREMENTS_DEFINED", "an unknown provider is not assumed configured");
+  for (const p of ["viva", "whatsapp", "tuya", "stripe", "mydata", "meta", "omada"]) assert.equal(credentialsStatus(p, { secrets_encrypted: SEALED, settings_json: "{}" }, key).ok, false, p);
+  // On the database: active, no secrets, old activation, healthy sync → NOT_CONFIGURED; activation refused.
+  const { db, pool } = await fresh();
+  try {
+    await db.query(`INSERT INTO provider_connections(owner_id,provider_key,active,secrets_encrypted,settings_json,updated_by,updated_at) VALUES($1,'channelManager',1,'','{}','qa',$2)`, [o, t0 - DAY]);
+    await db.query(`INSERT INTO integration_activation(owner_id,provider_key,activated_at,activated_by) VALUES($1,'channelManager',$2,'qa')`, [o, t0 - 10 * DAY]);
+    await db.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at) VALUES($1,$2,$2)`, [o, t0 - MIN]);
+    await db.query(`INSERT INTO channel_sync_outbox(owner_id,date_from,date_to,reason,status,created_at,updated_at) VALUES($1,'2026-12-24','2026-12-26','qa','pending',$2,$2)`, [o, t0 - 2 * HOUR]);
+    const r = await checkReliability({ pool, owner: o, now: t0 });
+    assert.equal(r.integrations?.channelManager, "NOT_CONFIGURED");
+    assert.match(r.areas.find((a) => a.key === "channel")!.info.join(" "), /ελλιπής \(NO_SECRETS\)/);
+    await runReliabilityAlerts({ pool, owner: o, now: t0, emails: ADMIN });
+    assert.equal(await emails(db), 0);
+    await db.query(`INSERT INTO integration_checks(owner_id,provider_key,check_key,ok,detail,checked_at) VALUES($1,'channelManager','room_rate_mapping',1,'ok',$2),($1,'channelManager','initial_reconciliation',1,'ok',$2)`, [o, t0 - MIN]);
+    const a = await activateIntegration({ pool, owner: o, provider: "channelManager", by: "QA", now: t0 });
+    assert.deepEqual([a.ok, a.error], [false, "CREDENTIALS_MISSING"]);
   } finally { await db.close(); }
 });

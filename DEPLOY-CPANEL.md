@@ -1,4 +1,4 @@
-# Hotel Corali PMS v203 — αυτόματη ασφαλής εγκατάσταση cPanel
+# Hotel Corali PMS v204 — αυτόματη ασφαλής εγκατάσταση cPanel
 
 ## Προτεινόμενη εγκατάσταση για τον συγκεκριμένο server
 
@@ -8,10 +8,10 @@
 
 Η διορθωμένη έκδοση περιλαμβάνει προσωρινό web installer τύπου WordPress. Ανεβάστε:
 
-- `corali-pms-cpanel-v203-root.tar.gz` και το `.sha256` στον `/home/corali/`
-- μόνο το `corali-web-installer-v203.php` ως `/home/corali/public_html/corali-installer.php`
+- `corali-pms-cpanel-v204-root.tar.gz` και το `.sha256` στον `/home/corali/`
+- μόνο το `corali-web-installer-v204.php` ως `/home/corali/public_html/corali-installer.php`
 
-Μην ανεβάσετε το `corali-web-installer-v203-access.txt`. Ανοίξτε το τοπικά και επισκεφθείτε την ιδιωτική διεύθυνση μίας χρήσης που περιέχει. Εναλλακτικά, ανοίξτε απευθείας τον installer και επικολλήστε τον προσωπικό κωδικό στη φόρμα. Επιλέξτε **Ελληνικά** ή **English** πριν την έναρξη. Ο web installer εντοπίζει το EA/CloudLinux Node.js του cPanel, εκτελεί προέλεγχο, checksum, backup PostgreSQL, migrations, δύο runtime tests, atomic swap και rollback. Μετά την εγκατάσταση προσφέρει ασφαλή δημιουργία/ανάκτηση του κύριου owner και επαναφορά 2FA χωρίς terminal. Αν οι παλιοί `/home/corali/releases` ή `/home/corali/backups` έχουν λάθος ιδιοκτησία, χρησιμοποιεί ιδιωτικούς εναλλακτικούς φακέλους μέσα στο εγγράψιμο `/home/corali/apps`. Μετά τον έλεγχο σύνδεσης πατήστε «Κλείδωμα και διαγραφή installer» και απενεργοποιήστε ξανά την PHP `exec`.
+Μην ανεβάσετε το `corali-web-installer-v204-access.txt`. Ανοίξτε το τοπικά και επισκεφθείτε την ιδιωτική διεύθυνση μίας χρήσης που περιέχει. Εναλλακτικά, ανοίξτε απευθείας τον installer και επικολλήστε τον προσωπικό κωδικό στη φόρμα. Επιλέξτε **Ελληνικά** ή **English** πριν την έναρξη. Ο web installer εντοπίζει το EA/CloudLinux Node.js του cPanel, εκτελεί προέλεγχο, checksum, backup PostgreSQL, migrations, δύο runtime tests, atomic swap και rollback. Μετά την εγκατάσταση προσφέρει ασφαλή δημιουργία/ανάκτηση του κύριου owner και επαναφορά 2FA χωρίς terminal. Αν οι παλιοί `/home/corali/releases` ή `/home/corali/backups` έχουν λάθος ιδιοκτησία, χρησιμοποιεί ιδιωτικούς εναλλακτικούς φακέλους μέσα στο εγγράψιμο `/home/corali/apps`. Μετά τον έλεγχο σύνδεσης πατήστε «Κλείδωμα και διαγραφή installer» και απενεργοποιήστε ξανά την PHP `exec`.
 
 Αν εμφανιστεί «Ο installer είναι κλειδωμένος», έχει οριστικοποιηθεί παλαιότερη εγκατάσταση. Κάθε νέο πακέτο αποκτά δικό του κλείδωμα με βάση το checksum του αρχείου. Ανεβάστε **μαζί** τον νέο installer, το νέο αρχείο πρόσβασης (μόνο τοπικά, ποτέ στον server), το νέο archive και το νέο checksum. Μην διαγράψετε το ιδιωτικό `locked` του παλιού installer για να παρακάμψετε το μήνυμα.
 
@@ -28,14 +28,14 @@
 
 Ανεβάστε τα παρακάτω στο `/home/corali/`:
 
-- `corali-pms-cpanel-v203-root.tar.gz`
-- `corali-pms-cpanel-v203-root.tar.gz.sha256`
+- `corali-pms-cpanel-v204-root.tar.gz`
+- `corali-pms-cpanel-v204-root.tar.gz.sha256`
 
 Στο Terminal:
 
 ```bash
 cd /home/corali
-sha256sum -c corali-pms-cpanel-v203-root.tar.gz.sha256
+sha256sum -c corali-pms-cpanel-v204-root.tar.gz.sha256
 ```
 
 Πρέπει να εμφανιστεί `OK`. Αν αποτύχει, μη συνεχίσετε.
@@ -44,7 +44,7 @@ sha256sum -c corali-pms-cpanel-v203-root.tar.gz.sha256
 
 ```bash
 mkdir -p /home/corali/releases/corali-v202
-tar -xzf /home/corali/corali-pms-cpanel-v203-root.tar.gz \
+tar -xzf /home/corali/corali-pms-cpanel-v204-root.tar.gz \
   -C /home/corali/releases/corali-v202
 ```
 

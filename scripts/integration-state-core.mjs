@@ -14,6 +14,8 @@
 //
 // Activation is a recorded act: every prerequisite of the provider must have a PASSED check, recent enough, and the
 // person and time are kept (integration_activation). Deactivation keeps the history. Nothing here deletes data.
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+
 const DAY = 24 * 60 * 60_000;
 
 export const INTEGRATION_STATES = ["NOT_CONFIGURED", "DISABLED", "TESTING", "ACTIVE", "DEGRADED", "UNVERIFIED"];
@@ -49,22 +51,85 @@ export const ALERTING_STATES = new Set(["ACTIVE", "DEGRADED", "UNVERIFIED"]);
  * Pure: the state of one provider. row = provider_connections row (or null); activation = integration_activation row
  * (or null); healthy = the provider's own checks pass (false → DEGRADED once activated; null = not known).
  */
-export function integrationState({ row, activation = null, healthy = null }) {
-  if (!row || !String(row.secrets_encrypted ?? "x")) return "NOT_CONFIGURED";
+/**
+ * v204: the credentials each provider needs before it can be anything but NOT_CONFIGURED (secrets inside the sealed
+ * secrets_encrypted, settings in settings_json). A provider that needs none must be listed in CREDENTIAL_FREE — a
+ * documented exception; none today.
+ */
+export const REQUIRED_CREDENTIALS = {
+  channelManager: { secrets: ["apiKey"], settings: ["propertyCode"] },
+  viva: { secrets: ["clientId", "clientSecret"], settings: ["merchantId"] },
+  stripe: { secrets: ["secretKey", "webhookSecret"], settings: [] },
+  whatsapp: { secrets: ["accessToken"], settings: ["phoneNumberId"] },
+  mydata: { secrets: ["username", "subscriptionKey"], settings: ["issuerVat"] },
+  meta: { secrets: ["pageAccessToken"], settings: ["pageId"] },
+  tuya: { secrets: ["accessId", "accessSecret"], settings: [] },
+  omada: { secrets: ["clientId", "clientSecret"], settings: ["interfaceUrl"] },
+};
+export const CREDENTIAL_FREE = new Set();
+
+const keyOf = (documentKey) => createHash("sha256").update(String(documentKey)).digest();
+/** The PMS's own sealing (lib/security/encryption: v1.iv.tag.data, AES-256-GCM, key = SHA-256 of PMS_DOCUMENT_KEY). */
+export function sealSecrets(obj, documentKey) {
+  const iv = randomBytes(12), c = createCipheriv("aes-256-gcm", keyOf(documentKey), iv);
+  const data = Buffer.concat([c.update(JSON.stringify(obj), "utf8"), c.final()]);
+  return ["v1", iv.toString("base64url"), c.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
+}
+export function unsealSecrets(sealed, documentKey) {
+  const [version, iv, tag, data] = String(sealed ?? "").split(".");
+  if (version !== "v1" || !iv || !tag || !data) throw new Error("INVALID_CIPHERTEXT");
+  const d = createDecipheriv("aes-256-gcm", keyOf(documentKey), Buffer.from(iv, "base64url"));
+  d.setAuthTag(Buffer.from(tag, "base64url"));
+  return JSON.parse(Buffer.concat([d.update(Buffer.from(data, "base64url")), d.final()]).toString("utf8")) ?? {};
+}
+
+/**
+ * Are the provider's required credentials really there? { ok, missing[], reason } — never the values. Unknown
+ * provider (no requirement written down and not a documented exception) → not ok.
+ */
+export function credentialsStatus(provider, row, documentKey = process.env.PMS_DOCUMENT_KEY) {
+  if (!row) return { ok: false, missing: [], reason: "NO_CONNECTION" };
+  if (CREDENTIAL_FREE.has(provider)) return { ok: true, missing: [], reason: "CREDENTIAL_FREE" };
+  const req = REQUIRED_CREDENTIALS[provider];
+  if (!req) return { ok: false, missing: [], reason: "NO_REQUIREMENTS_DEFINED" };
+  const sealed = String(row.secrets_encrypted ?? "").trim();
+  if (!sealed) return { ok: false, missing: req.secrets, reason: "NO_SECRETS" };
+  if (!documentKey) return { ok: false, missing: [], reason: "CANNOT_VERIFY" };
+  let secrets;
+  try { secrets = unsealSecrets(sealed, documentKey); } catch { return { ok: false, missing: [], reason: "SECRETS_UNREADABLE" }; }
+  let settings = {};
+  try { settings = JSON.parse(String(row.settings_json || "{}")) ?? {}; } catch { settings = {}; }
+  const missing = [...req.secrets.filter((k) => !String(secrets?.[k] ?? "").trim()), ...req.settings.filter((k) => !String(settings?.[k] ?? "").trim())];
+  return { ok: missing.length === 0, missing, reason: missing.length ? "MISSING" : "OK" };
+}
+
+/**
+ * Pure: the state of one provider. row = provider_connections row (or null); credentials = credentialsStatus(…);
+ * activation = integration_activation row (or null); healthy = the provider's own checks (true / false / null).
+ * v204: without verified credentials a connection is NOT_CONFIGURED whatever else is recorded (no artificial
+ * placeholder; an old activation does not make an empty connection active).
+ */
+export function integrationState({ row, credentials = null, activation = null, healthy = null }) {
+  if (!row) return "NOT_CONFIGURED";
   if (!Number(row.active)) return "DISABLED";
+  if (credentials?.ok !== true) return "NOT_CONFIGURED";
   if (!activation?.activated_at || activation.deactivated_at) return "TESTING";
   // v203: only a confirmed healthy check is ACTIVE; unknown health is UNVERIFIED, never «working».
   return healthy === true ? "ACTIVE" : healthy === false ? "DEGRADED" : "UNVERIFIED";
 }
 
 /**
- * The Channel Manager's own health from its sync state: true = the sync ran in the last 30′ and its last run did not
- * end in an error that outlived the last success; false = not running / failing; null = the state could not be read.
+ * The Channel Manager's health from its sync state (v204: judged by the LATEST run, not by a recent success):
+ *   true  = the latest run (≤ 30′ ago) succeeded — last_ok_at is that run (≥ last_run_at) — and no error was
+ *           recorded after it;
+ *   false = never ran, not run for 30′, the latest run failed (last_run_at after last_ok_at), or an error is recorded;
+ *   null  = the state could not be read.
  */
 export function channelSyncHealthy(st, now = Date.now()) {
   if (st === undefined) return null;
   if (!st?.last_run_at || now - Number(st.last_run_at) > 30 * 60_000) return false;
-  if (st.last_error && (!st.last_ok_at || now - Number(st.last_ok_at) > 30 * 60_000)) return false;
+  if (!st.last_ok_at || Number(st.last_ok_at) < Number(st.last_run_at)) return false;
+  if (String(st.last_error ?? "").trim()) return false;
   return true;
 }
 
@@ -112,27 +177,31 @@ export async function recordIntegrationCheck({ pool, owner, provider, check, ok,
 }
 
 /** Reads the state of providers (all, or the ones given). Never throws: an unreadable table → state per row only. */
-export async function integrationStates({ pool, owner, providers = null, health = {} }) {
-  const rows = (await pool.query(`SELECT provider_key,active,secrets_encrypted,updated_at FROM provider_connections WHERE owner_id=$1`, [owner])).rows;
+export async function integrationStates({ pool, owner, providers = null, health = {}, documentKey = process.env.PMS_DOCUMENT_KEY }) {
+  const rows = (await pool.query(`SELECT provider_key,active,secrets_encrypted,settings_json,updated_at FROM provider_connections WHERE owner_id=$1`, [owner])).rows;
   const acts = (await pool.query(`SELECT provider_key,activated_at,activated_by,deactivated_at FROM integration_activation WHERE owner_id=$1`, [owner]).catch(() => ({ rows: [] }))).rows;
   const keys = providers ?? [...new Set([...Object.keys(PREREQUISITES), ...rows.map((r) => r.provider_key)])];
   const out = {};
   for (const k of keys) {
     const row = rows.find((r) => r.provider_key === k) ?? null;
     const activation = acts.find((a) => a.provider_key === k) ?? null;
-    out[k] = { state: integrationState({ row, activation, healthy: health[k] ?? null }), configChangedAt: row?.updated_at == null ? null : Number(row.updated_at), activatedAt: activation?.activated_at ? Number(activation.activated_at) : null, activatedBy: activation?.activated_by ?? null };
+    const credentials = credentialsStatus(k, row, documentKey);
+    out[k] = { state: integrationState({ row, credentials, activation, healthy: health[k] ?? null }), credentials: { ok: credentials.ok, missing: credentials.missing, reason: credentials.reason }, configChangedAt: row?.updated_at == null ? null : Number(row.updated_at), activatedAt: activation?.activated_at ? Number(activation.activated_at) : null, activatedBy: activation?.activated_by ?? null };
   }
   return out;
 }
 
 /** Activation: refused unless every prerequisite is proven. Returns { ok, error?, readiness }. */
-export async function activateIntegration({ pool, owner, provider, by, now = Date.now() }) {
-  const row = (await pool.query(`SELECT active,secrets_encrypted FROM provider_connections WHERE owner_id=$1 AND provider_key=$2`, [owner, provider])).rows[0];
+export async function activateIntegration({ pool, owner, provider, by, now = Date.now(), documentKey = process.env.PMS_DOCUMENT_KEY }) {
+  const row = (await pool.query(`SELECT active,secrets_encrypted,settings_json FROM provider_connections WHERE owner_id=$1 AND provider_key=$2`, [owner, provider])).rows[0];
   const checks = (await pool.query(`SELECT check_key,ok,detail,checked_at FROM integration_checks WHERE owner_id=$1 AND provider_key=$2 ORDER BY checked_at DESC LIMIT 200`, [owner, provider])).rows;
   // v203: validity re-checked AT activation time: not in the future, not expired, made after the last config change.
   const readiness = activationReadiness(provider, checks, now, await configChangedAt(pool, owner, provider));
   if (!row) return { ok: false, error: "NOT_CONFIGURED", readiness };
   if (!Number(row.active)) return { ok: false, error: "DISABLED", readiness };
+  // v204: the credentials are checked here too, not only for display.
+  const credentials = credentialsStatus(provider, row, documentKey);
+  if (!credentials.ok) return { ok: false, error: "CREDENTIALS_MISSING", missing: credentials.missing, reason: credentials.reason, readiness };
   if (!readiness.ready) return { ok: false, error: "PREREQUISITES_NOT_MET", readiness };
   await pool.query(
     `INSERT INTO integration_activation(owner_id,provider_key,activated_at,activated_by,evidence_json,deactivated_at) VALUES($1,$2,$3,$4,$5,NULL)

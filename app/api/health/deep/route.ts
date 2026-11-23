@@ -9,5 +9,5 @@ export async function GET(): Promise<Response> {
   const u = await requireApiUser("audit.read");
   if (u instanceof Response) return u;
   const deep = await deepHealth({ pool: db(), owner: u.ownerId });
-  return Response.json({ ok: deep.status === "ok", version: "v203", ...deep }, { status: deep.status === "fail" ? 503 : 200, headers: { "Cache-Control": "no-store" } });
+  return Response.json({ ok: deep.status === "ok", version: "v204", ...deep }, { status: deep.status === "fail" ? 503 : 200, headers: { "Cache-Control": "no-store" } });
 }

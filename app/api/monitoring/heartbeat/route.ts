@@ -13,7 +13,7 @@ export async function GET(): Promise<Response> {
   if (secret.length < 32) return Response.json({ ok: false, error: "MONITORING_NOT_CONFIGURED" }, { status: 503, headers: { "Cache-Control": "no-store" } });
   const service = process.env.APP_ROLE === "booking" ? "corali-booking" : "corali-pms";
   const deep = await deepHealth({ pool: db(), owner: process.env.PMS_OWNER_ID ?? "hotel-corali" });
-  const body = JSON.stringify(heartbeatPayload(deep, { service, version: "v203" }));
+  const body = JSON.stringify(heartbeatPayload(deep, { service, version: "v204" }));
   const at = Date.now();
   return new Response(body, { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Corali-Signature": `t=${at},v1=${signHeartbeat(secret, at, body)}` } });
 }

@@ -2,7 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
+import { sealSecrets } from "../scripts/integration-state-core.mjs";
 import { checkReliability, recoverReliability, runReliabilityAlerts } from "../scripts/reliability-core.mjs";
+
+process.env.PMS_DOCUMENT_KEY = "test-document-key-0123456789abcdef0123456789abcdef";
 
 test("v188 reliability center: unfinished work per area, recovery, one alert per problem, a stopped cron", async () => {
   const db = new PGlite();
@@ -22,7 +25,8 @@ test("v188 reliability center: unfinished work per area, recovery, one alert per
     // v202: a sync that ran is not enough — without a saved, activated connection the channel stays «inactive».
     r = await checkReliability({ pool, owner: o, now });
     assert.equal(r.areas.find((a) => a.key === "channel")?.status, "inactive");
-    await db.query(`INSERT INTO provider_connections(owner_id,provider_key,active,secrets_encrypted,updated_by,updated_at) VALUES($1,'channelManager',1,'sealed','qa',$2)`, [o, now]);
+    await db.query(`INSERT INTO provider_connections(owner_id,provider_key,active,secrets_encrypted,updated_by,updated_at) VALUES($1,'channelManager',1,$3,'qa',$2)`, [o, now, sealSecrets({ apiKey: "k" }, process.env.PMS_DOCUMENT_KEY!)]);
+    await db.query(`UPDATE provider_connections SET settings_json='{"propertyCode":"p"}'`);
     await db.query(`INSERT INTO integration_activation(owner_id,provider_key,activated_at,activated_by) VALUES($1,'channelManager',$2,'qa')`, [o, now - 86_400_000]);
     await db.query(`INSERT INTO rooms(id,owner_id,code,room_type,capacity,active,base_rate_cents,operational_status) VALUES(5,$1,'112','double',2,1,1,'clean')`, [o]);
     await db.query(`INSERT INTO bookings(id,owner_id,reference,guest_name,check_in,check_out,status,room_id,total_cents,balance_cents,created_at) VALUES(1,$1,'CR-1','Anna','2026-07-14','2026-07-18','checked_in',5,1,0,1)`, [o]);

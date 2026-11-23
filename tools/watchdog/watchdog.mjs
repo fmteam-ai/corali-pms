@@ -55,6 +55,21 @@ export function parseHeartbeat(text) {
   return { value: v };
 }
 
+export const BATCH_MAX = 5, QUEUE_WARN = 50, QUEUE_MAX = 100;
+const priorityOf = (m) => (m.kind === "digest" ? 0 : (m.kind === "open" || m.kind === "escalated" || m.kind === "batch") && m.severity === "critical" ? 1 : m.kind === "open" || m.kind === "batch" ? 2 : m.kind === "resolved" ? 3 : 4);
+/** Bounded WITHOUT loss: above QUEUE_MAX, the lowest-priority, oldest messages are merged into one digest. */
+export function compactOutbox(outbox, label = "") {
+  if (outbox.length <= QUEUE_MAX) return outbox;
+  const order = outbox.map((m, i) => ({ m, i })).sort((a, b) => priorityOf(a.m) - priorityOf(b.m) || a.i - b.i);
+  const keep = new Set(order.slice(0, QUEUE_MAX - 1).map((x) => x.i));
+  const merged = outbox.filter((_, i) => !keep.has(i));
+  const prev = merged.filter((m) => m.kind === "digest");
+  const items = [...prev.flatMap((d) => d.items ?? []), ...merged.filter((m) => m.kind !== "digest").flatMap((m) => (m.kind === "batch" ? m.items ?? [] : [{ kind: m.kind, severity: m.severity, check: m.check, at: m.at, text: m.text }]))];
+  const digest = { kind: "digest", severity: items.some((x) => x.severity === "critical") ? "critical" : "warning", check: "*", at: Math.max(...items.map((x) => Number(x.at) || 0)), items,
+    text: `📋 ${label}: ${items.length} ειδοποιήσεις συγκεντρώθηκαν (η ουρά ξεπέρασε τις ${QUEUE_MAX})\n${items.slice(-40).map((x) => `• ${x.text}`).join("\n")}${items.length > 40 ? `\n… και ${items.length - 40} ακόμη (στο state.json)` : ""}` };
+  return [...outbox.filter((_, i) => keep.has(i)), digest];
+}
+
 export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = (l) => console.log(l) } = {}) {
   let state = { checks: {}, outbox: [], progress: {} };
   if (cfg.stateFile) { try { state = { ...state, ...JSON.parse(readFileSync(cfg.stateFile, "utf8")) }; } catch { /* first start */ } }
@@ -151,12 +166,16 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
     if (cfg.pmsHealthUrl) Object.assign(results, await guard(async () => ({ pms: await health(cfg.pmsHealthUrl) }), "pms"));
     if (cfg.bookingHealthUrl) Object.assign(results, await guard(async () => ({ booking: await health(cfg.bookingHealthUrl) }), "booking"));
     if (cfg.heartbeatUrl) Object.assign(results, await guard(() => heartbeat(t), "heartbeat"));
+    // v204: a queue that grows (no channel accepts the alerts) is reported before it reaches the merge limit.
+    if (state.outbox.length >= QUEUE_WARN) results.alert_queue = { ok: false, severity: "warning", detail: `${state.outbox.length} ειδοποιήσεις δεν έχουν παραδοθεί (όριο συγχώνευσης ${QUEUE_MAX}) — ελέγξτε ntfy / Telegram / webhook` };
+    else if (state.outbox.length || state.checks.alert_queue) results.alert_queue = { ok: true };
     if (cfg.stateFile) results.state_storage = storageError ? { ok: false, severity: "warning", detail: `η κατάσταση του watchdog δεν αποθηκεύεται (${storageError}) — μετά από επανεκκίνηση χάνεται` } : { ok: true };
+    const fresh = [];
     for (const [name, r] of Object.entries(results)) {
       const c = (state.checks[name] ??= { fails: 0, oks: 0, open: false, openedAt: null, lastAlertAt: null });
       if (r.ok) {
         c.fails = 0; c.oks++;
-        if (c.open && c.oks >= 2) { c.open = false; state.outbox.push({ kind: "resolved", check: name, at: t, text: `✅ ${cfg.label}: «${name}» αποκαταστάθηκε (διάρκεια ${Math.round((t - c.openedAt) / MIN)}′)` }); }
+        if (c.open && c.oks >= 2) { c.open = false; fresh.push({ kind: "resolved", check: name, at: t, text: `✅ ${cfg.label}: «${name}» αποκαταστάθηκε (διάρκεια ${Math.round((t - c.openedAt) / MIN)}′)` }); }
       } else {
         // Severity decides how soon and how often: critical after FAIL_THRESHOLD checks, reminded every REMIND_MIN;
         // a warning after 3 × FAIL_THRESHOLD checks, reminded every 6 × REMIND_MIN. A warning that becomes critical is
@@ -165,16 +184,25 @@ export function createWatchdog(cfg, { fetchImpl = fetch, now = () => Date.now(),
         const icon = sev === "warning" ? "🟠" : "🔴";
         c.oks = 0; c.fails++; c.detail = r.detail;
         const threshold = sev === "warning" ? cfg.failThreshold * 3 : cfg.failThreshold, remind = (sev === "warning" ? 6 : 1) * cfg.remindMin * MIN;
-        if (!c.open && c.fails >= threshold) { c.open = true; c.severity = sev; c.openedAt = t; c.lastAlertAt = t; state.outbox.push({ kind: "open", severity: sev, check: name, at: t, text: `${icon} ${cfg.label}: «${name}» — ${r.detail} (${c.fails} συνεχόμενοι έλεγχοι)` }); }
-        else if (c.open && c.severity === "warning" && sev === "critical" && c.fails >= cfg.failThreshold) { c.severity = "critical"; c.lastAlertAt = t; state.outbox.push({ kind: "escalated", severity: sev, check: name, at: t, text: `🔴 ${cfg.label}: «${name}» έγινε κρίσιμο — ${r.detail}` }); }
-        else if (c.open && t - c.lastAlertAt >= remind) { c.lastAlertAt = t; state.outbox.push({ kind: "reminder", severity: c.severity, check: name, at: t, text: `${c.severity === "warning" ? "🟠" : "🔴"} ${cfg.label}: «${name}» εξακολουθεί — ${r.detail} (από ${Math.round((t - c.openedAt) / MIN)}′)` }); }
+        if (!c.open && c.fails >= threshold) { c.open = true; c.severity = sev; c.openedAt = t; c.lastAlertAt = t; fresh.push({ kind: "open", severity: sev, check: name, at: t, text: `${icon} ${cfg.label}: «${name}» — ${r.detail} (${c.fails} συνεχόμενοι έλεγχοι)` }); }
+        else if (c.open && c.severity === "warning" && sev === "critical" && c.fails >= cfg.failThreshold) { c.severity = "critical"; c.lastAlertAt = t; fresh.push({ kind: "escalated", severity: sev, check: name, at: t, text: `🔴 ${cfg.label}: «${name}» έγινε κρίσιμο — ${r.detail}` }); }
+        else if (c.open && t - c.lastAlertAt >= remind) { c.lastAlertAt = t; fresh.push({ kind: "reminder", severity: c.severity, check: name, at: t, text: `${c.severity === "warning" ? "🟠" : "🔴"} ${cfg.label}: «${name}» εξακολουθεί — ${r.detail} (από ${Math.round((t - c.openedAt) / MIN)}′)` }); }
       }
     }
+    // v204 aggregation: many alerts in one cycle (e.g. a provider outage that fails 20 subsystems) → ONE message that
+    // lists them all (each kept in items), not 20 messages.
+    if (fresh.length > BATCH_MAX) {
+      const crit = fresh.some((m) => m.severity === "critical");
+      state.outbox.push({ kind: "batch", severity: crit ? "critical" : "warning", check: "*", at: t, items: fresh.map(({ kind, severity, check, at, text }) => ({ kind, severity, check, at, text })),
+        text: `${crit ? "🔴" : "🟠"} ${cfg.label}: ${fresh.length} ειδοποιήσεις ταυτόχρονα\n${fresh.map((m) => `• ${m.text}`).join("\n")}` });
+    } else state.outbox.push(...fresh);
     // Saved BEFORE delivering: an alert decided in this cycle survives a restart even if delivery never happened.
     persist();
     const pending = [];
     for (const msg of state.outbox) if (!(await deliver(msg))) pending.push(msg);
-    state.outbox = pending.slice(-50);
+    // v204: nothing is dropped. Above QUEUE_MAX the least important messages are MERGED into one digest (their items
+    // kept); critical «open» / «escalated» messages are kept individually first.
+    state.outbox = compactOutbox(pending, cfg.label);
     if (cfg.deadmanUrl) { try { await fetchImpl(cfg.deadmanUrl, { signal: AbortSignal.timeout(cfg.timeoutMs) }); } catch { /* the dead-man service alerts on missing pings */ } }
     persist();
     const line = JSON.stringify({ event: "watchdog_cycle", at: new Date(t).toISOString(), results: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, v.ok ? "ok" : v.detail])), open: Object.entries(state.checks).filter(([, c]) => c.open).map(([k]) => k), undelivered: state.outbox.length });

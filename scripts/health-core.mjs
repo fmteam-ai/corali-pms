@@ -4,7 +4,7 @@
 //   /api/monitoring/heartbeat for an external watchdog: the minimum safe facts (statuses, progress counters, no data),
 //                             HMAC-signed with MONITORING_SECRET so the watchdog knows it came from this PMS.
 // A component the PMS cannot read is «unknown» — never «ok».
-import { integrationState } from "./integration-state-core.mjs";
+import { credentialsStatus, integrationState } from "./integration-state-core.mjs";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { heartbeatState } from "./job-control-core.mjs";
 
@@ -40,7 +40,7 @@ export function evaluateHealth(f, now) {
 }
 
 /** Reads the facts (each source on its own: one failing source makes only its component «unknown»). */
-export async function deepHealth({ pool, owner, now = Date.now() }) {
+export async function deepHealth({ pool, owner, now = Date.now(), documentKey = process.env.PMS_DOCUMENT_KEY }) {
   const t0 = Date.now();
   const dbOk = await pool.query("SELECT 1").then(() => true, () => false);
   const dbMs = dbOk ? Date.now() - t0 : null;
@@ -52,12 +52,12 @@ export async function deepHealth({ pool, owner, now = Date.now() }) {
     q(pool, `SELECT count(*)::int n FROM social_posts WHERE owner_id=$1 AND (status='uncertain' OR (status='processing' AND lease_until<$2::bigint))`, [owner, now]),
     q(pool, `SELECT count(*)::int n FROM rooms WHERE owner_id=$1 AND active=1`, [owner]),
     q(pool, `SELECT max(finished_at) m FROM backup_runs WHERE owner_id=$1 AND kind='backup' AND status='ok'`, [owner]),
-    q(pool, `SELECT p.active,p.secrets_encrypted,a.activated_at,a.deactivated_at FROM provider_connections p LEFT JOIN integration_activation a ON a.owner_id=p.owner_id AND a.provider_key='channelManager' WHERE p.owner_id=$1 AND p.provider_key IN ('channex','channelManager') ORDER BY (p.provider_key='channelManager') DESC LIMIT 1`, [owner]),
+    q(pool, `SELECT p.active,p.secrets_encrypted,p.settings_json,a.activated_at,a.deactivated_at FROM provider_connections p LEFT JOIN integration_activation a ON a.owner_id=p.owner_id AND a.provider_key='channelManager' WHERE p.owner_id=$1 AND p.provider_key IN ('channex','channelManager') ORDER BY (p.provider_key='channelManager') DESC LIMIT 1`, [owner]),
     q(pool, `SELECT (SELECT max(finished_at) FROM sentinel_runs WHERE owner_id=$1 AND finished_at IS NOT NULL) AS last_finished,(SELECT status FROM sentinel_runs WHERE owner_id=$1 AND finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 1) AS last_status,(SELECT count(*)::int FROM sentinel_runs WHERE owner_id=$1) AS runs,(SELECT count(*)::int FROM sentinel_incidents WHERE owner_id=$1 AND status='open') AS open_incidents`, [owner]),
   ]);
   const facts = {
     dbMs, channelOn: Boolean(channel?.length && Number(channel[0].active)),
-    channelState: channel === null ? undefined : integrationState({ row: channel[0] ?? null, activation: channel[0]?.activated_at ? channel[0] : null }),
+    channelState: channel === null ? undefined : integrationState({ row: channel[0] ?? null, credentials: credentialsStatus("channelManager", channel[0] ?? null, documentKey), activation: channel[0]?.activated_at ? channel[0] : null }),
     automations: beats === null ? null : beats.find((b) => b.job === "automations") ?? {},
     channelSync: beats === null ? null : beats.find((b) => b.job === "channel-sync") ?? {},
     steps, outboxOldest: outbox === null ? null : outbox[0]?.m ? Number(outbox[0].m) : 0,

@@ -198,3 +198,39 @@ test("v203 P2 watchdog: a provider that answers HTTP 200 but does not accept the
   assert.equal(wd.state().outbox.length, 0, "delivered once both accepted");
   assert.equal(calls.filter((c) => c === "telegram").length, telegramCalls, "Telegram not sent a second time");
 });
+
+test("v204 P1 watchdog: 65 failing subsystems with no working channel — nothing is dropped (one aggregated alert; merge, never truncate)", async () => {
+  const { compactOutbox, QUEUE_MAX, QUEUE_WARN } = await import("../tools/watchdog/watchdog.mjs");
+  let clock = Date.parse("2026-11-24T10:00:00Z");
+  const comps: Record<string, string> = { database: "ok", sentinel: "ok", automations: "ok" };
+  for (let i = 1; i <= 65; i++) comps[`sub${i}`] = "fail";
+  const st = { body: hbBody(comps), now: () => clock, alerts: [] as { kind: string; check: string; text: string }[], receiverDown: true };
+  const wd = createWatchdog(cfgFor(), { fetchImpl: fakeFetch(st), now: () => clock, sleep: async () => {}, log: () => {} });
+  for (let i = 0; i < 3; i++) { await wd.cycle(); clock += 60_000; }
+  let box = wd.state().outbox;
+  const all = box.flatMap((m) => (m.items ? m.items : [m]));
+  assert.equal(new Set(all.filter((m) => m.kind === "open").map((m) => m.check)).size, 65, "all 65 incidents are in the queue");
+  assert.equal(box.length, 1, "aggregated into one message");
+  // The channel comes back: one message delivered, carrying all 65.
+  st.receiverDown = false;
+  await wd.cycle();
+  assert.equal(st.alerts.length, 1);
+  assert.equal((st.alerts[0] as unknown as { items: unknown[] }).items.length, 65);
+  // The queue itself above its limit: merged into a digest, every item kept.
+  const many = Array.from({ length: 150 }, (_, i) => ({ kind: i % 3 ? "reminder" : "open", severity: i % 2 ? "critical" : "warning", check: `c${i}`, at: i, text: `m${i}` }));
+  const c = compactOutbox(many, "QA");
+  assert.equal(c.length, QUEUE_MAX);
+  const kept = c.flatMap((m) => (m.kind === "digest" ? m.items ?? [] : [m]));
+  assert.equal(kept.length, 150, "no message lost");
+  assert.ok(c.filter((m) => m.kind !== "digest").every((m) => !(m.kind === "reminder" && c.some((x) => x.kind === "digest" && x.items?.some((y) => y.kind === "open" && y.severity === "critical")))), "critical «open» kept individually before reminders");
+  // A growing queue is reported before the merge limit.
+  st.receiverDown = true;
+  for (let i = 1; i <= QUEUE_WARN; i++) comps[`late${i}`] = "warn";
+  const wd2 = createWatchdog(cfgFor(), { fetchImpl: fakeFetch({ ...st, body: hbBody(comps) }), now: () => clock, sleep: async () => {}, log: () => {} });
+  (wd2.state() as { outbox: unknown[] }).outbox.push(...Array.from({ length: QUEUE_WARN }, (_, i) => ({ kind: "reminder", severity: "warning", check: `q${i}`, at: i, text: "q" })));
+  const r = await wd2.cycle();
+  assert.equal(r.results.alert_queue.ok, false);
+  assert.match(r.results.alert_queue.detail!, /δεν έχουν παραδοθεί/);
+  box = wd2.state().outbox;
+  assert.ok(box.length <= QUEUE_MAX);
+});

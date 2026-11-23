@@ -2,8 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
+import { sealSecrets } from "../scripts/integration-state-core.mjs";
 import { INVENTORY, RECOVERY_MIN_MS, buildReport, collectReadOnly, findingsFrom, readOnlyPool, reportMarkdown, runSentinel, sentinelIncidents, severityOf } from "../scripts/sentinel-core.mjs";
 import { evaluateHealth, heartbeatPayload, signHeartbeat, verifyHeartbeat } from "../scripts/health-core.mjs";
+
+process.env.PMS_DOCUMENT_KEY = "test-document-key-0123456789abcdef0123456789abcdef";
 
 const o = "hotel-corali", MIN = 60_000;
 type Row = Record<string, unknown>;
@@ -18,7 +21,8 @@ async function fresh() {
 
 // v202: the OTA sync is judged only for an ACTIVATED Channel Manager whose sync runs and fails (Channex 503).
 async function activeChannel(db: PGlite, t0: number) {
-  await db.query(`INSERT INTO provider_connections(owner_id,provider_key,active,secrets_encrypted,updated_by,updated_at) VALUES($1,'channelManager',1,'sealed','qa',$2)`, [o, t0]);
+  await db.query(`INSERT INTO provider_connections(owner_id,provider_key,active,secrets_encrypted,updated_by,updated_at) VALUES($1,'channelManager',1,$3,'qa',$2)`, [o, t0, sealSecrets({ apiKey: "k" }, process.env.PMS_DOCUMENT_KEY!)]);
+  await db.query(`UPDATE provider_connections SET settings_json='{"propertyCode":"p"}'`);
   await db.query(`INSERT INTO integration_activation(owner_id,provider_key,activated_at,activated_by) VALUES($1,'channelManager',$2,'qa')`, [o, t0 - 86_400_000]);
   await db.query(`INSERT INTO channel_sync_state(owner_id,last_run_at,last_ok_at,last_error) VALUES($1,$2,$3,'Channex 503 Service Unavailable')`, [o, t0 - MIN, t0 - 8 * 3_600_000]);
 }
